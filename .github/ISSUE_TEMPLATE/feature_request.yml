@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a focused improvement with clear operational value.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What operational or product problem exists today?
+      placeholder: We cannot ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want, not just the implementation.
+      placeholder: Add support for ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional, but useful when this changes protocol or routing behavior.
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Primary impact area
+      options:
+        - reliability
+        - compatibility
+        - observability
+        - cost control
+        - admin UI
+        - docs / contributor workflow
+    validations:
+      required: true
