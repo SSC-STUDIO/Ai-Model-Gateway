@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const adminIconSVG = `<svg width="256" height="256" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="96" height="96" rx="24" fill="#0B0C0C"/><path d="M24 68V28H38L48 52L58 28H72V68H62V46L54 66H42L34 46V68H24Z" fill="#7EE7D6"/><circle cx="73" cy="24" r="8" fill="#F1B866"/></svg>`
+
 const adminHTMLTemplate = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -12,7 +14,8 @@ const adminHTMLTemplate = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0c0c">
   <title>AI Gateway Admin</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Crect width='96' height='96' rx='24' fill='%230b0c0c'/%3E%3Cpath d='M24 68V28h14l10 24 10-24h14v40H62V46L54 66H42l-8-20v22H24Z' fill='%237ee7d6'/%3E%3Ccircle cx='73' cy='24' r='8' fill='%23f1b866'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="shortcut icon" href="/favicon.ico">
   <style>
     :root {
       --bg: #070706;
@@ -466,6 +469,33 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 16px;
     }
+    .settings-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .settings-jumpbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .settings-jumpbar a {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .settings-jumpbar a:hover {
+      color: var(--ink);
+      border-color: rgba(126, 231, 214, 0.4);
+      text-decoration: none;
+    }
     .config-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -561,11 +591,16 @@ const adminHTMLTemplate = `<!doctype html>
     .config-card-head {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
     }
     .config-card-title {
       font-weight: 700;
+    }
+    .config-card-head-main {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
     }
     .config-help {
       color: var(--muted);
@@ -640,6 +675,38 @@ const adminHTMLTemplate = `<!doctype html>
     .history-list {
       display: grid;
       gap: 10px;
+    }
+    .probe-status {
+      display: grid;
+      gap: 4px;
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.18);
+      font-size: 12px;
+    }
+    .probe-status.ok {
+      border-color: rgba(121, 230, 215, 0.35);
+      background: rgba(121, 230, 215, 0.08);
+    }
+    .probe-status.fail {
+      border-color: rgba(255, 127, 110, 0.4);
+      background: rgba(255, 127, 110, 0.08);
+    }
+    .probe-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .probe-preview {
+      color: var(--muted);
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: pre-wrap;
+      max-height: 120px;
+      overflow: auto;
     }
     .history-item {
       display: flex;
@@ -804,12 +871,12 @@ const adminHTMLTemplate = `<!doctype html>
       .span-8, .span-6, .span-4 {
         grid-column: span 12;
       }
-      .metrics, .hero-side {
+      .metrics, .hero-side, .settings-summary {
         grid-template-columns: repeat(2, 1fr);
       }
     }
     @media (max-width: 640px) {
-      .metrics, .hero-side {
+      .metrics, .hero-side, .settings-summary {
         grid-template-columns: 1fr;
       }
     }
@@ -1034,16 +1101,32 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-status" id="configStatus">加载中</div>
         </div>
         <div class="config-panel">
+          <div class="settings-summary">
+            <div class="metric"><div class="k">Surface</div><div class="v mono">Config</div><div class="small">Runtime editing without opening YAML</div></div>
+            <div class="metric"><div class="k">Providers</div><div class="v mono" id="settingsProviderCount">0</div><div class="small">Configured upstream entries</div></div>
+            <div class="metric"><div class="k">Health Path</div><div class="v mono" id="settingsHealthPath">/v1/models</div><div class="small">Probe endpoint used by active checks</div></div>
+            <div class="metric"><div class="k">Mode</div><div class="v mono">Safe Edit</div><div class="small">Save, export, diff, rollback</div></div>
+          </div>
           <div class="config-toolbar">
             <input class="config-search" id="configSearch" type="search" placeholder="Search config sections, fields, providers..." />
             <button class="btn secondary" id="expandSections" type="button">Expand All</button>
             <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
           </div>
+          <div class="settings-jumpbar">
+            <a href="#cfg-health">Health</a>
+            <a href="#cfg-bridge">Bridge</a>
+            <a href="#cfg-router">Retry</a>
+            <a href="#cfg-intercepts">Intercepts</a>
+            <a href="#cfg-upstreams">Providers</a>
+            <a href="#cfg-history">History</a>
+          </div>
           <div class="validation-summary" id="configValidation"></div>
-          <div class="config-card config-section" data-section-title="Health Check">
+          <div class="config-card config-section" id="cfg-health" data-section-title="Health Check">
             <div class="config-card-head">
-              <div class="config-card-title">Health Check</div>
-              <div class="config-help">控制主动探活的开关、间隔、超时和路径</div>
+              <div class="config-card-head-main">
+                <div class="config-card-title">Health Check</div>
+                <div class="config-help">控制主动探活的开关、间隔、超时和路径</div>
+              </div>
             </div>
             <div class="config-grid">
               <div class="config-field">
@@ -1064,10 +1147,12 @@ const adminHTMLTemplate = `<!doctype html>
               </div>
             </div>
           </div>
-          <div class="config-card config-section" data-section-title="Model Bridge">
+          <div class="config-card config-section" id="cfg-bridge" data-section-title="Model Bridge">
             <div class="config-card-head">
-              <div class="config-card-title">Model Bridge</div>
-              <div class="config-help">维护模型别名映射和需跳过桥接的 User-Agent</div>
+              <div class="config-card-head-main">
+                <div class="config-card-title">Model Bridge</div>
+                <div class="config-help">维护模型别名映射和需跳过桥接的 User-Agent</div>
+              </div>
             </div>
             <div class="config-grid">
               <div class="config-field">
@@ -1084,10 +1169,12 @@ const adminHTMLTemplate = `<!doctype html>
               <button class="btn secondary" id="addBridgeRule">Add Bridge Rule</button>
             </div>
           </div>
-          <div class="config-card config-section" data-section-title="Router Retry">
+          <div class="config-card config-section" id="cfg-router" data-section-title="Router Retry">
             <div class="config-card-head">
-              <div class="config-card-title">Router Retry</div>
-              <div class="config-help">控制重试次数与退避窗口</div>
+              <div class="config-card-head-main">
+                <div class="config-card-title">Router Retry</div>
+                <div class="config-help">控制重试次数与退避窗口</div>
+              </div>
             </div>
             <div class="config-grid">
               <div class="config-field">
@@ -1118,8 +1205,10 @@ const adminHTMLTemplate = `<!doctype html>
           </div>
           <div class="config-card config-section" data-section-title="Retry Policy">
             <div class="config-card-head">
-              <div class="config-card-title">Retry Policy</div>
-              <div class="config-help">命中状态码或关键字后触发重试</div>
+              <div class="config-card-head-main">
+                <div class="config-card-title">Retry Policy</div>
+                <div class="config-help">命中状态码或关键字后触发重试</div>
+              </div>
             </div>
             <div class="config-grid">
               <div class="config-field">
@@ -1136,30 +1225,36 @@ const adminHTMLTemplate = `<!doctype html>
               </div>
             </div>
           </div>
-          <div class="config-card config-section" data-section-title="Response Intercepts">
+          <div class="config-card config-section" id="cfg-intercepts" data-section-title="Response Intercepts">
             <div class="config-card-head">
-              <div class="config-card-title">Response Intercepts</div>
-              <div class="config-help">按路径、状态码或错误关键字提前判定 retry / fail</div>
+              <div class="config-card-head-main">
+                <div class="config-card-title">Response Intercepts</div>
+                <div class="config-help">按路径、状态码或错误关键字提前判定 retry / fail</div>
+              </div>
             </div>
             <div id="interceptList"></div>
             <div class="config-actions">
               <button class="btn secondary" id="addIntercept">Add Intercept</button>
             </div>
           </div>
-          <div class="config-card config-section" data-section-title="Service Providers">
+          <div class="config-card config-section" id="cfg-upstreams" data-section-title="Service Providers">
             <div class="config-card-head">
-              <div class="config-card-title">Service Providers</div>
-              <div class="config-help">维护上游服务商的 URL、API key、模型范围和超时</div>
+              <div class="config-card-head-main">
+                <div class="config-card-title">Service Providers</div>
+                <div class="config-help">维护上游服务商的 URL、API key、模型范围和超时；每一项都可先行测试再保存</div>
+              </div>
             </div>
             <div id="upstreamConfigList"></div>
             <div class="config-actions">
               <button class="btn secondary" id="addUpstream">Add Provider</button>
             </div>
           </div>
-          <div class="config-card config-section" data-section-title="Config History">
+          <div class="config-card config-section" id="cfg-history" data-section-title="Config History">
             <div class="config-card-head">
-              <div class="config-card-title">Config History</div>
-              <div class="config-help">保存配置前会自动归档旧版本，可选择具体版本回滚</div>
+              <div class="config-card-head-main">
+                <div class="config-card-title">Config History</div>
+                <div class="config-help">保存配置前会自动归档旧版本，可选择具体版本回滚</div>
+              </div>
             </div>
             <div id="configHistoryList"></div>
             <div id="configDiffPreview"></div>
@@ -1642,21 +1737,72 @@ const adminHTMLTemplate = `<!doctype html>
         to: card.querySelector('.bridge-to')?.value || ''
       }));
     };
+    const updateSettingsSummary = () => {
+      const providerCount = document.querySelectorAll('[data-upstream-config]').length;
+      const healthPath = String(byId('cfgHealthPath')?.value || '').trim() || '/v1/models';
+      if (byId('settingsProviderCount')) byId('settingsProviderCount').textContent = fmt.format(providerCount);
+      if (byId('settingsHealthPath')) byId('settingsHealthPath').textContent = healthPath;
+    };
+    const collectUpstreamCard = (card) => ({
+      name: card.querySelector('.upstream-name')?.value || '',
+      base_url: card.querySelector('.upstream-base-url')?.value || '',
+      api_key: card.querySelector('.upstream-api-key')?.value || '',
+      models: parseList(card.querySelector('.upstream-models')?.value),
+      headers: parseHeaders(card.querySelector('.upstream-headers')?.value),
+      weight: readNumber(card.querySelector('.upstream-weight')),
+      timeout_ms: readNumber(card.querySelector('.upstream-timeout')),
+      same_upstream_retries: readNumber(card.querySelector('.upstream-same-retries')),
+      enabled: card.querySelector('.upstream-enabled')?.checked ?? true
+    });
+    const renderUpstreamProbe = (card, result, pending = false) => {
+      const host = card.querySelector('.probe-status-host');
+      if (!host) return;
+      if (pending) {
+        host.innerHTML = '<div class="probe-status"><div class="probe-summary"><span class="status">testing</span><span class="small">正在探测服务商连通性...</span></div></div>';
+        return;
+      }
+      if (!result) {
+        host.innerHTML = '';
+        return;
+      }
+      const kind = result.ok ? 'ok' : 'fail';
+      const state = result.ok ? '<span class="status">reachable</span>' : '<span class="status bad">failed</span>';
+      const target = result.target_url ? '<div class="small">Target · ' + escapeHTML(result.target_url) + '</div>' : '';
+      const preview = result.body_preview ? '<div class="probe-preview">' + escapeHTML(result.body_preview) + '</div>' : '';
+      const detailBits = [
+        result.status_code ? '<span class="tag">status ' + escapeHTML(result.status_code) + '</span>' : '',
+        result.latency_ms ? '<span class="tag">' + escapeHTML(result.latency_ms) + ' ms</span>' : '',
+        result.checked_at ? '<span class="tag">' + escapeHTML(relativeTime(result.checked_at)) + '</span>' : ''
+      ].filter(Boolean).join('');
+      host.innerHTML = '<div class="probe-status ' + kind + '">' +
+        '<div class="probe-summary">' + state + detailBits + '</div>' +
+        (result.error ? '<div class="small">' + escapeHTML(result.error) + '</div>' : '') +
+        target +
+        preview +
+      '</div>';
+    };
     const renderUpstreamsConfig = (upstreams) => {
       const list = byId('upstreamConfigList');
       const items = upstreams || [];
       if (!items.length) {
         list.innerHTML = '<div class="small">暂无服务商配置</div>';
+        updateSettingsSummary();
         return;
       }
       list.innerHTML = items.map((upstream, idx) => {
         const enabled = upstream.enabled === false ? '' : 'checked';
+        const title = escapeHTML(upstream.name || ('Provider ' + (idx + 1)));
+        const base = escapeHTML(upstream.base_url || 'base url not set');
         return '' +
           '<div class="config-card" data-upstream-config>' +
             '<div class="config-card-head">' +
-              '<div class="config-card-title">Provider ' + (idx + 1) + '</div>' +
+              '<div class="config-card-head-main">' +
+                '<div class="config-card-title">' + title + '</div>' +
+                '<div class="config-help">' + base + '</div>' +
+              '</div>' +
               '<div class="config-actions">' +
                 '<label class="small"><input type="checkbox" class="upstream-enabled" ' + enabled + '> Enabled</label>' +
+                '<button class="btn secondary upstream-test" type="button">Test</button>' +
                 '<button class="btn danger upstream-remove" type="button">Remove</button>' +
               '</div>' +
             '</div>' +
@@ -1694,22 +1840,14 @@ const adminHTMLTemplate = `<!doctype html>
                 '<input type="number" min="0" class="upstream-same-retries" value="' + (upstream.same_upstream_retries ?? 0) + '">' +
               '</div>' +
             '</div>' +
+            '<div class="probe-status-host"></div>' +
           '</div>';
       }).join('');
+      updateSettingsSummary();
     };
     const collectUpstreams = () => {
       const cards = Array.from(document.querySelectorAll('[data-upstream-config]'));
-      return cards.map(card => ({
-        name: card.querySelector('.upstream-name')?.value || '',
-        base_url: card.querySelector('.upstream-base-url')?.value || '',
-        api_key: card.querySelector('.upstream-api-key')?.value || '',
-        models: parseList(card.querySelector('.upstream-models')?.value),
-        headers: parseHeaders(card.querySelector('.upstream-headers')?.value),
-        weight: readNumber(card.querySelector('.upstream-weight')),
-        timeout_ms: readNumber(card.querySelector('.upstream-timeout')),
-        same_upstream_retries: readNumber(card.querySelector('.upstream-same-retries')),
-        enabled: card.querySelector('.upstream-enabled')?.checked ?? true
-      }));
+      return cards.map(card => collectUpstreamCard(card));
     };
     const renderConfigHistory = (versions) => {
       const list = byId('configHistoryList');
@@ -1828,9 +1966,28 @@ const adminHTMLTemplate = `<!doctype html>
         ensureSectionControls();
         applyConfigSearch();
         clearValidationState();
+        updateSettingsSummary();
         byId('configStatus').textContent = '已载入';
       } catch (err) {
         byId('configStatus').textContent = '配置载入失败';
+      }
+    };
+    const testUpstreamCard = async (card) => {
+      if (!card) return;
+      renderUpstreamProbe(card, null, true);
+      byId('configHint').textContent = 'Testing provider...';
+      try {
+        const res = await fetch('/-/admin/upstreams/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ upstream: collectUpstreamCard(card) })
+        });
+        const payload = await res.json().catch(() => ({}));
+        renderUpstreamProbe(card, payload, false);
+        byId('configHint').textContent = payload.ok ? 'Provider test passed' : 'Provider test failed';
+      } catch (err) {
+        renderUpstreamProbe(card, { ok: false, error: String(err?.message || err || 'probe failed') }, false);
+        byId('configHint').textContent = 'Provider test failed';
       }
     };
     const saveConfig = async () => {
@@ -1965,8 +2122,13 @@ const adminHTMLTemplate = `<!doctype html>
           if (!document.querySelector('[data-upstream-config]')) {
             byId('upstreamConfigList').innerHTML = '<div class="small">暂无服务商配置</div>';
           }
+          updateSettingsSummary();
           clearValidationState();
         }
+      }
+      if (event.target && event.target.classList.contains('upstream-test')) {
+        event.preventDefault();
+        testUpstreamCard(event.target.closest('[data-upstream-config]'));
       }
       if (event.target && event.target.id === 'collapseSections') {
         event.preventDefault();
@@ -2012,6 +2174,9 @@ const adminHTMLTemplate = `<!doctype html>
       if (event.target && event.target.id === 'configSearch') {
         applyConfigSearch();
         return;
+      }
+      if (event.target && (event.target.id === 'cfgHealthPath' || event.target.closest('[data-upstream-config]'))) {
+        updateSettingsSummary();
       }
       if (event.target && event.target.closest('.config-panel')) {
         clearValidationState();
@@ -2444,5 +2609,13 @@ func adminPage(settingsView bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(renderAdminHTML(settingsView)))
+	}
+}
+
+func adminFavicon() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write([]byte(adminIconSVG))
 	}
 }

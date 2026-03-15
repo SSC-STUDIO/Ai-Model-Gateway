@@ -285,6 +285,95 @@ func TestAdminRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+
+	settingsReq := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
+	settingsReq.Header.Set("Authorization", "Bearer secret")
+	settingsRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(settingsRecorder, settingsReq)
+	if settingsRecorder.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected settings 200, got %d", settingsRecorder.Result().StatusCode)
+	}
+
+	faviconReq := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
+	faviconRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(faviconRecorder, faviconReq)
+	if faviconRecorder.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected favicon 200, got %d", faviconRecorder.Result().StatusCode)
+	}
+	if got := faviconRecorder.Result().Header.Get("Content-Type"); !strings.Contains(got, "image/svg+xml") {
+		t.Fatalf("expected svg content type, got %q", got)
+	}
+	body, _ := io.ReadAll(faviconRecorder.Result().Body)
+	if !strings.Contains(string(body), "<svg") {
+		t.Fatalf("expected svg body, got %q", string(body))
+	}
+}
+
+func TestAdminUpstreamProbe(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-demo" {
+			t.Fatalf("unexpected authorization header %q", got)
+		}
+		if got := r.Header.Get("X-Test"); got != "yes" {
+			t.Fatalf("unexpected custom header %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"object":"list","data":[{"id":"gpt-5.4"}]}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Admin:  config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Health: config.HealthConfig{Enabled: true, Path: "/v1/models", TimeoutMs: 2000},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	body := bytes.NewBufferString(`{"upstream":{"name":"probe","base_url":"` + upstream.URL + `","api_key":"sk-demo","headers":{"X-Test":"yes"},"timeout_ms":2000,"enabled":true}}`)
+	req := httptest.NewRequest(http.MethodPost, "/-/admin/upstreams/test", body)
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+	if recorder.Result().StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected 200, got %d: %s", recorder.Result().StatusCode, string(data))
+	}
+
+	var payload struct {
+		OK          bool   `json:"ok"`
+		StatusCode  int    `json:"status_code"`
+		TargetURL   string `json:"target_url"`
+		BodyPreview string `json:"body_preview"`
+	}
+	if err := json.NewDecoder(recorder.Result().Body).Decode(&payload); err != nil {
+		t.Fatalf("decode probe payload: %v", err)
+	}
+	if !payload.OK {
+		t.Fatalf("expected probe ok, got false")
+	}
+	if payload.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", payload.StatusCode)
+	}
+	if !strings.HasSuffix(payload.TargetURL, "/v1/models") {
+		t.Fatalf("unexpected target url %q", payload.TargetURL)
+	}
+	if !strings.Contains(payload.BodyPreview, `"object":"list"`) {
+		t.Fatalf("unexpected body preview %q", payload.BodyPreview)
+	}
+}
+
 func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	cfg := config.Config{

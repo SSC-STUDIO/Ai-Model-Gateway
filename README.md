@@ -38,7 +38,10 @@
 - License: [MIT](LICENSE)
 - Change log: [CHANGELOG.md](CHANGELOG.md)
 - CI: [GitHub Actions workflow](.github/workflows/ci.yml)
+- Release workflow: [GitHub Release workflow](.github/workflows/release.yml)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security policy: [SECURITY.md](SECURITY.md)
+- Support guide: [SUPPORT.md](SUPPORT.md)
 
 ## Architecture
 

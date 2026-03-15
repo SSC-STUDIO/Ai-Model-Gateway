@@ -2,7 +2,9 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -129,6 +131,20 @@ type configDiffLine struct {
 
 type configRollbackRequest struct {
 	VersionID string `json:"version_id"`
+}
+
+type upstreamProbeRequest struct {
+	Upstream configViewUpstream `json:"upstream"`
+}
+
+type upstreamProbeResponse struct {
+	OK          bool   `json:"ok"`
+	TargetURL   string `json:"target_url"`
+	StatusCode  int    `json:"status_code,omitempty"`
+	LatencyMs   int64  `json:"latency_ms"`
+	Error       string `json:"error,omitempty"`
+	BodyPreview string `json:"body_preview,omitempty"`
+	CheckedAt   string `json:"checked_at"`
 }
 
 func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *telemetry.PricingCatalog) http.Handler {
@@ -309,8 +325,26 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(renderConfigView(cfg))
 	})
+	r.Post("/-/admin/upstreams/test", func(w http.ResponseWriter, r *http.Request) {
+		var payload upstreamProbeRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid upstream probe payload", http.StatusBadRequest)
+			return
+		}
+
+		result := probeUpstream(payload.Upstream, manager.CurrentConfig().Health)
+		status := http.StatusOK
+		if !result.OK && result.StatusCode == 0 {
+			status = http.StatusBadGateway
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(result)
+	})
 	r.Get("/admin", adminPage(false))
 	r.Get("/admin/settings", adminPage(true))
+	r.Get("/favicon.svg", adminFavicon())
+	r.Get("/favicon.ico", adminFavicon())
 
 	r.Get("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		models := manager.Models()
@@ -518,6 +552,87 @@ func cloneStringMap(src map[string]string) map[string]string {
 		dst[key] = value
 	}
 	return dst
+}
+
+func probeUpstream(view configViewUpstream, healthCfg config.HealthConfig) upstreamProbeResponse {
+	items := applyUpstreamConfig([]configViewUpstream{view})
+	if len(items) == 0 {
+		return upstreamProbeResponse{
+			OK:        false,
+			Error:     "upstream payload is empty",
+			CheckedAt: time.Now().Format(time.RFC3339),
+		}
+	}
+	upstream := items[0]
+	if upstream.BaseURL == "" {
+		return upstreamProbeResponse{
+			OK:        false,
+			Error:     "base_url is required",
+			CheckedAt: time.Now().Format(time.RFC3339),
+		}
+	}
+
+	path := strings.TrimSpace(healthCfg.Path)
+	if path == "" {
+		path = "/v1/models"
+	}
+	targetURL := strings.TrimRight(upstream.BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
+	timeoutMs := upstream.TimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = healthCfg.TimeoutMs
+	}
+	if timeoutMs <= 0 {
+		timeoutMs = 5000
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs)*time.Millisecond)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		return upstreamProbeResponse{
+			OK:        false,
+			TargetURL: targetURL,
+			Error:     err.Error(),
+			CheckedAt: time.Now().Format(time.RFC3339),
+		}
+	}
+	if upstream.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+upstream.APIKey)
+	}
+	req.Header.Set("Accept", "application/json")
+	for key, value := range upstream.Headers {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
+
+	client := &http.Client{Timeout: time.Duration(timeoutMs) * time.Millisecond}
+	start := time.Now()
+	resp, err := client.Do(req)
+	latencyMs := time.Since(start).Milliseconds()
+	if err != nil {
+		return upstreamProbeResponse{
+			OK:        false,
+			TargetURL: targetURL,
+			LatencyMs: latencyMs,
+			Error:     err.Error(),
+			CheckedAt: time.Now().Format(time.RFC3339),
+		}
+	}
+	defer resp.Body.Close()
+
+	bodyPreview, _ := io.ReadAll(io.LimitReader(resp.Body, 1536))
+	return upstreamProbeResponse{
+		OK:          resp.StatusCode >= 200 && resp.StatusCode < 300,
+		TargetURL:   targetURL,
+		StatusCode:  resp.StatusCode,
+		LatencyMs:   latencyMs,
+		BodyPreview: strings.TrimSpace(string(bodyPreview)),
+		CheckedAt:   time.Now().Format(time.RFC3339),
+	}
 }
 
 func renderConfigHistory(versions []state.ConfigVersion) configHistoryResponse {
