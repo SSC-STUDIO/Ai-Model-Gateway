@@ -1,4 +1,7 @@
-﻿# AI Model Gateway
+# AI Model Gateway
+
+[![CI](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ![AI Model Gateway icon](docs/assets/icon.svg)
 
@@ -29,6 +32,12 @@
 ### Admin overview
 
 ![Admin overview](docs/screenshots/admin-overview.png)
+
+## Repo metadata
+
+- License: [MIT](LICENSE)
+- Change log: [CHANGELOG.md](CHANGELOG.md)
+- CI: [GitHub Actions workflow](.github/workflows/ci.yml)
 
 ## Architecture
 
