@@ -255,6 +255,33 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 			continue
 		}
 
+		if shouldPassthroughResponsesStream(resp, r.URL.Path) {
+			setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt+1)
+			captured, streamErr := copyResponseAndCapture(w, resp)
+			reason := ""
+			success := streamErr == nil && captured != nil && hasCompletedEventStream(captured.Body, r.URL.Path)
+			if !success {
+				if streamErr != nil {
+					reason = fmt.Sprintf("stream disconnected before completion: %v", streamErr)
+				} else {
+					reason = fmt.Sprintf("stream disconnected before completion: stream closed before %s", expectedStreamCompletionMarker(r.URL.Path))
+				}
+				h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf(reason), true, "stream_passthrough")
+				logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, fmt.Errorf(reason))
+			} else {
+				h.Manager.ReportRequestSuccess(upstream.Name, latency, resp.StatusCode)
+				logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, nil)
+			}
+
+			var usage telemetry.Usage
+			if captured != nil {
+				usage = extractUsage(captured.Body)
+				rememberStickyRouting(h.Manager, r.URL.Path, stickyKey, upstream.Name, captured)
+			}
+			h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, resp.StatusCode, attempt+1, success, reason, usage)
+			return
+		}
+
 		assessment, captured, inspectErr := inspectResponse(resp, r.URL.Path, cfg.Proxy)
 		if inspectErr != nil {
 			h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, inspectErr, false, "inspect")
@@ -366,7 +393,6 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 	var cancel context.CancelFunc
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
 	}
 
 	req, err := http.NewRequestWithContext(ctx, src.Method, joinURL(upstream.BaseURL, src.URL.Path), bytes.NewReader(body))
@@ -396,6 +422,15 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 		client = http.DefaultClient
 	}
 	resp, err := client.Do(req)
+	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
+		return nil, time.Since(start), err
+	}
+	if cancel != nil && resp != nil && resp.Body != nil {
+		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: cancel}
+	}
 	return resp, time.Since(start), err
 }
 
@@ -716,6 +751,18 @@ func inspectEventStreamResponse(resp *http.Response, path string, policy config.
 	}
 
 	return applyInterceptRules(assessment, path, resp.StatusCode, body, policy), captured, nil
+}
+
+func shouldPassthroughResponsesStream(resp *http.Response, path string) bool {
+	if resp == nil || !expectsResponsesCompletedEvent(path) {
+		return false
+	}
+	contentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	return resp.StatusCode < http.StatusBadRequest && mediaType == "text/event-stream"
 }
 
 func shouldSkipInspection(mediaType string, statusCode int) bool {
@@ -1500,6 +1547,62 @@ func copyResponse(w http.ResponseWriter, resp *http.Response) {
 		flusher.Flush()
 	}
 	_, _ = io.Copy(w, resp.Body)
+}
+
+func copyResponseAndCapture(w http.ResponseWriter, resp *http.Response) (*capturedResponse, error) {
+	defer resp.Body.Close()
+
+	header := resp.Header.Clone()
+	for key, values := range header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	flusher, _ := w.(http.Flusher)
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	var buffer bytes.Buffer
+	writer := io.Writer(io.MultiWriter(w, &buffer))
+	if flusher != nil {
+		writer = flushWriter{writer: writer, flusher: flusher}
+	}
+
+	_, err := io.Copy(writer, resp.Body)
+	return &capturedResponse{
+		StatusCode: resp.StatusCode,
+		Header:     header,
+		Body:       buffer.Bytes(),
+	}, err
+}
+
+type flushWriter struct {
+	writer  io.Writer
+	flusher http.Flusher
+}
+
+func (w flushWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	if err == nil && w.flusher != nil && n > 0 {
+		w.flusher.Flush()
+	}
+	return n, err
+}
+
+type cancelOnCloseReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (r *cancelOnCloseReadCloser) Close() error {
+	err := r.ReadCloser.Close()
+	if r.cancel != nil {
+		r.cancel()
+	}
+	return err
 }
 
 func writeCapturedResponse(w http.ResponseWriter, resp *capturedResponse) {

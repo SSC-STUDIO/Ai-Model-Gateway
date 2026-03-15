@@ -186,25 +186,6 @@ const adminHTMLTemplate = `<!doctype html>
       justify-content: space-between;
       gap: 16px;
     }
-    .hero-brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .hero-mark {
-      width: 58px;
-      height: 58px;
-      border-radius: 18px;
-      padding: 12px;
-      border: 1px solid rgba(255, 244, 230, 0.14);
-      background: linear-gradient(145deg, rgba(126, 231, 214, 0.16), rgba(255, 255, 255, 0.04));
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
-      flex: 0 0 auto;
-    }
-    .hero-mark svg {
-      width: 100%;
-      height: 100%;
-    }
     .hero-main::after {
       content: "";
       position: absolute;
@@ -472,23 +453,23 @@ const adminHTMLTemplate = `<!doctype html>
     .settings-summary {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
     .settings-jumpbar {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 6px;
+      gap: 6px;
+      margin-bottom: 4px;
     }
     .settings-jumpbar a {
       display: inline-flex;
       align-items: center;
-      padding: 7px 11px;
+      padding: 6px 10px;
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.04);
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11px;
       text-decoration: none;
     }
     .settings-jumpbar a:hover {
@@ -499,12 +480,12 @@ const adminHTMLTemplate = `<!doctype html>
     .config-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
+      gap: 10px;
     }
     .config-field {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
     }
     .config-field label {
       font-size: 11px;
@@ -518,8 +499,8 @@ const adminHTMLTemplate = `<!doctype html>
       border-radius: 12px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.06);
-      padding: 10px 12px;
-      font-size: 13px;
+      padding: 9px 11px;
+      font-size: 12px;
       color: var(--ink);
       outline: none;
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
@@ -533,13 +514,13 @@ const adminHTMLTemplate = `<!doctype html>
       background: rgba(10, 10, 9, 0.55);
     }
     .config-field textarea {
-      min-height: 90px;
+      min-height: 82px;
       resize: vertical;
     }
     .config-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
     }
     .btn {
@@ -547,8 +528,8 @@ const adminHTMLTemplate = `<!doctype html>
       border: 1px solid rgba(121, 230, 215, 0.4);
       background: linear-gradient(120deg, rgba(121, 230, 215, 0.16), rgba(121, 230, 215, 0.08));
       color: var(--accent);
-      padding: 8px 16px;
-      font-size: 12px;
+      padding: 7px 13px;
+      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -583,16 +564,16 @@ const adminHTMLTemplate = `<!doctype html>
     .config-card {
       border: 1px solid var(--line);
       border-radius: 16px;
-      padding: 12px;
+      padding: 10px;
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }
     .config-card-head {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      gap: 8px;
+      gap: 6px;
     }
     .config-card-title {
       font-weight: 700;
@@ -604,16 +585,16 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .config-help {
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11px;
     }
     .config-status {
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11px;
     }
     .config-toolbar {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       align-items: center;
       margin-bottom: 4px;
     }
@@ -623,8 +604,8 @@ const adminHTMLTemplate = `<!doctype html>
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.06);
-      padding: 10px 14px;
-      font-size: 13px;
+      padding: 9px 12px;
+      font-size: 12px;
       color: var(--ink);
       outline: none;
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
@@ -637,13 +618,13 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .validation-summary {
       display: none;
-      gap: 8px;
-      padding: 12px 14px;
+      gap: 6px;
+      padding: 10px 12px;
       border-radius: 14px;
       border: 1px solid rgba(255, 127, 110, 0.35);
       background: rgba(255, 127, 110, 0.10);
       color: var(--ink);
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.5;
     }
     .validation-summary.visible {
@@ -678,13 +659,13 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .probe-status {
       display: grid;
-      gap: 4px;
+      gap: 3px;
       width: 100%;
-      padding: 10px 12px;
+      padding: 8px 10px;
       border-radius: 12px;
       border: 1px solid var(--line);
       background: rgba(0,0,0,0.18);
-      font-size: 12px;
+      font-size: 11px;
     }
     .probe-status.ok {
       border-color: rgba(121, 230, 215, 0.35);
@@ -697,7 +678,7 @@ const adminHTMLTemplate = `<!doctype html>
     .probe-summary {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
     }
     .probe-preview {
@@ -712,11 +693,33 @@ const adminHTMLTemplate = `<!doctype html>
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 12px;
-      padding: 12px;
+      gap: 10px;
+      padding: 10px;
       border-radius: 14px;
       border: 1px solid var(--line);
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    }
+    .config-footer {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      padding: 10px 0 0;
+      background: linear-gradient(180deg, rgba(7,7,6,0), rgba(7,7,6,0.9) 28%, rgba(7,7,6,0.98));
+    }
+    .config-footer .config-actions {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(14, 13, 12, 0.92);
+      box-shadow: var(--shadow-soft);
+    }
+    .config-hint {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 2px;
+      font-size: 11px;
+      color: var(--muted);
     }
     .history-meta {
       display: grid;
@@ -933,17 +936,9 @@ const adminHTMLTemplate = `<!doctype html>
     <div class="hero">
       <div class="hero-main">
         <div class="hero-head">
-          <div class="hero-brand">
-            <div class="hero-mark" aria-hidden="true">
-              <svg viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M24 68V28h14l10 24 10-24h14v40H62V46L54 66H42l-8-20v22H24Z" fill="#7EE7D6"/>
-                <circle cx="73" cy="24" r="8" fill="#F1B866"/>
-              </svg>
-            </div>
-            <div>
-              <div class="eyebrow">AI Gateway Admin</div>
-              <h1>Ops, Cost, Throughput.</h1>
-            </div>
+          <div>
+            <div class="eyebrow">AI Gateway Admin</div>
+            <h1>Ops, Cost, Throughput.</h1>
           </div>
         </div>
         <div class="sub">把请求量、吞吐、延迟、失败轨迹和 USD 成本放在同一块面板里，先判断是不是上游波动，再判断是不是代理放大。</div>
@@ -1102,9 +1097,9 @@ const adminHTMLTemplate = `<!doctype html>
         </div>
         <div class="config-panel">
           <div class="settings-summary">
-            <div class="metric"><div class="k">Surface</div><div class="v mono">Config</div><div class="small">Runtime editing without opening YAML</div></div>
-            <div class="metric"><div class="k">Providers</div><div class="v mono" id="settingsProviderCount">0</div><div class="small">Configured upstream entries</div></div>
-            <div class="metric"><div class="k">Health Path</div><div class="v mono" id="settingsHealthPath">/v1/models</div><div class="small">Probe endpoint used by active checks</div></div>
+            <div class="metric"><div class="k">Surface</div><div class="v mono">Config</div><div class="small">Runtime edit without YAML</div></div>
+            <div class="metric"><div class="k">Providers</div><div class="v mono" id="settingsProviderCount">0</div><div class="small">Active upstream entries</div></div>
+            <div class="metric"><div class="k">Health Path</div><div class="v mono" id="settingsHealthPath">/v1/models</div><div class="small">Probe target</div></div>
             <div class="metric"><div class="k">Mode</div><div class="v mono">Safe Edit</div><div class="small">Save, export, diff, rollback</div></div>
           </div>
           <div class="config-toolbar">
@@ -1259,12 +1254,14 @@ const adminHTMLTemplate = `<!doctype html>
             <div id="configHistoryList"></div>
             <div id="configDiffPreview"></div>
           </div>
+          <div class="config-footer">
           <div class="config-actions">
             <button class="btn" id="saveConfig">Save Config</button>
             <button class="btn secondary" id="reloadConfig">Reload</button>
             <button class="btn secondary" id="exportConfig">Export</button>
             <button class="btn danger" id="rollbackConfig">Rollback</button>
-            <span class="config-help" id="configHint"></span>
+            <span class="config-hint" id="configHint"></span>
+          </div>
           </div>
         </div>
       </div>
@@ -1758,7 +1755,7 @@ const adminHTMLTemplate = `<!doctype html>
       const host = card.querySelector('.probe-status-host');
       if (!host) return;
       if (pending) {
-        host.innerHTML = '<div class="probe-status"><div class="probe-summary"><span class="status">testing</span><span class="small">正在探测服务商连通性...</span></div></div>';
+        host.innerHTML = '<div class="probe-status"><div class="probe-summary"><span class="status">testing</span><span class="small">正在探测 provider...</span></div></div>';
         return;
       }
       if (!result) {
@@ -1802,7 +1799,7 @@ const adminHTMLTemplate = `<!doctype html>
               '</div>' +
               '<div class="config-actions">' +
                 '<label class="small"><input type="checkbox" class="upstream-enabled" ' + enabled + '> Enabled</label>' +
-                '<button class="btn secondary upstream-test" type="button">Test</button>' +
+                '<button class="btn secondary upstream-test" type="button">Probe</button>' +
                 '<button class="btn danger upstream-remove" type="button">Remove</button>' +
               '</div>' +
             '</div>' +

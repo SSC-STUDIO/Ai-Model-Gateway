@@ -485,7 +485,7 @@ func TestResponsesCompatStreamEmitsCompletedEvent(t *testing.T) {
 	}
 }
 
-func TestHandlerRetriesIncompleteEventStreamBeforeResponseCompleted(t *testing.T) {
+func TestHandlerPassesThroughResponsesEventStreamWithoutRetry(t *testing.T) {
 	var firstCalls atomic.Int32
 	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		firstCalls.Add(1)
@@ -526,24 +526,24 @@ func TestHandlerRetriesIncompleteEventStreamBeforeResponseCompleted(t *testing.T
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if got := resp.Header.Get(observability.UpstreamHeader); got != "second" {
-		t.Fatalf("expected upstream header second, got %q", got)
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "first" {
+		t.Fatalf("expected upstream header first, got %q", got)
 	}
-	if got := resp.Header.Get(observability.AttemptsHeader); got != "2" {
-		t.Fatalf("expected attempts header 2, got %q", got)
+	if got := resp.Header.Get(observability.AttemptsHeader); got != "1" {
+		t.Fatalf("expected attempts header 1, got %q", got)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if !strings.Contains(string(body), "response.completed") {
-		t.Fatalf("expected completed event in response body, got %q", string(body))
+	if !strings.Contains(string(body), "response.created") {
+		t.Fatalf("expected created event in response body, got %q", string(body))
 	}
 	if firstCalls.Load() != 1 {
 		t.Fatalf("expected first upstream called once, got %d", firstCalls.Load())
 	}
-	if secondCalls.Load() != 1 {
-		t.Fatalf("expected second upstream called once, got %d", secondCalls.Load())
+	if secondCalls.Load() != 0 {
+		t.Fatalf("expected second upstream not called, got %d", secondCalls.Load())
 	}
 }
 
@@ -997,10 +997,11 @@ func TestHandlerRetriesSameUpstreamWhenConfigured(t *testing.T) {
 		call := calls.Add(1)
 		w.Header().Set("Content-Type", "text/event-stream")
 		if call < 3 {
-			_, _ = io.WriteString(w, "event: response.created\ndata: {\"type\":\"response.created\"}\n\n")
+			_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\"}\n\n")
 			return
 		}
-		_, _ = io.WriteString(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"total_tokens\":12}}}\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"delta\":{\"content\":\"pong\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()
 
@@ -1013,12 +1014,12 @@ func TestHandlerRetriesSameUpstreamWhenConfigured(t *testing.T) {
 	cfg.Normalize()
 
 	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.2-codex","input":"hi","stream":true}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.2-codex","messages":[{"role":"user","content":"hi"}],"stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-same-upstream"))
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
-	handler.Responses(recorder, req)
+	handler.ChatCompletions(recorder, req)
 
 	resp := recorder.Result()
 	if resp.StatusCode != http.StatusOK {
@@ -1065,6 +1066,48 @@ func TestHandlerAllowsChatCompletionsStreamDoneMarker(t *testing.T) {
 	}
 	if got := resp.Header.Get(observability.UpstreamHeader); got != "xiavier" {
 		t.Fatalf("expected xiavier upstream header, got %q", got)
+	}
+}
+
+func TestHandlerDoKeepsStreamingBodyReadableUntilClose(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "event: response.created\ndata: {\"type\":\"response.created\"}\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(25 * time.Millisecond)
+		_, _ = io.WriteString(w, "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n")
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	resp, _, err := handler.do(req, []byte(`{"model":"gpt-5.4","stream":true}`), "application/json", config.Upstream{
+		Name:      "stream",
+		BaseURL:   upstream.URL,
+		Models:    []string{"gpt-5.4"},
+		TimeoutMs: 1000,
+	}, "req-do-stream")
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read streaming body: %v", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("close body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "response.created") || !strings.Contains(text, "response.completed") {
+		t.Fatalf("expected full stream body, got %q", text)
 	}
 }
 
