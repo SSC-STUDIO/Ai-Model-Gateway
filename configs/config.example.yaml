@@ -1,0 +1,106 @@
+listen: :8080
+reload:
+  enabled: true
+  debounce_ms: 200
+router:
+  strategy: health_weighted_rr
+  max_retries: 2
+  retry_backoff_ms: 3000
+  retry_backoff_max_ms: 30000
+  failure_threshold: 20
+  cooldown_sec: 60
+  failure_passthrough_after_sec: 600
+  sticky_sessions:
+    enabled: true
+    ttl_sec: 1800
+health:
+  enabled: true
+  interval_sec: 10
+  timeout_ms: 2000
+  path: /v1/models
+admin:
+  enabled: true
+  auth_token: change-me-admin-token
+telemetry:
+  sqlite_path: data/telemetry.db
+pricing:
+  cache_path: data/pricing-cache.json
+  refresh_interval_hours: 12
+  request_timeout_ms: 15000
+proxy:
+  retry:
+    status_codes:
+    - 408
+    - 429
+    status_code_min: 500
+    message_keywords:
+    - too many requests
+    - rate limit
+    - quota exceeded
+    - stream disconnected before completion
+    - stream closed before response.completed
+    - response.completed
+    - upstream request failed
+    - server busy
+    - system busy
+    - temporarily unavailable
+    - temporarily overloaded
+    - overloaded
+    - please try again later
+    - service unavailable
+  intercepts: []
+bridge:
+  enabled: false
+  exclude_user_agents:
+  - '*Codex Desktop*'
+  rules:
+  - from: gpt-5.2*
+    to: gpt-5.4
+upstreams:
+- name: station-a
+  base_url: https://example-a.com
+  api_key: sk-xxxx
+  models:
+  - gpt-4o-mini
+  - gpt-4.1-mini
+  weight: 5
+  timeout_ms: 30000
+  same_upstream_retries: 0
+  enabled: true
+- name: station-b
+  base_url: https://example-b.com
+  api_key: sk-yyyy
+  models:
+  - gpt-4o-mini
+  weight: 1
+  timeout_ms: 30000
+  same_upstream_retries: 0
+  enabled: true
+- name: xiavier
+  base_url: https://www.xiavier.com
+  api_key: sk-your-xiavier-key
+  models:
+  - claude-haiku-4-5-20251001
+  - claude-opus-4-5-20251101
+  - claude-opus-4-6
+  - claude-opus-4-6-thinking
+  - claude-sonnet-4-5-20250929
+  - claude-sonnet-4-6
+  - claude-sonnet-4-6-thinking
+  weight: 1
+  timeout_ms: 180000
+  same_upstream_retries: 1
+  enabled: true
+- name: gm12331
+  base_url: https://gm.12331.xyz
+  api_key: sk-your-gm12331-key
+  models:
+  - claude-opus-4-5
+  - claude-opus-4-5-20251101
+  - claude-opus-4-6
+  - claude-sonnet-4-5
+  - claude-sonnet-4-6
+  weight: 1
+  timeout_ms: 180000
+  same_upstream_retries: 1
+  enabled: true
