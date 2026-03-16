@@ -300,6 +300,32 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 	if settingsRecorder.Result().StatusCode != http.StatusOK {
 		t.Fatalf("expected settings 200, got %d", settingsRecorder.Result().StatusCode)
 	}
+	settingsBody, err := io.ReadAll(settingsRecorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read settings body: %v", err)
+	}
+	settingsText := string(settingsBody)
+	if !strings.Contains(settingsText, `id="cfgRouterStrategy"`) ||
+		!strings.Contains(settingsText, `id="applyCodexBridgePreset"`) ||
+		!strings.Contains(settingsText, `id="settingsShell"`) ||
+		!strings.Contains(settingsText, `id="settingsNav"`) ||
+		!strings.Contains(settingsText, `id="settingsBridgeRuleCount"`) ||
+		!strings.Contains(settingsText, `Configuration Center`) ||
+		!strings.Contains(settingsText, `Runtime Routing, Health, Providers.`) ||
+		!strings.Contains(settingsText, `Config Directory`) ||
+		!strings.Contains(settingsText, `Per-provider probe`) ||
+		!strings.Contains(settingsText, `Diff and rollback ready`) ||
+		!strings.Contains(settingsText, `href="#cfg-upstreams"`) ||
+		!strings.Contains(settingsText, `provider-summary-strip`) ||
+		!strings.Contains(settingsText, `Status`) ||
+		!strings.Contains(settingsText, `Models`) ||
+		!strings.Contains(settingsText, `Auth`) ||
+		!strings.Contains(settingsText, `.page-settings .hero`) ||
+		!strings.Contains(settingsText, `grid-template-columns: 1fr;`) ||
+		!strings.Contains(settingsText, `.page-settings #heroStats`) ||
+		!strings.Contains(settingsText, `display: none;`) {
+		t.Fatalf("expected upgraded settings controls, got %q", settingsText)
+	}
 
 	faviconReq := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
 	faviconRecorder := httptest.NewRecorder()
@@ -425,6 +451,7 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 			},
 		},
 		"router": map[string]any{
+			"strategy":                      "round_robin",
 			"max_retries":                   2,
 			"retry_backoff_ms":              3000,
 			"retry_backoff_max_ms":          30000,
@@ -491,6 +518,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	}
 	if updated.Upstreams[0].SameUpstreamRetries != 2 {
 		t.Fatalf("expected same upstream retries 2, got %d", updated.Upstreams[0].SameUpstreamRetries)
+	}
+	if updated.Router.Strategy != "round_robin" {
+		t.Fatalf("expected router strategy round_robin, got %q", updated.Router.Strategy)
 	}
 	if updated.Health.Enabled {
 		t.Fatalf("expected health to be disabled")

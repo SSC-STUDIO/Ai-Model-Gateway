@@ -383,6 +383,15 @@ const adminHTMLTemplate = `<!doctype html>
     .is-hidden { display: none; }
     .page-settings #overviewShell { display: none; }
     .page-settings #runtimeConfig { display: block; }
+    .page-settings .hero {
+      grid-template-columns: 1fr;
+    }
+    .page-settings #heroStats {
+      display: none;
+    }
+    .page-settings .hero-main {
+      min-height: 0;
+    }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
     .table-requests table { min-width: 1120px; }
@@ -450,26 +459,58 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 16px;
     }
+    .settings-shell {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr) 360px;
+      gap: 14px;
+      align-items: start;
+    }
+    .settings-nav,
+    .settings-main,
+    .settings-rail {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }
+    .settings-sticky {
+      position: sticky;
+      top: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .settings-rail-panel {
+      padding: 12px;
+    }
+    .settings-nav-panel {
+      padding: 12px;
+    }
+    .settings-nav-title {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
     .settings-summary {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
     }
     .settings-jumpbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-bottom: 4px;
+      display: grid;
+      gap: 8px;
+      margin-bottom: 2px;
     }
     .settings-jumpbar a {
-      display: inline-flex;
+      display: flex;
       align-items: center;
-      padding: 6px 10px;
-      border-radius: 999px;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-radius: 14px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.04);
       color: var(--muted);
-      font-size: 11px;
+      font-size: 12px;
       text-decoration: none;
     }
     .settings-jumpbar a:hover {
@@ -477,10 +518,23 @@ const adminHTMLTemplate = `<!doctype html>
       border-color: rgba(126, 231, 214, 0.4);
       text-decoration: none;
     }
+    .settings-jumpbar strong {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .settings-jumpbar span {
+      color: var(--muted);
+      font-size: 11px;
+    }
     .config-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
+    }
+    .page-settings .config-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
     }
     .config-field {
       display: flex;
@@ -575,6 +629,14 @@ const adminHTMLTemplate = `<!doctype html>
       align-items: flex-start;
       gap: 6px;
     }
+    .page-settings .config-card-head {
+      position: sticky;
+      top: 10px;
+      z-index: 2;
+      margin: -2px -2px 8px;
+      padding: 2px 2px 8px;
+      background: linear-gradient(180deg, rgba(14, 13, 12, 0.98), rgba(14, 13, 12, 0.9) 82%, rgba(14, 13, 12, 0));
+    }
     .config-card-title {
       font-weight: 700;
     }
@@ -611,6 +673,9 @@ const adminHTMLTemplate = `<!doctype html>
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
     }
     .config-card.collapsed > :not(.config-card-head) {
+      display: none;
+    }
+    .provider-card.collapsed > :not(.config-card-head):not(.provider-summary-strip):not(.probe-status-host) {
       display: none;
     }
     .config-card.hidden-search {
@@ -680,6 +745,56 @@ const adminHTMLTemplate = `<!doctype html>
       flex-wrap: wrap;
       gap: 6px;
       align-items: center;
+    }
+    .provider-summary-strip {
+      display: grid;
+      grid-template-columns: 1.2fr 1.6fr 0.7fr 0.7fr 0.8fr 1.1fr;
+      gap: 8px;
+      margin: 2px 0 4px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+    }
+    .provider-summary-item {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .provider-summary-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .provider-summary-value {
+      font-size: 12px;
+      color: var(--ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .provider-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+    .provider-chip.accent {
+      border-color: rgba(121, 230, 215, 0.24);
+      color: var(--accent);
+      background: rgba(121, 230, 215, 0.08);
+    }
+    .provider-chip.warn {
+      border-color: rgba(241, 184, 102, 0.28);
+      color: var(--amber);
+      background: rgba(241, 184, 102, 0.08);
     }
     .probe-preview {
       color: var(--muted);
@@ -815,6 +930,9 @@ const adminHTMLTemplate = `<!doctype html>
       background: rgba(126, 231, 214, 0.12);
       color: var(--accent);
     }
+    .config-section {
+      scroll-margin-top: 18px;
+    }
     .diff-summary {
       display: flex;
       flex-wrap: wrap;
@@ -874,12 +992,12 @@ const adminHTMLTemplate = `<!doctype html>
       .span-8, .span-6, .span-4 {
         grid-column: span 12;
       }
-      .metrics, .hero-side, .settings-summary {
+      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip {
         grid-template-columns: repeat(2, 1fr);
       }
     }
     @media (max-width: 640px) {
-      .metrics, .hero-side, .settings-summary {
+      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip {
         grid-template-columns: 1fr;
       }
     }
@@ -895,6 +1013,12 @@ const adminHTMLTemplate = `<!doctype html>
       }
       .topnav {
         justify-content: flex-start;
+      }
+      .settings-shell {
+        grid-template-columns: 1fr;
+      }
+      .settings-sticky {
+        position: static;
       }
     }
     @media (min-width: 1600px) {
@@ -926,26 +1050,22 @@ const adminHTMLTemplate = `<!doctype html>
         </div>
       </div>
       <div class="topnav">
-        <a href="#performance">Performance</a>
-        <a href="#economics">Economics</a>
-        <a href="#upstreams-card">Upstreams</a>
-        <a href="#requests-card">Requests</a>
-        <a href="{{SETTINGS_HREF}}">{{SETTINGS_LABEL}}</a>
+        {{TOPNAV_LINKS}}
       </div>
     </div>
     <div class="hero">
       <div class="hero-main">
         <div class="hero-head">
           <div>
-            <div class="eyebrow">AI Gateway Admin</div>
-            <h1>Ops, Cost, Throughput.</h1>
+            <div class="eyebrow">{{HERO_EYEBROW}}</div>
+            <h1>{{HERO_TITLE}}</h1>
           </div>
         </div>
-        <div class="sub">把请求量、吞吐、延迟、失败轨迹和 USD 成本放在同一块面板里，先判断是不是上游波动，再判断是不是代理放大。</div>
+        <div class="sub">{{HERO_SUB}}</div>
         <div class="hero-meta">
-          <div class="pill" id="generatedAt">加载中</div>
-          <div class="pill" id="pricingSource">Pricing source</div>
-          <div class="pill" id="bridgeState">Bridge</div>
+          {{HERO_META_PRIMARY}}
+          {{HERO_META_SECONDARY}}
+          {{HERO_META_TERTIARY}}
           <a class="btn secondary link" href="{{SETTINGS_HREF}}" id="openSettings">{{SETTINGS_LABEL}}</a>
         </div>
       </div>
@@ -1087,6 +1207,7 @@ const adminHTMLTemplate = `<!doctype html>
         <div class="card-fill-body" id="requests"></div>
       </div>
     </div>
+    </div>
     <div class="card span-12 is-hidden" id="runtimeConfig">
         <div class="section-head">
           <div>
@@ -1096,26 +1217,23 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-status" id="configStatus">加载中</div>
         </div>
         <div class="config-panel">
-          <div class="settings-summary">
-            <div class="metric"><div class="k">Surface</div><div class="v mono">Config</div><div class="small">Runtime edit without YAML</div></div>
-            <div class="metric"><div class="k">Providers</div><div class="v mono" id="settingsProviderCount">0</div><div class="small">Active upstream entries</div></div>
-            <div class="metric"><div class="k">Health Path</div><div class="v mono" id="settingsHealthPath">/v1/models</div><div class="small">Probe target</div></div>
-            <div class="metric"><div class="k">Mode</div><div class="v mono">Safe Edit</div><div class="small">Save, export, diff, rollback</div></div>
-          </div>
-          <div class="config-toolbar">
-            <input class="config-search" id="configSearch" type="search" placeholder="Search config sections, fields, providers..." />
-            <button class="btn secondary" id="expandSections" type="button">Expand All</button>
-            <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
-          </div>
-          <div class="settings-jumpbar">
-            <a href="#cfg-health">Health</a>
-            <a href="#cfg-bridge">Bridge</a>
-            <a href="#cfg-router">Retry</a>
-            <a href="#cfg-intercepts">Intercepts</a>
-            <a href="#cfg-upstreams">Providers</a>
-            <a href="#cfg-history">History</a>
-          </div>
-          <div class="validation-summary" id="configValidation"></div>
+          <div class="settings-shell" id="settingsShell">
+            <aside class="settings-nav">
+              <div class="settings-sticky">
+                <div class="config-card settings-nav-panel" id="settingsNav">
+                  <div class="settings-nav-title">Config Directory</div>
+                  <div class="settings-jumpbar">
+                    <a href="#cfg-health"><strong>Health</strong><span>Probe path and cadence</span></a>
+                    <a href="#cfg-bridge"><strong>Bridge</strong><span>Model rewrite rules</span></a>
+                    <a href="#cfg-router"><strong>Router</strong><span>Retry and cooldown</span></a>
+                    <a href="#cfg-intercepts"><strong>Intercepts</strong><span>Retry/fail shortcuts</span></a>
+                    <a href="#cfg-upstreams"><strong>Providers</strong><span>Base URLs and model scopes</span></a>
+                    <a href="#cfg-history"><strong>History</strong><span>Preview and rollback</span></a>
+                  </div>
+                </div>
+              </div>
+            </aside>
+            <div class="settings-main">
           <div class="config-card config-section" id="cfg-health" data-section-title="Health Check">
             <div class="config-card-head">
               <div class="config-card-head-main">
@@ -1161,6 +1279,7 @@ const adminHTMLTemplate = `<!doctype html>
             </div>
             <div id="bridgeRuleList"></div>
             <div class="config-actions">
+              <button class="btn secondary" id="applyCodexBridgePreset" type="button">Apply GPT-5.x Bridge Preset</button>
               <button class="btn secondary" id="addBridgeRule">Add Bridge Rule</button>
             </div>
           </div>
@@ -1172,6 +1291,13 @@ const adminHTMLTemplate = `<!doctype html>
               </div>
             </div>
             <div class="config-grid">
+              <div class="config-field">
+                <label>Router Strategy</label>
+                <select id="cfgRouterStrategy">
+                  <option value="health_weighted_rr">health_weighted_rr</option>
+                  <option value="round_robin">round_robin</option>
+                </select>
+              </div>
               <div class="config-field">
                 <label>Max Retries</label>
                 <input type="number" min="0" id="cfgMaxRetries" />
@@ -1244,28 +1370,47 @@ const adminHTMLTemplate = `<!doctype html>
               <button class="btn secondary" id="addUpstream">Add Provider</button>
             </div>
           </div>
-          <div class="config-card config-section" id="cfg-history" data-section-title="Config History">
-            <div class="config-card-head">
-              <div class="config-card-head-main">
-                <div class="config-card-title">Config History</div>
-                <div class="config-help">保存配置前会自动归档旧版本，可选择具体版本回滚</div>
-              </div>
             </div>
-            <div id="configHistoryList"></div>
-            <div id="configDiffPreview"></div>
-          </div>
-          <div class="config-footer">
-          <div class="config-actions">
-            <button class="btn" id="saveConfig">Save Config</button>
-            <button class="btn secondary" id="reloadConfig">Reload</button>
-            <button class="btn secondary" id="exportConfig">Export</button>
-            <button class="btn danger" id="rollbackConfig">Rollback</button>
-            <span class="config-hint" id="configHint"></span>
-          </div>
+            <aside class="settings-rail">
+              <div class="settings-sticky">
+                <div class="settings-summary">
+                  <div class="metric"><div class="k">Providers</div><div class="v mono" id="settingsProviderCount">0</div><div class="small" id="settingsEnabledProviders">0 enabled</div></div>
+                  <div class="metric"><div class="k">Bridge Rules</div><div class="v mono" id="settingsBridgeRuleCount">0</div><div class="small">Request rewrite map</div></div>
+                  <div class="metric"><div class="k">Router</div><div class="v mono" id="settingsRouterStrategy">health_weighted_rr</div><div class="small">Active strategy</div></div>
+                  <div class="metric"><div class="k">Health Path</div><div class="v mono" id="settingsHealthPath">/v1/models</div><div class="small">Probe target</div></div>
+                </div>
+                <div class="config-card settings-rail-panel">
+                  <div class="config-toolbar">
+                    <input class="config-search" id="configSearch" type="search" placeholder="Search config sections, fields, providers..." />
+                    <button class="btn secondary" id="expandSections" type="button">Expand All</button>
+                    <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
+                  </div>
+                  <div class="validation-summary" id="configValidation"></div>
+                </div>
+                <div class="config-card settings-rail-panel" id="cfg-history">
+                  <div class="config-card-head">
+                    <div class="config-card-head-main">
+                      <div class="config-card-title">Config History</div>
+                      <div class="config-help">保存配置前会自动归档旧版本，可选择具体版本回滚</div>
+                    </div>
+                  </div>
+                  <div id="configHistoryList"></div>
+                  <div id="configDiffPreview"></div>
+                </div>
+                <div class="config-footer">
+                  <div class="config-actions">
+                    <button class="btn" id="saveConfig">Save Config</button>
+                    <button class="btn secondary" id="reloadConfig">Reload</button>
+                    <button class="btn secondary" id="exportConfig">Export</button>
+                    <button class="btn danger" id="rollbackConfig">Rollback</button>
+                    <span class="config-hint" id="configHint"></span>
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
       </div>
-    </div>
   </div>
   <script>
     const fmt = new Intl.NumberFormat("zh-CN");
@@ -1434,6 +1579,37 @@ const adminHTMLTemplate = `<!doctype html>
       }
       return headers;
     };
+    const commonBridgePresetRules = () => ([
+      { from: 'gpt-5.2', to: 'gpt-5.4' },
+      { from: 'gpt-5.2-codex', to: 'gpt-5.4' },
+      { from: 'gpt-5.3*', to: 'gpt-5.4' }
+    ]);
+    const mergeBridgeRules = (current, extra) => {
+      const merged = new Map();
+      [...(current || []), ...(extra || [])].forEach((rule) => {
+        const from = String(rule?.from || '').trim();
+        const to = String(rule?.to || '').trim();
+        if (!from || !to) return;
+        merged.set(from.toLowerCase() + '->' + to.toLowerCase(), { from, to });
+      });
+      return Array.from(merged.values());
+    };
+    const apiText = async (url, options = {}) => {
+      const res = await fetch(url, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        ...options
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(text || ('HTTP ' + res.status));
+      }
+      return text;
+    };
+    const apiJSON = async (url, options = {}) => {
+      const text = await apiText(url, options);
+      return text ? JSON.parse(text) : {};
+    };
     const ensureSectionControls = () => {
       topLevelSections().forEach((section) => {
         const head = section.querySelector('.config-card-head');
@@ -1447,6 +1623,14 @@ const adminHTMLTemplate = `<!doctype html>
     const setSectionCollapsed = (section, collapsed) => {
       section.classList.toggle('collapsed', !!collapsed);
       const button = section.querySelector('.section-toggle');
+      if (button) {
+        button.textContent = collapsed ? 'Expand' : 'Collapse';
+      }
+    };
+    const setUpstreamCollapsed = (card, collapsed) => {
+      if (!card) return;
+      card.classList.toggle('collapsed', !!collapsed);
+      const button = card.querySelector('.upstream-toggle');
       if (button) {
         button.textContent = collapsed ? 'Expand' : 'Collapse';
       }
@@ -1503,6 +1687,14 @@ const adminHTMLTemplate = `<!doctype html>
     };
     const markInvalid = (el, message = '', warning = false) => {
       if (!el) return;
+      const collapsedCard = el.closest('.config-card.collapsed');
+      if (collapsedCard) {
+        collapsedCard.classList.remove('collapsed');
+        const sectionButton = collapsedCard.querySelector('.section-toggle');
+        if (sectionButton) sectionButton.textContent = 'Collapse';
+        const providerButton = collapsedCard.querySelector('.upstream-toggle');
+        if (providerButton) providerButton.textContent = 'Collapse';
+      }
       el.classList.add(warning ? 'validation-warning' : 'input-invalid');
       if (message) {
         setFieldMessage(el, message, warning);
@@ -1735,9 +1927,16 @@ const adminHTMLTemplate = `<!doctype html>
       }));
     };
     const updateSettingsSummary = () => {
-      const providerCount = document.querySelectorAll('[data-upstream-config]').length;
+      const upstreamCards = Array.from(document.querySelectorAll('[data-upstream-config]'));
+      const providerCount = upstreamCards.length;
+      const enabledProviders = upstreamCards.filter((card) => card.querySelector('.upstream-enabled')?.checked ?? true).length;
+      const bridgeCount = document.querySelectorAll('[data-bridge-rule]').length;
+      const routerStrategy = String(byId('cfgRouterStrategy')?.value || 'health_weighted_rr').trim() || 'health_weighted_rr';
       const healthPath = String(byId('cfgHealthPath')?.value || '').trim() || '/v1/models';
       if (byId('settingsProviderCount')) byId('settingsProviderCount').textContent = fmt.format(providerCount);
+      if (byId('settingsEnabledProviders')) byId('settingsEnabledProviders').textContent = fmt.format(enabledProviders) + ' enabled';
+      if (byId('settingsBridgeRuleCount')) byId('settingsBridgeRuleCount').textContent = fmt.format(bridgeCount);
+      if (byId('settingsRouterStrategy')) byId('settingsRouterStrategy').textContent = routerStrategy;
       if (byId('settingsHealthPath')) byId('settingsHealthPath').textContent = healthPath;
     };
     const collectUpstreamCard = (card) => ({
@@ -1790,8 +1989,16 @@ const adminHTMLTemplate = `<!doctype html>
         const enabled = upstream.enabled === false ? '' : 'checked';
         const title = escapeHTML(upstream.name || ('Provider ' + (idx + 1)));
         const base = escapeHTML(upstream.base_url || 'base url not set');
+        const models = upstream.models || [];
+        const modelCount = models.length;
+        const modelPreview = escapeHTML(modelCount ? models.slice(0, 2).join(', ') + (modelCount > 2 ? ' +' + (modelCount - 2) : '') : 'unscoped');
+        const authMode = String(upstream.api_key || '').trim() ? 'token set' : 'no token';
+        const collapsed = idx === 0 ? '' : ' collapsed';
+        const enabledChip = upstream.enabled === false
+          ? '<span class="provider-chip warn">disabled</span>'
+          : '<span class="provider-chip accent">enabled</span>';
         return '' +
-          '<div class="config-card" data-upstream-config>' +
+          '<div class="config-card provider-card' + collapsed + '" data-upstream-config>' +
             '<div class="config-card-head">' +
               '<div class="config-card-head-main">' +
                 '<div class="config-card-title">' + title + '</div>' +
@@ -1799,9 +2006,18 @@ const adminHTMLTemplate = `<!doctype html>
               '</div>' +
               '<div class="config-actions">' +
                 '<label class="small"><input type="checkbox" class="upstream-enabled" ' + enabled + '> Enabled</label>' +
+                '<button class="btn secondary upstream-toggle" type="button">' + (idx === 0 ? 'Collapse' : 'Expand') + '</button>' +
                 '<button class="btn secondary upstream-test" type="button">Probe</button>' +
                 '<button class="btn danger upstream-remove" type="button">Remove</button>' +
               '</div>' +
+            '</div>' +
+            '<div class="provider-summary-strip">' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Status</div><div class="provider-summary-value">' + enabledChip + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Models</div><div class="provider-summary-value">' + modelPreview + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Count</div><div class="provider-summary-value">' + escapeHTML(modelCount) + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Weight</div><div class="provider-summary-value">' + escapeHTML(upstream.weight ?? 0) + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Timeout</div><div class="provider-summary-value">' + escapeHTML(upstream.timeout_ms ?? 0) + ' ms</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Auth</div><div class="provider-summary-value">' + escapeHTML(authMode) + '</div></div>' +
             '</div>' +
             '<div class="config-grid">' +
               '<div class="config-field">' +
@@ -1897,12 +2113,7 @@ const adminHTMLTemplate = `<!doctype html>
     };
     const loadConfigHistory = async () => {
       try {
-        const res = await fetch('/-/admin/config/history', { cache: 'no-store' });
-        if (!res.ok) {
-          renderConfigHistory([]);
-          return;
-        }
-        const payload = await res.json();
+        const payload = await apiJSON('/-/admin/config/history');
         renderConfigHistory(payload.versions || []);
       } catch (err) {
         renderConfigHistory([]);
@@ -1915,27 +2126,17 @@ const adminHTMLTemplate = `<!doctype html>
       }
       byId('configHint').textContent = 'Loading diff...';
       try {
-        const res = await fetch('/-/admin/config/history/' + encodeURIComponent(versionId) + '/diff', { cache: 'no-store' });
-        if (!res.ok) {
-          const text = await res.text();
-          byId('configHint').textContent = text || 'Load diff failed';
-          return;
-        }
-        const payload = await res.json();
+        const payload = await apiJSON('/-/admin/config/history/' + encodeURIComponent(versionId) + '/diff');
         renderConfigDiffPreview(payload);
         byId('configHint').textContent = 'Diff loaded';
       } catch (err) {
-        byId('configHint').textContent = 'Load diff failed';
+        byId('configHint').textContent = String(err?.message || err || 'Load diff failed');
       }
     };
     const loadConfig = async () => {
+      byId('configStatus').textContent = '加载中';
       try {
-        const res = await fetch('/-/admin/config', { cache: 'no-store' });
-        if (!res.ok) {
-          byId('configStatus').textContent = '配置载入失败';
-          return;
-        }
-        const cfg = await res.json();
+        const cfg = await apiJSON('/-/admin/config');
         byId('cfgHealthEnabled').checked = !!cfg.health?.enabled;
         byId('cfgHealthInterval').value = cfg.health?.interval_sec ?? 0;
         byId('cfgHealthTimeout').value = cfg.health?.timeout_ms ?? 0;
@@ -1945,6 +2146,7 @@ const adminHTMLTemplate = `<!doctype html>
         byId('cfgBridgeExcludeUA').value = keywordsToString(cfg.bridge?.exclude_user_agents || []);
         renderBridgeRules(cfg.bridge?.rules || []);
 
+        byId('cfgRouterStrategy').value = cfg.router?.strategy || 'health_weighted_rr';
         byId('cfgMaxRetries').value = cfg.router?.max_retries ?? 0;
         byId('cfgBackoff').value = cfg.router?.retry_backoff_ms ?? 0;
         byId('cfgBackoffMax').value = cfg.router?.retry_backoff_max_ms ?? 0;
@@ -1967,6 +2169,7 @@ const adminHTMLTemplate = `<!doctype html>
         byId('configStatus').textContent = '已载入';
       } catch (err) {
         byId('configStatus').textContent = '配置载入失败';
+        byId('configHint').textContent = String(err?.message || err || 'Load config failed');
       }
     };
     const testUpstreamCard = async (card) => {
@@ -1974,17 +2177,16 @@ const adminHTMLTemplate = `<!doctype html>
       renderUpstreamProbe(card, null, true);
       byId('configHint').textContent = 'Testing provider...';
       try {
-        const res = await fetch('/-/admin/upstreams/test', {
+        const payload = await apiJSON('/-/admin/upstreams/test', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ upstream: collectUpstreamCard(card) })
         });
-        const payload = await res.json().catch(() => ({}));
         renderUpstreamProbe(card, payload, false);
         byId('configHint').textContent = payload.ok ? 'Provider test passed' : 'Provider test failed';
       } catch (err) {
         renderUpstreamProbe(card, { ok: false, error: String(err?.message || err || 'probe failed') }, false);
-        byId('configHint').textContent = 'Provider test failed';
+        byId('configHint').textContent = String(err?.message || err || 'Provider test failed');
       }
     };
     const saveConfig = async () => {
@@ -2006,6 +2208,7 @@ const adminHTMLTemplate = `<!doctype html>
           rules: collectBridgeRules()
         },
         router: {
+          strategy: byId('cfgRouterStrategy').value || 'health_weighted_rr',
           max_retries: readNumber(byId('cfgMaxRetries')),
           retry_backoff_ms: readNumber(byId('cfgBackoff')),
           retry_backoff_max_ms: readNumber(byId('cfgBackoffMax')),
@@ -2026,20 +2229,15 @@ const adminHTMLTemplate = `<!doctype html>
 
       byId('configHint').textContent = 'Saving...';
       try {
-        const res = await fetch('/-/admin/config', {
+        await apiJSON('/-/admin/config', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!res.ok) {
-          const text = await res.text();
-          byId('configHint').textContent = text || 'Save failed';
-          return;
-        }
         await loadConfig();
         byId('configHint').textContent = 'Saved';
       } catch (err) {
-        byId('configHint').textContent = 'Save failed';
+        byId('configHint').textContent = String(err?.message || err || 'Save failed');
       }
     };
     const exportConfig = () => {
@@ -2054,44 +2252,50 @@ const adminHTMLTemplate = `<!doctype html>
       }
       byId('configHint').textContent = 'Rolling back...';
       try {
-        const res = await fetch('/-/admin/config/rollback', {
+        await apiJSON('/-/admin/config/rollback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ version_id: versionId })
         });
-        if (!res.ok) {
-          const text = await res.text();
-          byId('configHint').textContent = text || 'Rollback failed';
-          return;
-        }
         await loadConfig();
         byId('configHint').textContent = 'Rolled back';
       } catch (err) {
-        byId('configHint').textContent = 'Rollback failed';
+        byId('configHint').textContent = String(err?.message || err || 'Rollback failed');
       }
     };
     document.addEventListener('click', (event) => {
-      if (event.target && event.target.id === 'addBridgeRule') {
+      const button = event.target instanceof Element ? event.target.closest('button') : null;
+      if (button && button.id === 'applyCodexBridgePreset') {
+        event.preventDefault();
+        renderBridgeRules(mergeBridgeRules(collectBridgeRules(), commonBridgePresetRules()));
+        byId('cfgBridgeEnabled').checked = true;
+        clearValidationState();
+        updateSettingsSummary();
+        byId('configHint').textContent = 'Applied GPT-5.x bridge preset';
+      }
+      if (button && button.id === 'addBridgeRule') {
         event.preventDefault();
         const current = collectBridgeRules();
         renderBridgeRules([...current, { from: '', to: '' }]);
         clearValidationState();
+        updateSettingsSummary();
       }
-      if (event.target && event.target.id === 'addIntercept') {
+      if (button && button.id === 'addIntercept') {
         event.preventDefault();
         const current = collectIntercepts();
         renderIntercepts([...current, { name: '', enabled: true, action: 'fail', paths: [], status_codes: [], status_code_min: null, message_keywords: [] }]);
         clearValidationState();
       }
-      if (event.target && event.target.id === 'addUpstream') {
+      if (button && button.id === 'addUpstream') {
         event.preventDefault();
         const current = collectUpstreams();
         renderUpstreamsConfig([...current, { name: '', base_url: '', api_key: '', models: [], headers: {}, weight: 1, timeout_ms: 30000, same_upstream_retries: 0, enabled: true }]);
         clearValidationState();
+        updateSettingsSummary();
       }
-      if (event.target && event.target.classList.contains('intercept-remove')) {
+      if (button && button.classList.contains('intercept-remove')) {
         event.preventDefault();
-        const card = event.target.closest('[data-intercept]');
+        const card = button.closest('[data-intercept]');
         if (card) {
           card.remove();
           if (!document.querySelector('[data-intercept]')) {
@@ -2100,20 +2304,21 @@ const adminHTMLTemplate = `<!doctype html>
           clearValidationState();
         }
       }
-      if (event.target && event.target.classList.contains('bridge-rule-remove')) {
+      if (button && button.classList.contains('bridge-rule-remove')) {
         event.preventDefault();
-        const card = event.target.closest('[data-bridge-rule]');
+        const card = button.closest('[data-bridge-rule]');
         if (card) {
           card.remove();
           if (!document.querySelector('[data-bridge-rule]')) {
             byId('bridgeRuleList').innerHTML = '<div class="small">暂无桥接规则</div>';
           }
           clearValidationState();
+          updateSettingsSummary();
         }
       }
-      if (event.target && event.target.classList.contains('upstream-remove')) {
+      if (button && button.classList.contains('upstream-remove')) {
         event.preventDefault();
-        const card = event.target.closest('[data-upstream-config]');
+        const card = button.closest('[data-upstream-config]');
         if (card) {
           card.remove();
           if (!document.querySelector('[data-upstream-config]')) {
@@ -2123,48 +2328,55 @@ const adminHTMLTemplate = `<!doctype html>
           clearValidationState();
         }
       }
-      if (event.target && event.target.classList.contains('upstream-test')) {
+      if (button && button.classList.contains('upstream-toggle')) {
         event.preventDefault();
-        testUpstreamCard(event.target.closest('[data-upstream-config]'));
+        const card = button.closest('[data-upstream-config]');
+        if (card) {
+          setUpstreamCollapsed(card, !card.classList.contains('collapsed'));
+        }
       }
-      if (event.target && event.target.id === 'collapseSections') {
+      if (button && button.classList.contains('upstream-test')) {
+        event.preventDefault();
+        testUpstreamCard(button.closest('[data-upstream-config]'));
+      }
+      if (button && button.id === 'collapseSections') {
         event.preventDefault();
         topLevelSections().forEach((section) => setSectionCollapsed(section, true));
       }
-      if (event.target && event.target.id === 'expandSections') {
+      if (button && button.id === 'expandSections') {
         event.preventDefault();
         topLevelSections().forEach((section) => setSectionCollapsed(section, false));
       }
-      if (event.target && event.target.classList.contains('section-toggle')) {
+      if (button && button.classList.contains('section-toggle')) {
         event.preventDefault();
-        const section = event.target.closest('.config-section');
+        const section = button.closest('.config-section');
         if (section) {
           setSectionCollapsed(section, !section.classList.contains('collapsed'));
         }
       }
-      if (event.target && event.target.id === 'saveConfig') {
+      if (button && button.id === 'saveConfig') {
         event.preventDefault();
         saveConfig();
       }
-      if (event.target && event.target.id === 'reloadConfig') {
+      if (button && button.id === 'reloadConfig') {
         event.preventDefault();
         loadConfig();
       }
-      if (event.target && event.target.id === 'exportConfig') {
+      if (button && button.id === 'exportConfig') {
         event.preventDefault();
         exportConfig();
       }
-      if (event.target && event.target.id === 'rollbackConfig') {
+      if (button && button.id === 'rollbackConfig') {
         event.preventDefault();
         rollbackConfig();
       }
-      if (event.target && event.target.classList.contains('history-rollback')) {
+      if (button && button.classList.contains('history-rollback')) {
         event.preventDefault();
-        rollbackConfig(event.target.getAttribute('data-version-id') || '');
+        rollbackConfig(button.getAttribute('data-version-id') || '');
       }
-      if (event.target && event.target.classList.contains('history-preview')) {
+      if (button && button.classList.contains('history-preview')) {
         event.preventDefault();
-        loadConfigDiff(event.target.getAttribute('data-version-id') || '');
+        loadConfigDiff(button.getAttribute('data-version-id') || '');
       }
     });
     document.addEventListener('input', (event) => {
@@ -2172,7 +2384,15 @@ const adminHTMLTemplate = `<!doctype html>
         applyConfigSearch();
         return;
       }
-      if (event.target && (event.target.id === 'cfgHealthPath' || event.target.closest('[data-upstream-config]'))) {
+      if (event.target && (event.target.id === 'cfgHealthPath' || event.target.id === 'cfgRouterStrategy' || event.target.closest('[data-upstream-config]') || event.target.closest('[data-bridge-rule]'))) {
+        updateSettingsSummary();
+      }
+      if (event.target && event.target.closest('.config-panel')) {
+        clearValidationState();
+      }
+    });
+    document.addEventListener('change', (event) => {
+      if (event.target && (event.target.id === 'cfgHealthPath' || event.target.id === 'cfgRouterStrategy' || event.target.closest('[data-upstream-config]') || event.target.closest('[data-bridge-rule]'))) {
         updateSettingsSummary();
       }
       if (event.target && event.target.closest('.config-panel')) {
@@ -2590,15 +2810,49 @@ func renderAdminHTML(settingsView bool) string {
 	bodyClass := ""
 	settingsHref := "/admin/settings"
 	settingsLabel := "Settings"
+	topnavLinks := strings.Join([]string{
+		`<a href="#performance">Performance</a>`,
+		`<a href="#economics">Economics</a>`,
+		`<a href="#upstreams-card">Upstreams</a>`,
+		`<a href="#requests-card">Requests</a>`,
+		`<a href="/admin/settings">Settings</a>`,
+	}, "")
+	heroEyebrow := "AI Gateway Admin"
+	heroTitle := "Ops, Cost, Throughput."
+	heroSub := "把请求量、吞吐、延迟、失败轨迹和 USD 成本放在同一块面板里，先判断是不是上游波动，再判断是不是代理放大。"
+	heroMetaPrimary := `<div class="pill" id="generatedAt">加载中</div>`
+	heroMetaSecondary := `<div class="pill" id="pricingSource">Pricing source</div>`
+	heroMetaTertiary := `<div class="pill" id="bridgeState">Bridge</div>`
 	if settingsView {
 		bodyClass = "page-settings"
 		settingsHref = "/admin"
 		settingsLabel = "Overview"
+		topnavLinks = strings.Join([]string{
+			`<a href="#cfg-health">Health</a>`,
+			`<a href="#cfg-bridge">Bridge</a>`,
+			`<a href="#cfg-router">Router</a>`,
+			`<a href="#cfg-upstreams">Providers</a>`,
+			`<a href="#cfg-history">History</a>`,
+			`<a href="/admin">Overview</a>`,
+		}, "")
+		heroEyebrow = "Configuration Center"
+		heroTitle = "Runtime Routing, Health, Providers."
+		heroSub = "在一个页面里维护探活、桥接、重试、拦截和上游服务商。先做 probe，再保存；先看 diff，再回滚。"
+		heroMetaPrimary = `<div class="pill">Runtime config surface</div>`
+		heroMetaSecondary = `<div class="pill">Per-provider probe</div>`
+		heroMetaTertiary = `<div class="pill">Diff and rollback ready</div>`
 	}
 	return strings.NewReplacer(
 		"{{BODY_CLASS}}", bodyClass,
 		"{{SETTINGS_HREF}}", settingsHref,
 		"{{SETTINGS_LABEL}}", settingsLabel,
+		"{{TOPNAV_LINKS}}", topnavLinks,
+		"{{HERO_EYEBROW}}", heroEyebrow,
+		"{{HERO_TITLE}}", heroTitle,
+		"{{HERO_SUB}}", heroSub,
+		"{{HERO_META_PRIMARY}}", heroMetaPrimary,
+		"{{HERO_META_SECONDARY}}", heroMetaSecondary,
+		"{{HERO_META_TERTIARY}}", heroMetaTertiary,
 	).Replace(adminHTMLTemplate)
 }
 

@@ -148,10 +148,13 @@ func pricingSummaryKey(item PricingModelSummary) string {
 }
 
 func pricingGroupModel(requestedModel string, effectiveModel string) string {
+	if pricingModel := strings.TrimSpace(strings.ToLower(effectiveModel)); pricingModel != "" {
+		return pricingModel
+	}
 	if pricingModel := strings.TrimSpace(strings.ToLower(requestedModel)); pricingModel != "" {
 		return pricingModel
 	}
-	return strings.TrimSpace(strings.ToLower(effectiveModel))
+	return ""
 }
 
 func mergedModelName(current string, candidate string, fallback string) string {
@@ -184,14 +187,12 @@ func formatPricingDisplayModel(requestedModel string, effectiveModel string) str
 	switch {
 	case requested == "" && effective == "":
 		return "unknown"
+	case effective != "":
+		return effective
 	case requested == "":
 		return effective
-	case effective == "":
-		return requested
-	case strings.EqualFold(requested, effective):
-		return effective
 	default:
-		return requested + " -> " + effective
+		return requested
 	}
 }
 
@@ -238,8 +239,8 @@ func pricingLookupCandidates(requestedModel string, effectiveModel string) []str
 		}
 	}
 
-	add(requestedModel)
 	add(effectiveModel)
+	add(requestedModel)
 	return candidates
 }
 

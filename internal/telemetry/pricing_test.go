@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestBuildPricingSnapshotUsesRequestedModelForBridgeRoute(t *testing.T) {
+func TestBuildPricingSnapshotUsesEffectiveModelPricingForBridgeRoute(t *testing.T) {
 	snapshot := Snapshot{
 		ByModelRoute: []ModelRouteUsage{
 			{
@@ -25,23 +25,26 @@ func TestBuildPricingSnapshotUsesRequestedModelForBridgeRoute(t *testing.T) {
 	if len(pricing.Models) != 1 {
 		t.Fatalf("expected 1 pricing model summary, got %d", len(pricing.Models))
 	}
-	if pricing.Models[0].DisplayModel != "gpt-5.2 -> gpt-5.4" {
-		t.Fatalf("expected bridged display model, got %q", pricing.Models[0].DisplayModel)
+	if pricing.Models[0].DisplayModel != "gpt-5.4" {
+		t.Fatalf("expected bridged display model to collapse to effective model, got %q", pricing.Models[0].DisplayModel)
 	}
-	if pricing.Models[0].PricingModel != "gpt-5.2" {
-		t.Fatalf("expected pricing model gpt-5.2, got %q", pricing.Models[0].PricingModel)
+	if pricing.Models[0].PricingModel != "gpt-5.4" {
+		t.Fatalf("expected pricing model gpt-5.4, got %q", pricing.Models[0].PricingModel)
 	}
-	if math.Abs(pricing.Models[0].Cost.TotalUsd-15.12) > 1e-9 {
-		t.Fatalf("expected total usd 15.12 with cached pricing, got %v", pricing.Models[0].Cost.TotalUsd)
+	if math.Abs(pricing.Models[0].Cost.TotalUsd-16.6) > 1e-9 {
+		t.Fatalf("expected total usd 16.6 with effective-model cached pricing, got %v", pricing.Models[0].Cost.TotalUsd)
 	}
 	if pricing.Summary.CachedPromptTokens != 400000 {
 		t.Fatalf("expected cached prompt tokens 400000, got %d", pricing.Summary.CachedPromptTokens)
 	}
-	if math.Abs(pricing.Summary.CacheSavingsUsd-0.63) > 1e-9 {
-		t.Fatalf("expected cache savings usd 0.63, got %v", pricing.Summary.CacheSavingsUsd)
+	if math.Abs(pricing.Summary.CacheSavingsUsd-0.9) > 1e-9 {
+		t.Fatalf("expected cache savings usd 0.9, got %v", pricing.Summary.CacheSavingsUsd)
 	}
 	if _, ok := pricing.RouteCatalog[PricingRouteKey("gpt-5.2", "gpt-5.4")]; !ok {
 		t.Fatalf("expected route catalog entry for bridged request")
+	}
+	if routePrice := pricing.RouteCatalog[PricingRouteKey("gpt-5.2", "gpt-5.4")]; routePrice.InputPer1MUsd != 2.5 || routePrice.OutputPer1MUsd != 15 {
+		t.Fatalf("expected bridged route catalog to use gpt-5.4 pricing, got %+v", routePrice)
 	}
 }
 
@@ -167,6 +170,48 @@ func TestBuildPricingSnapshotMergesLegacyDirectRows(t *testing.T) {
 	}
 	if pricing.Summary.PricedModels != 1 {
 		t.Fatalf("expected priced model count 1, got %d", pricing.Summary.PricedModels)
+	}
+}
+
+func TestBuildPricingSnapshotMergesBridgeRowsIntoEffectiveModel(t *testing.T) {
+	snapshot := Snapshot{
+		ByModelRoute: []ModelRouteUsage{
+			{
+				RequestedModel: "gpt-5.2",
+				Model:          "gpt-5.4",
+				Usage: Usage{
+					PromptTokens:     100,
+					CompletionTokens: 20,
+					TotalTokens:      120,
+				},
+			},
+			{
+				RequestedModel: "gpt-5.4",
+				Model:          "gpt-5.4",
+				Usage: Usage{
+					PromptTokens:     200,
+					CompletionTokens: 30,
+					TotalTokens:      230,
+				},
+			},
+		},
+	}
+
+	pricing := BuildPricingSnapshot(snapshot, BootstrapPricingSnapshot())
+	if len(pricing.Models) != 1 {
+		t.Fatalf("expected bridged and direct rows to merge into one effective model row, got %d", len(pricing.Models))
+	}
+	if pricing.Models[0].DisplayModel != "gpt-5.4" {
+		t.Fatalf("expected merged display model gpt-5.4, got %q", pricing.Models[0].DisplayModel)
+	}
+	if pricing.Models[0].PricingModel != "gpt-5.4" {
+		t.Fatalf("expected merged pricing model gpt-5.4, got %q", pricing.Models[0].PricingModel)
+	}
+	if pricing.Models[0].Usage.PromptTokens != 300 {
+		t.Fatalf("expected merged prompt tokens 300, got %d", pricing.Models[0].Usage.PromptTokens)
+	}
+	if pricing.Models[0].Usage.CompletionTokens != 50 {
+		t.Fatalf("expected merged completion tokens 50, got %d", pricing.Models[0].Usage.CompletionTokens)
 	}
 }
 

@@ -1,9 +1,59 @@
+param(
+    [switch]$SkipElevation
+)
+
 $ErrorActionPreference = "Stop"
 
-$project = "C:\Users\96152\My-Project\Application_Project\AI-Model-Gateway"
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } elseif ($PSCommandPath) { Split-Path -Parent $PSCommandPath } else { (Get-Location).Path }
+$legacyRoot = Split-Path -Parent $scriptDir
+
+function Test-ProjectRoot {
+    param(
+        [string]$Path
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    $goMod = Join-Path $Path "go.mod"
+    $cmdGateway = Join-Path $Path "cmd\gateway"
+    return (Test-Path $goMod -PathType Leaf) -and (Test-Path $cmdGateway -PathType Container)
+}
+
+function Resolve-ProjectRoot {
+    $candidates = @(
+        $env:AIGW_PROJECT_ROOT,
+        $legacyRoot,
+        "C:\Users\96152\My-Project\Active\Apps\AI-Model-Gateway"
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($candidate in $candidates) {
+        if (Test-ProjectRoot -Path $candidate) {
+            return $candidate
+        }
+    }
+
+    $searchBase = Split-Path -Parent (Split-Path -Parent $legacyRoot)
+    $match = Get-ChildItem -Path $searchBase -Filter go.mod -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.FullName -like "*AI-Model-Gateway*" -and
+            (Test-Path (Join-Path $_.Directory.FullName "cmd\gateway") -PathType Container)
+        } |
+        Select-Object -First 1
+
+    if ($match) {
+        return $match.Directory.FullName
+    }
+
+    throw "unable to locate AI-Model-Gateway module root; set AIGW_PROJECT_ROOT explicitly"
+}
+
+$project = Resolve-ProjectRoot
+$selfScriptPath = if ($PSCommandPath) { $PSCommandPath } else { Join-Path $scriptDir "rebuild-and-restart.ps1" }
 $go = "C:\Program Files\Go\bin\go.exe"
 $serviceName = "AIModelGateway"
-$gatewayScript = Join-Path $project "scripts\start-gateway.ps1"
+$gatewayScript = Join-Path $scriptDir "start-gateway.ps1"
 $binaryPath = Join-Path $project "bin\gateway.exe"
 $stagedBinaryPath = Join-Path $project "bin\gateway.staged.exe"
 $backupBinaryPath = Join-Path $project "bin\gateway.previous.exe"
@@ -15,6 +65,68 @@ $env:GOPROXY = "https://goproxy.cn,direct"
 function Get-Listener {
     Get-NetTCPConnection -LocalPort 18080 -State Listen -ErrorAction SilentlyContinue |
         Select-Object -First 1
+}
+
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Restart-Elevated {
+    param(
+        [string]$ScriptPath
+    )
+
+    $args = @(
+        "-ExecutionPolicy", "Bypass",
+        "-File", "`"$ScriptPath`"",
+        "-SkipElevation"
+    )
+
+    try {
+        Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $args | Out-Null
+    } catch {
+        throw "restart requires elevation; approve the UAC prompt or run this script from an elevated PowerShell session"
+    }
+}
+
+function Get-ServiceRegistration {
+    param(
+        [string]$Name
+    )
+
+    return Get-CimInstance Win32_Service -Filter "Name='$Name'" -ErrorAction SilentlyContinue
+}
+
+function Test-ServiceRegistrationMatches {
+    param(
+        [object]$Registration,
+        [string]$ExpectedBinaryPath,
+        [string]$ExpectedConfigPath
+    )
+
+    if (-not $Registration) {
+        return $false
+    }
+
+    $pathName = [string]$Registration.PathName
+    if ([string]::IsNullOrWhiteSpace($pathName)) {
+        return $false
+    }
+
+    return $pathName -like "*$ExpectedBinaryPath*" -and $pathName -like "*$ExpectedConfigPath*"
+}
+
+function Repair-ServiceRegistration {
+    param(
+        [string]$InstallScriptPath
+    )
+
+    & powershell.exe -ExecutionPolicy Bypass -File $InstallScriptPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "failed to repair Windows service registration"
+    }
 }
 
 function Wait-ForServiceStatus {
@@ -219,16 +331,46 @@ try {
 }
 
 $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+$serviceRegistration = Get-ServiceRegistration -Name $serviceName
 $listener = Get-Listener
 $originalPid = $null
 $restartMode = "process"
+$isAdmin = Test-IsAdministrator
 
 if ($listener) {
     $originalPid = [int]$listener.OwningProcess
 }
 
-if ($service) {
+$needsElevation = -not $isAdmin -and (($service -and $service.Status -ne "Stopped") -or $listener)
+if ($needsElevation -and -not $SkipElevation) {
+    Write-Warning "restart requires administrator rights; relaunching with UAC"
+    Restart-Elevated -ScriptPath $selfScriptPath
+    exit 0
+}
+
+$serviceRegistrationMatches = Test-ServiceRegistrationMatches -Registration $serviceRegistration -ExpectedBinaryPath $binaryPath -ExpectedConfigPath (Join-Path $project "configs\config.yaml")
+if ($service -and -not $serviceRegistrationMatches) {
+    if (-not $isAdmin -and -not $SkipElevation) {
+        Write-Warning "service registration points to an old path; relaunching with UAC to repair it"
+        Restart-Elevated -ScriptPath $selfScriptPath
+        exit 0
+    }
+    if ($isAdmin) {
+        Write-Warning "service registration points to an old path; reinstalling service with the current project root"
+        Repair-ServiceRegistration -InstallScriptPath (Join-Path $scriptDir "install-service.ps1")
+        $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+        $serviceRegistration = Get-ServiceRegistration -Name $serviceName
+        $serviceRegistrationMatches = Test-ServiceRegistrationMatches -Registration $serviceRegistration -ExpectedBinaryPath $binaryPath -ExpectedConfigPath (Join-Path $project "configs\config.yaml")
+        if (-not $serviceRegistrationMatches) {
+            throw "service registration still does not match the current project root after repair"
+        }
+    }
+}
+
+if ($service -and $isAdmin) {
     $restartMode = "service"
+} elseif ($service -and -not $isAdmin) {
+    Write-Warning "service $serviceName is installed but this shell is not elevated; falling back to process mode"
 }
 
 if ($listener) {
