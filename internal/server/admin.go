@@ -87,6 +87,9 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 16px;
       margin-bottom: 12px;
       padding: 10px 14px;
+      position: sticky;
+      top: 10px;
+      z-index: 20;
       border: 1px solid rgba(255, 244, 230, 0.12);
       border-radius: 18px;
       background: rgba(10, 10, 9, 0.72);
@@ -154,6 +157,12 @@ const adminHTMLTemplate = `<!doctype html>
       color: var(--ink);
       border-color: rgba(126, 231, 214, 0.4);
       text-decoration: none;
+    }
+    .topnav a.active {
+      color: var(--ink);
+      border-color: rgba(126, 231, 214, 0.48);
+      background: linear-gradient(120deg, rgba(126, 231, 214, 0.16), rgba(126, 231, 214, 0.05));
+      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12);
     }
     .hero {
       display: grid;
@@ -286,6 +295,98 @@ const adminHTMLTemplate = `<!doctype html>
     .metrics.two {
       grid-template-columns: repeat(2, 1fr);
     }
+    .overview-utility {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .overview-pulse {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .overview-pulse-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .overview-pulse-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .overview-pulse-value {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+    .overview-pulse-meta {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .overview-quicknav {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 12px;
+      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      display: grid;
+      gap: 8px;
+    }
+    .overview-quicknav-title {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .overview-quicknav-links {
+      display: grid;
+      gap: 8px;
+    }
+    .overview-quicknav a {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .overview-quicknav a:hover {
+      color: var(--ink);
+      border-color: rgba(126, 231, 214, 0.4);
+      text-decoration: none;
+    }
+    .overview-quicknav a.active {
+      color: var(--ink);
+      border-color: rgba(126, 231, 214, 0.48);
+      background: linear-gradient(120deg, rgba(126, 231, 214, 0.16), rgba(126, 231, 214, 0.05));
+      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12);
+    }
+    .overview-quicknav-copy {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .overview-quicknav strong {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .overview-quicknav span {
+      color: var(--muted);
+      font-size: 11px;
+    }
     .metric {
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
       border: 1px solid var(--line);
@@ -325,6 +426,95 @@ const adminHTMLTemplate = `<!doctype html>
     .caption {
       color: var(--muted);
       font-size: 12px;
+    }
+    .section-meta-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      max-width: 100%;
+    }
+    .surface-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .surface-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .surface-card-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .surface-card-value {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .surface-card-meta {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .surface-card.tone-good {
+      border-color: rgba(126, 231, 214, 0.28);
+      background: linear-gradient(160deg, rgba(126, 231, 214, 0.12), rgba(255,255,255,0.02));
+    }
+    .surface-card.tone-warn {
+      border-color: rgba(241, 184, 102, 0.28);
+      background: linear-gradient(160deg, rgba(241, 184, 102, 0.12), rgba(255,255,255,0.02));
+    }
+    .surface-card.tone-danger {
+      border-color: rgba(255, 127, 110, 0.30);
+      background: linear-gradient(160deg, rgba(255, 127, 110, 0.12), rgba(255,255,255,0.02));
+    }
+    .mini-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .mini-chip strong {
+      color: var(--ink);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .mini-chip.accent {
+      border-color: rgba(126, 231, 214, 0.34);
+      color: var(--accent);
+      background: rgba(126, 231, 214, 0.09);
+    }
+    .mini-chip.warn {
+      border-color: rgba(241, 184, 102, 0.34);
+      color: var(--amber);
+      background: rgba(241, 184, 102, 0.09);
+    }
+    .mini-chip.danger {
+      border-color: rgba(255, 127, 110, 0.34);
+      color: var(--danger);
+      background: rgba(255, 127, 110, 0.09);
     }
     .table-shell {
       width: 100%;
@@ -408,6 +598,8 @@ const adminHTMLTemplate = `<!doctype html>
       border-radius: 18px;
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
       padding: 14px;
+      display: grid;
+      gap: 10px;
     }
     .error-top {
       display: flex;
@@ -437,7 +629,14 @@ const adminHTMLTemplate = `<!doctype html>
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 12px;
+    }
+    .error-frame {
+      display: grid;
+      gap: 8px;
+    }
+    .error-context {
+      display: grid;
+      gap: 4px;
     }
     .tag {
       display: inline-flex;
@@ -503,8 +702,9 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-jumpbar a {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
+      gap: 10px;
       padding: 10px 12px;
       border-radius: 14px;
       border: 1px solid var(--line);
@@ -518,6 +718,17 @@ const adminHTMLTemplate = `<!doctype html>
       border-color: rgba(126, 231, 214, 0.4);
       text-decoration: none;
     }
+    .settings-jumpbar a.active {
+      color: var(--ink);
+      border-color: rgba(126, 231, 214, 0.48);
+      background: linear-gradient(120deg, rgba(126, 231, 214, 0.16), rgba(126, 231, 214, 0.04));
+      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12);
+    }
+    .settings-jumpbar-copy {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
     .settings-jumpbar strong {
       font-size: 12px;
       letter-spacing: 0.04em;
@@ -526,6 +737,23 @@ const adminHTMLTemplate = `<!doctype html>
     .settings-jumpbar span {
       color: var(--muted);
       font-size: 11px;
+    }
+    .settings-jumpbar em {
+      font-style: normal;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(247, 243, 238, 0.72);
+      white-space: nowrap;
+    }
+    .settings-jumpbar em.meta-good {
+      color: var(--accent);
+    }
+    .settings-jumpbar em.meta-warn {
+      color: var(--amber);
+    }
+    .settings-jumpbar em.meta-danger {
+      color: var(--danger);
     }
     .config-grid {
       display: grid;
@@ -645,6 +873,12 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 4px;
       min-width: 0;
     }
+    .section-inline-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 2px;
+    }
     .config-help {
       color: var(--muted);
       font-size: 11px;
@@ -722,6 +956,39 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 10px;
     }
+    .settings-roster {
+      display: grid;
+      gap: 8px;
+    }
+    .settings-roster-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+    }
+    .settings-roster-copy {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .settings-roster-name {
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .settings-roster-meta {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
     .probe-status {
       display: grid;
       gap: 3px;
@@ -748,7 +1015,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .provider-summary-strip {
       display: grid;
-      grid-template-columns: 1.2fr 1.6fr 0.7fr 0.7fr 0.8fr 1.1fr;
+      grid-template-columns: 1.1fr 1.55fr 0.65fr 0.65fr 0.8fr 0.9fr 1.15fr;
       gap: 8px;
       margin: 2px 0 4px;
       padding: 8px 10px;
@@ -773,6 +1040,15 @@ const adminHTMLTemplate = `<!doctype html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .provider-summary-value.probe-ok {
+      color: var(--accent);
+    }
+    .provider-summary-value.probe-fail {
+      color: var(--danger);
+    }
+    .provider-summary-value.probe-idle {
+      color: var(--muted);
     }
     .provider-chip {
       display: inline-flex;
@@ -840,6 +1116,12 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 4px;
       min-width: 0;
+    }
+    .config-hint.is-dirty {
+      color: var(--amber);
+    }
+    .config-hint.is-saved {
+      color: var(--accent);
     }
     .history-name {
       font-weight: 700;
@@ -930,6 +1212,12 @@ const adminHTMLTemplate = `<!doctype html>
       background: rgba(126, 231, 214, 0.12);
       color: var(--accent);
     }
+    #performance,
+    #economics,
+    #upstreams-card,
+    #requests-card {
+      scroll-margin-top: 88px;
+    }
     .config-section {
       scroll-margin-top: 18px;
     }
@@ -985,6 +1273,59 @@ const adminHTMLTemplate = `<!doctype html>
       background: rgba(121, 230, 215, 0.28);
       border-radius: 999px;
     }
+    .cell-stack {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .cell-main {
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .cell-sub {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .cell-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 54px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .status-chip.ok {
+      color: var(--accent);
+      border-color: rgba(121, 230, 215, 0.32);
+      background: rgba(121, 230, 215, 0.08);
+    }
+    .status-chip.warn {
+      color: var(--amber);
+      border-color: rgba(241, 184, 102, 0.32);
+      background: rgba(241, 184, 102, 0.08);
+    }
+    .status-chip.danger {
+      color: var(--danger);
+      border-color: rgba(255, 127, 110, 0.36);
+      background: rgba(255, 127, 110, 0.10);
+    }
     @media (max-width: 900px) {
       .hero {
         grid-template-columns: 1fr;
@@ -992,12 +1333,15 @@ const adminHTMLTemplate = `<!doctype html>
       .span-8, .span-6, .span-4 {
         grid-column: span 12;
       }
-      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip {
+      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip, .overview-pulse, .surface-strip {
         grid-template-columns: repeat(2, 1fr);
+      }
+      .overview-utility {
+        grid-template-columns: 1fr;
       }
     }
     @media (max-width: 640px) {
-      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip {
+      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip, .overview-pulse, .surface-strip {
         grid-template-columns: 1fr;
       }
     }
@@ -1073,12 +1417,26 @@ const adminHTMLTemplate = `<!doctype html>
     </div>
 
     <div id="overviewShell">
+    <div class="overview-utility" id="overviewUtility">
+      <div class="overview-pulse" id="overviewPulse"></div>
+      <div class="overview-quicknav" id="overviewQuickNav">
+        <div class="overview-quicknav-title">Jump to Surface</div>
+        <div class="overview-quicknav-links">
+          <a href="#performance" data-overview-target="performance"><div class="overview-quicknav-copy"><strong>Performance</strong><span>Live RPM, TPM, latency</span></div></a>
+          <a href="#economics" data-overview-target="economics"><div class="overview-quicknav-copy"><strong>Economics</strong><span>Model cost and cache leverage</span></div></a>
+          <a href="#upstreams-card" data-overview-target="upstreams-card"><div class="overview-quicknav-copy"><strong>Upstreams</strong><span>Health and routed usage</span></div></a>
+          <a href="#requests-card" data-overview-target="requests-card"><div class="overview-quicknav-copy"><strong>Requests</strong><span>Latest traces and failures</span></div></a>
+        </div>
+      </div>
+    </div>
+    <div class="surface-strip" id="overviewAlerts"></div>
     <div class="card" id="performance">
       <div class="section-head">
         <div>
           <div class="title">Live Performance</div>
           <div class="caption">最近 1 分钟与 5 分钟窗口内的真实 RPM / TPM / 延迟。</div>
         </div>
+        <div class="section-meta-strip" id="performanceMeta"></div>
       </div>
       <div class="metrics" id="metrics"></div>
     </div>
@@ -1140,7 +1498,9 @@ const adminHTMLTemplate = `<!doctype html>
             <div class="title">Model Economics</div>
             <div class="caption">按模型汇总 token、估算美元成本和官方价格表覆盖情况。</div>
           </div>
+          <div class="section-meta-strip" id="economicsMeta"></div>
         </div>
+        <div class="surface-strip" id="economicsTopline"></div>
         <div id="byModel"></div>
       </div>
       <div class="card span-4">
@@ -1149,6 +1509,7 @@ const adminHTMLTemplate = `<!doctype html>
             <div class="title">Cost Snapshot</div>
             <div class="caption">基于已知官方价格模型估算，总额单位为美元。</div>
           </div>
+          <div class="section-meta-strip" id="costMeta"></div>
         </div>
         <div class="metrics" id="costMetrics"></div>
       </div>
@@ -1158,7 +1519,9 @@ const adminHTMLTemplate = `<!doctype html>
             <div class="title">Upstream Health</div>
             <div class="caption">看当前探活状态、重试性失败计数和冷却信息。</div>
           </div>
+          <div class="section-meta-strip" id="upstreamMeta"></div>
         </div>
+        <div class="surface-strip" id="upstreamTopline"></div>
         <div id="upstreams"></div>
       </div>
       <div class="card span-6">
@@ -1167,7 +1530,9 @@ const adminHTMLTemplate = `<!doctype html>
             <div class="title">Upstream Usage</div>
             <div class="caption">按上游汇总 token 消耗，方便和健康状态对照。</div>
           </div>
+          <div class="section-meta-strip" id="usageMeta"></div>
         </div>
+        <div class="surface-strip" id="usageTopline"></div>
         <div id="byUpstream"></div>
       </div>
       <div class="card span-4">
@@ -1185,7 +1550,9 @@ const adminHTMLTemplate = `<!doctype html>
             <div class="title">Cache Hit Ranking</div>
             <div class="caption">最近 24 小时按上游缓存命中率排序。</div>
           </div>
+          <div class="section-meta-strip" id="cacheMeta"></div>
         </div>
+        <div class="surface-strip" id="cacheTopline"></div>
         <div id="cacheRanking"></div>
       </div>
       <div class="card span-4 card-fill">
@@ -1194,7 +1561,9 @@ const adminHTMLTemplate = `<!doctype html>
             <div class="title">Recent Errors</div>
             <div class="caption">最近错误优先看消息类型和上游归属。</div>
           </div>
+          <div class="section-meta-strip" id="errorsMeta"></div>
         </div>
+        <div class="surface-strip" id="errorsTopline"></div>
         <div class="card-fill-body" id="errors"></div>
       </div>
       <div class="card span-8 card-fill" id="requests-card">
@@ -1203,7 +1572,9 @@ const adminHTMLTemplate = `<!doctype html>
             <div class="title">Recent Requests</div>
             <div class="caption">最新请求轨迹，含状态、尝试次数、延迟和单次估算成本。</div>
           </div>
+          <div class="section-meta-strip" id="requestsMeta"></div>
         </div>
+        <div class="surface-strip" id="requestsTopline"></div>
         <div class="card-fill-body" id="requests"></div>
       </div>
     </div>
@@ -1223,12 +1594,12 @@ const adminHTMLTemplate = `<!doctype html>
                 <div class="config-card settings-nav-panel" id="settingsNav">
                   <div class="settings-nav-title">Config Directory</div>
                   <div class="settings-jumpbar">
-                    <a href="#cfg-health"><strong>Health</strong><span>Probe path and cadence</span></a>
-                    <a href="#cfg-bridge"><strong>Bridge</strong><span>Model rewrite rules</span></a>
-                    <a href="#cfg-router"><strong>Router</strong><span>Retry and cooldown</span></a>
-                    <a href="#cfg-intercepts"><strong>Intercepts</strong><span>Retry/fail shortcuts</span></a>
-                    <a href="#cfg-upstreams"><strong>Providers</strong><span>Base URLs and model scopes</span></a>
-                    <a href="#cfg-history"><strong>History</strong><span>Preview and rollback</span></a>
+                    <a href="#cfg-health" data-nav-target="cfg-health"><div class="settings-jumpbar-copy"><strong>Health</strong><span>Probe path and cadence</span></div><em id="navMetaHealth">path</em></a>
+                    <a href="#cfg-bridge" data-nav-target="cfg-bridge"><div class="settings-jumpbar-copy"><strong>Bridge</strong><span>Model rewrite rules</span></div><em id="navMetaBridge">0 rules</em></a>
+                    <a href="#cfg-router" data-nav-target="cfg-router"><div class="settings-jumpbar-copy"><strong>Router</strong><span>Retry and cooldown</span></div><em id="navMetaRouter">strategy</em></a>
+                    <a href="#cfg-intercepts" data-nav-target="cfg-intercepts"><div class="settings-jumpbar-copy"><strong>Intercepts</strong><span>Retry/fail shortcuts</span></div><em id="navMetaIntercepts">0 rules</em></a>
+                    <a href="#cfg-upstreams" data-nav-target="cfg-upstreams"><div class="settings-jumpbar-copy"><strong>Providers</strong><span>Base URLs and model scopes</span></div><em id="navMetaProviders">0 providers</em></a>
+                    <a href="#cfg-history" data-nav-target="cfg-history"><div class="settings-jumpbar-copy"><strong>History</strong><span>Preview and rollback</span></div><em id="navMetaHistory">0 versions</em></a>
                   </div>
                 </div>
               </div>
@@ -1239,6 +1610,7 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-card-head-main">
                 <div class="config-card-title">Health Check</div>
                 <div class="config-help">控制主动探活的开关、间隔、超时和路径</div>
+                <div class="section-inline-meta" id="cfgHealthMeta"></div>
               </div>
             </div>
             <div class="config-grid">
@@ -1265,6 +1637,7 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-card-head-main">
                 <div class="config-card-title">Model Bridge</div>
                 <div class="config-help">维护模型别名映射和需跳过桥接的 User-Agent</div>
+                <div class="section-inline-meta" id="cfgBridgeMeta"></div>
               </div>
             </div>
             <div class="config-grid">
@@ -1288,6 +1661,7 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-card-head-main">
                 <div class="config-card-title">Router Retry</div>
                 <div class="config-help">控制重试次数与退避窗口</div>
+                <div class="section-inline-meta" id="cfgRouterMeta"></div>
               </div>
             </div>
             <div class="config-grid">
@@ -1351,6 +1725,7 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-card-head-main">
                 <div class="config-card-title">Response Intercepts</div>
                 <div class="config-help">按路径、状态码或错误关键字提前判定 retry / fail</div>
+                <div class="section-inline-meta" id="cfgInterceptMeta"></div>
               </div>
             </div>
             <div id="interceptList"></div>
@@ -1363,6 +1738,7 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-card-head-main">
                 <div class="config-card-title">Service Providers</div>
                 <div class="config-help">维护上游服务商的 URL、API key、模型范围和超时；每一项都可先行测试再保存</div>
+                <div class="section-inline-meta" id="cfgUpstreamsMeta"></div>
               </div>
             </div>
             <div id="upstreamConfigList"></div>
@@ -1378,6 +1754,9 @@ const adminHTMLTemplate = `<!doctype html>
                   <div class="metric"><div class="k">Bridge Rules</div><div class="v mono" id="settingsBridgeRuleCount">0</div><div class="small">Request rewrite map</div></div>
                   <div class="metric"><div class="k">Router</div><div class="v mono" id="settingsRouterStrategy">health_weighted_rr</div><div class="small">Active strategy</div></div>
                   <div class="metric"><div class="k">Health Path</div><div class="v mono" id="settingsHealthPath">/v1/models</div><div class="small">Probe target</div></div>
+                  <div class="metric"><div class="k">Draft</div><div class="v mono" id="settingsDraftState">synced</div><div class="small" id="settingsDraftMeta">Matches saved config</div></div>
+                  <div class="metric"><div class="k">Visible</div><div class="v mono" id="settingsVisibleSections">6</div><div class="small" id="settingsVisibleMeta">Sections in current filter</div></div>
+                  <div class="metric"><div class="k">Issues</div><div class="v mono" id="settingsIssueCount">0</div><div class="small" id="settingsIssueMeta">No config gaps detected</div></div>
                 </div>
                 <div class="config-card settings-rail-panel">
                   <div class="config-toolbar">
@@ -1386,6 +1765,33 @@ const adminHTMLTemplate = `<!doctype html>
                     <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
                   </div>
                   <div class="validation-summary" id="configValidation"></div>
+                </div>
+                <div class="config-card settings-rail-panel">
+                  <div class="config-card-head">
+                    <div class="config-card-head-main">
+                      <div class="config-card-title">Provider Roster</div>
+                      <div class="config-help">快速查看已启用 provider、模型范围和超时配置</div>
+                    </div>
+                  </div>
+                  <div class="settings-roster" id="settingsProviderRoster"></div>
+                </div>
+                <div class="config-card settings-rail-panel">
+                  <div class="config-card-head">
+                    <div class="config-card-head-main">
+                      <div class="config-card-title">Bridge Preview</div>
+                      <div class="config-help">当前请求改写规则的前几项预览</div>
+                    </div>
+                  </div>
+                  <div class="settings-roster" id="settingsBridgeRoster"></div>
+                </div>
+                <div class="config-card settings-rail-panel">
+                  <div class="config-card-head">
+                    <div class="config-card-head-main">
+                      <div class="config-card-title">Config Diagnostics</div>
+                      <div class="config-help">快速看空 key、未设模型范围和健康配置缺口</div>
+                    </div>
+                  </div>
+                  <div class="settings-roster" id="settingsDiagnostics"></div>
                 </div>
                 <div class="config-card settings-rail-panel" id="cfg-history">
                   <div class="config-card-head">
@@ -1432,6 +1838,23 @@ const adminHTMLTemplate = `<!doctype html>
       if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB';
       return (size / (1024 * 1024)).toFixed(1) + ' MB';
     };
+    const miniChip = (label, value, tone = '') => '<span class="mini-chip ' + tone + '"><strong>' + escapeHTML(label) + '</strong><span>' + escapeHTML(value) + '</span></span>';
+    const surfaceCard = (label, value, meta = '', tone = '') => '<div class="surface-card ' + tone + '"><div class="surface-card-label">' + escapeHTML(label) + '</div><div class="surface-card-value mono">' + escapeHTML(value) + '</div><div class="surface-card-meta">' + escapeHTML(meta) + '</div></div>';
+    const compactUsd = (value) => {
+      const amount = Number(value || 0);
+      if (amount >= 1000) return '$' + (amount / 1000).toFixed(1) + 'k';
+      if (amount >= 100) return '$' + amount.toFixed(0);
+      if (amount >= 1) return '$' + amount.toFixed(1);
+      return fmtMoney(amount);
+    };
+    const statusChip = (statusCode) => {
+      const code = Number(statusCode || 0);
+      let tone = '';
+      if (code >= 200 && code < 300) tone = 'ok';
+      else if (code >= 400 && code < 500) tone = 'warn';
+      else if (code >= 500) tone = 'danger';
+      return '<span class="status-chip ' + tone + '">' + escapeHTML(code || '-') + '</span>';
+    };
     const statusPill = (healthy) => healthy ? '<span class="status">healthy</span>' : '<span class="status bad">degraded</span>';
     const escapeHTML = (value) => String(value ?? '-')
       .replaceAll('&', '&amp;')
@@ -1464,6 +1887,16 @@ const adminHTMLTemplate = `<!doctype html>
       const completionUsd = ((item.usage.completion_tokens || 0) / 1000000) * (price.output_per_1m_usd || 0);
       return fmtMoney(promptUsd + completionUsd);
     };
+    const aggregateBy = (items, keyFn) => {
+      const counts = new Map();
+      (items || []).forEach((item) => {
+        const key = String(keyFn(item) || '').trim();
+        if (!key) return;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    };
+    const stackCell = (main, sub = '', extra = '') => '<div class="cell-stack"><div class="cell-main">' + main + '</div>' + (sub ? '<div class="cell-sub">' + sub + '</div>' : '') + extra + '</div>';
     const promptUsageCell = (usage) => {
       const promptTokens = fmt.format((usage && usage.prompt_tokens) || 0);
       const cachedTokens = (usage && usage.cached_prompt_tokens) || 0;
@@ -1517,9 +1950,12 @@ const adminHTMLTemplate = `<!doctype html>
         const badge = code >= 400 ? '<span class="status bad">' + escapeHTML(code || '-') + '</span>' : '<span class="status">' + escapeHTML(code || '-') + '</span>';
         return '<article class="error-item">'
           + '<div class="error-top">'
-          + '<div>'
+          + '<div class="error-frame">'
           + '<div class="error-heading"><div class="error-title mono">' + escapeHTML(relativeTime(item.timestamp)) + '</div><div class="small">attempt ' + attempt + '</div></div>'
+          + '<div class="error-context">'
           + '<div class="error-message">' + message + '</div>'
+          + '<div class="small">' + upstream + ' · ' + model + '</div>'
+          + '</div>'
           + '</div>'
           + badge
           + '</div>'
@@ -1610,6 +2046,281 @@ const adminHTMLTemplate = `<!doctype html>
       const text = await apiText(url, options);
       return text ? JSON.parse(text) : {};
     };
+    let loadedConfigSnapshot = '';
+    let configHistoryVersionCount = 0;
+    const updateActiveTopnav = () => {
+      const links = Array.from(document.querySelectorAll('[data-topnav-target]'));
+      const quickLinks = Array.from(document.querySelectorAll('[data-overview-target]'));
+      if (!links.length || document.body.classList.contains('page-settings')) return;
+      const sections = links
+        .map((link) => byId(link.getAttribute('data-topnav-target') || ''))
+        .filter(Boolean);
+      let activeID = sections[0]?.id || '';
+      let bestDelta = Number.POSITIVE_INFINITY;
+      sections.forEach((section) => {
+        const rect = section.getBoundingClientRect();
+        const delta = Math.abs(rect.top - 120);
+        if (rect.bottom > 100 && delta < bestDelta) {
+          bestDelta = delta;
+          activeID = section.id;
+        }
+      });
+      links.forEach((link) => {
+        link.classList.toggle('active', link.getAttribute('data-topnav-target') === activeID);
+      });
+      quickLinks.forEach((link) => {
+        link.classList.toggle('active', link.getAttribute('data-overview-target') === activeID);
+      });
+    };
+    const buildConfigPayload = () => ({
+      health: {
+        enabled: byId('cfgHealthEnabled')?.checked ?? false,
+        interval_sec: readNumber(byId('cfgHealthInterval')),
+        timeout_ms: readNumber(byId('cfgHealthTimeout')),
+        path: byId('cfgHealthPath')?.value || ''
+      },
+      bridge: {
+        enabled: byId('cfgBridgeEnabled')?.checked ?? false,
+        exclude_user_agents: parseList(byId('cfgBridgeExcludeUA')?.value),
+        rules: collectBridgeRules()
+      },
+      router: {
+        strategy: byId('cfgRouterStrategy')?.value || 'health_weighted_rr',
+        max_retries: readNumber(byId('cfgMaxRetries')),
+        retry_backoff_ms: readNumber(byId('cfgBackoff')),
+        retry_backoff_max_ms: readNumber(byId('cfgBackoffMax')),
+        failure_threshold: readNumber(byId('cfgFailureThreshold')),
+        cooldown_sec: readNumber(byId('cfgCooldown')),
+        failure_passthrough_after_sec: readNumber(byId('cfgPassthrough'))
+      },
+      proxy: {
+        retry: {
+          status_codes: parseCodes(byId('cfgRetryCodes')?.value),
+          status_code_min: readOptionalNumber(byId('cfgRetryMin')),
+          message_keywords: parseList(byId('cfgRetryKeywords')?.value)
+        },
+        intercepts: collectIntercepts()
+      },
+      upstreams: collectUpstreams()
+    });
+    const setConfigHintState = (message, tone = '') => {
+      const hint = byId('configHint');
+      if (!hint) return;
+      hint.textContent = message || '';
+      hint.classList.remove('is-dirty', 'is-saved');
+      if (tone === 'dirty') hint.classList.add('is-dirty');
+      if (tone === 'saved') hint.classList.add('is-saved');
+    };
+    const setNavMeta = (id, text, tone = '') => {
+      const el = byId(id);
+      if (!el) return;
+      el.textContent = text;
+      el.classList.remove('meta-good', 'meta-warn', 'meta-danger');
+      if (tone) el.classList.add('meta-' + tone);
+    };
+    const computeSettingsDiagnostics = () => {
+      const providers = collectUpstreams();
+      const enabledProviders = providers.filter((provider) => provider.enabled !== false).length;
+      const disabledProviders = providers.length - enabledProviders;
+      const emptyKeys = providers.filter((provider) => !String(provider.api_key || '').trim()).length;
+      const unscopedProviders = providers.filter((provider) => !(provider.models || []).length).length;
+      const bridgeRules = collectBridgeRules().filter((rule) => String(rule?.from || '').trim() && String(rule?.to || '').trim()).length;
+      const interceptRules = collectIntercepts().filter((rule) => rule && rule.enabled !== false).length;
+      const healthEnabled = byId('cfgHealthEnabled')?.checked ?? false;
+      const healthPath = String(byId('cfgHealthPath')?.value || '').trim();
+      const issueCount =
+        (enabledProviders === 0 ? 1 : 0) +
+        (emptyKeys > 0 ? 1 : 0) +
+        (unscopedProviders > 0 ? 1 : 0) +
+        (healthEnabled && !healthPath ? 1 : 0);
+      return {
+        providers,
+        enabledProviders,
+        disabledProviders,
+        emptyKeys,
+        unscopedProviders,
+        bridgeRules,
+        interceptRules,
+        healthEnabled,
+        healthPath,
+        issueCount,
+      };
+    };
+    const renderSettingsProviderRoster = () => {
+      const host = byId('settingsProviderRoster');
+      if (!host) return;
+      const { providers } = computeSettingsDiagnostics();
+      if (!providers.length) {
+        host.innerHTML = '<div class="small">暂无 provider</div>';
+        return;
+      }
+      host.innerHTML = providers
+        .slice()
+        .sort((a, b) => {
+          const aEnabled = a.enabled === false ? 0 : 1;
+          const bEnabled = b.enabled === false ? 0 : 1;
+          if (aEnabled !== bEnabled) return bEnabled - aEnabled;
+          return String(a.name || '').localeCompare(String(b.name || ''));
+        })
+        .slice(0, 6)
+        .map((provider) => {
+          const enabled = provider.enabled === false
+            ? '<span class="provider-chip warn">disabled</span>'
+            : '<span class="provider-chip accent">enabled</span>';
+          const models = provider.models || [];
+          const modelMeta = models.length
+            ? models.slice(0, 2).join(', ') + (models.length > 2 ? ' +' + (models.length - 2) : '')
+            : 'unscoped';
+          return '<div class="settings-roster-row">' +
+            '<div class="settings-roster-copy">' +
+              '<div class="settings-roster-name">' + escapeHTML(provider.name || 'Unnamed provider') + '</div>' +
+              '<div class="settings-roster-meta">' + escapeHTML(modelMeta) + ' · ' + escapeHTML((provider.timeout_ms ?? 0) + ' ms') + '</div>' +
+            '</div>' +
+            enabled +
+          '</div>';
+        }).join('');
+    };
+    const renderSettingsBridgeRoster = () => {
+      const host = byId('settingsBridgeRoster');
+      if (!host) return;
+      const rules = collectBridgeRules().filter((rule) => String(rule?.from || '').trim() && String(rule?.to || '').trim());
+      if (!rules.length) {
+        host.innerHTML = '<div class="small">暂无桥接规则</div>';
+        return;
+      }
+      host.innerHTML = rules.slice(0, 6).map((rule, idx) =>
+        '<div class="settings-roster-row">' +
+          '<div class="settings-roster-copy">' +
+            '<div class="settings-roster-name">Rule ' + escapeHTML(idx + 1) + '</div>' +
+            '<div class="settings-roster-meta">' + escapeHTML(rule.from || '') + ' -> ' + escapeHTML(rule.to || '') + '</div>' +
+          '</div>' +
+          '<span class="provider-chip accent">active</span>' +
+        '</div>'
+      ).join('');
+    };
+    const renderSettingsDiagnostics = () => {
+      const host = byId('settingsDiagnostics');
+      if (!host) return;
+      const diagnostics = computeSettingsDiagnostics();
+      const {
+        enabledProviders,
+        disabledProviders,
+        emptyKeys,
+        unscopedProviders,
+        bridgeRules,
+        interceptRules,
+        healthEnabled,
+        healthPath,
+      } = diagnostics;
+      const rows = [
+        {
+          name: 'Provider Footprint',
+          meta: fmt.format(enabledProviders) + ' enabled · ' + fmt.format(disabledProviders) + ' disabled',
+          chip: enabledProviders ? '<span class="provider-chip accent">live</span>' : '<span class="provider-chip warn">none enabled</span>',
+        },
+        {
+          name: 'Auth Coverage',
+          meta: fmt.format(emptyKeys) + ' providers missing API key',
+          chip: emptyKeys ? '<span class="provider-chip warn">attention</span>' : '<span class="provider-chip accent">complete</span>',
+        },
+        {
+          name: 'Model Scope',
+          meta: fmt.format(unscopedProviders) + ' providers without model scope',
+          chip: unscopedProviders ? '<span class="provider-chip warn">unscoped</span>' : '<span class="provider-chip accent">mapped</span>',
+        },
+        {
+          name: 'Rewrite Surface',
+          meta: fmt.format(bridgeRules) + ' bridge · ' + fmt.format(interceptRules) + ' intercept rules',
+          chip: (bridgeRules || interceptRules) ? '<span class="provider-chip accent">active</span>' : '<span class="provider-chip">idle</span>',
+        },
+        {
+          name: 'Health Probe',
+          meta: healthEnabled ? (healthPath || 'path missing') : 'health checks disabled',
+          chip: healthEnabled && healthPath ? '<span class="provider-chip accent">armed</span>' : '<span class="provider-chip warn">review</span>',
+        },
+      ];
+      host.innerHTML = rows.map((row) =>
+        '<div class="settings-roster-row">' +
+          '<div class="settings-roster-copy">' +
+            '<div class="settings-roster-name">' + escapeHTML(row.name) + '</div>' +
+            '<div class="settings-roster-meta">' + escapeHTML(row.meta) + '</div>' +
+          '</div>' +
+          row.chip +
+        '</div>'
+      ).join('');
+    };
+    const updateActiveSettingsNav = () => {
+      if (!document.body.classList.contains('page-settings')) return;
+      const sections = topLevelSections().filter((section) => !section.classList.contains('hidden-search'));
+      const links = Array.from(document.querySelectorAll('[data-nav-target]'));
+      if (!links.length) return;
+      let activeID = sections[0]?.id || '';
+      let bestDelta = Number.POSITIVE_INFINITY;
+      sections.forEach((section) => {
+        const rect = section.getBoundingClientRect();
+        const delta = Math.abs(rect.top - 128);
+        if (rect.bottom > 120 && delta < bestDelta) {
+          bestDelta = delta;
+          activeID = section.id;
+        }
+      });
+      links.forEach((link) => {
+        link.classList.toggle('active', link.getAttribute('data-nav-target') === activeID);
+      });
+    };
+    const updateSettingsSummary = () => {
+      const diagnostics = computeSettingsDiagnostics();
+      const providerCount = diagnostics.providers.length;
+      const enabledProviders = diagnostics.enabledProviders;
+      const bridgeCount = diagnostics.bridgeRules;
+      const interceptCount = diagnostics.interceptRules;
+      const routerStrategy = String(byId('cfgRouterStrategy')?.value || 'health_weighted_rr').trim() || 'health_weighted_rr';
+      const healthPath = String(byId('cfgHealthPath')?.value || '').trim() || '/v1/models';
+      const visibleSections = topLevelSections().filter((section) => !section.classList.contains('hidden-search')).length;
+      const draftState = JSON.stringify(buildConfigPayload()) === loadedConfigSnapshot ? 'synced' : 'edited';
+      if (byId('settingsProviderCount')) byId('settingsProviderCount').textContent = fmt.format(providerCount);
+      if (byId('settingsEnabledProviders')) byId('settingsEnabledProviders').textContent = fmt.format(enabledProviders) + ' enabled';
+      if (byId('settingsBridgeRuleCount')) byId('settingsBridgeRuleCount').textContent = fmt.format(bridgeCount);
+      if (byId('settingsRouterStrategy')) byId('settingsRouterStrategy').textContent = routerStrategy;
+      if (byId('settingsHealthPath')) byId('settingsHealthPath').textContent = healthPath;
+      if (byId('settingsDraftState')) byId('settingsDraftState').textContent = draftState;
+      if (byId('settingsDraftMeta')) byId('settingsDraftMeta').textContent = draftState === 'synced' ? 'Matches saved config' : 'Unsaved local edits';
+      if (byId('settingsVisibleSections')) byId('settingsVisibleSections').textContent = fmt.format(visibleSections);
+      if (byId('settingsVisibleMeta')) byId('settingsVisibleMeta').textContent = (byId('configSearch')?.value ? 'Filtered section set' : 'Sections in current filter');
+      if (byId('settingsIssueCount')) byId('settingsIssueCount').textContent = fmt.format(diagnostics.issueCount);
+      if (byId('settingsIssueMeta')) byId('settingsIssueMeta').textContent = diagnostics.issueCount ? 'Review auth, scope, or health gaps' : 'No config gaps detected';
+      if (byId('cfgHealthMeta')) byId('cfgHealthMeta').innerHTML = [
+        miniChip(diagnostics.healthEnabled ? 'Probe' : 'Probe', diagnostics.healthEnabled ? 'enabled' : 'disabled', diagnostics.healthEnabled ? 'accent' : 'warn'),
+        miniChip('Path', healthPath, diagnostics.healthEnabled && !diagnostics.healthPath ? 'warn' : ''),
+      ].join('');
+      if (byId('cfgBridgeMeta')) byId('cfgBridgeMeta').innerHTML = [
+        miniChip('Rules', fmt.format(bridgeCount), bridgeCount ? 'accent' : ''),
+        miniChip('Draft', bridgeCount ? 'mapped' : 'empty', bridgeCount ? 'accent' : 'warn'),
+      ].join('');
+      if (byId('cfgRouterMeta')) byId('cfgRouterMeta').innerHTML = [
+        miniChip('Strategy', routerStrategy, 'accent'),
+        miniChip('Retries', fmt.format(readNumber(byId('cfgMaxRetries')))),
+      ].join('');
+      if (byId('cfgInterceptMeta')) byId('cfgInterceptMeta').innerHTML = [
+        miniChip('Rules', fmt.format(interceptCount), interceptCount ? 'accent' : ''),
+        miniChip('Mode', interceptCount ? 'active' : 'idle', interceptCount ? 'accent' : ''),
+      ].join('');
+      if (byId('cfgUpstreamsMeta')) byId('cfgUpstreamsMeta').innerHTML = [
+        miniChip('Enabled', fmt.format(enabledProviders), enabledProviders ? 'accent' : 'danger'),
+        miniChip('Needs Auth', fmt.format(diagnostics.emptyKeys), diagnostics.emptyKeys ? 'warn' : ''),
+        miniChip('Unscoped', fmt.format(diagnostics.unscopedProviders), diagnostics.unscopedProviders ? 'warn' : ''),
+      ].join('');
+      setNavMeta('navMetaHealth', healthPath, diagnostics.healthEnabled && !diagnostics.healthPath ? 'warn' : (diagnostics.healthEnabled ? 'good' : 'warn'));
+      setNavMeta('navMetaBridge', fmt.format(bridgeCount) + ' rules', bridgeCount ? 'good' : '');
+      setNavMeta('navMetaRouter', routerStrategy, 'good');
+      setNavMeta('navMetaIntercepts', fmt.format(interceptCount) + ' rules', interceptCount ? 'good' : '');
+      setNavMeta('navMetaProviders', fmt.format(providerCount) + ' providers', enabledProviders === 0 ? 'danger' : ((diagnostics.emptyKeys || diagnostics.unscopedProviders) ? 'warn' : 'good'));
+      setNavMeta('navMetaHistory', fmt.format(configHistoryVersionCount) + ' versions', configHistoryVersionCount ? 'good' : '');
+      renderSettingsProviderRoster();
+      renderSettingsBridgeRoster();
+      renderSettingsDiagnostics();
+      updateActiveSettingsNav();
+    };
     const ensureSectionControls = () => {
       topLevelSections().forEach((section) => {
         const head = section.querySelector('.config-card-head');
@@ -1643,6 +2354,7 @@ const adminHTMLTemplate = `<!doctype html>
         const matched = !query || title.includes(query) || text.includes(query);
         section.classList.toggle('hidden-search', !matched);
       });
+      updateSettingsSummary();
     };
     const clearValidationState = () => {
       document.querySelectorAll('.input-invalid').forEach((el) => el.classList.remove('input-invalid'));
@@ -1926,19 +2638,6 @@ const adminHTMLTemplate = `<!doctype html>
         to: card.querySelector('.bridge-to')?.value || ''
       }));
     };
-    const updateSettingsSummary = () => {
-      const upstreamCards = Array.from(document.querySelectorAll('[data-upstream-config]'));
-      const providerCount = upstreamCards.length;
-      const enabledProviders = upstreamCards.filter((card) => card.querySelector('.upstream-enabled')?.checked ?? true).length;
-      const bridgeCount = document.querySelectorAll('[data-bridge-rule]').length;
-      const routerStrategy = String(byId('cfgRouterStrategy')?.value || 'health_weighted_rr').trim() || 'health_weighted_rr';
-      const healthPath = String(byId('cfgHealthPath')?.value || '').trim() || '/v1/models';
-      if (byId('settingsProviderCount')) byId('settingsProviderCount').textContent = fmt.format(providerCount);
-      if (byId('settingsEnabledProviders')) byId('settingsEnabledProviders').textContent = fmt.format(enabledProviders) + ' enabled';
-      if (byId('settingsBridgeRuleCount')) byId('settingsBridgeRuleCount').textContent = fmt.format(bridgeCount);
-      if (byId('settingsRouterStrategy')) byId('settingsRouterStrategy').textContent = routerStrategy;
-      if (byId('settingsHealthPath')) byId('settingsHealthPath').textContent = healthPath;
-    };
     const collectUpstreamCard = (card) => ({
       name: card.querySelector('.upstream-name')?.value || '',
       base_url: card.querySelector('.upstream-base-url')?.value || '',
@@ -1953,11 +2652,20 @@ const adminHTMLTemplate = `<!doctype html>
     const renderUpstreamProbe = (card, result, pending = false) => {
       const host = card.querySelector('.probe-status-host');
       if (!host) return;
+      const probeValue = card.querySelector('.provider-summary-probe');
       if (pending) {
+        if (probeValue) {
+          probeValue.textContent = 'testing';
+          probeValue.className = 'provider-summary-value provider-summary-probe probe-idle';
+        }
         host.innerHTML = '<div class="probe-status"><div class="probe-summary"><span class="status">testing</span><span class="small">正在探测 provider...</span></div></div>';
         return;
       }
       if (!result) {
+        if (probeValue) {
+          probeValue.textContent = 'untested';
+          probeValue.className = 'provider-summary-value provider-summary-probe probe-idle';
+        }
         host.innerHTML = '';
         return;
       }
@@ -1970,6 +2678,13 @@ const adminHTMLTemplate = `<!doctype html>
         result.latency_ms ? '<span class="tag">' + escapeHTML(result.latency_ms) + ' ms</span>' : '',
         result.checked_at ? '<span class="tag">' + escapeHTML(relativeTime(result.checked_at)) + '</span>' : ''
       ].filter(Boolean).join('');
+      if (probeValue) {
+        const probeText = result.ok
+          ? ('ok' + (result.latency_ms ? ' · ' + result.latency_ms + ' ms' : ''))
+          : (result.status_code ? ('fail · ' + result.status_code) : 'failed');
+        probeValue.textContent = probeText;
+        probeValue.className = 'provider-summary-value provider-summary-probe ' + (result.ok ? 'probe-ok' : 'probe-fail');
+      }
       host.innerHTML = '<div class="probe-status ' + kind + '">' +
         '<div class="probe-summary">' + state + detailBits + '</div>' +
         (result.error ? '<div class="small">' + escapeHTML(result.error) + '</div>' : '') +
@@ -2018,6 +2733,7 @@ const adminHTMLTemplate = `<!doctype html>
               '<div class="provider-summary-item"><div class="provider-summary-label">Weight</div><div class="provider-summary-value">' + escapeHTML(upstream.weight ?? 0) + '</div></div>' +
               '<div class="provider-summary-item"><div class="provider-summary-label">Timeout</div><div class="provider-summary-value">' + escapeHTML(upstream.timeout_ms ?? 0) + ' ms</div></div>' +
               '<div class="provider-summary-item"><div class="provider-summary-label">Auth</div><div class="provider-summary-value">' + escapeHTML(authMode) + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Probe</div><div class="provider-summary-value provider-summary-probe probe-idle">untested</div></div>' +
             '</div>' +
             '<div class="config-grid">' +
               '<div class="config-field">' +
@@ -2065,9 +2781,11 @@ const adminHTMLTemplate = `<!doctype html>
     const renderConfigHistory = (versions) => {
       const list = byId('configHistoryList');
       const items = versions || [];
+      configHistoryVersionCount = items.length;
       if (!items.length) {
         list.innerHTML = '<div class="small">暂无历史版本</div>';
         byId('configDiffPreview').innerHTML = '';
+        updateSettingsSummary();
         return;
       }
       list.innerHTML = '<div class="history-list">' + items.map((item, idx) => {
@@ -2083,6 +2801,7 @@ const adminHTMLTemplate = `<!doctype html>
             '</div>' +
           '</div>';
       }).join('') + '</div>';
+      updateSettingsSummary();
     };
     const renderConfigDiffPreview = (payload) => {
       const host = byId('configDiffPreview');
@@ -2165,17 +2884,19 @@ const adminHTMLTemplate = `<!doctype html>
         ensureSectionControls();
         applyConfigSearch();
         clearValidationState();
+        loadedConfigSnapshot = JSON.stringify(buildConfigPayload());
         updateSettingsSummary();
         byId('configStatus').textContent = '已载入';
+        setConfigHintState('Config synced', 'saved');
       } catch (err) {
         byId('configStatus').textContent = '配置载入失败';
-        byId('configHint').textContent = String(err?.message || err || 'Load config failed');
+        setConfigHintState(String(err?.message || err || 'Load config failed'));
       }
     };
     const testUpstreamCard = async (card) => {
       if (!card) return;
       renderUpstreamProbe(card, null, true);
-      byId('configHint').textContent = 'Testing provider...';
+      setConfigHintState('Testing provider...');
       try {
         const payload = await apiJSON('/-/admin/upstreams/test', {
           method: 'POST',
@@ -2183,51 +2904,21 @@ const adminHTMLTemplate = `<!doctype html>
           body: JSON.stringify({ upstream: collectUpstreamCard(card) })
         });
         renderUpstreamProbe(card, payload, false);
-        byId('configHint').textContent = payload.ok ? 'Provider test passed' : 'Provider test failed';
+        setConfigHintState(payload.ok ? 'Provider test passed' : 'Provider test failed', payload.ok ? 'saved' : '');
       } catch (err) {
         renderUpstreamProbe(card, { ok: false, error: String(err?.message || err || 'probe failed') }, false);
-        byId('configHint').textContent = String(err?.message || err || 'Provider test failed');
+        setConfigHintState(String(err?.message || err || 'Provider test failed'));
       }
     };
     const saveConfig = async () => {
       const validation = validateConfigForm();
       if (!validation.valid) {
-        byId('configHint').textContent = 'Fix validation errors before saving';
+        setConfigHintState('Fix validation errors before saving');
         return;
       }
-      const payload = {
-        health: {
-          enabled: byId('cfgHealthEnabled').checked,
-          interval_sec: readNumber(byId('cfgHealthInterval')),
-          timeout_ms: readNumber(byId('cfgHealthTimeout')),
-          path: byId('cfgHealthPath').value || ''
-        },
-        bridge: {
-          enabled: byId('cfgBridgeEnabled').checked,
-          exclude_user_agents: parseList(byId('cfgBridgeExcludeUA').value),
-          rules: collectBridgeRules()
-        },
-        router: {
-          strategy: byId('cfgRouterStrategy').value || 'health_weighted_rr',
-          max_retries: readNumber(byId('cfgMaxRetries')),
-          retry_backoff_ms: readNumber(byId('cfgBackoff')),
-          retry_backoff_max_ms: readNumber(byId('cfgBackoffMax')),
-          failure_threshold: readNumber(byId('cfgFailureThreshold')),
-          cooldown_sec: readNumber(byId('cfgCooldown')),
-          failure_passthrough_after_sec: readNumber(byId('cfgPassthrough'))
-        },
-        proxy: {
-          retry: {
-            status_codes: parseCodes(byId('cfgRetryCodes').value),
-            status_code_min: readOptionalNumber(byId('cfgRetryMin')),
-            message_keywords: parseList(byId('cfgRetryKeywords').value)
-          },
-          intercepts: collectIntercepts()
-        },
-        upstreams: collectUpstreams()
-      };
+      const payload = buildConfigPayload();
 
-      byId('configHint').textContent = 'Saving...';
+      setConfigHintState('Saving...');
       try {
         await apiJSON('/-/admin/config', {
           method: 'PUT',
@@ -2235,9 +2926,9 @@ const adminHTMLTemplate = `<!doctype html>
           body: JSON.stringify(payload)
         });
         await loadConfig();
-        byId('configHint').textContent = 'Saved';
+        setConfigHintState('Saved', 'saved');
       } catch (err) {
-        byId('configHint').textContent = String(err?.message || err || 'Save failed');
+        setConfigHintState(String(err?.message || err || 'Save failed'));
       }
     };
     const exportConfig = () => {
@@ -2250,7 +2941,7 @@ const adminHTMLTemplate = `<!doctype html>
       if (!window.confirm(confirmText)) {
         return;
       }
-      byId('configHint').textContent = 'Rolling back...';
+      setConfigHintState('Rolling back...');
       try {
         await apiJSON('/-/admin/config/rollback', {
           method: 'POST',
@@ -2258,9 +2949,9 @@ const adminHTMLTemplate = `<!doctype html>
           body: JSON.stringify({ version_id: versionId })
         });
         await loadConfig();
-        byId('configHint').textContent = 'Rolled back';
+        setConfigHintState('Rolled back', 'saved');
       } catch (err) {
-        byId('configHint').textContent = String(err?.message || err || 'Rollback failed');
+        setConfigHintState(String(err?.message || err || 'Rollback failed'));
       }
     };
     document.addEventListener('click', (event) => {
@@ -2271,7 +2962,7 @@ const adminHTMLTemplate = `<!doctype html>
         byId('cfgBridgeEnabled').checked = true;
         clearValidationState();
         updateSettingsSummary();
-        byId('configHint').textContent = 'Applied GPT-5.x bridge preset';
+        setConfigHintState('Applied GPT-5.x bridge preset', 'dirty');
       }
       if (button && button.id === 'addBridgeRule') {
         event.preventDefault();
@@ -2342,16 +3033,19 @@ const adminHTMLTemplate = `<!doctype html>
       if (button && button.id === 'collapseSections') {
         event.preventDefault();
         topLevelSections().forEach((section) => setSectionCollapsed(section, true));
+        updateActiveSettingsNav();
       }
       if (button && button.id === 'expandSections') {
         event.preventDefault();
         topLevelSections().forEach((section) => setSectionCollapsed(section, false));
+        updateActiveSettingsNav();
       }
       if (button && button.classList.contains('section-toggle')) {
         event.preventDefault();
         const section = button.closest('.config-section');
         if (section) {
           setSectionCollapsed(section, !section.classList.contains('collapsed'));
+          updateActiveSettingsNav();
         }
       }
       if (button && button.id === 'saveConfig') {
@@ -2389,6 +3083,7 @@ const adminHTMLTemplate = `<!doctype html>
       }
       if (event.target && event.target.closest('.config-panel')) {
         clearValidationState();
+        setConfigHintState('Unsaved changes', 'dirty');
       }
     });
     document.addEventListener('change', (event) => {
@@ -2397,10 +3092,15 @@ const adminHTMLTemplate = `<!doctype html>
       }
       if (event.target && event.target.closest('.config-panel')) {
         clearValidationState();
+        setConfigHintState('Unsaved changes', 'dirty');
       }
     });
     ensureSectionControls();
     revealSettingsIfHash();
+    window.addEventListener('scroll', updateActiveSettingsNav, { passive: true });
+    window.addEventListener('hashchange', updateActiveSettingsNav);
+    window.addEventListener('scroll', updateActiveTopnav, { passive: true });
+    window.addEventListener('hashchange', updateActiveTopnav);
 
     /* ── Chart engine (pure SVG, no external lib) ── */
     const CHART_COLORS = ['#7ee7d6','#f1b866','#a78bfa','#f87171','#38bdf8','#4ade80','#fb923c','#e879f9'];
@@ -2697,7 +3397,11 @@ const adminHTMLTemplate = `<!doctype html>
       const dayWindow = cacheTrends.last_24h || {};
       const pricing = data.pricing || {};
       const pricingSummary = pricing.summary || {};
-      const pricingModels = pricing.models || [];
+      const pricingModels = (pricing.models || []).slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0));
+      const recentRequests = (data.telemetry.requests || []).slice(0, 24);
+      const recentErrors = data.telemetry.errors || [];
+      const upstreamStatuses = data.upstreams || {};
+      const upstreamUsageEntries = Object.entries(data.telemetry.by_upstream || {});
 
       document.getElementById('generatedAt').textContent = 'Updated ' + new Date(data.generated_at).toLocaleString();
       document.getElementById('pricingSource').innerHTML = pricing.source_url
@@ -2711,6 +3415,50 @@ const adminHTMLTemplate = `<!doctype html>
         ['1m RPM', fmtRate(oneMinute.rpm)],
         ['1m TPM', fmtRate(oneMinute.tpm)],
       ].map(([k, v]) => '<div class="hero-stat"><div class="k">' + k + '</div><div class="v mono">' + v + '</div></div>').join('');
+
+      const overallSuccessRate = (summary.total_requests || 0) > 0 ? ((summary.successes || 0) / summary.total_requests) * 100 : 0;
+      const overallCacheRate = cacheHitRate(summary);
+      const dayCacheRate = cacheHitRate(dayWindow);
+      const avgCostPerRequest = (summary.total_requests || 0) > 0 ? (pricingSummary.total_usd || 0) / summary.total_requests : 0;
+      const bridgeState = data.bridge && data.bridge.Enabled ? 'bridge on' : 'bridge off';
+      const degradedUpstreams = Object.values(upstreamStatuses).filter((status) => status && !status.healthy).length;
+      const recent503 = recentRequests.filter((item) => Number(item.status_code || 0) === 503).length;
+      const unpricedModels = pricingSummary.unpriced_models || 0;
+      document.getElementById('overviewPulse').innerHTML = [
+        ['Request Load', fmt.format(summary.total_requests || 0), fmtRate(oneMinute.rpm) + ' RPM · ' + fmtRate(oneMinute.tpm) + ' TPM'],
+        ['Reliability', fmtPct(overallSuccessRate), fmt.format(oneMinute.failures || 0) + ' fail in 1m · ' + fmt.format(fiveMinute.failures || 0) + ' fail in 5m'],
+        ['Latency', fmtMs(oneMinute.avg_latency_ms || 0), '5m ' + fmtMs(fiveMinute.avg_latency_ms || 0)],
+        ['Cache', overallCacheRate === null ? 'n/a' : fmtPct(overallCacheRate), '24h ' + (dayCacheRate === null ? 'n/a' : fmtPct(dayCacheRate))],
+        ['Spend', compactUsd(pricingSummary.total_usd || 0), compactUsd(avgCostPerRequest * 1000) + ' / 1k req'],
+        ['Routing', bridgeState, fmt.format(pricingSummary.priced_models || 0) + ' priced · ' + fmt.format(pricingSummary.unpriced_models || 0) + ' unpriced'],
+      ].map(([label, value, meta]) =>
+        '<div class="overview-pulse-card"><div class="overview-pulse-label">' + label + '</div><div class="overview-pulse-value mono">' + value + '</div><div class="overview-pulse-meta">' + meta + '</div></div>'
+      ).join('');
+      document.getElementById('overviewAlerts').innerHTML = [
+        surfaceCard(
+          'Health Watch',
+          degradedUpstreams ? (fmt.format(degradedUpstreams) + ' degraded') : 'stable',
+          degradedUpstreams ? (fmt.format(Object.keys(upstreamStatuses).length - degradedUpstreams) + ' healthy upstreams remain') : 'All upstream probes are healthy',
+          degradedUpstreams ? 'tone-danger' : 'tone-good'
+        ),
+        surfaceCard(
+          'Error Pressure',
+          recent503 ? (fmt.format(recent503) + ' × 503') : 'clear',
+          recentErrors.length ? (fmt.format(recentErrors.length) + ' recent error rows') : 'No recent error feed items',
+          recent503 ? 'tone-danger' : (recentErrors.length ? 'tone-warn' : 'tone-good')
+        ),
+        surfaceCard(
+          'Pricing Coverage',
+          unpricedModels ? (fmt.format(unpricedModels) + ' unpriced') : 'covered',
+          compactUsd(pricingSummary.cache_savings_usd || 0) + ' cache savings tracked',
+          unpricedModels ? 'tone-warn' : 'tone-good'
+        ),
+      ].join('');
+      document.getElementById('performanceMeta').innerHTML = [
+        miniChip('1m RPM', fmtRate(oneMinute.rpm), 'accent'),
+        miniChip('1m TPM', fmtRate(oneMinute.tpm)),
+        miniChip('1m Latency', fmtMs(oneMinute.avg_latency_ms || 0), oneMinute.avg_latency_ms > 4000 ? 'warn' : ''),
+      ].join('');
 
       document.getElementById('metrics').innerHTML = [
         ['Requests', fmt.format(summary.total_requests || 0), fmt.format(summary.successes || 0) + ' success / ' + fmt.format(summary.failures || 0) + ' fail'],
@@ -2729,19 +3477,64 @@ const adminHTMLTemplate = `<!doctype html>
         ['Cached Prompt', fmt.format(pricingSummary.cached_prompt_tokens || 0), fmtMoney(pricingSummary.cache_savings_usd || 0) + ' saved'],
         ['Cache Hit', cacheHitRate(summary) === null ? 'n/a' : fmtPct(cacheHitRate(summary)), fmt.format(summary.cached_prompt_tokens || 0) + ' / ' + fmt.format(summary.prompt_tokens || 0) + ' prompt tokens'],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
+      document.getElementById('costMeta').innerHTML = [
+        miniChip('Total', compactUsd(pricingSummary.total_usd || 0), 'accent'),
+        miniChip('Saved', compactUsd(pricingSummary.cache_savings_usd || 0), pricingSummary.cache_savings_usd > 0 ? 'accent' : ''),
+        miniChip('Avg / 1k', compactUsd(avgCostPerRequest * 1000)),
+      ].join('');
 
-      const upstreamRows = Object.entries(data.upstreams || {}).map(([name, status]) => {
+      const topCostModel = pricingModels.slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0))[0];
+      const topEconomics = pricingModels.slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0)).slice(0, 3);
+      document.getElementById('economicsMeta').innerHTML = [
+        miniChip('Priced', fmt.format(pricingSummary.priced_models || 0), 'accent'),
+        miniChip('Unpriced', fmt.format(pricingSummary.unpriced_models || 0), pricingSummary.unpriced_models ? 'warn' : ''),
+        miniChip('Top Spend', topCostModel ? ((topCostModel.display_model || '-') + ' · ' + compactUsd(topCostModel.cost?.total_usd || 0)) : 'n/a'),
+      ].join('');
+      document.getElementById('economicsTopline').innerHTML = topEconomics.length
+        ? topEconomics.map((item, idx) => surfaceCard(
+            'Top Model ' + (idx + 1),
+            item.display_model || '-',
+            compactUsd(item.cost?.total_usd || 0) + ' · ' + fmt.format(item.usage?.total_tokens || 0) + ' tokens'
+          )).join('')
+        : surfaceCard('Top Model 1', 'n/a', 'No priced usage yet') + surfaceCard('Top Model 2', 'n/a', 'No priced usage yet') + surfaceCard('Top Model 3', 'n/a', 'No priced usage yet');
+
+      const unhealthyCount = degradedUpstreams;
+      const healthEntries = Object.entries(upstreamStatuses);
+      const mostFailedUpstream = healthEntries
+        .slice()
+        .sort((a, b) => ((b[1] && b[1].consecutive_retryable_failures) || 0) - ((a[1] && a[1].consecutive_retryable_failures) || 0))[0];
+      const slowestUpstream = healthEntries
+        .slice()
+        .sort((a, b) => ((b[1] && b[1].last_latency) || 0) - ((a[1] && a[1].last_latency) || 0))[0];
+      document.getElementById('upstreamMeta').innerHTML = [
+        miniChip('Total', fmt.format(Object.keys(upstreamStatuses).length), 'accent'),
+        miniChip('Degraded', fmt.format(unhealthyCount), unhealthyCount ? 'danger' : ''),
+        miniChip('Window', 'health snapshot'),
+      ].join('');
+      document.getElementById('upstreamTopline').innerHTML = [
+        surfaceCard('Degraded Routes', fmt.format(unhealthyCount), fmt.format(healthEntries.length - unhealthyCount) + ' healthy'),
+        surfaceCard('Highest Failures', mostFailedUpstream ? mostFailedUpstream[0] : 'n/a', mostFailedUpstream ? (fmt.format(mostFailedUpstream[1].consecutive_retryable_failures || 0) + ' retryable fails') : 'No upstream telemetry'),
+        surfaceCard('Slowest Probe', slowestUpstream ? slowestUpstream[0] : 'n/a', slowestUpstream && slowestUpstream[1].last_latency ? fmtMs((slowestUpstream[1].last_latency || 0) / 1000000) : 'No latency sample'),
+      ].join('');
+
+      const upstreamRows = healthEntries.map(([name, status]) => {
         const cooldown = status.cooldown_until && status.cooldown_until !== '0001-01-01T00:00:00Z' ? relativeTime(status.cooldown_until) : '-';
         const latency = status.last_latency ? fmtMs((status.last_latency || 0) / 1000000) : '-';
-        return [name, statusPill(status.healthy), latency, status.consecutive_retryable_failures || 0, status.last_error || '-', cooldown];
+        return [
+          stackCell('<strong>' + escapeHTML(name) + '</strong>', status.last_error ? escapeHTML(status.last_error) : 'no recent error'),
+          stackCell(statusPill(status.healthy), latency),
+          stackCell(fmt.format(status.consecutive_retryable_failures || 0), 'retryable failures'),
+          stackCell(cooldown, 'cooldown window'),
+        ];
       });
-      document.getElementById('upstreams').innerHTML = table(['Upstream', 'State', 'Last Latency', 'Retryable Failures', 'Last Error', 'Cooldown'], upstreamRows, 'table-health');
+      document.getElementById('upstreams').innerHTML = table(['Upstream', 'State + Latency', 'Failures', 'Cooldown'], upstreamRows, 'table-health');
 
       const modelRows = pricingModels
         .map((item) => [
-          '<strong>' + escapeHTML(item.display_model || '-') + '</strong><br>'
-            + (item.pricing_model && item.pricing_model !== item.display_model ? '<span class="small">priced as ' + escapeHTML(item.pricing_model) + '</span><br>' : '')
-            + priceLine(item.pricing),
+          stackCell(
+            '<strong>' + escapeHTML(item.display_model || '-') + '</strong>',
+            (item.pricing_model && item.pricing_model !== item.display_model ? 'priced as ' + escapeHTML(item.pricing_model) + ' · ' : '') + (item.pricing ? ('$' + item.pricing.input_per_1m_usd + ' / $' + item.pricing.output_per_1m_usd + ' per 1M') : 'official price unavailable')
+          ),
           promptUsageCell(item.usage),
           cacheRateCell(item.usage),
           fmt.format(item.usage.completion_tokens || 0),
@@ -2750,13 +3543,33 @@ const adminHTMLTemplate = `<!doctype html>
         ]);
       document.getElementById('byModel').innerHTML = table(['Model', 'Prompt', 'Cache Hit', 'Completion', 'Total', 'USD'], modelRows, 'table-models');
 
-      const upstreamUsageRows = Object.entries(data.telemetry.by_upstream || {}).map(([name, usage]) => [
-        name,
-        promptUsageCell(usage),
-        cacheRateCell(usage),
-        fmt.format(usage.completion_tokens || 0),
-        totalUsageCell(usage),
-      ]);
+      const topUsageUpstream = upstreamUsageEntries.slice().sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))[0];
+      document.getElementById('usageMeta').innerHTML = [
+        miniChip('Upstreams', fmt.format(upstreamUsageEntries.length), 'accent'),
+        miniChip('Top Volume', topUsageUpstream ? (topUsageUpstream[0] + ' · ' + fmt.format(topUsageUpstream[1].total_tokens || 0)) : 'n/a'),
+      ].join('');
+      const topUsageEntries = upstreamUsageEntries
+        .slice()
+        .sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))
+        .slice(0, 3);
+      document.getElementById('usageTopline').innerHTML = topUsageEntries.length
+        ? topUsageEntries.map((entry, idx) => surfaceCard(
+            'Top Upstream ' + (idx + 1),
+            entry[0],
+            fmt.format(entry[1].total_tokens || 0) + ' total · ' + fmt.format(entry[1].completion_tokens || 0) + ' completion'
+          )).join('')
+        : surfaceCard('Top Upstream 1', 'n/a', 'No usage data') + surfaceCard('Top Upstream 2', 'n/a', 'No usage data') + surfaceCard('Top Upstream 3', 'n/a', 'No usage data');
+
+      const upstreamUsageRows = upstreamUsageEntries
+        .slice()
+        .sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))
+        .map(([name, usage]) => [
+          stackCell('<strong>' + escapeHTML(name) + '</strong>', fmt.format(usage.total_tokens || 0) + ' total'),
+          promptUsageCell(usage),
+          cacheRateCell(usage),
+          stackCell(fmt.format(usage.completion_tokens || 0), 'completion tokens'),
+          totalUsageCell(usage),
+        ]);
       document.getElementById('byUpstream').innerHTML = table(['Upstream', 'Prompt', 'Cache Hit', 'Completion', 'Total'], upstreamUsageRows, 'table-usage');
 
       document.getElementById('cacheTrends').innerHTML = [
@@ -2764,31 +3577,74 @@ const adminHTMLTemplate = `<!doctype html>
         ['24h Cache Hit', cacheHitRate(dayWindow) === null ? 'n/a' : fmtPct(cacheHitRate(dayWindow)), cacheTrendDetail(dayWindow)],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
 
-      const cacheRankingRows = (data.telemetry.cache_hit_ranking || []).map((item, idx) => [
-        (idx + 1) + '. ' + escapeHTML(item.upstream || '-'),
+      const cacheRanking = data.telemetry.cache_hit_ranking || [];
+      const topErrorUpstream = aggregateBy(recentErrors, (item) => item.upstream || '-')[0];
+      const topErrorStatus = aggregateBy(recentErrors, (item) => item.status_code || '-')[0];
+      const topErrorModel = aggregateBy(recentErrors, (item) => item.model || '-')[0];
+      document.getElementById('cacheMeta').innerHTML = [
+        miniChip('24h Hit', dayCacheRate === null ? 'n/a' : fmtPct(dayCacheRate), dayCacheRate !== null && dayCacheRate >= 50 ? 'accent' : ''),
+        miniChip('Saved', compactUsd(pricingSummary.cache_savings_usd || 0), 'accent'),
+        miniChip('Leaders', fmt.format(cacheRanking.length)),
+      ].join('');
+      document.getElementById('cacheTopline').innerHTML = cacheRanking.slice(0, 3).map((item, idx) => surfaceCard(
+        'Cache Leader ' + (idx + 1),
+        item.upstream || '-',
+        (cacheHitRate(item.usage) === null ? 'n/a' : fmtPct(cacheHitRate(item.usage))) + ' hit · ' + fmt.format(item.requests || 0) + ' req'
+      )).join('') || surfaceCard('Cache Leader 1', 'n/a', 'No cache ranking') + surfaceCard('Cache Leader 2', 'n/a', 'No cache ranking') + surfaceCard('Cache Leader 3', 'n/a', 'No cache ranking');
+
+      const cacheRankingRows = cacheRanking.map((item, idx) => [
+        stackCell('<strong>' + escapeHTML((idx + 1) + '. ' + (item.upstream || '-')) + '</strong>', fmt.format(item.requests || 0) + ' requests'),
         cacheRateCell(item.usage),
-        fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0),
-        fmt.format((item.usage && item.usage.prompt_tokens) || 0),
-        fmt.format(item.requests || 0),
+        stackCell(fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0), 'cached prompt'),
+        stackCell(fmt.format((item.usage && item.usage.prompt_tokens) || 0), 'prompt total'),
+        stackCell(fmt.format(item.requests || 0), 'ranking window'),
       ]);
       document.getElementById('cacheRanking').innerHTML = table(['Upstream', 'Cache Hit', 'Cached', 'Prompt', 'Requests'], cacheRankingRows, 'table-cache');
 
-      document.getElementById('errors').innerHTML = errorFeed(data.telemetry.errors || []);
+      const leadingError = recentErrors[0];
+      document.getElementById('errorsMeta').innerHTML = [
+        miniChip('Rows', fmt.format(recentErrors.length), recentErrors.length ? 'danger' : 'accent'),
+        miniChip('Top Upstream', leadingError?.upstream || 'n/a'),
+        miniChip('Latest', leadingError?.status_code ? ('status ' + leadingError.status_code) : 'clean', leadingError ? 'warn' : 'accent'),
+      ].join('');
+      document.getElementById('errorsTopline').innerHTML = [
+        surfaceCard('Dominant Upstream', topErrorUpstream ? topErrorUpstream[0] : 'n/a', topErrorUpstream ? (fmt.format(topErrorUpstream[1]) + ' error rows') : 'No recent errors'),
+        surfaceCard('Dominant Status', topErrorStatus ? String(topErrorStatus[0]) : 'n/a', topErrorStatus ? (fmt.format(topErrorStatus[1]) + ' rows in sample') : 'No recent errors'),
+        surfaceCard('Dominant Model', topErrorModel ? topErrorModel[0] : 'n/a', topErrorModel ? (fmt.format(topErrorModel[1]) + ' error rows') : 'No recent errors'),
+      ].join('');
+      document.getElementById('errors').innerHTML = errorFeed(recentErrors);
+
+      const avgAttempts = recentRequests.length
+        ? (recentRequests.reduce((sum, item) => sum + Number(item.attempts || 0), 0) / recentRequests.length)
+        : 0;
+      const hottestPath = aggregateBy(recentRequests, (item) => item.path)[0];
+      const busiestUpstream = aggregateBy(recentRequests, (item) => item.upstream || '-')[0];
+      const hottestModel = aggregateBy(recentRequests, (item) => item.model || item.requested_model || '-')[0];
+      document.getElementById('requestsMeta').innerHTML = [
+        miniChip('Rows', fmt.format(recentRequests.length), 'accent'),
+        miniChip('503', fmt.format(recent503), recent503 ? 'danger' : ''),
+        miniChip('Avg Attempts', recentRequests.length ? avgAttempts.toFixed(1) : 'n/a'),
+      ].join('');
+      document.getElementById('requestsTopline').innerHTML = [
+        surfaceCard('Hottest Path', hottestPath ? hottestPath[0] : 'n/a', hottestPath ? (fmt.format(hottestPath[1]) + ' rows in current sample') : 'No recent requests'),
+        surfaceCard('Busiest Upstream', busiestUpstream ? busiestUpstream[0] : 'n/a', busiestUpstream ? (fmt.format(busiestUpstream[1]) + ' routed requests') : 'No upstream traffic'),
+        surfaceCard('Hottest Model', hottestModel ? hottestModel[0] : 'n/a', hottestModel ? (fmt.format(hottestModel[1]) + ' rows in current sample') : 'No model traffic'),
+      ].join('');
       document.getElementById('requests').innerHTML = table(
-        ['Time', 'Path', 'Model Flow', 'Route', 'Upstream', 'Status', 'Attempts', 'Latency', 'Cached Prompt', 'Cache Hit', 'Tokens', 'USD'],
-        (data.telemetry.requests || []).slice(0, 24).map(item => [
-          relativeTime(item.timestamp),
-          item.path,
-          modelFlow(item),
-          '<span class="tag accent">' + escapeHTML(item.route_mode || 'direct') + '</span>',
-          item.upstream || '-',
-          item.status_code,
-          item.attempts,
-          fmtMs(item.duration_ms || 0),
-          fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0),
-          cacheRateCell(item.usage),
-          totalUsageCell(item.usage),
-          estimateRequestCost(item, pricing) || '<span class="small">n/a</span>',
+        ['Time', 'Route + Path', 'Model Flow', 'Upstream', 'Status / Attempts', 'Latency + Cache', 'Tokens', 'USD'],
+        recentRequests.map(item => [
+          stackCell(escapeHTML(relativeTime(item.timestamp)), escapeHTML(item.request_id || '-')),
+          stackCell(
+            escapeHTML(item.path || '-'),
+            escapeHTML(item.route_mode || 'direct'),
+            '<div class="cell-tags"><span class="tag accent">' + escapeHTML(item.route_mode || 'direct') + '</span></div>'
+          ),
+          stackCell(modelFlow(item), item.requested_model && item.requested_model !== item.model ? 'bridge applied' : 'direct model'),
+          stackCell(escapeHTML(item.upstream || '-'), item.error_message ? escapeHTML(item.error_message) : ''),
+          stackCell(statusChip(item.status_code), 'attempt ' + escapeHTML(item.attempts || 0)),
+          stackCell(fmtMs(item.duration_ms || 0), 'cache ' + (cacheHitRate(item.usage) === null ? 'n/a' : fmtPct(cacheHitRate(item.usage)))),
+          stackCell(fmt.format((item.usage && item.usage.total_tokens) || 0), 'cached ' + fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0)),
+          stackCell(estimateRequestCost(item, pricing) || '<span class="small">n/a</span>', fmt.format((item.usage && item.usage.completion_tokens) || 0) + ' completion'),
         ]),
         'table-requests'
       );
@@ -2799,6 +3655,7 @@ const adminHTMLTemplate = `<!doctype html>
     } else {
       load();
       loadCharts();
+      updateActiveTopnav();
       setInterval(load, 5000);
       setInterval(loadCharts, 15000);
     }
@@ -2811,10 +3668,10 @@ func renderAdminHTML(settingsView bool) string {
 	settingsHref := "/admin/settings"
 	settingsLabel := "Settings"
 	topnavLinks := strings.Join([]string{
-		`<a href="#performance">Performance</a>`,
-		`<a href="#economics">Economics</a>`,
-		`<a href="#upstreams-card">Upstreams</a>`,
-		`<a href="#requests-card">Requests</a>`,
+		`<a href="#performance" data-topnav-target="performance">Performance</a>`,
+		`<a href="#economics" data-topnav-target="economics">Economics</a>`,
+		`<a href="#upstreams-card" data-topnav-target="upstreams-card">Upstreams</a>`,
+		`<a href="#requests-card" data-topnav-target="requests-card">Requests</a>`,
 		`<a href="/admin/settings">Settings</a>`,
 	}, "")
 	heroEyebrow := "AI Gateway Admin"

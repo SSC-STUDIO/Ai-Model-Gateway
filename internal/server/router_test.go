@@ -285,6 +285,66 @@ func TestAdminRequiresAuth(t *testing.T) {
 	}
 }
 
+func TestAdminOverviewRouteIncludesDenseOverviewControls(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected overview 200, got %d", recorder.Result().StatusCode)
+	}
+	body, err := io.ReadAll(recorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read overview body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `id="overviewPulse"`) ||
+		!strings.Contains(text, `id="overviewQuickNav"`) ||
+		!strings.Contains(text, `id="overviewAlerts"`) ||
+		!strings.Contains(text, `id="performanceMeta"`) ||
+		!strings.Contains(text, `id="costMeta"`) ||
+		!strings.Contains(text, `id="economicsMeta"`) ||
+		!strings.Contains(text, `id="economicsTopline"`) ||
+		!strings.Contains(text, `id="upstreamMeta"`) ||
+		!strings.Contains(text, `id="upstreamTopline"`) ||
+		!strings.Contains(text, `id="cacheMeta"`) ||
+		!strings.Contains(text, `id="cacheTopline"`) ||
+		!strings.Contains(text, `id="errorsMeta"`) ||
+		!strings.Contains(text, `id="errorsTopline"`) ||
+		!strings.Contains(text, `id="requestsMeta"`) ||
+		!strings.Contains(text, `id="requestsTopline"`) ||
+		!strings.Contains(text, `id="usageTopline"`) ||
+		!strings.Contains(text, `data-topnav-target="performance"`) ||
+		!strings.Contains(text, `data-overview-target="performance"`) ||
+		!strings.Contains(text, `Jump to Surface`) ||
+		!strings.Contains(text, `Request Load`) ||
+		!strings.Contains(text, `Health Watch`) ||
+		!strings.Contains(text, `Error Pressure`) ||
+		!strings.Contains(text, `Pricing Coverage`) ||
+		!strings.Contains(text, `Top Model 1`) ||
+		!strings.Contains(text, `Cache Leader 1`) ||
+		!strings.Contains(text, `Top Upstream 1`) ||
+		!strings.Contains(text, `Degraded Routes`) ||
+		!strings.Contains(text, `Dominant Upstream`) ||
+		!strings.Contains(text, `Hottest Path`) ||
+		!strings.Contains(text, `status-chip`) ||
+		!strings.Contains(text, `surface-card`) ||
+		!strings.Contains(text, `scroll-margin-top: 88px;`) ||
+		!strings.Contains(text, `Performance`) ||
+		!strings.Contains(text, `Economics`) ||
+		!strings.Contains(text, `Latest traces and failures`) {
+		t.Fatalf("expected overview dense ui markers, got %q", text)
+	}
+}
+
 func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 	cfg := config.Config{
 		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
@@ -310,16 +370,30 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 		!strings.Contains(settingsText, `id="settingsShell"`) ||
 		!strings.Contains(settingsText, `id="settingsNav"`) ||
 		!strings.Contains(settingsText, `id="settingsBridgeRuleCount"`) ||
+		!strings.Contains(settingsText, `id="settingsDraftState"`) ||
+		!strings.Contains(settingsText, `id="settingsVisibleSections"`) ||
+		!strings.Contains(settingsText, `id="settingsIssueCount"`) ||
+		!strings.Contains(settingsText, `id="settingsProviderRoster"`) ||
+		!strings.Contains(settingsText, `id="settingsBridgeRoster"`) ||
+		!strings.Contains(settingsText, `id="settingsDiagnostics"`) ||
+		!strings.Contains(settingsText, `id="cfgHealthMeta"`) ||
+		!strings.Contains(settingsText, `id="cfgBridgeMeta"`) ||
+		!strings.Contains(settingsText, `id="cfgRouterMeta"`) ||
+		!strings.Contains(settingsText, `id="cfgInterceptMeta"`) ||
+		!strings.Contains(settingsText, `id="cfgUpstreamsMeta"`) ||
 		!strings.Contains(settingsText, `Configuration Center`) ||
 		!strings.Contains(settingsText, `Runtime Routing, Health, Providers.`) ||
 		!strings.Contains(settingsText, `Config Directory`) ||
 		!strings.Contains(settingsText, `Per-provider probe`) ||
 		!strings.Contains(settingsText, `Diff and rollback ready`) ||
 		!strings.Contains(settingsText, `href="#cfg-upstreams"`) ||
+		!strings.Contains(settingsText, `data-nav-target="cfg-upstreams"`) ||
+		!strings.Contains(settingsText, `id="navMetaProviders"`) ||
 		!strings.Contains(settingsText, `provider-summary-strip`) ||
 		!strings.Contains(settingsText, `Status`) ||
 		!strings.Contains(settingsText, `Models`) ||
 		!strings.Contains(settingsText, `Auth`) ||
+		!strings.Contains(settingsText, `Probe`) ||
 		!strings.Contains(settingsText, `.page-settings .hero`) ||
 		!strings.Contains(settingsText, `grid-template-columns: 1fr;`) ||
 		!strings.Contains(settingsText, `.page-settings #heroStats`) ||
