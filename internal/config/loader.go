@@ -118,6 +118,13 @@ func (c *Config) Validate() error {
 		if _, err := url.ParseRequestURI(u.BaseURL); err != nil {
 			return fmt.Errorf("upstreams[%d].base_url invalid: %w", i, err)
 		}
+		if raw := strings.TrimSpace(u.ProviderClass); raw != "" {
+			normalized := NormalizeUpstreamClass(raw)
+			if !strings.EqualFold(raw, normalized) &&
+				!(strings.EqualFold(raw, "quota-limited") && normalized == UpstreamClassQuotaLimited) {
+				return fmt.Errorf("upstreams[%d].provider_class must be free or quota_limited", i)
+			}
+		}
 		if u.SameUpstreamRetries < 0 {
 			return fmt.Errorf("upstreams[%d].same_upstream_retries must be >= 0", i)
 		}

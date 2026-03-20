@@ -169,6 +169,7 @@ http://127.0.0.1:18080/admin/settings?token=YOUR_ADMIN_TOKEN
 - `name`
 - `base_url`
 - `api_key`
+- `provider_class`
 - `models`
 - `weight`
 - `timeout_ms`
@@ -177,6 +178,15 @@ http://127.0.0.1:18080/admin/settings?token=YOUR_ADMIN_TOKEN
 - `headers`
 
 这样可以把不同模型或不同供应商拆成多个路由条目。
+
+`provider_class` 目前支持两类：
+
+- `free`
+- `quota_limited`
+
+路由优先级是先选 `free`，只有当免费上游不可用、拥塞或不支持目标模型时，才回退到 `quota_limited`。
+
+如果 `quota_limited` 上游返回 `insufficient_quota`、`quota exceeded`、`exceeded your current quota` 一类额度耗尽信息，当前进程会把这个上游临时标记为不可再选，后续请求不再继续打它。
 
 ### Routing and retry
 
@@ -231,6 +241,7 @@ bridge:
 - 对 `408` / `429` / `5xx` 自动重试
 - 对上游错误正文中的关键字触发 retry
 - 对某些路径或状态码提前判定为 fail / retry
+- 切到 `infinite_on_error: true` 后，对 transport / status / intercept 命中的任何错误持续重试，直到调用方主动取消请求
 
 ## Admin UI
 
@@ -238,6 +249,7 @@ bridge:
 
 概览页聚焦读数和决策，不直接展示配置编辑器，适合日常巡检：
 
+- Runtime Posture：当前恢复模式、失败出口、探活状态、启用 provider 数量
 - Success rate / total cost / 1m RPM / 1m TPM
 - Live Performance
 - Throughput / Latency / Token / Success-Failure 图表
@@ -256,8 +268,10 @@ bridge:
 - health check 编辑
 - model bridge 编辑
 - retry policy 编辑
+- bounded / infinite recovery 预设切换，以及 infinite mode 对 retry ceiling / failure exit 的影响提示
 - response intercept 编辑
 - upstream provider 编辑
+- provider class 过滤：`all / free / quota_limited`
 - 配置导出
 - 历史版本浏览
 - 差异预览与回滚

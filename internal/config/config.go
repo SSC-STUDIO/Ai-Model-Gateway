@@ -78,6 +78,7 @@ type ProxyPolicyConfig struct {
 }
 
 type RetryPolicyConfig struct {
+	InfiniteOnError bool     `yaml:"infinite_on_error"`
 	StatusCodes     []int    `yaml:"status_codes"`
 	StatusCodeMin   *int     `yaml:"status_code_min"`
 	MessageKeywords []string `yaml:"message_keywords"`
@@ -97,6 +98,7 @@ type Upstream struct {
 	Name                string            `yaml:"name"`
 	BaseURL             string            `yaml:"base_url"`
 	APIKey              string            `yaml:"api_key"`
+	ProviderClass       string            `yaml:"provider_class"`
 	Models              []string          `yaml:"models"`
 	Weight              int               `yaml:"weight"`
 	TimeoutMs           int               `yaml:"timeout_ms"`
@@ -104,6 +106,11 @@ type Upstream struct {
 	Enabled             *bool             `yaml:"enabled"`
 	Headers             map[string]string `yaml:"headers"`
 }
+
+const (
+	UpstreamClassFree         = "free"
+	UpstreamClassQuotaLimited = "quota_limited"
+)
 
 func (c *Config) Normalize() {
 	if c.Listen == "" {
@@ -162,6 +169,7 @@ func (c *Config) Normalize() {
 	}
 	applyDefaultProxyPolicy(&c.Proxy)
 	for i := range c.Upstreams {
+		c.Upstreams[i].ProviderClass = NormalizeUpstreamClass(c.Upstreams[i].ProviderClass)
 		if c.Upstreams[i].Weight == 0 {
 			c.Upstreams[i].Weight = 1
 		}
@@ -176,6 +184,10 @@ func (u Upstream) IsEnabled() bool {
 		return true
 	}
 	return *u.Enabled
+}
+
+func (u Upstream) ProviderClassNormalized() string {
+	return NormalizeUpstreamClass(u.ProviderClass)
 }
 
 func (c Config) RewriteModel(model string) string {
@@ -247,6 +259,17 @@ func MatchesPattern(pattern string, value string) bool {
 	return matchesPattern(pattern, value)
 }
 
+func NormalizeUpstreamClass(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "quota", "quota_limited", "quota-limited", "limited", "metered", "paid":
+		return UpstreamClassQuotaLimited
+	case "free", "gratis", "public":
+		return UpstreamClassFree
+	default:
+		return UpstreamClassQuotaLimited
+	}
+}
+
 func applyDefaultProxyPolicy(policy *ProxyPolicyConfig) {
 	if policy == nil {
 		return
@@ -274,6 +297,11 @@ func defaultRetryableKeywords() []string {
 		"too many requests",
 		"rate limit",
 		"quota exceeded",
+		"insufficient quota",
+		"insufficient_quota",
+		"exceeded your current quota",
+		"billing hard limit",
+		"credit balance is too low",
 		"stream disconnected before completion",
 		"stream closed before response.completed",
 		"response.completed",

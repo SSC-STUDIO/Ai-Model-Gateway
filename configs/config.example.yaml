@@ -29,6 +29,7 @@ pricing:
   request_timeout_ms: 15000
 proxy:
   retry:
+    infinite_on_error: true
     status_codes:
     - 408
     - 429
@@ -60,25 +61,28 @@ upstreams:
 - name: station-a
   base_url: https://example-a.com
   api_key: sk-xxxx
+  provider_class: free
   models:
   - gpt-4o-mini
   - gpt-4.1-mini
   weight: 5
-  timeout_ms: 30000
+  timeout_ms: 300000
   same_upstream_retries: 0
   enabled: true
 - name: station-b
   base_url: https://example-b.com
   api_key: sk-yyyy
+  provider_class: quota_limited
   models:
   - gpt-4o-mini
   weight: 1
-  timeout_ms: 30000
+  timeout_ms: 300000
   same_upstream_retries: 0
   enabled: true
 - name: xiavier
   base_url: https://www.xiavier.com
   api_key: sk-your-xiavier-key
+  provider_class: quota_limited
   models:
   - claude-haiku-4-5-20251001
   - claude-opus-4-5-20251101
@@ -94,6 +98,7 @@ upstreams:
 - name: gm12331
   base_url: https://gm.12331.xyz
   api_key: sk-your-gm12331-key
+  provider_class: quota_limited
   models:
   - claude-opus-4-5
   - claude-opus-4-5-20251101

@@ -74,6 +74,7 @@ type configViewProxy struct {
 }
 
 type configViewRetry struct {
+	InfiniteOnError bool     `json:"infinite_on_error"`
 	StatusCodes     []int    `json:"status_codes"`
 	StatusCodeMin   *int     `json:"status_code_min"`
 	MessageKeywords []string `json:"message_keywords"`
@@ -93,6 +94,7 @@ type configViewUpstream struct {
 	Name                string            `json:"name"`
 	BaseURL             string            `json:"base_url"`
 	APIKey              string            `json:"api_key"`
+	ProviderClass       string            `json:"provider_class"`
 	Models              []string          `json:"models"`
 	Weight              int               `json:"weight"`
 	TimeoutMs           int               `json:"timeout_ms"`
@@ -147,6 +149,20 @@ type upstreamProbeResponse struct {
 	CheckedAt   string `json:"checked_at"`
 }
 
+type adminRuntimeView struct {
+	RouterStrategy             string `json:"router_strategy"`
+	MaxRetries                 int    `json:"max_retries"`
+	RetryInfiniteOnError       bool   `json:"retry_infinite_on_error"`
+	RetryBackoffMs             int    `json:"retry_backoff_ms"`
+	RetryBackoffMaxMs          int    `json:"retry_backoff_max_ms"`
+	FailurePassthroughAfterSec int    `json:"failure_passthrough_after_sec"`
+	HealthEnabled              bool   `json:"health_enabled"`
+	HealthPath                 string `json:"health_path"`
+	BridgeEnabled              bool   `json:"bridge_enabled"`
+	TotalUpstreams             int    `json:"total_upstreams"`
+	EnabledUpstreams           int    `json:"enabled_upstreams"`
+}
+
 func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *telemetry.PricingCatalog) http.Handler {
 	r := chi.NewRouter()
 	r.Use(withRequestID)
@@ -183,6 +199,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 			return
 		}
 
+		cfg := manager.CurrentConfig()
 		snapshot := stats.Snapshot()
 		pricingState := telemetry.BootstrapPricingSnapshot()
 		if pricingCatalog != nil {
@@ -193,8 +210,9 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		if err := json.NewEncoder(&buffer).Encode(map[string]any{
 			"request_id":       observability.RequestIDFromContext(r.Context()),
 			"generated_at":     snapshot.GeneratedAt,
-			"router_strategy":  manager.CurrentConfig().Router.Strategy,
-			"bridge":           manager.CurrentConfig().Bridge,
+			"router_strategy":  cfg.Router.Strategy,
+			"bridge":           cfg.Bridge,
+			"runtime":          buildAdminRuntimeView(cfg),
 			"available_models": manager.Models(),
 			"upstreams":        manager.Snapshot(),
 			"telemetry":        snapshot,
@@ -407,6 +425,7 @@ func renderConfigView(cfg config.Config) AdminConfigView {
 		},
 		Proxy: configViewProxy{
 			Retry: configViewRetry{
+				InfiniteOnError: cfg.Proxy.Retry.InfiniteOnError,
 				StatusCodes:     append([]int(nil), cfg.Proxy.Retry.StatusCodes...),
 				StatusCodeMin:   cfg.Proxy.Retry.StatusCodeMin,
 				MessageKeywords: append([]string(nil), cfg.Proxy.Retry.MessageKeywords...),
@@ -485,6 +504,7 @@ func applyRouterConfig(current config.RouterConfig, incoming configViewRouter) c
 }
 
 func applyProxyConfig(current config.ProxyPolicyConfig, incoming configViewProxy) config.ProxyPolicyConfig {
+	current.Retry.InfiniteOnError = incoming.Retry.InfiniteOnError
 	current.Retry.StatusCodes = append([]int(nil), incoming.Retry.StatusCodes...)
 	current.Retry.StatusCodeMin = incoming.Retry.StatusCodeMin
 	current.Retry.MessageKeywords = append([]string(nil), incoming.Retry.MessageKeywords...)
@@ -513,6 +533,7 @@ func renderUpstreams(upstreams []config.Upstream) []configViewUpstream {
 			Name:                upstream.Name,
 			BaseURL:             upstream.BaseURL,
 			APIKey:              upstream.APIKey,
+			ProviderClass:       upstream.ProviderClassNormalized(),
 			Models:              append([]string(nil), upstream.Models...),
 			Weight:              upstream.Weight,
 			TimeoutMs:           upstream.TimeoutMs,
@@ -532,6 +553,7 @@ func applyUpstreamConfig(incoming []configViewUpstream) []config.Upstream {
 			Name:                strings.TrimSpace(upstream.Name),
 			BaseURL:             strings.TrimSpace(upstream.BaseURL),
 			APIKey:              strings.TrimSpace(upstream.APIKey),
+			ProviderClass:       config.NormalizeUpstreamClass(upstream.ProviderClass),
 			Models:              append([]string(nil), upstream.Models...),
 			Weight:              upstream.Weight,
 			TimeoutMs:           upstream.TimeoutMs,
@@ -632,6 +654,29 @@ func probeUpstream(view configViewUpstream, healthCfg config.HealthConfig) upstr
 		LatencyMs:   latencyMs,
 		BodyPreview: strings.TrimSpace(string(bodyPreview)),
 		CheckedAt:   time.Now().Format(time.RFC3339),
+	}
+}
+
+func buildAdminRuntimeView(cfg config.Config) adminRuntimeView {
+	enabledUpstreams := 0
+	for _, upstream := range cfg.Upstreams {
+		if upstream.IsEnabled() {
+			enabledUpstreams++
+		}
+	}
+
+	return adminRuntimeView{
+		RouterStrategy:             cfg.Router.Strategy,
+		MaxRetries:                 cfg.Router.MaxRetries,
+		RetryInfiniteOnError:       cfg.Proxy.Retry.InfiniteOnError,
+		RetryBackoffMs:             cfg.Router.RetryBackoffMs,
+		RetryBackoffMaxMs:          cfg.Router.RetryBackoffMaxMs,
+		FailurePassthroughAfterSec: cfg.Router.FailurePassthroughAfterSec,
+		HealthEnabled:              cfg.Health.Enabled,
+		HealthPath:                 cfg.Health.Path,
+		BridgeEnabled:              cfg.Bridge.Enabled,
+		TotalUpstreams:             len(cfg.Upstreams),
+		EnabledUpstreams:           enabledUpstreams,
 	}
 }
 

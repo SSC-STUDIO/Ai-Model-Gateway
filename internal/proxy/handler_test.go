@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -154,6 +155,67 @@ func TestHandlerInterceptRuleForcesRetry(t *testing.T) {
 	}
 	if goodCalls.Load() != 1 {
 		t.Fatalf("expected good upstream called once, got %d", goodCalls.Load())
+	}
+}
+
+func TestHandlerInfiniteRetryModeKeepsRecoveringSingleUpstream(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if attempt < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"error":{"message":"temporary overload"}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"id":"chatcmpl-3","object":"chat.completion"}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{
+			Strategy:          "round_robin",
+			MaxRetries:        0,
+			RetryBackoffMs:    1,
+			RetryBackoffMaxMs: 1,
+			FailureThreshold:  10,
+			CooldownSec:       0,
+		},
+		Proxy: config.ProxyPolicyConfig{
+			Retry: config.RetryPolicyConfig{
+				InfiniteOnError: true,
+			},
+		},
+		Upstreams: []config.Upstream{
+			{Name: "solo", BaseURL: upstream.URL, Models: []string{"gpt-4o-mini"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-infinite"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.ChatCompletions(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "solo" {
+		t.Fatalf("expected upstream header solo, got %q", got)
+	}
+	attempts, err := strconv.Atoi(resp.Header.Get(observability.AttemptsHeader))
+	if err != nil {
+		t.Fatalf("expected numeric attempts header, got %q", resp.Header.Get(observability.AttemptsHeader))
+	}
+	if attempts < 3 {
+		t.Fatalf("expected attempts header to reflect at least 3 recovery loops, got %d", attempts)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("expected upstream to be retried until recovery, got %d calls", calls.Load())
 	}
 }
 
@@ -319,6 +381,79 @@ func TestHandlerPassthroughsRetryableUpstreamBodyAfterWindow(t *testing.T) {
 	}
 }
 
+func TestHandlerQuotaLimitedUpstreamGetsBlockedAfterQuotaError(t *testing.T) {
+	var quotaCalls atomic.Int32
+	quotaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		quotaCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"message":"insufficient_quota","type":"insufficient_quota"}}`)
+	}))
+	defer quotaServer.Close()
+
+	var fallbackCalls atomic.Int32
+	fallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fallbackCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl-fallback","object":"chat.completion"}`)
+	}))
+	defer fallbackServer.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{
+			Strategy:          "round_robin",
+			MaxRetries:        2,
+			RetryBackoffMs:    1,
+			RetryBackoffMaxMs: 1,
+		},
+		Upstreams: []config.Upstream{
+			{Name: "codex-openai", BaseURL: quotaServer.URL, ProviderClass: config.UpstreamClassQuotaLimited, Models: []string{"gpt-5.2-codex"}, Weight: 1},
+			{Name: "codex-backup", BaseURL: fallbackServer.URL, ProviderClass: config.UpstreamClassQuotaLimited, Models: []string{"gpt-5.2-codex"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	manager := router.NewManager(state.NewConfigStore(cfg))
+	handler := NewHandler(manager, newTestStore(t))
+
+	makeRequest := func(requestID string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.2-codex","messages":[{"role":"user","content":"hi"}]}`))
+		req = req.WithContext(observability.WithRequestID(req.Context(), requestID))
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		handler.ChatCompletions(recorder, req)
+		return recorder
+	}
+
+	first := makeRequest("req-quota-block-1")
+	if first.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected first request to recover via fallback, got %d", first.Result().StatusCode)
+	}
+	if got := first.Result().Header.Get(observability.UpstreamHeader); got != "codex-backup" {
+		t.Fatalf("expected fallback upstream header codex-backup, got %q", got)
+	}
+
+	second := makeRequest("req-quota-block-2")
+	if second.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected second request to use remaining quota upstream, got %d", second.Result().StatusCode)
+	}
+	if got := second.Result().Header.Get(observability.UpstreamHeader); got != "codex-backup" {
+		t.Fatalf("expected blocked quota upstream to stay skipped, got %q", got)
+	}
+
+	if quotaCalls.Load() != 1 {
+		t.Fatalf("expected quota-limited upstream to be blocked after first quota error, got %d calls", quotaCalls.Load())
+	}
+	if fallbackCalls.Load() != 2 {
+		t.Fatalf("expected fallback upstream to serve both requests, got %d calls", fallbackCalls.Load())
+	}
+
+	status := manager.Snapshot()["codex-openai"]
+	if !status.QuotaBlocked {
+		t.Fatalf("expected codex-openai to be marked quota blocked")
+	}
+}
+
 func TestHandlerRecordsFinal503WithLastUpstream(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(50 * time.Millisecond)
@@ -423,6 +558,185 @@ func TestResponsesCompatFallbackToChatCompletions(t *testing.T) {
 	}
 	if snapshot.Requests[0].RouteMode != "responses_compat" {
 		t.Fatalf("expected route mode responses_compat, got %q", snapshot.Requests[0].RouteMode)
+	}
+}
+
+func TestChatCompletionsAnthropicMessagesCompatFallback(t *testing.T) {
+	var chatCalls atomic.Int32
+	var messagesCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			chatCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"error":{"message":"service temporarily unavailable"}}`)
+		case "/v1/messages":
+			messagesCalls.Add(1)
+			if got := r.Header.Get("x-api-key"); got != "sk-anthropic" {
+				t.Fatalf("expected x-api-key header, got %q", got)
+			}
+			if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+				t.Fatalf("expected anthropic-version header, got %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"msg_123","type":"message","model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":12,"output_tokens":1}}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "cc-claude", BaseURL: upstream.URL, APIKey: "sk-anthropic", Models: []string{"claude-sonnet-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-chat"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.ChatCompletions(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"object":"chat.completion"`) || !strings.Contains(text, `"content":"ok"`) {
+		t.Fatalf("expected chat completion payload with ok, got %q", text)
+	}
+	if chatCalls.Load() != 1 || messagesCalls.Load() != 1 {
+		t.Fatalf("expected chat and anthropic messages fallback once, got chat=%d messages=%d", chatCalls.Load(), messagesCalls.Load())
+	}
+}
+
+func TestChatCompletionsAnthropicMessagesCompatFallbackStream(t *testing.T) {
+	var messagesCalls atomic.Int32
+	var anthropicRequestBody atomic.Value
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"error":{"message":"service temporarily unavailable"}}`)
+		case "/v1/messages":
+			messagesCalls.Add(1)
+			body, _ := io.ReadAll(r.Body)
+			anthropicRequestBody.Store(string(body))
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"msg_456","type":"message","role":"assistant","model":"claude-opus-4-6","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":13,"output_tokens":1}}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "claude", BaseURL: upstream.URL, APIKey: "sk-ant", Models: []string{"claude-opus-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"Reply with exactly ok"}],"stream":true}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-stream"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.ChatCompletions(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("expected SSE content type, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"object":"chat.completion.chunk"`) {
+		t.Fatalf("expected chat completion chunk payload, got %q", text)
+	}
+	if !strings.Contains(text, `"content":"ok"`) {
+		t.Fatalf("expected streamed content ok, got %q", text)
+	}
+	if !strings.Contains(text, `data: [DONE]`) {
+		t.Fatalf("expected done marker, got %q", text)
+	}
+	if messagesCalls.Load() != 1 {
+		t.Fatalf("expected one anthropic messages call, got %d", messagesCalls.Load())
+	}
+	rawBody, _ := anthropicRequestBody.Load().(string)
+	if !strings.Contains(rawBody, `"stream":false`) {
+		t.Fatalf("expected anthropic fallback request to disable stream, got %q", rawBody)
+	}
+}
+
+func TestResponsesAnthropicMessagesCompatFallback(t *testing.T) {
+	var responsesCalls atomic.Int32
+	var messagesCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/responses":
+			responsesCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"error":{"message":"service temporarily unavailable"}}`)
+		case "/v1/messages":
+			messagesCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"msg_456","type":"message","model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":10,"output_tokens":1}}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "cc-claude", BaseURL: upstream.URL, APIKey: "sk-anthropic", Models: []string{"claude-sonnet-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-sonnet-4-6","input":"Reply with exactly ok","stream":false}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-responses"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.Responses(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"object":"response"`) || !strings.Contains(text, `"output_text":"ok"`) {
+		t.Fatalf("expected responses payload with ok, got %q", text)
+	}
+	if responsesCalls.Load() != 1 || messagesCalls.Load() != 1 {
+		t.Fatalf("expected responses and anthropic messages fallback once, got responses=%d messages=%d", responsesCalls.Load(), messagesCalls.Load())
 	}
 }
 
@@ -544,6 +858,86 @@ func TestHandlerPassesThroughResponsesEventStreamWithoutRetry(t *testing.T) {
 	}
 	if secondCalls.Load() != 0 {
 		t.Fatalf("expected second upstream not called, got %d", secondCalls.Load())
+	}
+}
+
+func TestHandlerInfiniteRetryBuffersResponsesEventStreamUntilCompleted(t *testing.T) {
+	var firstCalls atomic.Int32
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		firstCalls.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "event: response.created\ndata: {\"id\":\"resp_1\"}\n\n")
+	}))
+	defer first.Close()
+
+	var secondCalls atomic.Int32
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondCalls.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "event: response.created\ndata: {\"id\":\"resp_2\"}\n\n")
+		_, _ = io.WriteString(w, "event: response.completed\ndata: {\"id\":\"resp_2\"}\n\n")
+	}))
+	defer second.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{
+			Strategy:          "round_robin",
+			MaxRetries:        2,
+			RetryBackoffMs:    1,
+			RetryBackoffMaxMs: 1,
+		},
+		Proxy: config.ProxyPolicyConfig{
+			Retry: config.RetryPolicyConfig{
+				InfiniteOnError: true,
+			},
+		},
+		Upstreams: []config.Upstream{
+			{Name: "first", BaseURL: first.URL, Models: []string{"gpt-5.4"}, Weight: 1},
+			{Name: "second", BaseURL: second.URL, Models: []string{"gpt-5.4"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hi","stream":true}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-sse-infinite"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.Responses(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "second" {
+		t.Fatalf("expected upstream header second, got %q", got)
+	}
+	attempts, err := strconv.Atoi(resp.Header.Get(observability.AttemptsHeader))
+	if err != nil {
+		t.Fatalf("expected numeric attempts header, got %q", resp.Header.Get(observability.AttemptsHeader))
+	}
+	if attempts < 2 {
+		t.Fatalf("expected attempts header to reflect retry after incomplete stream, got %d", attempts)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "response.completed") {
+		t.Fatalf("expected completed event in buffered response body, got %q", text)
+	}
+	if strings.Contains(text, "\"resp_1\"") {
+		t.Fatalf("expected incomplete first stream not to leak to client, got %q", text)
+	}
+	if firstCalls.Load() != 1 {
+		t.Fatalf("expected first upstream called once, got %d", firstCalls.Load())
+	}
+	if secondCalls.Load() != 1 {
+		t.Fatalf("expected second upstream called once, got %d", secondCalls.Load())
 	}
 }
 

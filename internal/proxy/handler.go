@@ -195,6 +195,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 	if maxAttempts < 1 {
 		maxAttempts = 1
 	}
+	infiniteRetry := cfg.Proxy.Retry.InfiniteOnError
 
 	excluded := make(map[string]struct{})
 	sameUpstreamRetriesUsed := make(map[string]int)
@@ -215,7 +216,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 		}
 	}
 
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := 0; ; attempt++ {
+		if !infiniteRetry && attempt >= maxAttempts {
+			break
+		}
 		routeMode := requestRouteMode(requestedModel, model, bridgeFallbackActivated)
 		upstream, ok := h.Manager.PickSticky(model, stickyKey, excluded)
 		if !ok {
@@ -224,6 +228,14 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				body = bridgeFallback.Body
 				contentType = bridgeFallback.ContentType
 				bridgeFallbackActivated = true
+				continue
+			}
+			if infiniteRetry {
+				excluded = make(map[string]struct{})
+				sameUpstreamRetriesUsed = make(map[string]int)
+				if sleepRetryBackoff(r.Context(), cfg.Router.RetryBackoffMs, cfg.Router.RetryBackoffMaxMs, attempt+1) != nil {
+					break
+				}
 				continue
 			}
 			break
@@ -255,7 +267,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 			continue
 		}
 
-		if shouldPassthroughResponsesStream(resp, r.URL.Path) {
+		if shouldPassthroughResponsesStream(resp, r.URL.Path, infiniteRetry) {
 			setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt+1)
 			captured, streamErr := copyResponseAndCapture(w, resp)
 			reason := ""
@@ -302,6 +314,17 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				return
 			}
 		}
+		if shouldAttemptAnthropicMessagesCompat(r.URL.Path, model, assessment, captured) {
+			if strings.HasPrefix(r.URL.Path, "/v1/responses") {
+				if h.tryResponsesAnthropicCompat(w, r, startedAt, requestID, upstream, requestedModel, model, attempt+1, stickyKey, body) {
+					return
+				}
+			} else if r.URL.Path == "/v1/chat/completions" {
+				if h.tryChatAnthropicCompat(w, r, startedAt, requestID, upstream, requestedModel, model, attempt+1, stickyKey, body) {
+					return
+				}
+			}
+		}
 
 		retryableFailure := assessment.Retryable || shouldRetryResponse(resp.StatusCode, cfg.Proxy.Retry)
 		bodyFailure := assessment.ErrorBody
@@ -312,7 +335,12 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				reason = fmt.Sprintf("upstream %s returned status %d", upstream.Name, resp.StatusCode)
 			}
 
-			h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf(reason), retryableFailure, assessment.Kind)
+			quotaExhausted := isQuotaExhaustedFailure(upstream, assessment, captured)
+			if quotaExhausted {
+				h.Manager.BlockUpstreamQuota(upstream.Name, reason)
+			} else {
+				h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf(reason), retryableFailure, assessment.Kind)
+			}
 			h.recordError(requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, resp.StatusCode, attempt+1, reason)
 			logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, fmt.Errorf(reason))
 			logFailureDiagnostics(requestID, getDebugSummary(), upstream.Name, resp.StatusCode, captured)
@@ -322,8 +350,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 			lastUpstream = upstream.Name
 			lastAttempts = attempt + 1
 
-			if retryableFailure && attempt < maxAttempts-1 {
-				if shouldRetrySameUpstream(upstream, sameUpstreamRetriesUsed[upstream.Name]) {
+			if quotaExhausted || shouldRetryFailure(retryableFailure, bodyFailure, infiniteRetry, attempt, maxAttempts) {
+				if quotaExhausted {
+					excluded[upstream.Name] = struct{}{}
+				} else if shouldRetrySameUpstream(upstream, sameUpstreamRetriesUsed[upstream.Name]) {
 					sameUpstreamRetriesUsed[upstream.Name]++
 				} else {
 					excluded[upstream.Name] = struct{}{}
@@ -340,7 +370,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				continue
 			}
 
-			if retryableFailure && captured != nil && h.Manager.ShouldPassthroughFailure(upstream.Name) {
+			if retryableFailure && !infiniteRetry && captured != nil && h.Manager.ShouldPassthroughFailure(upstream.Name) {
 				setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt+1)
 				h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, captured.StatusCode, attempt+1, false, reason, extractUsage(captured.Body))
 				writeCapturedResponse(w, captured)
@@ -368,7 +398,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 		return
 	}
 
-	if lastCaptured != nil && lastUpstream != "" && h.Manager.ShouldPassthroughFailure(lastUpstream) {
+	if !infiniteRetry && lastCaptured != nil && lastUpstream != "" && h.Manager.ShouldPassthroughFailure(lastUpstream) {
 		setProxyHeaders(w.Header(), requestID, lastUpstream, model, requestedModel, lastAttempts)
 		h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, requestRouteMode(requestedModel, model, bridgeFallbackActivated), lastUpstream, lastCaptured.StatusCode, lastAttempts, false, lastErrString(lastErr), extractUsage(lastCaptured.Body))
 		writeCapturedResponse(w, lastCaptured)
@@ -411,6 +441,53 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 	}
 	if upstream.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+upstream.APIKey)
+	}
+	for key, value := range upstream.Headers {
+		req.Header.Set(key, value)
+	}
+
+	start := time.Now()
+	client := h.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
+		return nil, time.Since(start), err
+	}
+	if cancel != nil && resp != nil && resp.Body != nil {
+		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: cancel}
+	}
+	return resp, time.Since(start), err
+}
+
+func (h *Handler) doAnthropicMessages(src *http.Request, body []byte, upstream config.Upstream, requestID string) (*http.Response, time.Duration, error) {
+	timeout := time.Duration(upstream.TimeoutMs) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	ctx := src.Context()
+	var cancel context.CancelFunc
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(upstream.BaseURL, "/v1/messages"), bytes.NewReader(body))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header = make(http.Header)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	if requestID != "" {
+		req.Header.Set(observability.RequestIDHeader, requestID)
+	}
+	if upstream.APIKey != "" {
+		req.Header.Set("x-api-key", upstream.APIKey)
 	}
 	for key, value := range upstream.Headers {
 		req.Header.Set(key, value)
@@ -753,8 +830,8 @@ func inspectEventStreamResponse(resp *http.Response, path string, policy config.
 	return applyInterceptRules(assessment, path, resp.StatusCode, body, policy), captured, nil
 }
 
-func shouldPassthroughResponsesStream(resp *http.Response, path string) bool {
-	if resp == nil || !expectsResponsesCompletedEvent(path) {
+func shouldPassthroughResponsesStream(resp *http.Response, path string, infiniteRetry bool) bool {
+	if resp == nil || infiniteRetry || !expectsResponsesCompletedEvent(path) {
 		return false
 	}
 	contentType := resp.Header.Get("Content-Type")
@@ -841,6 +918,40 @@ func classifyResponseBody(body []byte, mediaType string, statusCode int, policy 
 	}
 
 	return "", false, false
+}
+
+func isQuotaExhaustedFailure(upstream config.Upstream, assessment responseAssessment, captured *capturedResponse) bool {
+	if upstream.ProviderClassNormalized() != config.UpstreamClassQuotaLimited {
+		return false
+	}
+
+	text := strings.ToLower(strings.TrimSpace(assessment.Message))
+	if captured != nil && len(captured.Body) > 0 {
+		if text != "" {
+			text += "\n"
+		}
+		text += strings.ToLower(string(captured.Body))
+	}
+
+	for _, keyword := range quotaExhaustedKeywords() {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func quotaExhaustedKeywords() []string {
+	return []string{
+		"quota exceeded",
+		"insufficient quota",
+		"insufficient_quota",
+		"exceeded your current quota",
+		"billing hard limit",
+		"credit balance is too low",
+		"额度已用尽",
+		"额度不足",
+	}
 }
 
 func applyInterceptRules(assessment responseAssessment, path string, statusCode int, body []byte, policy config.ProxyPolicyConfig) responseAssessment {
@@ -1099,6 +1210,29 @@ func shouldAttemptResponsesCompat(path string, model string, assessment response
 		strings.Contains(message, "unsupported")
 }
 
+func shouldAttemptAnthropicMessagesCompat(path string, model string, assessment responseAssessment, captured *capturedResponse) bool {
+	if captured == nil {
+		return false
+	}
+	if path != "/v1/chat/completions" && path != "/v1/responses" {
+		return false
+	}
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-") {
+		return false
+	}
+	if captured.StatusCode == http.StatusNotImplemented ||
+		captured.StatusCode == http.StatusNotFound ||
+		captured.StatusCode == http.StatusMethodNotAllowed ||
+		captured.StatusCode == http.StatusServiceUnavailable {
+		return true
+	}
+	message := strings.ToLower(strings.TrimSpace(assessment.Message + " " + string(captured.Body)))
+	return strings.Contains(message, "anthropic") ||
+		strings.Contains(message, "messages api") ||
+		strings.Contains(message, "service temporarily unavailable") ||
+		strings.Contains(message, "unsupported")
+}
+
 func (h *Handler) tryResponsesCompat(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -1180,6 +1314,153 @@ func (h *Handler) tryResponsesCompat(
 	return true
 }
 
+func (h *Handler) tryChatAnthropicCompat(
+	w http.ResponseWriter,
+	r *http.Request,
+	startedAt time.Time,
+	requestID string,
+	upstream config.Upstream,
+	requestedModel string,
+	model string,
+	attempt int,
+	stickyKey string,
+	body []byte,
+) bool {
+	anthropicBody, streamRequested, err := buildAnthropicMessagesFromChat(body, model)
+	if err != nil {
+		return false
+	}
+	if streamRequested {
+		anthropicBody, err = forceAnthropicNonStream(anthropicBody)
+		if err != nil {
+			return false
+		}
+	}
+
+	resp, latency, err := h.doAnthropicMessages(r, anthropicBody, upstream, requestID)
+	if err != nil {
+		return false
+	}
+
+	assessment, captured, inspectErr := inspectResponse(resp, "/v1/messages", h.Manager.CurrentConfig().Proxy)
+	if inspectErr != nil || captured == nil {
+		return false
+	}
+	if assessment.ErrorBody || captured.StatusCode >= http.StatusBadRequest {
+		return false
+	}
+
+	chatPayload, err := buildChatFromAnthropic(captured.Body, model)
+	if err != nil {
+		return false
+	}
+	chatBody, err := json.Marshal(chatPayload)
+	if err != nil {
+		return false
+	}
+
+	h.Manager.ReportRequestSuccess(upstream.Name, latency, captured.StatusCode)
+	logProxyAttempt(requestID, model, upstream.Name, attempt, captured.StatusCode, latency, nil)
+	setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt)
+
+	contentType := "application/json"
+	compatBody := chatBody
+	if streamRequested {
+		contentType = "text/event-stream"
+		compatBody = marshalChatCompletionsCompatStream(chatPayload)
+		writeChatCompletionsCompatStream(w, compatBody)
+	} else {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(chatBody)
+	}
+
+	compatCaptured := &capturedResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{contentType}},
+		Body:       compatBody,
+	}
+	rememberStickyRouting(h.Manager, r.URL.Path, stickyKey, upstream.Name, compatCaptured)
+	h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, "anthropic_messages_compat", upstream.Name, http.StatusOK, attempt, true, "", extractUsage(chatBody))
+	return true
+}
+
+func (h *Handler) tryResponsesAnthropicCompat(
+	w http.ResponseWriter,
+	r *http.Request,
+	startedAt time.Time,
+	requestID string,
+	upstream config.Upstream,
+	requestedModel string,
+	model string,
+	attempt int,
+	stickyKey string,
+	body []byte,
+) bool {
+	chatPayload, streamRequested, err := buildChatCompletionsFromResponses(body, model)
+	if err != nil {
+		return false
+	}
+	if streamRequested {
+		chatPayload["stream"] = false
+	}
+
+	chatBody, err := json.Marshal(chatPayload)
+	if err != nil {
+		return false
+	}
+	anthropicBody, _, err := buildAnthropicMessagesFromChat(chatBody, model)
+	if err != nil {
+		return false
+	}
+
+	resp, latency, err := h.doAnthropicMessages(r, anthropicBody, upstream, requestID)
+	if err != nil {
+		return false
+	}
+
+	assessment, captured, inspectErr := inspectResponse(resp, "/v1/messages", h.Manager.CurrentConfig().Proxy)
+	if inspectErr != nil || captured == nil {
+		return false
+	}
+	if assessment.ErrorBody || captured.StatusCode >= http.StatusBadRequest {
+		return false
+	}
+
+	chatCompat, err := buildChatFromAnthropic(captured.Body, model)
+	if err != nil {
+		return false
+	}
+	chatCompatBody, err := json.Marshal(chatCompat)
+	if err != nil {
+		return false
+	}
+	responsePayload, _, err := buildResponsesFromChat(chatCompatBody, model)
+	if err != nil {
+		return false
+	}
+	responseBody, err := json.Marshal(responsePayload)
+	if err != nil {
+		return false
+	}
+
+	h.Manager.ReportRequestSuccess(upstream.Name, latency, captured.StatusCode)
+	logProxyAttempt(requestID, model, upstream.Name, attempt, captured.StatusCode, latency, nil)
+	setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(responseBody)
+
+	compatCaptured := &capturedResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       responseBody,
+	}
+	rememberStickyRouting(h.Manager, r.URL.Path, stickyKey, upstream.Name, compatCaptured)
+	h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, "anthropic_messages_compat", upstream.Name, http.StatusOK, attempt, true, "", extractUsage(chatCompatBody))
+	return true
+}
+
 func buildChatCompletionsFromResponses(body []byte, model string) (map[string]any, bool, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1222,6 +1503,96 @@ func buildChatCompletionsFromResponses(body []byte, model string) (map[string]an
 		chat["stream"] = true
 	}
 	return chat, stream, nil
+}
+
+func buildAnthropicMessagesFromChat(body []byte, model string) ([]byte, bool, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, false, fmt.Errorf("parse chat payload: %w", err)
+	}
+	if model == "" {
+		if m, ok := payload["model"].(string); ok {
+			model = strings.TrimSpace(m)
+		}
+	}
+	if model == "" {
+		return nil, false, fmt.Errorf("chat model is empty")
+	}
+	stream, _ := payload["stream"].(bool)
+
+	var systemParts []string
+	var messages []map[string]any
+	if rawMessages, ok := payload["messages"].([]any); ok {
+		for _, item := range rawMessages {
+			msg, systemText := normalizeAnthropicMessage(item)
+			if systemText != "" {
+				systemParts = append(systemParts, systemText)
+				continue
+			}
+			if msg != nil {
+				messages = append(messages, msg)
+			}
+		}
+	}
+	if len(messages) == 0 {
+		return nil, stream, fmt.Errorf("chat messages are empty")
+	}
+
+	anthropic := map[string]any{
+		"model":      model,
+		"messages":   messages,
+		"max_tokens": 1024,
+	}
+	if len(systemParts) > 0 {
+		anthropic["system"] = strings.TrimSpace(strings.Join(systemParts, "\n\n"))
+	}
+	if maxTokens, ok := payload["max_tokens"]; ok {
+		anthropic["max_tokens"] = maxTokens
+	}
+	copyIfPresent(payload, anthropic, "temperature", "top_p", "stop_sequences")
+	if stream {
+		anthropic["stream"] = true
+	}
+	data, err := json.Marshal(anthropic)
+	if err != nil {
+		return nil, stream, err
+	}
+	return data, stream, nil
+}
+
+func forceAnthropicNonStream(body []byte) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	payload["stream"] = false
+	return json.Marshal(payload)
+}
+
+func normalizeAnthropicMessage(item any) (map[string]any, string) {
+	msg, ok := item.(map[string]any)
+	if !ok {
+		return nil, ""
+	}
+	role, _ := msg["role"].(string)
+	role = strings.TrimSpace(role)
+	if role == "" {
+		role = "user"
+	}
+	text := extractTextFromContent(msg["content"])
+	if text == "" {
+		return nil, ""
+	}
+	if role == "system" {
+		return nil, text
+	}
+	if role != "assistant" {
+		role = "user"
+	}
+	return map[string]any{
+		"role":    role,
+		"content": text,
+	}, ""
 }
 
 func extractResponsesMessages(input any) []map[string]any {
@@ -1399,6 +1770,61 @@ func buildResponsesFromChat(chatBody []byte, model string) (map[string]any, stri
 	return response, responseID, nil
 }
 
+func buildChatFromAnthropic(body []byte, model string) (map[string]any, error) {
+	var payload struct {
+		ID      string `json:"id"`
+		Type    string `json:"type"`
+		Role    string `json:"role"`
+		Model   string `json:"model"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("parse anthropic message: %w", err)
+	}
+	if model == "" {
+		model = payload.Model
+	}
+	var builder strings.Builder
+	for _, part := range payload.Content {
+		if part.Type == "text" && strings.TrimSpace(part.Text) != "" {
+			if builder.Len() > 0 {
+				builder.WriteString("\n\n")
+			}
+			builder.WriteString(strings.TrimSpace(part.Text))
+		}
+	}
+	text := strings.TrimSpace(builder.String())
+	totalTokens := payload.Usage.InputTokens + payload.Usage.OutputTokens
+	return map[string]any{
+		"id":      payload.ID,
+		"object":  "chat.completion",
+		"created": time.Now().Unix(),
+		"model":   model,
+		"choices": []any{
+			map[string]any{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": text,
+				},
+				"finish_reason": "stop",
+			},
+		},
+		"usage": map[string]any{
+			"prompt_tokens":     payload.Usage.InputTokens,
+			"completion_tokens": payload.Usage.OutputTokens,
+			"total_tokens":      totalTokens,
+		},
+	}, nil
+}
+
 func flattenChatContent(content interface{}) string {
 	switch value := content.(type) {
 	case string:
@@ -1451,6 +1877,87 @@ func writeResponsesCompatStream(w http.ResponseWriter, response map[string]any) 
 	_, _ = w.Write([]byte("data: "))
 	_, _ = w.Write(completedBytes)
 	_, _ = w.Write([]byte("\n\n"))
+}
+
+func writeChatCompletionsCompatStream(w http.ResponseWriter, body []byte) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+func marshalChatCompletionsCompatStream(chat map[string]any) []byte {
+	id, _ := chat["id"].(string)
+	model, _ := chat["model"].(string)
+	var created int64
+	switch value := chat["created"].(type) {
+	case int64:
+		created = value
+	case int:
+		created = int64(value)
+	case float64:
+		created = int64(value)
+	}
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+
+	content := ""
+	finishReason := "stop"
+	if choices, ok := chat["choices"].([]any); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]any); ok {
+			if reason, ok := choice["finish_reason"].(string); ok && strings.TrimSpace(reason) != "" {
+				finishReason = reason
+			}
+			if message, ok := choice["message"].(map[string]any); ok {
+				content = extractTextFromContent(message["content"])
+			}
+		}
+	}
+
+	firstChunk := map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"delta": map[string]any{
+					"role":    "assistant",
+					"content": content,
+				},
+				"finish_reason": nil,
+			},
+		},
+	}
+	finalChunk := map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{},
+				"finish_reason": finishReason,
+			},
+		},
+	}
+
+	firstBytes, _ := json.Marshal(firstChunk)
+	finalBytes, _ := json.Marshal(finalChunk)
+
+	var builder strings.Builder
+	builder.WriteString("data: ")
+	builder.Write(firstBytes)
+	builder.WriteString("\n\n")
+	builder.WriteString("data: ")
+	builder.Write(finalBytes)
+	builder.WriteString("\n\n")
+	builder.WriteString("data: [DONE]\n\n")
+	return []byte(builder.String())
 }
 
 func copyIfPresent(src map[string]any, dst map[string]any, keys ...string) {
@@ -1729,6 +2236,13 @@ func shouldRetryResponse(statusCode int, policy config.RetryPolicyConfig) bool {
 		return true
 	}
 	return false
+}
+
+func shouldRetryFailure(retryableFailure bool, bodyFailure bool, infiniteRetry bool, attempt int, maxAttempts int) bool {
+	if infiniteRetry {
+		return retryableFailure || bodyFailure
+	}
+	return retryableFailure && attempt < maxAttempts-1
 }
 
 func sleepRetryBackoff(ctx context.Context, baseMs int, maxMs int, attempt int) error {

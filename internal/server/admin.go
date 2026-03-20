@@ -166,11 +166,11 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .hero {
       display: grid;
-      grid-template-columns: 1.3fr 0.7fr;
+      grid-template-columns: 1fr;
       gap: clamp(14px, 1.4vw, 20px);
       margin-bottom: clamp(14px, 1.6vw, 20px);
     }
-    .hero-main, .hero-side, .card {
+    .hero-main, .card {
       background: linear-gradient(160deg, rgba(26, 24, 21, 0.92), rgba(14, 13, 12, 0.85));
       border: 1px solid rgba(255, 244, 230, 0.16);
       border-radius: 20px;
@@ -179,7 +179,7 @@ const adminHTMLTemplate = `<!doctype html>
       min-width: 0;
       transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
     }
-    .hero-main:hover, .hero-side:hover, .card:hover {
+    .hero-main:hover, .card:hover {
       border-color: rgba(126, 231, 214, 0.22);
       box-shadow: var(--shadow), var(--glow);
       transform: translateY(-1px);
@@ -248,30 +248,6 @@ const adminHTMLTemplate = `<!doctype html>
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
       font-size: 12px;
     }
-    .hero-side {
-      padding: 16px;
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-    }
-    .hero-stat {
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-      padding: 12px;
-    }
-    .hero-stat .k {
-      color: var(--muted);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .hero-stat .v {
-      margin-top: 6px;
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-    }
     .layout {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
@@ -294,98 +270,6 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .metrics.two {
       grid-template-columns: repeat(2, 1fr);
-    }
-    .overview-utility {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 280px;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-    .overview-pulse {
-      display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .overview-pulse-card {
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 12px;
-      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-      display: grid;
-      gap: 6px;
-      min-width: 0;
-    }
-    .overview-pulse-label {
-      color: var(--muted);
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .overview-pulse-value {
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 1;
-    }
-    .overview-pulse-meta {
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.45;
-    }
-    .overview-quicknav {
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 12px;
-      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-      display: grid;
-      gap: 8px;
-    }
-    .overview-quicknav-title {
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .overview-quicknav-links {
-      display: grid;
-      gap: 8px;
-    }
-    .overview-quicknav a {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.04);
-      color: var(--muted);
-      text-decoration: none;
-    }
-    .overview-quicknav a:hover {
-      color: var(--ink);
-      border-color: rgba(126, 231, 214, 0.4);
-      text-decoration: none;
-    }
-    .overview-quicknav a.active {
-      color: var(--ink);
-      border-color: rgba(126, 231, 214, 0.48);
-      background: linear-gradient(120deg, rgba(126, 231, 214, 0.16), rgba(126, 231, 214, 0.05));
-      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12);
-    }
-    .overview-quicknav-copy {
-      display: grid;
-      gap: 3px;
-      min-width: 0;
-    }
-    .overview-quicknav strong {
-      font-size: 12px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    .overview-quicknav span {
-      color: var(--muted);
-      font-size: 11px;
     }
     .metric {
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
@@ -576,9 +460,6 @@ const adminHTMLTemplate = `<!doctype html>
     .page-settings .hero {
       grid-template-columns: 1fr;
     }
-    .page-settings #heroStats {
-      display: none;
-    }
     .page-settings .hero-main {
       min-height: 0;
     }
@@ -660,7 +541,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-shell {
       display: grid;
-      grid-template-columns: 210px minmax(0, 1fr) 360px;
+      grid-template-columns: 220px minmax(0, 1fr) 340px;
       gap: 14px;
       align-items: start;
     }
@@ -690,20 +571,15 @@ const adminHTMLTemplate = `<!doctype html>
       color: var(--muted);
       margin-bottom: 8px;
     }
-    .settings-summary {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-    }
     .settings-jumpbar {
       display: grid;
       gap: 8px;
       margin-bottom: 2px;
     }
     .settings-jumpbar a {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(64px, 92px);
+      align-items: start;
       gap: 10px;
       padding: 10px 12px;
       border-radius: 14px;
@@ -712,6 +588,8 @@ const adminHTMLTemplate = `<!doctype html>
       color: var(--muted);
       font-size: 12px;
       text-decoration: none;
+      min-width: 0;
+      overflow: hidden;
     }
     .settings-jumpbar a:hover {
       color: var(--ink);
@@ -744,7 +622,12 @@ const adminHTMLTemplate = `<!doctype html>
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: rgba(247, 243, 238, 0.72);
-      white-space: nowrap;
+      white-space: normal;
+      line-height: 1.3;
+      text-align: right;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      min-width: 0;
     }
     .settings-jumpbar em.meta-good {
       color: var(--accent);
@@ -764,10 +647,76 @@ const adminHTMLTemplate = `<!doctype html>
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
+    .policy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .policy-card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    }
+    .policy-card.active {
+      border-color: rgba(126, 231, 214, 0.42);
+      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12), 0 14px 26px rgba(121, 230, 215, 0.08);
+      transform: translateY(-1px);
+    }
+    .policy-card.warn {
+      border-color: rgba(241, 184, 102, 0.32);
+      box-shadow: inset 0 0 0 1px rgba(241, 184, 102, 0.1);
+    }
+    .policy-card-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .policy-card-value {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+    .policy-card-meta {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .mode-preset-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .mode-preset {
+      width: 100%;
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+      appearance: none;
+    }
+    .mode-preset:hover {
+      border-color: rgba(126, 231, 214, 0.38);
+      transform: translateY(-1px);
+    }
+    .mode-preset.active {
+      border-color: rgba(126, 231, 214, 0.44);
+      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.14), 0 16px 32px rgba(121, 230, 215, 0.08);
+    }
     .config-field {
       display: flex;
       flex-direction: column;
       gap: 5px;
+    }
+    .config-field.subdued {
+      opacity: 0.58;
     }
     .config-field label {
       font-size: 11px;
@@ -851,6 +800,25 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 8px;
     }
+    .config-section {
+      position: relative;
+      overflow: clip;
+    }
+    .config-section::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(126, 231, 214, 0.9), rgba(241, 184, 102, 0.3));
+      opacity: 0.72;
+    }
+    .config-section.retry-focus {
+      border-color: rgba(126, 231, 214, 0.24);
+      background:
+        radial-gradient(circle at 100% 0%, rgba(126, 231, 214, 0.10), transparent 42%),
+        linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    }
     .config-card-head {
       display: flex;
       justify-content: space-between;
@@ -863,6 +831,7 @@ const adminHTMLTemplate = `<!doctype html>
       z-index: 2;
       margin: -2px -2px 8px;
       padding: 2px 2px 8px;
+      flex-wrap: wrap;
       background: linear-gradient(180deg, rgba(14, 13, 12, 0.98), rgba(14, 13, 12, 0.9) 82%, rgba(14, 13, 12, 0));
     }
     .config-card-title {
@@ -873,11 +842,34 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 4px;
       min-width: 0;
     }
+    .section-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .section-kicker strong {
+      color: var(--accent-strong);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+    }
+    .section-kicker span {
+      padding-top: 1px;
+    }
     .section-inline-meta {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       margin-top: 2px;
+      min-width: 0;
+    }
+    .section-inline-meta .mini-chip {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .config-help {
       color: var(--muted);
@@ -906,10 +898,24 @@ const adminHTMLTemplate = `<!doctype html>
       outline: none;
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
     }
+    .config-filter {
+      min-width: 180px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.06);
+      padding: 9px 12px;
+      font-size: 12px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
     .config-card.collapsed > :not(.config-card-head) {
       display: none;
     }
     .provider-card.collapsed > :not(.config-card-head):not(.provider-summary-strip):not(.probe-status-host) {
+      display: none;
+    }
+    .provider-card.hidden-provider {
       display: none;
     }
     .config-card.hidden-search {
@@ -956,38 +962,10 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 10px;
     }
-    .settings-roster {
-      display: grid;
-      gap: 8px;
-    }
-    .settings-roster-row {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 9px 10px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.04);
-    }
-    .settings-roster-copy {
-      display: grid;
-      gap: 3px;
-      min-width: 0;
-    }
-    .settings-roster-name {
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.35;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .settings-roster-meta {
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.35;
-      overflow-wrap: anywhere;
+    .settings-rail-panel.command-panel {
+      background:
+        radial-gradient(circle at 0% 0%, rgba(241, 184, 102, 0.08), transparent 42%),
+        linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
     }
     .probe-status {
       display: grid;
@@ -1333,21 +1311,56 @@ const adminHTMLTemplate = `<!doctype html>
       .span-8, .span-6, .span-4 {
         grid-column: span 12;
       }
-      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip, .overview-pulse, .surface-strip {
+      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
         grid-template-columns: repeat(2, 1fr);
       }
-      .overview-utility {
+      .mode-preset-grid {
         grid-template-columns: 1fr;
       }
     }
     @media (max-width: 640px) {
-      .metrics, .hero-side, .settings-summary, .page-settings .config-grid, .provider-summary-strip, .overview-pulse, .surface-strip {
+      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
         grid-template-columns: 1fr;
+      }
+      .mode-preset-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 1320px) {
+      .page-settings .config-grid,
+      .policy-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .settings-jumpbar a {
+        grid-template-columns: 1fr;
+      }
+      .settings-jumpbar em {
+        text-align: left;
+        letter-spacing: 0.06em;
+      }
+    }
+    @media (max-width: 1380px) {
+      .settings-shell {
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+      .settings-rail {
+        grid-column: 1 / -1;
+      }
+      .settings-rail .settings-sticky {
+        position: static;
       }
     }
     @media (max-width: 1180px) {
       .span-4, .span-8 {
         grid-column: span 12;
+      }
+      .page-settings .config-grid,
+      .policy-grid,
+      .surface-strip {
+        grid-template-columns: 1fr;
+      }
+      .mode-preset-grid {
+        grid-template-columns: 1fr;
       }
     }
     @media (max-width: 920px) {
@@ -1410,26 +1423,21 @@ const adminHTMLTemplate = `<!doctype html>
           {{HERO_META_PRIMARY}}
           {{HERO_META_SECONDARY}}
           {{HERO_META_TERTIARY}}
-          <a class="btn secondary link" href="{{SETTINGS_HREF}}" id="openSettings">{{SETTINGS_LABEL}}</a>
         </div>
       </div>
-      <div class="hero-side" id="heroStats"></div>
     </div>
 
     <div id="overviewShell">
-    <div class="overview-utility" id="overviewUtility">
-      <div class="overview-pulse" id="overviewPulse"></div>
-      <div class="overview-quicknav" id="overviewQuickNav">
-        <div class="overview-quicknav-title">Jump to Surface</div>
-        <div class="overview-quicknav-links">
-          <a href="#performance" data-overview-target="performance"><div class="overview-quicknav-copy"><strong>Performance</strong><span>Live RPM, TPM, latency</span></div></a>
-          <a href="#economics" data-overview-target="economics"><div class="overview-quicknav-copy"><strong>Economics</strong><span>Model cost and cache leverage</span></div></a>
-          <a href="#upstreams-card" data-overview-target="upstreams-card"><div class="overview-quicknav-copy"><strong>Upstreams</strong><span>Health and routed usage</span></div></a>
-          <a href="#requests-card" data-overview-target="requests-card"><div class="overview-quicknav-copy"><strong>Requests</strong><span>Latest traces and failures</span></div></a>
+    <div class="card" id="runtime-card">
+      <div class="section-head">
+        <div>
+          <div class="title">Runtime Posture</div>
+          <div class="caption">把当前恢复模式、失败出口、探活和启用 provider 放在一个面板里，先判断应该继续扛还是暴露错误。</div>
         </div>
       </div>
+      <div class="surface-strip" id="runtimeTopline"></div>
+      <div class="metrics two" id="runtimeMetrics"></div>
     </div>
-    <div class="surface-strip" id="overviewAlerts"></div>
     <div class="card" id="performance">
       <div class="section-head">
         <div>
@@ -1608,6 +1616,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-card config-section" id="cfg-health" data-section-title="Health Check">
             <div class="config-card-head">
               <div class="config-card-head-main">
+                <div class="section-kicker"><strong>01</strong><span>Runtime Guardrail</span></div>
                 <div class="config-card-title">Health Check</div>
                 <div class="config-help">控制主动探活的开关、间隔、超时和路径</div>
                 <div class="section-inline-meta" id="cfgHealthMeta"></div>
@@ -1635,6 +1644,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-card config-section" id="cfg-bridge" data-section-title="Model Bridge">
             <div class="config-card-head">
               <div class="config-card-head-main">
+                <div class="section-kicker"><strong>02</strong><span>Rewrite Surface</span></div>
                 <div class="config-card-title">Model Bridge</div>
                 <div class="config-help">维护模型别名映射和需跳过桥接的 User-Agent</div>
                 <div class="section-inline-meta" id="cfgBridgeMeta"></div>
@@ -1659,6 +1669,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-card config-section" id="cfg-router" data-section-title="Router Retry">
             <div class="config-card-head">
               <div class="config-card-head-main">
+                <div class="section-kicker"><strong>03</strong><span>Traffic Strategy</span></div>
                 <div class="config-card-title">Router Retry</div>
                 <div class="config-help">控制重试次数与退避窗口</div>
                 <div class="section-inline-meta" id="cfgRouterMeta"></div>
@@ -1675,6 +1686,7 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-field">
                 <label>Max Retries</label>
                 <input type="number" min="0" id="cfgMaxRetries" />
+                <div class="config-help" id="cfgMaxRetriesHint">Maximum retry rounds before the gateway stops retrying.</div>
               </div>
               <div class="config-field">
                 <label>Backoff Base (ms)</label>
@@ -1695,17 +1707,54 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-field">
                 <label>Passthrough After (sec)</label>
                 <input type="number" min="0" id="cfgPassthrough" />
+                <div class="config-help" id="cfgPassthroughHint">After this window, retryable failures can surface the upstream response.</div>
               </div>
             </div>
           </div>
-          <div class="config-card config-section" data-section-title="Retry Policy">
+          <div class="config-card config-section retry-focus" data-section-title="Retry Policy">
             <div class="config-card-head">
               <div class="config-card-head-main">
+                <div class="section-kicker"><strong>04</strong><span>Recovery Policy</span></div>
                 <div class="config-card-title">Retry Policy</div>
-                <div class="config-help">命中状态码或关键字后触发重试</div>
+                <div class="config-help">命中状态码或关键字后触发重试，也可以切到“任何错误都无限重试”的恢复模式</div>
+                <div class="section-inline-meta" id="cfgRetryMeta"></div>
               </div>
             </div>
+            <div class="policy-grid">
+              <div class="policy-card" id="retryModeCard">
+                <div class="policy-card-label">Recovery Mode</div>
+                <div class="policy-card-value mono" id="retryModeValue">bounded</div>
+                <div class="policy-card-meta" id="retryModeMeta">Retry only matched retryable failures.</div>
+              </div>
+              <div class="policy-card" id="retryBackoffCard">
+                <div class="policy-card-label">Backoff Window</div>
+                <div class="policy-card-value mono" id="retryBackoffValue">0 ms</div>
+                <div class="policy-card-meta" id="retryBackoffMeta">Base and cap for exponential backoff.</div>
+              </div>
+              <div class="policy-card" id="retryPassthroughCard">
+                <div class="policy-card-label">Failure Exit</div>
+                <div class="policy-card-value mono" id="retryPassthroughValue">bounded</div>
+                <div class="policy-card-meta" id="retryPassthroughMeta">After the retry window, the gateway can surface the upstream failure.</div>
+              </div>
+            </div>
+            <div class="mode-preset-grid">
+              <button class="policy-card mode-preset" id="retryModePresetBounded" type="button">
+                <div class="policy-card-label">Preset</div>
+                <div class="policy-card-value">Bounded Failover</div>
+                <div class="policy-card-meta">Respect max retries and allow passthrough after the configured failure window.</div>
+              </button>
+              <button class="policy-card mode-preset" id="retryModePresetInfinite" type="button">
+                <div class="policy-card-label">Preset</div>
+                <div class="policy-card-value">Infinite Recovery</div>
+                <div class="policy-card-meta">Retry transport, status, and intercepted body errors until the caller cancels.</div>
+              </button>
+            </div>
             <div class="config-grid">
+              <div class="config-field">
+                <label>Recovery Mode</label>
+                <label class="small"><input type="checkbox" id="cfgRetryInfiniteOnError"> Infinite retry on any error</label>
+                <div class="config-help">Transport errors, response status errors, and intercepted body errors keep retrying until the client cancels.</div>
+              </div>
               <div class="config-field">
                 <label>Status Codes</label>
                 <input type="text" id="cfgRetryCodes" placeholder="408,429,500,502,503,504" />
@@ -1714,7 +1763,7 @@ const adminHTMLTemplate = `<!doctype html>
                 <label>Status Code Min</label>
                 <input type="number" min="0" id="cfgRetryMin" placeholder="500" />
               </div>
-              <div class="config-field" style="grid-column: span 2;">
+              <div class="config-field" style="grid-column: span 3;">
                 <label>Message Keywords</label>
                 <textarea id="cfgRetryKeywords" placeholder="rate limit\nupstream request failed"></textarea>
               </div>
@@ -1723,6 +1772,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-card config-section" id="cfg-intercepts" data-section-title="Response Intercepts">
             <div class="config-card-head">
               <div class="config-card-head-main">
+                <div class="section-kicker"><strong>05</strong><span>Response Traps</span></div>
                 <div class="config-card-title">Response Intercepts</div>
                 <div class="config-help">按路径、状态码或错误关键字提前判定 retry / fail</div>
                 <div class="section-inline-meta" id="cfgInterceptMeta"></div>
@@ -1736,6 +1786,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-card config-section" id="cfg-upstreams" data-section-title="Service Providers">
             <div class="config-card-head">
               <div class="config-card-head-main">
+                <div class="section-kicker"><strong>06</strong><span>Provider Matrix</span></div>
                 <div class="config-card-title">Service Providers</div>
                 <div class="config-help">维护上游服务商的 URL、API key、模型范围和超时；每一项都可先行测试再保存</div>
                 <div class="section-inline-meta" id="cfgUpstreamsMeta"></div>
@@ -1749,49 +1800,25 @@ const adminHTMLTemplate = `<!doctype html>
             </div>
             <aside class="settings-rail">
               <div class="settings-sticky">
-                <div class="settings-summary">
-                  <div class="metric"><div class="k">Providers</div><div class="v mono" id="settingsProviderCount">0</div><div class="small" id="settingsEnabledProviders">0 enabled</div></div>
-                  <div class="metric"><div class="k">Bridge Rules</div><div class="v mono" id="settingsBridgeRuleCount">0</div><div class="small">Request rewrite map</div></div>
-                  <div class="metric"><div class="k">Router</div><div class="v mono" id="settingsRouterStrategy">health_weighted_rr</div><div class="small">Active strategy</div></div>
-                  <div class="metric"><div class="k">Health Path</div><div class="v mono" id="settingsHealthPath">/v1/models</div><div class="small">Probe target</div></div>
-                  <div class="metric"><div class="k">Draft</div><div class="v mono" id="settingsDraftState">synced</div><div class="small" id="settingsDraftMeta">Matches saved config</div></div>
-                  <div class="metric"><div class="k">Visible</div><div class="v mono" id="settingsVisibleSections">6</div><div class="small" id="settingsVisibleMeta">Sections in current filter</div></div>
-                  <div class="metric"><div class="k">Issues</div><div class="v mono" id="settingsIssueCount">0</div><div class="small" id="settingsIssueMeta">No config gaps detected</div></div>
-                </div>
-                <div class="config-card settings-rail-panel">
+                <div class="config-card settings-rail-panel command-panel">
+                  <div class="config-card-head">
+                    <div class="config-card-head-main">
+                      <div class="section-kicker"><strong>Ops</strong><span>Control Deck</span></div>
+                      <div class="config-card-title">Surface Controls</div>
+                      <div class="config-help">先搜索区块，再按 provider class 过滤免费或额度上游；保存、导出和回滚仍在底部固定操作区。</div>
+                    </div>
+                  </div>
                   <div class="config-toolbar">
                     <input class="config-search" id="configSearch" type="search" placeholder="Search config sections, fields, providers..." />
+                    <select class="config-filter" id="providerClassFilter">
+                      <option value="all">All Providers</option>
+                      <option value="free">Free First</option>
+                      <option value="quota_limited">Quota-Limited</option>
+                    </select>
                     <button class="btn secondary" id="expandSections" type="button">Expand All</button>
                     <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
                   </div>
                   <div class="validation-summary" id="configValidation"></div>
-                </div>
-                <div class="config-card settings-rail-panel">
-                  <div class="config-card-head">
-                    <div class="config-card-head-main">
-                      <div class="config-card-title">Provider Roster</div>
-                      <div class="config-help">快速查看已启用 provider、模型范围和超时配置</div>
-                    </div>
-                  </div>
-                  <div class="settings-roster" id="settingsProviderRoster"></div>
-                </div>
-                <div class="config-card settings-rail-panel">
-                  <div class="config-card-head">
-                    <div class="config-card-head-main">
-                      <div class="config-card-title">Bridge Preview</div>
-                      <div class="config-help">当前请求改写规则的前几项预览</div>
-                    </div>
-                  </div>
-                  <div class="settings-roster" id="settingsBridgeRoster"></div>
-                </div>
-                <div class="config-card settings-rail-panel">
-                  <div class="config-card-head">
-                    <div class="config-card-head-main">
-                      <div class="config-card-title">Config Diagnostics</div>
-                      <div class="config-help">快速看空 key、未设模型范围和健康配置缺口</div>
-                    </div>
-                  </div>
-                  <div class="settings-roster" id="settingsDiagnostics"></div>
                 </div>
                 <div class="config-card settings-rail-panel" id="cfg-history">
                   <div class="config-card-head">
@@ -2050,7 +2077,6 @@ const adminHTMLTemplate = `<!doctype html>
     let configHistoryVersionCount = 0;
     const updateActiveTopnav = () => {
       const links = Array.from(document.querySelectorAll('[data-topnav-target]'));
-      const quickLinks = Array.from(document.querySelectorAll('[data-overview-target]'));
       if (!links.length || document.body.classList.contains('page-settings')) return;
       const sections = links
         .map((link) => byId(link.getAttribute('data-topnav-target') || ''))
@@ -2067,9 +2093,6 @@ const adminHTMLTemplate = `<!doctype html>
       });
       links.forEach((link) => {
         link.classList.toggle('active', link.getAttribute('data-topnav-target') === activeID);
-      });
-      quickLinks.forEach((link) => {
-        link.classList.toggle('active', link.getAttribute('data-overview-target') === activeID);
       });
     };
     const buildConfigPayload = () => ({
@@ -2095,6 +2118,7 @@ const adminHTMLTemplate = `<!doctype html>
       },
       proxy: {
         retry: {
+          infinite_on_error: byId('cfgRetryInfiniteOnError')?.checked ?? false,
           status_codes: parseCodes(byId('cfgRetryCodes')?.value),
           status_code_min: readOptionalNumber(byId('cfgRetryMin')),
           message_keywords: parseList(byId('cfgRetryKeywords')?.value)
@@ -2118,16 +2142,21 @@ const adminHTMLTemplate = `<!doctype html>
       el.classList.remove('meta-good', 'meta-warn', 'meta-danger');
       if (tone) el.classList.add('meta-' + tone);
     };
+    const currentProviderClassFilter = () => String(byId('providerClassFilter')?.value || 'all').trim();
     const computeSettingsDiagnostics = () => {
       const providers = collectUpstreams();
       const enabledProviders = providers.filter((provider) => provider.enabled !== false).length;
       const disabledProviders = providers.length - enabledProviders;
+      const freeProviders = providers.filter((provider) => String(provider.provider_class || 'quota_limited').trim() === 'free').length;
+      const quotaLimitedProviders = providers.filter((provider) => String(provider.provider_class || 'quota_limited').trim() !== 'free').length;
       const emptyKeys = providers.filter((provider) => !String(provider.api_key || '').trim()).length;
       const unscopedProviders = providers.filter((provider) => !(provider.models || []).length).length;
       const bridgeRules = collectBridgeRules().filter((rule) => String(rule?.from || '').trim() && String(rule?.to || '').trim()).length;
       const interceptRules = collectIntercepts().filter((rule) => rule && rule.enabled !== false).length;
       const healthEnabled = byId('cfgHealthEnabled')?.checked ?? false;
       const healthPath = String(byId('cfgHealthPath')?.value || '').trim();
+      const retryInfinite = byId('cfgRetryInfiniteOnError')?.checked ?? false;
+      const retryKeywords = parseList(byId('cfgRetryKeywords')?.value).length;
       const issueCount =
         (enabledProviders === 0 ? 1 : 0) +
         (emptyKeys > 0 ? 1 : 0) +
@@ -2137,117 +2166,18 @@ const adminHTMLTemplate = `<!doctype html>
         providers,
         enabledProviders,
         disabledProviders,
+        freeProviders,
+        quotaLimitedProviders,
         emptyKeys,
         unscopedProviders,
         bridgeRules,
         interceptRules,
         healthEnabled,
         healthPath,
+        retryInfinite,
+        retryKeywords,
         issueCount,
       };
-    };
-    const renderSettingsProviderRoster = () => {
-      const host = byId('settingsProviderRoster');
-      if (!host) return;
-      const { providers } = computeSettingsDiagnostics();
-      if (!providers.length) {
-        host.innerHTML = '<div class="small">暂无 provider</div>';
-        return;
-      }
-      host.innerHTML = providers
-        .slice()
-        .sort((a, b) => {
-          const aEnabled = a.enabled === false ? 0 : 1;
-          const bEnabled = b.enabled === false ? 0 : 1;
-          if (aEnabled !== bEnabled) return bEnabled - aEnabled;
-          return String(a.name || '').localeCompare(String(b.name || ''));
-        })
-        .slice(0, 6)
-        .map((provider) => {
-          const enabled = provider.enabled === false
-            ? '<span class="provider-chip warn">disabled</span>'
-            : '<span class="provider-chip accent">enabled</span>';
-          const models = provider.models || [];
-          const modelMeta = models.length
-            ? models.slice(0, 2).join(', ') + (models.length > 2 ? ' +' + (models.length - 2) : '')
-            : 'unscoped';
-          return '<div class="settings-roster-row">' +
-            '<div class="settings-roster-copy">' +
-              '<div class="settings-roster-name">' + escapeHTML(provider.name || 'Unnamed provider') + '</div>' +
-              '<div class="settings-roster-meta">' + escapeHTML(modelMeta) + ' · ' + escapeHTML((provider.timeout_ms ?? 0) + ' ms') + '</div>' +
-            '</div>' +
-            enabled +
-          '</div>';
-        }).join('');
-    };
-    const renderSettingsBridgeRoster = () => {
-      const host = byId('settingsBridgeRoster');
-      if (!host) return;
-      const rules = collectBridgeRules().filter((rule) => String(rule?.from || '').trim() && String(rule?.to || '').trim());
-      if (!rules.length) {
-        host.innerHTML = '<div class="small">暂无桥接规则</div>';
-        return;
-      }
-      host.innerHTML = rules.slice(0, 6).map((rule, idx) =>
-        '<div class="settings-roster-row">' +
-          '<div class="settings-roster-copy">' +
-            '<div class="settings-roster-name">Rule ' + escapeHTML(idx + 1) + '</div>' +
-            '<div class="settings-roster-meta">' + escapeHTML(rule.from || '') + ' -> ' + escapeHTML(rule.to || '') + '</div>' +
-          '</div>' +
-          '<span class="provider-chip accent">active</span>' +
-        '</div>'
-      ).join('');
-    };
-    const renderSettingsDiagnostics = () => {
-      const host = byId('settingsDiagnostics');
-      if (!host) return;
-      const diagnostics = computeSettingsDiagnostics();
-      const {
-        enabledProviders,
-        disabledProviders,
-        emptyKeys,
-        unscopedProviders,
-        bridgeRules,
-        interceptRules,
-        healthEnabled,
-        healthPath,
-      } = diagnostics;
-      const rows = [
-        {
-          name: 'Provider Footprint',
-          meta: fmt.format(enabledProviders) + ' enabled · ' + fmt.format(disabledProviders) + ' disabled',
-          chip: enabledProviders ? '<span class="provider-chip accent">live</span>' : '<span class="provider-chip warn">none enabled</span>',
-        },
-        {
-          name: 'Auth Coverage',
-          meta: fmt.format(emptyKeys) + ' providers missing API key',
-          chip: emptyKeys ? '<span class="provider-chip warn">attention</span>' : '<span class="provider-chip accent">complete</span>',
-        },
-        {
-          name: 'Model Scope',
-          meta: fmt.format(unscopedProviders) + ' providers without model scope',
-          chip: unscopedProviders ? '<span class="provider-chip warn">unscoped</span>' : '<span class="provider-chip accent">mapped</span>',
-        },
-        {
-          name: 'Rewrite Surface',
-          meta: fmt.format(bridgeRules) + ' bridge · ' + fmt.format(interceptRules) + ' intercept rules',
-          chip: (bridgeRules || interceptRules) ? '<span class="provider-chip accent">active</span>' : '<span class="provider-chip">idle</span>',
-        },
-        {
-          name: 'Health Probe',
-          meta: healthEnabled ? (healthPath || 'path missing') : 'health checks disabled',
-          chip: healthEnabled && healthPath ? '<span class="provider-chip accent">armed</span>' : '<span class="provider-chip warn">review</span>',
-        },
-      ];
-      host.innerHTML = rows.map((row) =>
-        '<div class="settings-roster-row">' +
-          '<div class="settings-roster-copy">' +
-            '<div class="settings-roster-name">' + escapeHTML(row.name) + '</div>' +
-            '<div class="settings-roster-meta">' + escapeHTML(row.meta) + '</div>' +
-          '</div>' +
-          row.chip +
-        '</div>'
-      ).join('');
     };
     const updateActiveSettingsNav = () => {
       if (!document.body.classList.contains('page-settings')) return;
@@ -2270,27 +2200,21 @@ const adminHTMLTemplate = `<!doctype html>
     };
     const updateSettingsSummary = () => {
       const diagnostics = computeSettingsDiagnostics();
-      const providerCount = diagnostics.providers.length;
       const enabledProviders = diagnostics.enabledProviders;
       const bridgeCount = diagnostics.bridgeRules;
       const interceptCount = diagnostics.interceptRules;
+      const retryInfinite = diagnostics.retryInfinite;
+      const recoveryLabel = retryInfinite ? 'always recover' : 'bounded';
+      const backoffBase = readNumber(byId('cfgBackoff'));
+      const backoffMax = readNumber(byId('cfgBackoffMax'));
+      const passthroughAfter = readNumber(byId('cfgPassthrough'));
+      const retryKeywordCount = diagnostics.retryKeywords;
+      const retryCodeCount = parseCodes(byId('cfgRetryCodes')?.value).length;
       const routerStrategy = String(byId('cfgRouterStrategy')?.value || 'health_weighted_rr').trim() || 'health_weighted_rr';
-      const healthPath = String(byId('cfgHealthPath')?.value || '').trim() || '/v1/models';
-      const visibleSections = topLevelSections().filter((section) => !section.classList.contains('hidden-search')).length;
-      const draftState = JSON.stringify(buildConfigPayload()) === loadedConfigSnapshot ? 'synced' : 'edited';
-      if (byId('settingsProviderCount')) byId('settingsProviderCount').textContent = fmt.format(providerCount);
-      if (byId('settingsEnabledProviders')) byId('settingsEnabledProviders').textContent = fmt.format(enabledProviders) + ' enabled';
-      if (byId('settingsBridgeRuleCount')) byId('settingsBridgeRuleCount').textContent = fmt.format(bridgeCount);
-      if (byId('settingsRouterStrategy')) byId('settingsRouterStrategy').textContent = routerStrategy;
-      if (byId('settingsHealthPath')) byId('settingsHealthPath').textContent = healthPath;
-      if (byId('settingsDraftState')) byId('settingsDraftState').textContent = draftState;
-      if (byId('settingsDraftMeta')) byId('settingsDraftMeta').textContent = draftState === 'synced' ? 'Matches saved config' : 'Unsaved local edits';
-      if (byId('settingsVisibleSections')) byId('settingsVisibleSections').textContent = fmt.format(visibleSections);
-      if (byId('settingsVisibleMeta')) byId('settingsVisibleMeta').textContent = (byId('configSearch')?.value ? 'Filtered section set' : 'Sections in current filter');
-      if (byId('settingsIssueCount')) byId('settingsIssueCount').textContent = fmt.format(diagnostics.issueCount);
-      if (byId('settingsIssueMeta')) byId('settingsIssueMeta').textContent = diagnostics.issueCount ? 'Review auth, scope, or health gaps' : 'No config gaps detected';
+      const rawHealthPath = String(byId('cfgHealthPath')?.value || '').trim();
+      const healthPath = rawHealthPath || (diagnostics.healthEnabled ? 'path missing' : 'disabled');
       if (byId('cfgHealthMeta')) byId('cfgHealthMeta').innerHTML = [
-        miniChip(diagnostics.healthEnabled ? 'Probe' : 'Probe', diagnostics.healthEnabled ? 'enabled' : 'disabled', diagnostics.healthEnabled ? 'accent' : 'warn'),
+        miniChip('Probe', diagnostics.healthEnabled ? 'enabled' : 'disabled', diagnostics.healthEnabled ? 'accent' : ''),
         miniChip('Path', healthPath, diagnostics.healthEnabled && !diagnostics.healthPath ? 'warn' : ''),
       ].join('');
       if (byId('cfgBridgeMeta')) byId('cfgBridgeMeta').innerHTML = [
@@ -2299,7 +2223,13 @@ const adminHTMLTemplate = `<!doctype html>
       ].join('');
       if (byId('cfgRouterMeta')) byId('cfgRouterMeta').innerHTML = [
         miniChip('Strategy', routerStrategy, 'accent'),
+        miniChip('Mode', recoveryLabel, retryInfinite ? 'accent' : ''),
         miniChip('Retries', fmt.format(readNumber(byId('cfgMaxRetries')))),
+      ].join('');
+      if (byId('cfgRetryMeta')) byId('cfgRetryMeta').innerHTML = [
+        miniChip('Mode', recoveryLabel, retryInfinite ? 'accent' : ''),
+        miniChip('Codes', fmt.format(retryCodeCount)),
+        miniChip('Keywords', fmt.format(retryKeywordCount), retryKeywordCount ? 'accent' : ''),
       ].join('');
       if (byId('cfgInterceptMeta')) byId('cfgInterceptMeta').innerHTML = [
         miniChip('Rules', fmt.format(interceptCount), interceptCount ? 'accent' : ''),
@@ -2307,18 +2237,33 @@ const adminHTMLTemplate = `<!doctype html>
       ].join('');
       if (byId('cfgUpstreamsMeta')) byId('cfgUpstreamsMeta').innerHTML = [
         miniChip('Enabled', fmt.format(enabledProviders), enabledProviders ? 'accent' : 'danger'),
+        miniChip('Free', fmt.format(diagnostics.freeProviders), diagnostics.freeProviders ? 'accent' : ''),
+        miniChip('Quota', fmt.format(diagnostics.quotaLimitedProviders), diagnostics.quotaLimitedProviders ? '' : 'warn'),
         miniChip('Needs Auth', fmt.format(diagnostics.emptyKeys), diagnostics.emptyKeys ? 'warn' : ''),
         miniChip('Unscoped', fmt.format(diagnostics.unscopedProviders), diagnostics.unscopedProviders ? 'warn' : ''),
       ].join('');
-      setNavMeta('navMetaHealth', healthPath, diagnostics.healthEnabled && !diagnostics.healthPath ? 'warn' : (diagnostics.healthEnabled ? 'good' : 'warn'));
+      setNavMeta('navMetaHealth', healthPath, diagnostics.healthEnabled ? (diagnostics.healthPath ? 'good' : 'warn') : '');
       setNavMeta('navMetaBridge', fmt.format(bridgeCount) + ' rules', bridgeCount ? 'good' : '');
-      setNavMeta('navMetaRouter', routerStrategy, 'good');
+      setNavMeta('navMetaRouter', retryInfinite ? (routerStrategy + ' · infinite') : routerStrategy, retryInfinite ? 'good' : 'good');
       setNavMeta('navMetaIntercepts', fmt.format(interceptCount) + ' rules', interceptCount ? 'good' : '');
       setNavMeta('navMetaProviders', fmt.format(providerCount) + ' providers', enabledProviders === 0 ? 'danger' : ((diagnostics.emptyKeys || diagnostics.unscopedProviders) ? 'warn' : 'good'));
       setNavMeta('navMetaHistory', fmt.format(configHistoryVersionCount) + ' versions', configHistoryVersionCount ? 'good' : '');
-      renderSettingsProviderRoster();
-      renderSettingsBridgeRoster();
-      renderSettingsDiagnostics();
+      if (byId('retryModeValue')) byId('retryModeValue').textContent = recoveryLabel;
+      if (byId('retryModeMeta')) byId('retryModeMeta').textContent = retryInfinite ? 'Any transport, status, or intercepted body error keeps retrying.' : 'Only retryable status/message matches continue to the next attempt.';
+      if (byId('retryBackoffValue')) byId('retryBackoffValue').textContent = fmt.format(backoffBase) + ' -> ' + fmt.format(backoffMax) + ' ms';
+      if (byId('retryBackoffMeta')) byId('retryBackoffMeta').textContent = retryInfinite ? 'Backoff stays in effect across unlimited recovery attempts.' : 'Exponential backoff inside the bounded retry window.';
+      if (byId('retryPassthroughValue')) byId('retryPassthroughValue').textContent = retryInfinite ? 'suppressed' : 'after ' + fmt.format(passthroughAfter) + ' s';
+      if (byId('retryPassthroughMeta')) byId('retryPassthroughMeta').textContent = retryInfinite ? 'Infinite mode keeps retrying instead of surfacing the upstream error window.' : 'Retryable failures can be surfaced after the configured window.';
+      if (byId('cfgMaxRetriesHint')) byId('cfgMaxRetriesHint').textContent = retryInfinite ? 'Stored but ignored while Infinite Recovery is active.' : 'Maximum retry rounds before the gateway stops retrying.';
+      if (byId('cfgPassthroughHint')) byId('cfgPassthroughHint').textContent = retryInfinite ? 'Stored but inactive while Infinite Recovery keeps retrying until cancel.' : 'After this window, retryable failures can surface the upstream response.';
+      byId('cfgMaxRetries')?.closest('.config-field')?.classList.toggle('subdued', retryInfinite);
+      byId('cfgPassthrough')?.closest('.config-field')?.classList.toggle('subdued', retryInfinite);
+      byId('retryModeCard')?.classList.toggle('active', retryInfinite);
+      byId('retryBackoffCard')?.classList.toggle('active', backoffBase > 0 || backoffMax > 0);
+      byId('retryPassthroughCard')?.classList.toggle('warn', retryInfinite);
+      byId('retryModePresetBounded')?.classList.toggle('active', !retryInfinite);
+      byId('retryModePresetInfinite')?.classList.toggle('active', retryInfinite);
+      applyProviderClassFilter();
       updateActiveSettingsNav();
     };
     const ensureSectionControls = () => {
@@ -2354,7 +2299,17 @@ const adminHTMLTemplate = `<!doctype html>
         const matched = !query || title.includes(query) || text.includes(query);
         section.classList.toggle('hidden-search', !matched);
       });
+      applyProviderClassFilter();
       updateSettingsSummary();
+    };
+    const applyProviderClassFilter = () => {
+      const providerClassFilter = currentProviderClassFilter();
+      const cards = Array.from(document.querySelectorAll('[data-upstream-config]'));
+      cards.forEach((card) => {
+        const cardClass = String(card.getAttribute('data-upstream-class') || 'quota_limited').trim();
+        const matched = providerClassFilter === 'all' || cardClass === providerClassFilter;
+        card.classList.toggle('hidden-provider', !matched);
+      });
     };
     const clearValidationState = () => {
       document.querySelectorAll('.input-invalid').forEach((el) => el.classList.remove('input-invalid'));
@@ -2483,10 +2438,12 @@ const adminHTMLTemplate = `<!doctype html>
         const nameInput = card.querySelector('.upstream-name');
         const baseURLInput = card.querySelector('.upstream-base-url');
         const keyInput = card.querySelector('.upstream-api-key');
+        const classInput = card.querySelector('.upstream-provider-class');
         const modelsInput = card.querySelector('.upstream-models');
         const enabled = card.querySelector('.upstream-enabled')?.checked ?? true;
         const name = String(nameInput?.value || '').trim();
         const baseURL = String(baseURLInput?.value || '').trim();
+        const providerClass = String(classInput?.value || 'quota_limited').trim();
         const models = parseList(modelsInput?.value);
 
         if (enabled) enabledCount++;
@@ -2506,6 +2463,10 @@ const adminHTMLTemplate = `<!doctype html>
         if (!baseURL || !isValidHTTPURL(baseURL)) {
           errors.push('Service Provider ' + (idx + 1) + ' requires a valid http/https Base URL.');
           markInvalid(baseURLInput, 'Base URL must start with http:// or https://.');
+        }
+        if (providerClass !== 'free' && providerClass !== 'quota_limited') {
+          errors.push('Service Provider ' + (idx + 1) + ' provider class must be free or quota_limited.');
+          markInvalid(classInput, 'Provider class must be free or quota_limited.');
         }
         if (!String(keyInput?.value || '').trim()) {
           warnings.push('Service Provider ' + (idx + 1) + ' has an empty API key.');
@@ -2539,7 +2500,7 @@ const adminHTMLTemplate = `<!doctype html>
       }
       list.innerHTML = items.map((rule, idx) => {
         return '' +
-          '<div class="config-card" data-bridge-rule>' +
+          '<div class="config-card" data-bridge-rule data-bridge-index="' + escapeHTML(idx) + '">' +
             '<div class="config-card-head">' +
               '<div class="config-card-title">Bridge Rule ' + (idx + 1) + '</div>' +
               '<div class="config-actions">' +
@@ -2642,6 +2603,7 @@ const adminHTMLTemplate = `<!doctype html>
       name: card.querySelector('.upstream-name')?.value || '',
       base_url: card.querySelector('.upstream-base-url')?.value || '',
       api_key: card.querySelector('.upstream-api-key')?.value || '',
+      provider_class: card.querySelector('.upstream-provider-class')?.value || 'quota_limited',
       models: parseList(card.querySelector('.upstream-models')?.value),
       headers: parseHeaders(card.querySelector('.upstream-headers')?.value),
       weight: readNumber(card.querySelector('.upstream-weight')),
@@ -2704,6 +2666,7 @@ const adminHTMLTemplate = `<!doctype html>
         const enabled = upstream.enabled === false ? '' : 'checked';
         const title = escapeHTML(upstream.name || ('Provider ' + (idx + 1)));
         const base = escapeHTML(upstream.base_url || 'base url not set');
+        const providerClass = String(upstream.provider_class || 'quota_limited').trim() === 'free' ? 'free' : 'quota_limited';
         const models = upstream.models || [];
         const modelCount = models.length;
         const modelPreview = escapeHTML(modelCount ? models.slice(0, 2).join(', ') + (modelCount > 2 ? ' +' + (modelCount - 2) : '') : 'unscoped');
@@ -2713,7 +2676,7 @@ const adminHTMLTemplate = `<!doctype html>
           ? '<span class="provider-chip warn">disabled</span>'
           : '<span class="provider-chip accent">enabled</span>';
         return '' +
-          '<div class="config-card provider-card' + collapsed + '" data-upstream-config>' +
+          '<div class="config-card provider-card' + collapsed + '" data-upstream-config data-upstream-name="' + escapeHTML(String(upstream.name || '').toLowerCase()) + '" data-upstream-class="' + escapeHTML(providerClass) + '">' +
             '<div class="config-card-head">' +
               '<div class="config-card-head-main">' +
                 '<div class="config-card-title">' + title + '</div>' +
@@ -2728,6 +2691,7 @@ const adminHTMLTemplate = `<!doctype html>
             '</div>' +
             '<div class="provider-summary-strip">' +
               '<div class="provider-summary-item"><div class="provider-summary-label">Status</div><div class="provider-summary-value">' + enabledChip + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">Class</div><div class="provider-summary-value">' + escapeHTML(providerClass) + '</div></div>' +
               '<div class="provider-summary-item"><div class="provider-summary-label">Models</div><div class="provider-summary-value">' + modelPreview + '</div></div>' +
               '<div class="provider-summary-item"><div class="provider-summary-label">Count</div><div class="provider-summary-value">' + escapeHTML(modelCount) + '</div></div>' +
               '<div class="provider-summary-item"><div class="provider-summary-label">Weight</div><div class="provider-summary-value">' + escapeHTML(upstream.weight ?? 0) + '</div></div>' +
@@ -2747,6 +2711,14 @@ const adminHTMLTemplate = `<!doctype html>
               '<div class="config-field" style="grid-column: span 2;">' +
                 '<label>API Key</label>' +
                 '<input type="text" class="upstream-api-key" placeholder="sk-..." value="' + escapeHTML(upstream.api_key || '') + '">' +
+              '</div>' +
+              '<div class="config-field">' +
+                '<label>Provider Class</label>' +
+                '<select class="upstream-provider-class">' +
+                  '<option value="free" ' + (providerClass === 'free' ? 'selected' : '') + '>free</option>' +
+                  '<option value="quota_limited" ' + (providerClass === 'quota_limited' ? 'selected' : '') + '>quota_limited</option>' +
+                '</select>' +
+                '<div class="config-help">free 先选；命中拥塞后再回退到 quota_limited。</div>' +
               '</div>' +
               '<div class="config-field">' +
                 '<label>Models</label>' +
@@ -2874,6 +2846,7 @@ const adminHTMLTemplate = `<!doctype html>
         byId('cfgPassthrough').value = cfg.router?.failure_passthrough_after_sec ?? 0;
 
         const retry = cfg.proxy?.retry || {};
+        byId('cfgRetryInfiniteOnError').checked = !!retry.infinite_on_error;
         byId('cfgRetryCodes').value = listToString(retry.status_codes || []);
         byId('cfgRetryMin').value = retry.status_code_min ?? '';
         byId('cfgRetryKeywords').value = keywordsToString(retry.message_keywords || []);
@@ -2964,6 +2937,20 @@ const adminHTMLTemplate = `<!doctype html>
         updateSettingsSummary();
         setConfigHintState('Applied GPT-5.x bridge preset', 'dirty');
       }
+      if (button && button.id === 'retryModePresetBounded') {
+        event.preventDefault();
+        byId('cfgRetryInfiniteOnError').checked = false;
+        clearValidationState();
+        updateSettingsSummary();
+        setConfigHintState('Applied bounded failover preset', 'dirty');
+      }
+      if (button && button.id === 'retryModePresetInfinite') {
+        event.preventDefault();
+        byId('cfgRetryInfiniteOnError').checked = true;
+        clearValidationState();
+        updateSettingsSummary();
+        setConfigHintState('Applied infinite recovery preset', 'dirty');
+      }
       if (button && button.id === 'addBridgeRule') {
         event.preventDefault();
         const current = collectBridgeRules();
@@ -2980,7 +2967,7 @@ const adminHTMLTemplate = `<!doctype html>
       if (button && button.id === 'addUpstream') {
         event.preventDefault();
         const current = collectUpstreams();
-        renderUpstreamsConfig([...current, { name: '', base_url: '', api_key: '', models: [], headers: {}, weight: 1, timeout_ms: 30000, same_upstream_retries: 0, enabled: true }]);
+        renderUpstreamsConfig([...current, { name: '', base_url: '', api_key: '', provider_class: 'quota_limited', models: [], headers: {}, weight: 1, timeout_ms: 30000, same_upstream_retries: 0, enabled: true }]);
         clearValidationState();
         updateSettingsSummary();
       }
@@ -3078,19 +3065,25 @@ const adminHTMLTemplate = `<!doctype html>
         applyConfigSearch();
         return;
       }
-      if (event.target && (event.target.id === 'cfgHealthPath' || event.target.id === 'cfgRouterStrategy' || event.target.closest('[data-upstream-config]') || event.target.closest('[data-bridge-rule]'))) {
+      if (event.target && event.target.id === 'providerClassFilter') {
+        applyProviderClassFilter();
         updateSettingsSummary();
+        return;
       }
       if (event.target && event.target.closest('.config-panel')) {
+        updateSettingsSummary();
         clearValidationState();
         setConfigHintState('Unsaved changes', 'dirty');
       }
     });
     document.addEventListener('change', (event) => {
-      if (event.target && (event.target.id === 'cfgHealthPath' || event.target.id === 'cfgRouterStrategy' || event.target.closest('[data-upstream-config]') || event.target.closest('[data-bridge-rule]'))) {
+      if (event.target && event.target.id === 'providerClassFilter') {
+        applyProviderClassFilter();
         updateSettingsSummary();
+        return;
       }
       if (event.target && event.target.closest('.config-panel')) {
+        updateSettingsSummary();
         clearValidationState();
         setConfigHintState('Unsaved changes', 'dirty');
       }
@@ -3402,58 +3395,49 @@ const adminHTMLTemplate = `<!doctype html>
       const recentErrors = data.telemetry.errors || [];
       const upstreamStatuses = data.upstreams || {};
       const upstreamUsageEntries = Object.entries(data.telemetry.by_upstream || {});
+      const runtime = data.runtime || {};
+      const recoveryMode = runtime.retry_infinite_on_error ? 'always recover' : 'bounded';
+      const enabledRuntimeUpstreams = Number(runtime.enabled_upstreams || 0);
+      const totalRuntimeUpstreams = Number(runtime.total_upstreams || 0);
+      const runtimeHealthPath = String(runtime.health_path || '').trim() || '/v1/models';
+      const runtimeStrategy = String(runtime.router_strategy || data.router_strategy || 'health_weighted_rr');
 
       document.getElementById('generatedAt').textContent = 'Updated ' + new Date(data.generated_at).toLocaleString();
       document.getElementById('pricingSource').innerHTML = pricing.source_url
         ? 'Official pricing: <a href="' + pricing.source_url + '" target="_blank" rel="noreferrer">OpenAI</a>' + (pricing.updated_at ? ' · ' + relativeTime(pricing.updated_at) : '')
         : 'Official pricing unavailable';
-      document.getElementById('bridgeState').textContent = 'Bridge ' + ((data.bridge && data.bridge.Enabled) ? 'ON' : 'OFF');
-
-      document.getElementById('heroStats').innerHTML = [
-        ['Success Rate', fmtPct((summary.total_requests || 0) > 0 ? ((summary.successes || 0) / summary.total_requests) * 100 : 0)],
-        ['Total Cost', fmtMoney(pricingSummary.total_usd || 0)],
-        ['1m RPM', fmtRate(oneMinute.rpm)],
-        ['1m TPM', fmtRate(oneMinute.tpm)],
-      ].map(([k, v]) => '<div class="hero-stat"><div class="k">' + k + '</div><div class="v mono">' + v + '</div></div>').join('');
-
       const overallSuccessRate = (summary.total_requests || 0) > 0 ? ((summary.successes || 0) / summary.total_requests) * 100 : 0;
       const overallCacheRate = cacheHitRate(summary);
       const dayCacheRate = cacheHitRate(dayWindow);
       const avgCostPerRequest = (summary.total_requests || 0) > 0 ? (pricingSummary.total_usd || 0) / summary.total_requests : 0;
-      const bridgeState = data.bridge && data.bridge.Enabled ? 'bridge on' : 'bridge off';
       const degradedUpstreams = Object.values(upstreamStatuses).filter((status) => status && !status.healthy).length;
       const recent503 = recentRequests.filter((item) => Number(item.status_code || 0) === 503).length;
-      const unpricedModels = pricingSummary.unpriced_models || 0;
-      document.getElementById('overviewPulse').innerHTML = [
-        ['Request Load', fmt.format(summary.total_requests || 0), fmtRate(oneMinute.rpm) + ' RPM · ' + fmtRate(oneMinute.tpm) + ' TPM'],
-        ['Reliability', fmtPct(overallSuccessRate), fmt.format(oneMinute.failures || 0) + ' fail in 1m · ' + fmt.format(fiveMinute.failures || 0) + ' fail in 5m'],
-        ['Latency', fmtMs(oneMinute.avg_latency_ms || 0), '5m ' + fmtMs(fiveMinute.avg_latency_ms || 0)],
-        ['Cache', overallCacheRate === null ? 'n/a' : fmtPct(overallCacheRate), '24h ' + (dayCacheRate === null ? 'n/a' : fmtPct(dayCacheRate))],
-        ['Spend', compactUsd(pricingSummary.total_usd || 0), compactUsd(avgCostPerRequest * 1000) + ' / 1k req'],
-        ['Routing', bridgeState, fmt.format(pricingSummary.priced_models || 0) + ' priced · ' + fmt.format(pricingSummary.unpriced_models || 0) + ' unpriced'],
-      ].map(([label, value, meta]) =>
-        '<div class="overview-pulse-card"><div class="overview-pulse-label">' + label + '</div><div class="overview-pulse-value mono">' + value + '</div><div class="overview-pulse-meta">' + meta + '</div></div>'
-      ).join('');
-      document.getElementById('overviewAlerts').innerHTML = [
+      document.getElementById('runtimeTopline').innerHTML = [
         surfaceCard(
-          'Health Watch',
-          degradedUpstreams ? (fmt.format(degradedUpstreams) + ' degraded') : 'stable',
-          degradedUpstreams ? (fmt.format(Object.keys(upstreamStatuses).length - degradedUpstreams) + ' healthy upstreams remain') : 'All upstream probes are healthy',
-          degradedUpstreams ? 'tone-danger' : 'tone-good'
+          'Recovery Mode',
+          recoveryMode,
+          runtime.retry_infinite_on_error ? 'Retries transport, status, and intercepted body failures until the caller cancels.' : 'Retries only matched retryable failures before exiting.',
+          runtime.retry_infinite_on_error ? 'tone-good' : 'tone-warn'
         ),
         surfaceCard(
-          'Error Pressure',
-          recent503 ? (fmt.format(recent503) + ' × 503') : 'clear',
-          recentErrors.length ? (fmt.format(recentErrors.length) + ' recent error rows') : 'No recent error feed items',
-          recent503 ? 'tone-danger' : (recentErrors.length ? 'tone-warn' : 'tone-good')
+          'Failure Exit',
+          runtime.retry_infinite_on_error ? 'suppressed' : ('after ' + fmt.format(runtime.failure_passthrough_after_sec || 0) + ' s'),
+          runtime.retry_infinite_on_error ? 'Infinite mode bypasses the upstream passthrough window.' : 'Retryable failures can surface after the configured window.',
+          runtime.retry_infinite_on_error ? 'tone-warn' : 'tone-good'
         ),
         surfaceCard(
-          'Pricing Coverage',
-          unpricedModels ? (fmt.format(unpricedModels) + ' unpriced') : 'covered',
-          compactUsd(pricingSummary.cache_savings_usd || 0) + ' cache savings tracked',
-          unpricedModels ? 'tone-warn' : 'tone-good'
+          'Health Probe',
+          runtime.health_enabled ? 'armed' : 'disabled',
+          runtime.health_enabled ? runtimeHealthPath : 'No active health polling',
+          runtime.health_enabled ? 'tone-good' : 'tone-warn'
         ),
       ].join('');
+      document.getElementById('runtimeMetrics').innerHTML = [
+        ['Router Strategy', runtimeStrategy, fmt.format(runtime.max_retries || 0) + ' max retries configured'],
+        ['Recovery Ceiling', runtime.retry_infinite_on_error ? 'client cancel' : (fmt.format(runtime.max_retries || 0) + ' retries'), runtime.retry_infinite_on_error ? 'Infinite mode ignores the max retry ceiling.' : 'Bounded failover window.'],
+        ['Backoff', fmt.format(runtime.retry_backoff_ms || 0) + ' -> ' + fmt.format(runtime.retry_backoff_max_ms || 0) + ' ms', 'Exponential retry backoff remains active in both modes.'],
+        ['Providers', fmt.format(enabledRuntimeUpstreams) + ' enabled', fmt.format(Math.max(totalRuntimeUpstreams - enabledRuntimeUpstreams, 0)) + ' disabled · ' + (runtime.bridge_enabled ? 'bridge on' : 'bridge off')],
+      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
       document.getElementById('performanceMeta').innerHTML = [
         miniChip('1m RPM', fmtRate(oneMinute.rpm), 'accent'),
         miniChip('1m TPM', fmtRate(oneMinute.tpm)),
@@ -3665,8 +3649,6 @@ const adminHTMLTemplate = `<!doctype html>
 
 func renderAdminHTML(settingsView bool) string {
 	bodyClass := ""
-	settingsHref := "/admin/settings"
-	settingsLabel := "Settings"
 	topnavLinks := strings.Join([]string{
 		`<a href="#performance" data-topnav-target="performance">Performance</a>`,
 		`<a href="#economics" data-topnav-target="economics">Economics</a>`,
@@ -3679,11 +3661,9 @@ func renderAdminHTML(settingsView bool) string {
 	heroSub := "把请求量、吞吐、延迟、失败轨迹和 USD 成本放在同一块面板里，先判断是不是上游波动，再判断是不是代理放大。"
 	heroMetaPrimary := `<div class="pill" id="generatedAt">加载中</div>`
 	heroMetaSecondary := `<div class="pill" id="pricingSource">Pricing source</div>`
-	heroMetaTertiary := `<div class="pill" id="bridgeState">Bridge</div>`
+	heroMetaTertiary := ``
 	if settingsView {
 		bodyClass = "page-settings"
-		settingsHref = "/admin"
-		settingsLabel = "Overview"
 		topnavLinks = strings.Join([]string{
 			`<a href="#cfg-health">Health</a>`,
 			`<a href="#cfg-bridge">Bridge</a>`,
@@ -3695,14 +3675,12 @@ func renderAdminHTML(settingsView bool) string {
 		heroEyebrow = "Configuration Center"
 		heroTitle = "Runtime Routing, Health, Providers."
 		heroSub = "在一个页面里维护探活、桥接、重试、拦截和上游服务商。先做 probe，再保存；先看 diff，再回滚。"
-		heroMetaPrimary = `<div class="pill">Runtime config surface</div>`
-		heroMetaSecondary = `<div class="pill">Per-provider probe</div>`
-		heroMetaTertiary = `<div class="pill">Diff and rollback ready</div>`
+		heroMetaPrimary = ``
+		heroMetaSecondary = ``
+		heroMetaTertiary = ``
 	}
 	return strings.NewReplacer(
 		"{{BODY_CLASS}}", bodyClass,
-		"{{SETTINGS_HREF}}", settingsHref,
-		"{{SETTINGS_LABEL}}", settingsLabel,
 		"{{TOPNAV_LINKS}}", topnavLinks,
 		"{{HERO_EYEBROW}}", heroEyebrow,
 		"{{HERO_TITLE}}", heroTitle,

@@ -264,6 +264,13 @@ func TestAdminDataIncludesTelemetry(t *testing.T) {
 	if pricingSummary["currency"] != "USD" {
 		t.Fatalf("expected USD currency, got %#v", pricingSummary["currency"])
 	}
+	runtime, ok := body["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected runtime object")
+	}
+	if runtime["router_strategy"] != "round_robin" {
+		t.Fatalf("expected runtime router strategy round_robin, got %#v", runtime["router_strategy"])
+	}
 }
 
 func TestAdminRequiresAuth(t *testing.T) {
@@ -285,7 +292,7 @@ func TestAdminRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestAdminOverviewRouteIncludesDenseOverviewControls(t *testing.T) {
+func TestAdminOverviewRouteTrimsDuplicateOverviewNavigation(t *testing.T) {
 	cfg := config.Config{
 		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
 	}
@@ -306,42 +313,28 @@ func TestAdminOverviewRouteIncludesDenseOverviewControls(t *testing.T) {
 		t.Fatalf("read overview body: %v", err)
 	}
 	text := string(body)
-	if !strings.Contains(text, `id="overviewPulse"`) ||
-		!strings.Contains(text, `id="overviewQuickNav"`) ||
-		!strings.Contains(text, `id="overviewAlerts"`) ||
-		!strings.Contains(text, `id="performanceMeta"`) ||
-		!strings.Contains(text, `id="costMeta"`) ||
-		!strings.Contains(text, `id="economicsMeta"`) ||
-		!strings.Contains(text, `id="economicsTopline"`) ||
-		!strings.Contains(text, `id="upstreamMeta"`) ||
-		!strings.Contains(text, `id="upstreamTopline"`) ||
-		!strings.Contains(text, `id="cacheMeta"`) ||
-		!strings.Contains(text, `id="cacheTopline"`) ||
-		!strings.Contains(text, `id="errorsMeta"`) ||
-		!strings.Contains(text, `id="errorsTopline"`) ||
-		!strings.Contains(text, `id="requestsMeta"`) ||
-		!strings.Contains(text, `id="requestsTopline"`) ||
-		!strings.Contains(text, `id="usageTopline"`) ||
-		!strings.Contains(text, `data-topnav-target="performance"`) ||
-		!strings.Contains(text, `data-overview-target="performance"`) ||
-		!strings.Contains(text, `Jump to Surface`) ||
-		!strings.Contains(text, `Request Load`) ||
-		!strings.Contains(text, `Health Watch`) ||
-		!strings.Contains(text, `Error Pressure`) ||
-		!strings.Contains(text, `Pricing Coverage`) ||
-		!strings.Contains(text, `Top Model 1`) ||
-		!strings.Contains(text, `Cache Leader 1`) ||
-		!strings.Contains(text, `Top Upstream 1`) ||
-		!strings.Contains(text, `Degraded Routes`) ||
-		!strings.Contains(text, `Dominant Upstream`) ||
-		!strings.Contains(text, `Hottest Path`) ||
-		!strings.Contains(text, `status-chip`) ||
+	if !strings.Contains(text, `Runtime Posture`) ||
 		!strings.Contains(text, `surface-card`) ||
-		!strings.Contains(text, `scroll-margin-top: 88px;`) ||
-		!strings.Contains(text, `Performance`) ||
-		!strings.Contains(text, `Economics`) ||
-		!strings.Contains(text, `Latest traces and failures`) {
-		t.Fatalf("expected overview dense ui markers, got %q", text)
+		!strings.Contains(text, `data-topnav-target="performance"`) ||
+		!strings.Contains(text, `data-topnav-target="economics"`) ||
+		!strings.Contains(text, `href="/admin/settings"`) {
+		t.Fatalf("expected streamlined overview markers, got %q", text)
+	}
+	if strings.Contains(text, `id="overviewPulse"`) ||
+		strings.Contains(text, `id="overviewQuickNav"`) ||
+		strings.Contains(text, `data-overview-target="runtime-card"`) ||
+		strings.Contains(text, `Jump to Surface`) ||
+		strings.Contains(text, `id="openSettings"`) ||
+		strings.Contains(text, `Request Load`) ||
+		strings.Contains(text, `Pricing Coverage`) ||
+		strings.Contains(text, `id="bridgeState"`) ||
+		strings.Contains(text, `id="runtimeMeta"`) ||
+		strings.Contains(text, `id="overviewAlerts"`) ||
+		strings.Contains(text, `id="heroStats"`) ||
+		strings.Contains(text, `data-topnav-target="runtime-card"`) ||
+		strings.Contains(text, `Health Watch`) ||
+		strings.Contains(text, `Error Pressure`) {
+		t.Fatalf("expected duplicate overview navigation removed, got %q", text)
 	}
 }
 
@@ -367,15 +360,13 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 	settingsText := string(settingsBody)
 	if !strings.Contains(settingsText, `id="cfgRouterStrategy"`) ||
 		!strings.Contains(settingsText, `id="applyCodexBridgePreset"`) ||
+		!strings.Contains(settingsText, `id="retryModePresetBounded"`) ||
+		!strings.Contains(settingsText, `id="retryModePresetInfinite"`) ||
+		!strings.Contains(settingsText, `id="cfgMaxRetriesHint"`) ||
+		!strings.Contains(settingsText, `id="cfgPassthroughHint"`) ||
 		!strings.Contains(settingsText, `id="settingsShell"`) ||
 		!strings.Contains(settingsText, `id="settingsNav"`) ||
-		!strings.Contains(settingsText, `id="settingsBridgeRuleCount"`) ||
-		!strings.Contains(settingsText, `id="settingsDraftState"`) ||
-		!strings.Contains(settingsText, `id="settingsVisibleSections"`) ||
-		!strings.Contains(settingsText, `id="settingsIssueCount"`) ||
-		!strings.Contains(settingsText, `id="settingsProviderRoster"`) ||
-		!strings.Contains(settingsText, `id="settingsBridgeRoster"`) ||
-		!strings.Contains(settingsText, `id="settingsDiagnostics"`) ||
+		!strings.Contains(settingsText, `id="providerClassFilter"`) ||
 		!strings.Contains(settingsText, `id="cfgHealthMeta"`) ||
 		!strings.Contains(settingsText, `id="cfgBridgeMeta"`) ||
 		!strings.Contains(settingsText, `id="cfgRouterMeta"`) ||
@@ -384,8 +375,8 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 		!strings.Contains(settingsText, `Configuration Center`) ||
 		!strings.Contains(settingsText, `Runtime Routing, Health, Providers.`) ||
 		!strings.Contains(settingsText, `Config Directory`) ||
-		!strings.Contains(settingsText, `Per-provider probe`) ||
-		!strings.Contains(settingsText, `Diff and rollback ready`) ||
+		!strings.Contains(settingsText, `Free First`) ||
+		!strings.Contains(settingsText, `Quota-Limited`) ||
 		!strings.Contains(settingsText, `href="#cfg-upstreams"`) ||
 		!strings.Contains(settingsText, `data-nav-target="cfg-upstreams"`) ||
 		!strings.Contains(settingsText, `id="navMetaProviders"`) ||
@@ -394,11 +385,23 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 		!strings.Contains(settingsText, `Models`) ||
 		!strings.Contains(settingsText, `Auth`) ||
 		!strings.Contains(settingsText, `Probe`) ||
+		!strings.Contains(settingsText, `Provider Class`) ||
 		!strings.Contains(settingsText, `.page-settings .hero`) ||
 		!strings.Contains(settingsText, `grid-template-columns: 1fr;`) ||
-		!strings.Contains(settingsText, `.page-settings #heroStats`) ||
 		!strings.Contains(settingsText, `display: none;`) {
 		t.Fatalf("expected upgraded settings controls, got %q", settingsText)
+	}
+	if strings.Contains(settingsText, `id="settingsBridgeRuleCount"`) ||
+		strings.Contains(settingsText, `id="settingsDraftState"`) ||
+		strings.Contains(settingsText, `id="settingsVisibleSections"`) ||
+		strings.Contains(settingsText, `id="settingsIssueCount"`) ||
+		strings.Contains(settingsText, `id="settingsProviderRoster"`) ||
+		strings.Contains(settingsText, `id="settingsBridgeRoster"`) ||
+		strings.Contains(settingsText, `id="settingsDiagnostics"`) ||
+		strings.Contains(settingsText, `Per-provider probe`) ||
+		strings.Contains(settingsText, `Diff and rollback ready`) ||
+		strings.Contains(settingsText, `Runtime config surface`) {
+		t.Fatalf("expected duplicate settings summary surfaces to be removed, got %q", settingsText)
 	}
 
 	faviconReq := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
@@ -535,9 +538,10 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 		},
 		"proxy": map[string]any{
 			"retry": map[string]any{
-				"status_codes":     []int{408, 429},
-				"status_code_min":  500,
-				"message_keywords": []string{"rate limit"},
+				"infinite_on_error": true,
+				"status_codes":      []int{408, 429},
+				"status_code_min":   500,
+				"message_keywords":  []string{"rate limit"},
 			},
 			"intercepts": []any{},
 		},
@@ -546,6 +550,7 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 				"name":                  "provider-a",
 				"base_url":              "https://provider-a.example.com",
 				"api_key":               "sk-new",
+				"provider_class":        "free",
 				"models":                []string{"gpt-5.2", "gpt-5.2-codex"},
 				"weight":                3,
 				"timeout_ms":            45000,
@@ -587,6 +592,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	if updated.Upstreams[0].BaseURL != "https://provider-a.example.com" {
 		t.Fatalf("expected updated base url, got %q", updated.Upstreams[0].BaseURL)
 	}
+	if updated.Upstreams[0].ProviderClassNormalized() != config.UpstreamClassFree {
+		t.Fatalf("expected upstream class free, got %q", updated.Upstreams[0].ProviderClassNormalized())
+	}
 	if got := updated.Upstreams[0].Headers["X-Org"]; got != "demo" {
 		t.Fatalf("expected header X-Org=demo, got %q", got)
 	}
@@ -595,6 +603,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	}
 	if updated.Router.Strategy != "round_robin" {
 		t.Fatalf("expected router strategy round_robin, got %q", updated.Router.Strategy)
+	}
+	if !updated.Proxy.Retry.InfiniteOnError {
+		t.Fatalf("expected infinite retry mode to be enabled")
 	}
 	if updated.Health.Enabled {
 		t.Fatalf("expected health to be disabled")
@@ -619,6 +630,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	text := string(data)
 	if !strings.Contains(text, "provider-a") || !strings.Contains(text, "sk-new") {
 		t.Fatalf("expected saved config to contain updated upstream, got %q", text)
+	}
+	if !strings.Contains(text, "infinite_on_error: true") {
+		t.Fatalf("expected saved config to persist infinite retry mode, got %q", text)
 	}
 	if !strings.Contains(text, "/healthz") || !strings.Contains(text, "gpt-5.2-codex") {
 		t.Fatalf("expected saved config to contain updated health/bridge settings, got %q", text)

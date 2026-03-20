@@ -2,6 +2,7 @@ package router
 
 import (
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -131,5 +132,28 @@ func TestManagerPickStickyFallsBackWhenAssignedUpstreamIsUnhealthy(t *testing.T)
 	}
 	if upstream.Name != "alpha" {
 		t.Fatalf("expected fallback to alpha when sticky upstream is unhealthy, got %s", upstream.Name)
+	}
+}
+
+func TestManagerPickPrefersFreeClassBeforeQuotaLimited(t *testing.T) {
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin"},
+		Upstreams: []config.Upstream{
+			{Name: "quota", BaseURL: "https://quota.example.com", ProviderClass: config.UpstreamClassQuotaLimited, Models: []string{"gpt-5.2-codex"}, Weight: 1},
+			{Name: "free", BaseURL: "https://free.example.com", ProviderClass: config.UpstreamClassFree, Models: []string{"gpt-5.2-codex"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	manager := NewManager(state.NewConfigStore(cfg))
+	manager.ReportRequestSuccess("quota", time.Millisecond, http.StatusOK)
+	manager.ReportRequestSuccess("free", time.Millisecond, http.StatusOK)
+
+	upstream, ok := manager.Pick("gpt-5.2-codex", map[string]struct{}{})
+	if !ok {
+		t.Fatalf("expected an upstream")
+	}
+	if upstream.Name != "free" {
+		t.Fatalf("expected free class upstream first, got %s", upstream.Name)
 	}
 }

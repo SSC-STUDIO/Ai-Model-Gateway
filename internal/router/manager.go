@@ -20,6 +20,8 @@ type UpstreamStatus struct {
 	LastFailureKind             string        `json:"last_failure_kind,omitempty"`
 	LastCheckedAt               time.Time     `json:"last_checked_at,omitempty"`
 	LastLatency                 time.Duration `json:"last_latency,omitempty"`
+	QuotaBlocked                bool          `json:"quota_blocked,omitempty"`
+	QuotaBlockedAt              time.Time     `json:"quota_blocked_at,omitempty"`
 	ConsecutiveFailures         int           `json:"consecutive_failures"`
 	ConsecutiveRetryableFailure int           `json:"consecutive_retryable_failures"`
 	ConsecutiveSuccess          int           `json:"consecutive_success"`
@@ -104,16 +106,20 @@ func (m *Manager) PickSticky(model string, stickyKey string, excluded map[string
 		return upstream, true
 	}
 
-	healthyPool := m.pool(cfg.Upstreams, cfg.Router.Strategy, model, excluded, true, now)
-	if len(healthyPool) > 0 {
-		return m.pickFromPool(cfg.Router.Strategy, model, healthyPool), true
+	for _, class := range prioritizedUpstreamClasses() {
+		healthyPool := m.pool(cfg.Upstreams, cfg.Router.Strategy, model, excluded, true, now, class)
+		if len(healthyPool) > 0 {
+			return m.pickFromPool(cfg.Router.Strategy, model, class, healthyPool), true
+		}
 	}
 
-	fallbackPool := m.pool(cfg.Upstreams, cfg.Router.Strategy, model, excluded, false, now)
-	if len(fallbackPool) == 0 {
-		return config.Upstream{}, false
+	for _, class := range prioritizedUpstreamClasses() {
+		fallbackPool := m.pool(cfg.Upstreams, cfg.Router.Strategy, model, excluded, false, now, class)
+		if len(fallbackPool) > 0 {
+			return m.pickFromPool(cfg.Router.Strategy, model, class, fallbackPool), true
+		}
 	}
-	return m.pickFromPool(cfg.Router.Strategy, model, fallbackPool), true
+	return config.Upstream{}, false
 }
 
 func (m *Manager) RememberSticky(key string, upstream string) {
@@ -155,6 +161,23 @@ func (m *Manager) ReportRequestSuccess(name string, latency time.Duration, statu
 
 func (m *Manager) ReportRequestFailure(name string, latency time.Duration, statusCode int, err error, retryable bool, kind string) {
 	m.reportFailure(name, latency, statusCode, err, retryable, kind)
+}
+
+func (m *Manager) BlockUpstreamQuota(name string, reason string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	status := m.statusLocked(name)
+	status.Healthy = false
+	status.LastCheckedAt = time.Now()
+	status.LastError = strings.TrimSpace(reason)
+	status.LastFailureKind = "quota_exhausted"
+	status.QuotaBlocked = true
+	if status.QuotaBlockedAt.IsZero() {
+		status.QuotaBlockedAt = time.Now()
+	}
+	status.CooldownUntil = time.Time{}
+	m.statuses[name] = status
 }
 
 func (m *Manager) ShouldPassthroughFailure(name string) bool {
@@ -321,7 +344,7 @@ func (m *Manager) statusLocked(name string) UpstreamStatus {
 	return status
 }
 
-func (m *Manager) pool(upstreams []config.Upstream, strategy string, model string, excluded map[string]struct{}, healthyOnly bool, now time.Time) []config.Upstream {
+func (m *Manager) pool(upstreams []config.Upstream, strategy string, model string, excluded map[string]struct{}, healthyOnly bool, now time.Time, providerClass string) []config.Upstream {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -333,8 +356,14 @@ func (m *Manager) pool(upstreams []config.Upstream, strategy string, model strin
 		if !SupportsModel(upstream, model) {
 			continue
 		}
+		if upstream.ProviderClassNormalized() != providerClass {
+			continue
+		}
 
 		status := m.statusLocked(upstream.Name)
+		if status.QuotaBlocked {
+			continue
+		}
 		if status.CooldownUntil.After(now) {
 			continue
 		}
@@ -369,11 +398,11 @@ func (m *Manager) pool(upstreams []config.Upstream, strategy string, model strin
 	return pool
 }
 
-func (m *Manager) pickFromPool(strategy string, model string, pool []config.Upstream) config.Upstream {
+func (m *Manager) pickFromPool(strategy string, model string, class string, pool []config.Upstream) config.Upstream {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	key := strategy + ":" + model
+	key := strategy + ":" + class + ":" + model
 	idx := m.rr[key] % len(pool)
 	m.rr[key] = (m.rr[key] + 1) % len(pool)
 	return pool[idx]
@@ -410,6 +439,9 @@ func (m *Manager) pickStickyAssignment(upstreams []config.Upstream, model string
 		m.mu.Lock()
 		status := m.statusLocked(upstream.Name)
 		m.mu.Unlock()
+		if status.QuotaBlocked {
+			return config.Upstream{}, false
+		}
 		if status.CooldownUntil.After(now) {
 			return config.Upstream{}, false
 		}
@@ -420,6 +452,13 @@ func (m *Manager) pickStickyAssignment(upstreams []config.Upstream, model string
 	}
 
 	return config.Upstream{}, false
+}
+
+func prioritizedUpstreamClasses() []string {
+	return []string{
+		config.UpstreamClassFree,
+		config.UpstreamClassQuotaLimited,
+	}
 }
 
 func joinURL(baseURL string, path string) string {

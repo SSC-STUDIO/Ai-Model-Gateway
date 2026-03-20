@@ -6,7 +6,20 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+### Added
+
+- Added root `VERSION` file and bumped the release version to `0.1.1` so the Go repository now has an explicit semver carrier for release closure.
+
+### Changed
+
+- Expanded runtime configuration support for upstream `provider_class`, bridge exclude user-agents, retry recovery mode, response intercepts, provider probes, config history diff preview, and richer admin/settings control-surface summaries.
+- Refreshed README and example config to document free-vs-quota provider routing, retry/infinite recovery behavior, bridge exclusions, and the dedicated admin settings workflow.
+
+### Fixed
+
+- Fixed routing and proxy fallback behavior around free/quota upstream prioritization, bridge fallback to the requested model, sticky responses/compact routing, incomplete SSE retry handling, and Anthropic / Responses compatibility paths.
+- Fixed admin UI / API coverage so config export, history, rollback, per-provider probe results, and settings navigation/state are test-covered and release-ready.
+- UI evidence: `output\playwright\admin-settings-18081.png`.
 
 ## [2026-03-15] Public release baseline
 
