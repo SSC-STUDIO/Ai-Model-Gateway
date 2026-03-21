@@ -192,7 +192,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
       gap: 14px;
-      padding: 16px 18px;
+      padding: 16px 14px;
       overflow: hidden;
       position: relative;
     }
@@ -297,7 +297,7 @@ const adminHTMLTemplate = `<!doctype html>
       align-self: start;
     }
     .compact-card {
-      padding: 10px;
+      padding: 14px 12px 10px;
       align-self: start;
     }
     .span-7 { grid-column: span 7; }
@@ -344,13 +344,13 @@ const adminHTMLTemplate = `<!doctype html>
     .section-head {
       display: flex;
       justify-content: space-between;
-      align-items: end;
+      align-items: flex-start;
       gap: 10px;
       flex-wrap: wrap;
       margin-bottom: 12px;
     }
     .compact-card .section-head {
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
     .title {
       font-size: 17px;
@@ -358,7 +358,7 @@ const adminHTMLTemplate = `<!doctype html>
       letter-spacing: -0.03em;
     }
     .compact-card .title {
-      font-size: 15px;
+      font-size: 16px;
     }
     .caption {
       color: var(--muted);
@@ -378,7 +378,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
     #runtime-card .surface-strip {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -470,7 +470,7 @@ const adminHTMLTemplate = `<!doctype html>
       overflow-x: auto;
       overflow-y: hidden;
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: 14px;
       background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
     }
     table {
@@ -480,7 +480,7 @@ const adminHTMLTemplate = `<!doctype html>
       font-size: 13px;
     }
     th, td {
-      padding: 8px 8px;
+      padding: 8px 10px;
       border-bottom: 1px solid var(--line);
       text-align: left;
       vertical-align: top;
@@ -499,6 +499,8 @@ const adminHTMLTemplate = `<!doctype html>
       background: rgba(15, 14, 12, 0.96);
       backdrop-filter: blur(10px);
     }
+    th:first-child, td:first-child { padding-left: 14px; }
+    th:last-child, td:last-child { padding-right: 14px; }
     tbody tr:hover {
       background: rgba(121, 230, 215, 0.06);
     }
@@ -726,10 +728,10 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 12px;
     }
     .settings-rail-panel {
-      padding: 12px;
+      padding: 10px;
     }
     .settings-nav-panel {
-      padding: 12px;
+      padding: 10px;
     }
     .settings-nav-title {
       font-size: 11px;
@@ -819,7 +821,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .policy-card {
       border: 1px solid var(--line);
@@ -859,7 +861,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .mode-preset-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 10px;
     }
@@ -995,7 +997,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .page-settings .config-card-head {
       position: sticky;
-      top: 10px;
+      top: 80px;
       z-index: 2;
       margin: -2px -2px 8px;
       padding: 2px 2px 8px;
@@ -1155,7 +1157,7 @@ const adminHTMLTemplate = `<!doctype html>
     .settings-rail-actions .config-hint {
       grid-column: 1 / -1;
       min-height: 0;
-      padding: 2px 2px 0;
+      padding: 0 2px;
     }
     .probe-status {
       display: grid;
@@ -1388,7 +1390,7 @@ const adminHTMLTemplate = `<!doctype html>
       scroll-margin-top: 88px;
     }
     .config-section {
-      scroll-margin-top: 18px;
+      scroll-margin-top: 88px;
     }
     .diff-summary {
       display: flex;
@@ -1508,7 +1510,8 @@ const adminHTMLTemplate = `<!doctype html>
     }
     @media (max-width: 1320px) {
       .page-settings .config-grid,
-      .policy-grid {
+      .policy-grid,
+      .mode-preset-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
       .settings-jumpbar a {
