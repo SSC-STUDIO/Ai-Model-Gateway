@@ -287,18 +287,18 @@ const adminHTMLTemplate = `<!doctype html>
       grid-template-columns: repeat(12, 1fr);
       gap: clamp(10px, 1.1vw, 14px);
       margin-top: clamp(10px, 1.1vw, 14px);
-      align-items: start;
+      align-items: stretch;
       grid-auto-flow: row dense;
     }
     .card {
       grid-column: span 12;
       padding: 14px;
       overflow: hidden;
-      align-self: start;
+      display: flex;
+      flex-direction: column;
     }
     .compact-card {
       padding: 14px 12px 10px;
-      align-self: start;
     }
     .span-7 { grid-column: span 7; }
     .span-5 { grid-column: span 5; }
@@ -1369,6 +1369,7 @@ const adminHTMLTemplate = `<!doctype html>
       height: 30px;
       margin-top: 4px;
       opacity: 0.7;
+      flex-shrink: 0;
     }
     .metric-spark svg {
       display: block;
@@ -1400,6 +1401,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 6px;
       margin-top: 8px;
+      margin-bottom: 8px;
     }
     .hbar-row {
       display: grid;
@@ -1430,6 +1432,42 @@ const adminHTMLTemplate = `<!doctype html>
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       text-align: right;
+    }
+    .detail-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 140ms ease, color 140ms ease;
+    }
+    .detail-toggle:hover {
+      border-color: rgba(126, 231, 214, 0.4);
+      color: var(--ink);
+    }
+    .detail-toggle::after {
+      content: '▾';
+      font-size: 10px;
+      transition: transform 200ms ease;
+    }
+    .detail-toggle.collapsed::after {
+      transform: rotate(-90deg);
+    }
+    .detail-body {
+      overflow: hidden;
+      max-height: 2000px;
+      opacity: 1;
+      transition: max-height 300ms ease, opacity 200ms ease;
+    }
+    .detail-body.collapsed {
+      max-height: 0;
+      opacity: 0;
     }
     .chart-controls {
       display: flex;
@@ -1908,7 +1946,8 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="section-meta-strip" id="requestsMeta"></div>
         </div>
         <div class="surface-strip" id="requestsTopline"></div>
-        <div class="card-fill-body" id="requests"></div>
+        <button class="detail-toggle" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">请求明细</button>
+        <div class="detail-body" id="requestsWrap"><div class="card-fill-body" id="requests"></div></div>
       </div>
     </div>
 
@@ -1972,7 +2011,8 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="section-meta-strip" id="economicsMeta"></div>
         </div>
         <div id="modelDistribution" class="hbar-wrap"></div>
-        <div id="byModel"></div>
+        <button class="detail-toggle" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
+        <div class="detail-body collapsed" id="byModelWrap"><div id="byModel"></div></div>
       </div>
       <div class="card span-4 compact-card" id="cost-card">
         <div class="section-head">
@@ -1993,7 +2033,8 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="section-meta-strip" id="usageMeta"></div>
         </div>
         <div id="upstreamDistribution" class="hbar-wrap"></div>
-        <div id="byUpstream"></div>
+        <button class="detail-toggle" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
+        <div class="detail-body collapsed" id="byUpstreamWrap"><div id="byUpstream"></div></div>
       </div>
       <div class="card span-5 compact-card" id="cache-card">
         <div class="section-head">
@@ -2004,7 +2045,8 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="section-meta-strip" id="cacheMeta"></div>
         </div>
         <div class="surface-strip" id="cacheTopline"></div>
-        <div id="cacheRanking"></div>
+        <button class="detail-toggle" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
+        <div class="detail-body collapsed" id="cacheRankingWrap"><div id="cacheRanking"></div></div>
       </div>
     </div>
     </div>
