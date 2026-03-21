@@ -712,7 +712,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-shell {
       display: grid;
-      grid-template-columns: 200px minmax(0, 1fr) 320px;
+      grid-template-columns: 200px minmax(0, 1fr) 260px;
       gap: 14px;
       align-items: start;
     }
@@ -749,11 +749,11 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-jumpbar a {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(72px, 110px);
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      min-height: 39px;
+      grid-template-columns: 1fr;
+      align-items: start;
+      gap: 4px;
+      padding: 7px 10px;
+      min-height: 32px;
       border-radius: 14px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.04);
@@ -800,7 +800,7 @@ const adminHTMLTemplate = `<!doctype html>
       overflow: hidden;
       text-overflow: ellipsis;
       line-height: 1.3;
-      text-align: right;
+      text-align: left;
       min-width: 0;
     }
     .settings-jumpbar em.meta-good {
@@ -1001,7 +1001,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .page-settings .config-card-head {
       position: sticky;
-      top: 80px;
+      top: 86px;
       z-index: 2;
       margin: -2px -2px 8px;
       padding: 2px 2px 8px;
@@ -1075,7 +1075,7 @@ const adminHTMLTemplate = `<!doctype html>
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
     }
     .config-filter {
-      min-width: 180px;
+      min-width: min(160px, 100%);
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.06);
@@ -1624,15 +1624,8 @@ const adminHTMLTemplate = `<!doctype html>
       .mode-preset-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
-      .settings-jumpbar a {
-        grid-template-columns: 1fr;
-      }
-      .settings-jumpbar em {
-        text-align: left;
-        letter-spacing: 0.06em;
-      }
     }
-    @media (max-width: 1280px) {
+    @media (max-width: 1100px) {
       .settings-shell {
         grid-template-columns: 200px minmax(0, 1fr);
       }
@@ -1710,7 +1703,7 @@ const adminHTMLTemplate = `<!doctype html>
       }
     }
     .page-settings .hero {
-      margin-bottom: clamp(6px, 0.8vw, 10px);
+      display: none;
     }
     @media (min-width: 1600px) {
       h1 {
@@ -2262,11 +2255,10 @@ const adminHTMLTemplate = `<!doctype html>
             </div>
             <aside class="settings-rail" aria-label="Settings controls">
               <div class="settings-sticky">
-                <div class="config-card settings-rail-panel command-panel">
+                <div class="config-card settings-rail-panel">
                     <div class="config-card-head">
                       <div class="config-card-head-main">
-                        <div class="section-kicker"><strong>Ops</strong><span>Control Deck</span></div>
-                        <div class="config-card-title">Controls</div>
+                        <div class="config-card-title">Filters</div>
                       </div>
                   </div>
                   <div class="config-toolbar">
@@ -2280,13 +2272,17 @@ const adminHTMLTemplate = `<!doctype html>
                       <option value="zh">中文</option>
                       <option value="en">English</option>
                       <option value="ja">日本語</option>
-                      <option value="ko">한국어</option>
-                      <option value="es">Español</option>
-                      <option value="fr">Français</option>
-                      <option value="de">Deutsch</option>
                     </select>
                     <button class="btn secondary" id="expandSections" type="button">Expand All</button>
                     <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
+                  </div>
+                </div>
+                <div class="config-card settings-rail-panel command-panel">
+                    <div class="config-card-head">
+                      <div class="config-card-head-main">
+                        <div class="section-kicker"><strong>Ops</strong><span>Control Deck</span></div>
+                        <div class="config-card-title">Actions</div>
+                      </div>
                   </div>
                   <div class="validation-summary" id="configValidation"></div>
                   <div class="config-actions settings-rail-actions">
