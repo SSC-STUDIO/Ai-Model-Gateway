@@ -185,7 +185,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .hero-main:hover, .card:hover {
       border-color: rgba(126, 231, 214, 0.22);
-      box-shadow: var(--shadow), var(--glow);
+      box-shadow: var(--shadow), var(--glow), inset 0 1px 0 rgba(255,255,255,0.05);
       transform: translateY(-1px);
     }
     .hero-main {
@@ -582,7 +582,7 @@ const adminHTMLTemplate = `<!doctype html>
     .upstream-note {
       color: var(--muted);
       font-size: 11px;
-      line-height: 1.4;
+      line-height: 1.45;
       overflow-wrap: anywhere;
       word-break: break-word;
     }
@@ -840,7 +840,7 @@ const adminHTMLTemplate = `<!doctype html>
     .policy-card-meta {
       color: var(--muted);
       font-size: 11px;
-      line-height: 1.4;
+      line-height: 1.45;
     }
     .mode-preset-grid {
       display: grid;
@@ -988,6 +988,7 @@ const adminHTMLTemplate = `<!doctype html>
       background: linear-gradient(180deg, rgba(14, 13, 12, 0.98), rgba(14, 13, 12, 0.9) 82%, rgba(14, 13, 12, 0));
     }
     .config-card-title {
+      font-size: 14px;
       font-weight: 700;
     }
     .config-card-head-main {
@@ -1031,6 +1032,7 @@ const adminHTMLTemplate = `<!doctype html>
     .config-status {
       color: var(--muted);
       font-size: 11px;
+      animation: pulse-subtle 1.5s ease-in-out infinite;
     }
     .config-toolbar {
       display: flex;
@@ -1117,7 +1119,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-rail-panel.command-panel {
       background:
-        radial-gradient(circle at 0% 0%, rgba(241, 184, 102, 0.08), transparent 42%),
+        radial-gradient(circle at 0% 0%, rgba(241, 184, 102, 0.12), transparent 42%),
         linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
     }
     .settings-rail-actions {
@@ -1142,6 +1144,7 @@ const adminHTMLTemplate = `<!doctype html>
       border-radius: 12px;
       border: 1px solid var(--line);
       background: rgba(0,0,0,0.18);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
       font-size: 11px;
     }
     .probe-status.ok {
@@ -1382,6 +1385,7 @@ const adminHTMLTemplate = `<!doctype html>
       border: 1px solid var(--line);
       border-radius: 14px;
       background: rgba(0,0,0,0.3);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
       overflow: hidden;
     }
     .diff-lines {
@@ -1579,6 +1583,10 @@ const adminHTMLTemplate = `<!doctype html>
       }
     }
     html { scroll-behavior: smooth; }
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
     .btn:focus-visible,
     .topnav a:focus-visible,
     .chart-controls button:focus-visible,
@@ -3045,7 +3053,7 @@ const adminHTMLTemplate = `<!doctype html>
         if (!head || head.querySelector('.section-toggle')) return;
         const actions = document.createElement('div');
         actions.className = 'config-actions';
-        actions.innerHTML = '<button class="btn secondary section-toggle" type="button">' + escapeHTML(t('collapse')) + '</button>';
+        actions.innerHTML = '<button class="btn secondary section-toggle" type="button" aria-expanded="true">' + escapeHTML(t('collapse')) + '</button>';
         head.appendChild(actions);
       });
     };
@@ -3054,6 +3062,7 @@ const adminHTMLTemplate = `<!doctype html>
       const button = section.querySelector('.section-toggle');
       if (button) {
         button.textContent = collapsed ? t('expand') : t('collapse');
+        button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       }
     };
     const setUpstreamCollapsed = (card, collapsed) => {
@@ -3062,6 +3071,7 @@ const adminHTMLTemplate = `<!doctype html>
       const button = card.querySelector('.upstream-toggle');
       if (button) {
         button.textContent = collapsed ? t('expand') : t('collapse');
+        button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       }
     };
     const applyConfigSearch = () => {
@@ -3952,7 +3962,7 @@ const adminHTMLTemplate = `<!doctype html>
       const n = labels.length;
       if (n === 0) { wrap.querySelector('svg')?.remove(); return; }
 
-      const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none' });
+      const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none', role: 'img', 'aria-hidden': 'true' });
 
       // grid lines
       const gridSteps = 4;
@@ -4042,7 +4052,7 @@ const adminHTMLTemplate = `<!doctype html>
       let maxVal = Math.max(...totals);
       if (maxVal === 0) maxVal = 1;
 
-      const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none' });
+      const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none', role: 'img', 'aria-hidden': 'true' });
 
       // grid
       const gridSteps = 4;
