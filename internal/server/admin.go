@@ -560,6 +560,14 @@ const adminHTMLTemplate = `<!doctype html>
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
       transform: translateY(-1px);
     }
+    .upstream-tile.is-degraded:hover {
+      border-color: rgba(255, 127, 110, 0.45);
+      box-shadow: 0 8px 24px rgba(255, 127, 110, 0.12);
+    }
+    .upstream-tile.is-warn:hover {
+      border-color: rgba(241, 184, 102, 0.45);
+      box-shadow: 0 8px 24px rgba(241, 184, 102, 0.12);
+    }
     .upstream-head {
       display: flex;
       align-items: flex-start;
@@ -1272,12 +1280,6 @@ const adminHTMLTemplate = `<!doctype html>
       flex-direction: column;
       min-height: 0;
     }
-    .card-fill.priority-feed {
-      min-height: 0;
-    }
-    .card-fill.compact-feed {
-      min-height: 0;
-    }
     .card-fill-body {
       flex: 0 1 auto;
       min-height: 0;
@@ -1421,6 +1423,10 @@ const adminHTMLTemplate = `<!doctype html>
       text-align: center;
       font-weight: 700;
     }
+    .table-shell {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(121, 230, 215, 0.28) transparent;
+    }
     .table-shell::-webkit-scrollbar {
       height: 10px;
     }
@@ -1484,6 +1490,9 @@ const adminHTMLTemplate = `<!doctype html>
     .config-field-wide {
       grid-column: 1 / -1;
     }
+    .diff-preview-card {
+      margin-top: 12px;
+    }
     @media (max-width: 1320px) {
       .page-settings .config-grid,
       .policy-grid {
@@ -1538,11 +1547,11 @@ const adminHTMLTemplate = `<!doctype html>
       .hero-priority-grid {
         grid-template-columns: 1fr;
       }
-      .span-8, .span-7, .span-5, .span-4 {
-        grid-column: span 12;
-      }
-      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
+      .metrics, .page-settings .config-grid, .policy-grid, .surface-strip {
         grid-template-columns: repeat(2, 1fr);
+      }
+      .provider-summary-strip {
+        grid-template-columns: repeat(4, 1fr);
       }
       .mode-preset-grid {
         grid-template-columns: 1fr;
@@ -1561,8 +1570,11 @@ const adminHTMLTemplate = `<!doctype html>
       }
     }
     @media (max-width: 640px) {
-      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
+      .metrics, .page-settings .config-grid, .policy-grid, .surface-strip {
         grid-template-columns: 1fr;
+      }
+      .provider-summary-strip {
+        grid-template-columns: repeat(2, 1fr);
       }
       .mode-preset-grid {
         grid-template-columns: 1fr;
@@ -1582,6 +1594,33 @@ const adminHTMLTemplate = `<!doctype html>
         max-width: 880px;
       }
     }
+    @media print {
+      body {
+        background: white;
+        color: #111;
+      }
+      body::before, body::after {
+        display: none;
+      }
+      .topbar {
+        position: static;
+        background: white;
+        border: 1px solid #ddd;
+        box-shadow: none;
+        backdrop-filter: none;
+      }
+      .card, .hero-main {
+        background: white;
+        border: 1px solid #ddd;
+        box-shadow: none;
+        backdrop-filter: none;
+      }
+      .metric, .surface-card, .upstream-tile, .error-item {
+        background: white;
+        border: 1px solid #ddd;
+      }
+      .chart-wrap { break-inside: avoid; }
+    }
     html { scroll-behavior: smooth; }
     @keyframes pulse-subtle {
       0%, 100% { opacity: 1; }
@@ -1599,6 +1638,12 @@ const adminHTMLTemplate = `<!doctype html>
     .config-filter:focus-visible {
       outline: 2px solid rgba(126, 231, 214, 0.6);
       outline-offset: 2px;
+    }
+    .card-fill-body,
+    .diff-lines,
+    .probe-preview {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(121, 230, 215, 0.22) transparent;
     }
     .card-fill-body::-webkit-scrollbar,
     .diff-lines::-webkit-scrollbar,
@@ -2046,6 +2091,11 @@ const adminHTMLTemplate = `<!doctype html>
                     <select class="config-filter" id="cfgAdminLanguage">
                       <option value="zh">中文</option>
                       <option value="en">English</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                      <option value="es">Español</option>
+                      <option value="fr">Français</option>
+                      <option value="de">Deutsch</option>
                     </select>
                     <button class="btn secondary" id="expandSections" type="button">Expand All</button>
                     <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
@@ -2136,6 +2186,13 @@ const adminHTMLTemplate = `<!doctype html>
         languageLabel: "界面语言",
         languageChinese: "中文",
         languageEnglish: "English",
+        languageJapanese: "日本語",
+        languageKorean: "한국어",
+        languageSpanish: "Español",
+        languageFrench: "Français",
+        languageGerman: "Deutsch",
+        pageTitleAdmin: "AI 模型网关管理台",
+        pageTitleSettings: "AI 模型网关设置",
         loading: "加载中",
         loaded: "已载入",
         configSynced: "配置已同步",
@@ -2272,6 +2329,13 @@ const adminHTMLTemplate = `<!doctype html>
         languageLabel: "Interface Language",
         languageChinese: "Chinese",
         languageEnglish: "English",
+        languageJapanese: "Japanese",
+        languageKorean: "Korean",
+        languageSpanish: "Spanish",
+        languageFrench: "French",
+        languageGerman: "German",
+        pageTitleAdmin: "AI Gateway Admin",
+        pageTitleSettings: "AI Gateway Settings",
         loading: "Loading",
         loaded: "Loaded",
         configSynced: "Config synced",
@@ -2348,6 +2412,402 @@ const adminHTMLTemplate = `<!doctype html>
         enabled: "Enabled",
         disabled: "Disabled",
         provider: "Provider {index}"
+      },
+      ja: {
+        brandTitle: "AI MODEL GATEWAY",
+        brandSubtitle: "統合された可観測性、ルーティング、料金、ランタイム制御。",
+        overviewNavPerformance: "パフォーマンス",
+        overviewNavEconomics: "コスト",
+        overviewNavUpstreams: "アップストリーム",
+        overviewNavRequests: "リクエスト",
+        overviewNavSettings: "設定",
+        settingsNavOverview: "概要",
+        performanceTitle: "ライブ性能",
+        performanceCaption: "直近 1 分 / 5 分の RPM、TPM、遅延を最初に確認します。",
+        runtimePostureTitle: "ランタイム状態",
+        runtimePostureCaption: "現在の回復モード、失敗出口、プローブ状態。",
+        upstreamHealthTitle: "アップストリーム健全性",
+        upstreamHealthCaption: "切り替える前に、遅い系統、劣化系統、クールダウン中の系統を確認します。",
+        recentErrorsTitle: "最近のエラー",
+        recentErrorsCaption: "最近のエラーの所属、状態、主要メッセージを圧縮表示します。",
+        recentRequestsTitle: "最近のリクエスト",
+        recentRequestsCaption: "状態、試行回数、遅延、概算コストを含む最新トレース。",
+        requestThroughputTitle: "リクエスト吞吐",
+        requestThroughputCaption: "時間バケット単位の RPM / TPM 推移。",
+        latencyTrendTitle: "遅延推移",
+        latencyTrendCaption: "平均遅延 (ms) と成功率の推移。",
+        successFailureTitle: "成功 / 失敗",
+        successFailureCaption: "各時間バケットの成功 / 失敗リクエスト数。",
+        tokenUsageTitle: "アップストリーム別 Token 使用量",
+        tokenUsageCaption: "アップストリーム別の Token 消費量。",
+        economicsTitle: "モデルコスト",
+        economicsCaption: "モデル単位の Token、概算 USD コスト、価格表カバー率。",
+        costSnapshotTitle: "コストスナップショット",
+        costSnapshotCaption: "既知の公式価格に基づく推定。",
+        upstreamUsageTitle: "アップストリーム使用量",
+        upstreamUsageCaption: "健全性と合わせて見るアップストリーム別 Token 使用量。",
+        cacheRankingTitle: "キャッシュ命中ランキング",
+        cacheRankingCaption: "直近 24 時間のアップストリーム別キャッシュ命中率。",
+        runtimeConfigTitle: "ランタイム設定",
+        runtimeConfigCaption: "プローブ、ブリッジ、回復、言語、サービス提供元を一括管理。",
+        settingsNavTitle: "セクション",
+        settingsHealth: "ヘルス",
+        settingsBridge: "ブリッジ",
+        settingsRouter: "ルーター",
+        settingsIntercepts: "インターセプト",
+        settingsProviders: "プロバイダー",
+        settingsHistory: "履歴",
+        settingsControlsTitle: "操作",
+        settingsHistoryTitle: "履歴",
+        settingsSearchPlaceholder: "セクションまたはプロバイダーを検索...",
+        settingsExpandAll: "すべて展開",
+        settingsCollapseAll: "すべて折りたたむ",
+        saveConfig: "設定を保存",
+        reloadConfig: "再読み込み",
+        exportConfig: "エクスポート",
+        rollbackConfig: "ロールバック",
+        allProviders: "すべてのプロバイダー",
+        freeFirst: "無料優先",
+        quotaLimited: "Quota 制限",
+        languageLabel: "表示言語",
+        languageChinese: "中文",
+        languageEnglish: "English",
+        languageJapanese: "日本語",
+        languageKorean: "한국어",
+        languageSpanish: "Español",
+        languageFrench: "Français",
+        languageGerman: "Deutsch",
+        pageTitleAdmin: "AI モデルゲートウェイ管理台",
+        pageTitleSettings: "AI モデルゲートウェイ設定",
+        loading: "読み込み中",
+        loaded: "読み込み済み",
+        configSynced: "設定同期済み",
+        loadConfigFailed: "設定の読み込みに失敗しました",
+        loaded: "読み込み済み",
+        noData: "データなし",
+        enabled: "有効",
+        disabled: "無効",
+        healthy: "正常",
+        degraded: "劣化",
+        failed: "失敗",
+        status: "状態",
+        provider: "プロバイダー {index}"
+      },
+      ko: {
+        brandTitle: "AI MODEL GATEWAY",
+        brandSubtitle: "통합 관측성, 라우팅, 과금, 런타임 제어.",
+        overviewNavPerformance: "성능",
+        overviewNavEconomics: "비용",
+        overviewNavUpstreams: "업스트림",
+        overviewNavRequests: "요청",
+        overviewNavSettings: "설정",
+        settingsNavOverview: "개요",
+        performanceTitle: "실시간 성능",
+        performanceCaption: "최근 1분 / 5분 RPM, TPM, 지연부터 확인합니다.",
+        runtimePostureTitle: "런타임 상태",
+        runtimePostureCaption: "현재 복구 모드, 실패 출구, 프로브 상태.",
+        upstreamHealthTitle: "업스트림 상태",
+        upstreamHealthCaption: "전환 전에 느림, 저하, 쿨다운 상태를 먼저 확인합니다.",
+        recentErrorsTitle: "최근 오류",
+        recentErrorsCaption: "최근 오류의 소속, 상태, 대표 메시지를 압축 표시합니다.",
+        recentRequestsTitle: "최근 요청",
+        recentRequestsCaption: "상태, 시도 횟수, 지연, 추정 비용이 포함된 최신 요청 추적.",
+        requestThroughputTitle: "요청 처리량",
+        requestThroughputCaption: "시간 버킷 기준 RPM / TPM 추이.",
+        latencyTrendTitle: "지연 추이",
+        latencyTrendCaption: "평균 지연 (ms) 및 성공률 추이.",
+        successFailureTitle: "성공 / 실패",
+        successFailureCaption: "각 시간 버킷의 성공 / 실패 요청 수.",
+        tokenUsageTitle: "업스트림별 Token 사용량",
+        tokenUsageCaption: "업스트림별 Token 소비량.",
+        economicsTitle: "모델 비용",
+        economicsCaption: "모델별 Token 사용량, 추정 USD 비용, 가격 커버리지.",
+        costSnapshotTitle: "비용 스냅샷",
+        costSnapshotCaption: "알려진 공식 가격 기준 추정치.",
+        upstreamUsageTitle: "업스트림 사용량",
+        upstreamUsageCaption: "상태와 함께 보는 업스트림별 Token 사용량.",
+        cacheRankingTitle: "캐시 적중 순위",
+        cacheRankingCaption: "최근 24시간 업스트림별 캐시 적중률.",
+        runtimeConfigTitle: "런타임 설정",
+        runtimeConfigCaption: "프로브, 브리지, 복구, 언어, 공급자를 한 곳에서 관리합니다.",
+        settingsNavTitle: "섹션",
+        settingsHealth: "헬스",
+        settingsBridge: "브리지",
+        settingsRouter: "라우터",
+        settingsIntercepts: "인터셉트",
+        settingsProviders: "공급자",
+        settingsHistory: "이력",
+        settingsControlsTitle: "제어",
+        settingsHistoryTitle: "이력",
+        settingsSearchPlaceholder: "섹션 또는 공급자 검색...",
+        settingsExpandAll: "모두 펼치기",
+        settingsCollapseAll: "모두 접기",
+        saveConfig: "설정 저장",
+        reloadConfig: "새로고침",
+        exportConfig: "내보내기",
+        rollbackConfig: "롤백",
+        allProviders: "모든 공급자",
+        freeFirst: "무료 우선",
+        quotaLimited: "쿼터 제한",
+        languageLabel: "표시 언어",
+        languageChinese: "中文",
+        languageEnglish: "English",
+        languageJapanese: "日本語",
+        languageKorean: "한국어",
+        languageSpanish: "Español",
+        languageFrench: "Français",
+        languageGerman: "Deutsch",
+        pageTitleAdmin: "AI 모델 게이트웨이 관리",
+        pageTitleSettings: "AI 모델 게이트웨이 설정",
+        loading: "불러오는 중",
+        loaded: "불러옴",
+        configSynced: "설정 동기화됨",
+        loadConfigFailed: "설정 로드 실패",
+        noData: "데이터 없음",
+        enabled: "활성",
+        disabled: "비활성",
+        healthy: "정상",
+        degraded: "저하",
+        failed: "실패",
+        status: "상태",
+        provider: "공급자 {index}"
+      },
+      es: {
+        brandTitle: "AI MODEL GATEWAY",
+        brandSubtitle: "Observabilidad, enrutamiento, precios y control de ejecución unificados.",
+        overviewNavPerformance: "Rendimiento",
+        overviewNavEconomics: "Coste",
+        overviewNavUpstreams: "Upstreams",
+        overviewNavRequests: "Solicitudes",
+        overviewNavSettings: "Ajustes",
+        settingsNavOverview: "Resumen",
+        performanceTitle: "Rendimiento en vivo",
+        performanceCaption: "Empieza por las ventanas reales de 1 min y 5 min de RPM, TPM y latencia.",
+        runtimePostureTitle: "Estado de ejecución",
+        runtimePostureCaption: "Modo de recuperación actual, salida de fallo y estado de sondas.",
+        upstreamHealthTitle: "Salud de upstreams",
+        upstreamHealthCaption: "Consulta lentitud, degradación y cooldown antes de cambiar.",
+        recentErrorsTitle: "Errores recientes",
+        recentErrorsCaption: "Vista compacta de origen, estado y mensaje dominante.",
+        recentRequestsTitle: "Solicitudes recientes",
+        recentRequestsCaption: "Trazas recientes con estado, intentos, latencia y coste estimado.",
+        requestThroughputTitle: "Caudal de solicitudes",
+        requestThroughputCaption: "Tendencia de RPM / TPM por cubo temporal.",
+        latencyTrendTitle: "Tendencia de latencia",
+        latencyTrendCaption: "Tendencia de latencia media (ms) y éxito.",
+        successFailureTitle: "Éxito / fallo",
+        successFailureCaption: "Solicitudes exitosas y fallidas en cada cubo.",
+        tokenUsageTitle: "Uso de Token por upstream",
+        tokenUsageCaption: "Consumo de Token agrupado por upstream.",
+        economicsTitle: "Coste del modelo",
+        economicsCaption: "Uso de Token por modelo, coste USD estimado y cobertura de precios.",
+        costSnapshotTitle: "Instantánea de costes",
+        costSnapshotCaption: "Estimado a partir de precios oficiales conocidos.",
+        upstreamUsageTitle: "Uso por upstream",
+        upstreamUsageCaption: "Uso de Token por upstream comparado con su salud.",
+        cacheRankingTitle: "Ranking de cache hit",
+        cacheRankingCaption: "Ranking de cache hit por upstream en 24 h.",
+        runtimeConfigTitle: "Configuración de ejecución",
+        runtimeConfigCaption: "Gestiona sondas, bridge, recuperación, idioma y proveedores en un solo lugar.",
+        settingsNavTitle: "Secciones",
+        settingsHealth: "Salud",
+        settingsBridge: "Bridge",
+        settingsRouter: "Router",
+        settingsIntercepts: "Interceptores",
+        settingsProviders: "Proveedores",
+        settingsHistory: "Historial",
+        settingsControlsTitle: "Controles",
+        settingsHistoryTitle: "Historial",
+        settingsSearchPlaceholder: "Buscar secciones o proveedores...",
+        settingsExpandAll: "Expandir todo",
+        settingsCollapseAll: "Contraer todo",
+        saveConfig: "Guardar configuración",
+        reloadConfig: "Recargar",
+        exportConfig: "Exportar",
+        rollbackConfig: "Revertir",
+        allProviders: "Todos los proveedores",
+        freeFirst: "Gratis primero",
+        quotaLimited: "Cuota limitada",
+        languageLabel: "Idioma de la interfaz",
+        languageChinese: "中文",
+        languageEnglish: "English",
+        languageJapanese: "日本語",
+        languageKorean: "한국어",
+        languageSpanish: "Español",
+        languageFrench: "Français",
+        languageGerman: "Deutsch",
+        pageTitleAdmin: "Administración de AI Model Gateway",
+        pageTitleSettings: "Ajustes de AI Model Gateway",
+        loading: "Cargando",
+        loaded: "Cargado",
+        configSynced: "Configuración sincronizada",
+        loadConfigFailed: "No se pudo cargar la configuración",
+        noData: "Sin datos",
+        enabled: "Activado",
+        disabled: "Desactivado",
+        healthy: "Saludable",
+        degraded: "Degradado",
+        failed: "Falló",
+        status: "Estado",
+        provider: "Proveedor {index}"
+      },
+      fr: {
+        brandTitle: "AI MODEL GATEWAY",
+        brandSubtitle: "Observabilité, routage, tarification et contrôle d’exécution unifiés.",
+        overviewNavPerformance: "Performance",
+        overviewNavEconomics: "Coût",
+        overviewNavUpstreams: "Upstreams",
+        overviewNavRequests: "Requêtes",
+        overviewNavSettings: "Réglages",
+        settingsNavOverview: "Vue d’ensemble",
+        performanceTitle: "Performance en direct",
+        performanceCaption: "Commencez par les fenêtres réelles 1 min / 5 min de RPM, TPM et latence.",
+        runtimePostureTitle: "État d’exécution",
+        runtimePostureCaption: "Mode de récupération actuel, sortie d’échec et état des sondes.",
+        upstreamHealthTitle: "Santé des upstreams",
+        upstreamHealthCaption: "Vérifiez lenteur, dégradation et cooldown avant de basculer.",
+        recentErrorsTitle: "Erreurs récentes",
+        recentErrorsCaption: "Vue condensée de l’origine, du statut et du message dominant.",
+        recentRequestsTitle: "Requêtes récentes",
+        recentRequestsCaption: "Traces récentes avec statut, tentatives, latence et coût estimé.",
+        requestThroughputTitle: "Débit des requêtes",
+        requestThroughputCaption: "Tendance RPM / TPM agrégée par créneau.",
+        latencyTrendTitle: "Tendance de latence",
+        latencyTrendCaption: "Latence moyenne (ms) et taux de succès.",
+        successFailureTitle: "Succès / échec",
+        successFailureCaption: "Requêtes réussies et échouées par créneau.",
+        tokenUsageTitle: "Utilisation de Token par upstream",
+        tokenUsageCaption: "Consommation de Token groupée par upstream.",
+        economicsTitle: "Coût des modèles",
+        economicsCaption: "Utilisation de Token par modèle, coût USD estimé et couverture tarifaire.",
+        costSnapshotTitle: "Instantané des coûts",
+        costSnapshotCaption: "Estimé à partir des prix officiels connus.",
+        upstreamUsageTitle: "Utilisation des upstreams",
+        upstreamUsageCaption: "Utilisation de Token par upstream comparée à leur état.",
+        cacheRankingTitle: "Classement du cache hit",
+        cacheRankingCaption: "Classement des cache hit par upstream sur 24 h.",
+        runtimeConfigTitle: "Configuration runtime",
+        runtimeConfigCaption: "Gérez sondes, bridge, récupération, langue et fournisseurs au même endroit.",
+        settingsNavTitle: "Sections",
+        settingsHealth: "Santé",
+        settingsBridge: "Bridge",
+        settingsRouter: "Routeur",
+        settingsIntercepts: "Interceptions",
+        settingsProviders: "Fournisseurs",
+        settingsHistory: "Historique",
+        settingsControlsTitle: "Contrôles",
+        settingsHistoryTitle: "Historique",
+        settingsSearchPlaceholder: "Rechercher des sections ou fournisseurs...",
+        settingsExpandAll: "Tout développer",
+        settingsCollapseAll: "Tout réduire",
+        saveConfig: "Enregistrer",
+        reloadConfig: "Recharger",
+        exportConfig: "Exporter",
+        rollbackConfig: "Restaurer",
+        allProviders: "Tous les fournisseurs",
+        freeFirst: "Gratuit d’abord",
+        quotaLimited: "Quota limité",
+        languageLabel: "Langue de l’interface",
+        languageChinese: "中文",
+        languageEnglish: "English",
+        languageJapanese: "日本語",
+        languageKorean: "한국어",
+        languageSpanish: "Español",
+        languageFrench: "Français",
+        languageGerman: "Deutsch",
+        pageTitleAdmin: "Administration AI Model Gateway",
+        pageTitleSettings: "Réglages AI Model Gateway",
+        loading: "Chargement",
+        loaded: "Chargé",
+        configSynced: "Configuration synchronisée",
+        loadConfigFailed: "Échec du chargement de la configuration",
+        noData: "Aucune donnée",
+        enabled: "Activé",
+        disabled: "Désactivé",
+        healthy: "Sain",
+        degraded: "Dégradé",
+        failed: "Échec",
+        status: "Statut",
+        provider: "Fournisseur {index}"
+      },
+      de: {
+        brandTitle: "AI MODEL GATEWAY",
+        brandSubtitle: "Einheitliche Beobachtbarkeit, Routing, Preisermittlung und Laufzeitsteuerung.",
+        overviewNavPerformance: "Leistung",
+        overviewNavEconomics: "Kosten",
+        overviewNavUpstreams: "Upstreams",
+        overviewNavRequests: "Anfragen",
+        overviewNavSettings: "Einstellungen",
+        settingsNavOverview: "Übersicht",
+        performanceTitle: "Live-Leistung",
+        performanceCaption: "Zuerst die echten 1-Min-/5-Min-Fenster für RPM, TPM und Latenz prüfen.",
+        runtimePostureTitle: "Laufzeitstatus",
+        runtimePostureCaption: "Aktueller Recovery-Modus, Failure-Exit und Probe-Status.",
+        upstreamHealthTitle: "Upstream-Gesundheit",
+        upstreamHealthCaption: "Vor dem Umschalten zuerst Langsamkeit, Degradation und Cooldown prüfen.",
+        recentErrorsTitle: "Letzte Fehler",
+        recentErrorsCaption: "Kompakte Sicht auf Herkunft, Status und dominierende Meldung.",
+        recentRequestsTitle: "Letzte Anfragen",
+        recentRequestsCaption: "Neueste Anfragen mit Status, Versuchen, Latenz und geschätzten Kosten.",
+        requestThroughputTitle: "Anfragedurchsatz",
+        requestThroughputCaption: "RPM-/TPM-Trend nach Zeit-Buckets aggregiert.",
+        latencyTrendTitle: "Latenztrend",
+        latencyTrendCaption: "Trend von mittlerer Latenz (ms) und Erfolgsrate.",
+        successFailureTitle: "Erfolg / Fehler",
+        successFailureCaption: "Erfolgreiche und fehlgeschlagene Anfragen je Bucket.",
+        tokenUsageTitle: "Token-Nutzung nach Upstream",
+        tokenUsageCaption: "Token-Verbrauch gruppiert nach Upstream.",
+        economicsTitle: "Modellkosten",
+        economicsCaption: "Token-Nutzung pro Modell, geschätzte USD-Kosten und Preisabdeckung.",
+        costSnapshotTitle: "Kostensnapshot",
+        costSnapshotCaption: "Geschätzt anhand bekannter offizieller Preise.",
+        upstreamUsageTitle: "Upstream-Nutzung",
+        upstreamUsageCaption: "Token-Nutzung je Upstream im Vergleich zum Gesundheitsstatus.",
+        cacheRankingTitle: "Cache-Hit-Ranking",
+        cacheRankingCaption: "24h-Cache-Hit-Ranking nach Upstream.",
+        runtimeConfigTitle: "Laufzeitkonfiguration",
+        runtimeConfigCaption: "Probes, Bridge, Recovery, Sprache und Provider zentral verwalten.",
+        settingsNavTitle: "Bereiche",
+        settingsHealth: "Health",
+        settingsBridge: "Bridge",
+        settingsRouter: "Router",
+        settingsIntercepts: "Interceptions",
+        settingsProviders: "Provider",
+        settingsHistory: "Verlauf",
+        settingsControlsTitle: "Steuerung",
+        settingsHistoryTitle: "Verlauf",
+        settingsSearchPlaceholder: "Bereiche oder Provider suchen...",
+        settingsExpandAll: "Alles aufklappen",
+        settingsCollapseAll: "Alles einklappen",
+        saveConfig: "Konfiguration speichern",
+        reloadConfig: "Neu laden",
+        exportConfig: "Exportieren",
+        rollbackConfig: "Rollback",
+        allProviders: "Alle Provider",
+        freeFirst: "Zuerst kostenlos",
+        quotaLimited: "Quota-begrenzt",
+        languageLabel: "Sprache der Oberfläche",
+        languageChinese: "中文",
+        languageEnglish: "English",
+        languageJapanese: "日本語",
+        languageKorean: "한국어",
+        languageSpanish: "Español",
+        languageFrench: "Français",
+        languageGerman: "Deutsch",
+        pageTitleAdmin: "AI Model Gateway Verwaltung",
+        pageTitleSettings: "AI Model Gateway Einstellungen",
+        loading: "Wird geladen",
+        loaded: "Geladen",
+        configSynced: "Konfiguration synchronisiert",
+        loadConfigFailed: "Konfiguration konnte nicht geladen werden",
+        noData: "Keine Daten",
+        enabled: "Aktiv",
+        disabled: "Deaktiviert",
+        healthy: "Gesund",
+        degraded: "Degradiert",
+        failed: "Fehlgeschlagen",
+        status: "Status",
+        provider: "Provider {index}"
       }
     };
     const t = (key, vars = {}) => {
@@ -2414,7 +2874,6 @@ const adminHTMLTemplate = `<!doctype html>
       else if (code >= 500) tone = 'danger';
       return '<span class="status-chip ' + tone + '">' + escapeHTML(code || '-') + '</span>';
     };
-    const statusPill = (healthy) => healthy ? '<span class="status">healthy</span>' : '<span class="status bad">degraded</span>';
     const escapeHTML = (value) => String(value ?? '-')
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -3141,9 +3600,9 @@ const adminHTMLTemplate = `<!doctype html>
       if (collapsedCard) {
         collapsedCard.classList.remove('collapsed');
         const sectionButton = collapsedCard.querySelector('.section-toggle');
-        if (sectionButton) sectionButton.textContent = t('collapse');
+        if (sectionButton) { sectionButton.textContent = t('collapse'); sectionButton.setAttribute('aria-expanded', 'true'); }
         const providerButton = collapsedCard.querySelector('.upstream-toggle');
-        if (providerButton) providerButton.textContent = t('collapse');
+        if (providerButton) { providerButton.textContent = t('collapse'); providerButton.setAttribute('aria-expanded', 'true'); }
       }
       el.classList.add(warning ? 'validation-warning' : 'input-invalid');
       if (message) {
@@ -3346,7 +3805,7 @@ const adminHTMLTemplate = `<!doctype html>
                 '<label>' + escapeHTML(localeText('最小状态码', 'Status Code Min')) + '</label>' +
                 '<input type="number" min="0" class="intercept-min" value="' + (rule.status_code_min ?? '') + '">' +
               '</div>' +
-              '<div class="config-field" style="grid-column: span 2;">' +
+              '<div class="config-field config-field-wide">' +
                 '<label>' + escapeHTML(localeText('消息关键字', 'Message Keywords')) + '</label>' +
                 '<textarea class="intercept-keywords" placeholder="upstream request failed">' + escapeHTML(keywordsToString(rule.message_keywords || [])) + '</textarea>' +
               '</div>' +
@@ -3491,7 +3950,7 @@ const adminHTMLTemplate = `<!doctype html>
                 '<label>' + escapeHTML(t('baseUrl')) + '</label>' +
                 '<input type="text" class="upstream-base-url" placeholder="https://api.example.com" value="' + escapeHTML(upstream.base_url || '') + '">' +
               '</div>' +
-              '<div class="config-field" style="grid-column: span 2;">' +
+              '<div class="config-field config-field-wide">' +
                 '<label>' + escapeHTML(t('apiKey')) + '</label>' +
                 '<input type="text" class="upstream-api-key" placeholder="sk-..." value="' + escapeHTML(upstream.api_key || '') + '">' +
               '</div>' +
@@ -3566,7 +4025,7 @@ const adminHTMLTemplate = `<!doctype html>
       }
       const summary = payload.summary || {};
       host.innerHTML = '' +
-        '<div class="config-card" style="margin-top: 12px;">' +
+        '<div class="config-card diff-preview-card">' +
           '<div class="config-card-head">' +
             '<div class="config-card-title">' + escapeHTML(localeText('差异预览', 'Diff Preview')) + '</div>' +
             '<div class="config-help">' + escapeHTML(payload.version?.filename || '') + '</div>' +
@@ -4179,6 +4638,7 @@ const adminHTMLTemplate = `<!doctype html>
     });
 
     async function load() {
+      try {
       const res = await fetch('/-/admin/data', { cache: 'no-store' });
       const data = await res.json();
       const summary = data.telemetry.summary || {};
@@ -4272,8 +4732,8 @@ const adminHTMLTemplate = `<!doctype html>
         miniChip('Avg / 1k', compactUsd(avgCostPerRequest * 1000)),
       ].join('');
 
-      const topCostModel = pricingModels.slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0))[0];
       const topEconomics = pricingModels.slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0)).slice(0, 3);
+      const topCostModel = topEconomics[0];
       document.getElementById('economicsMeta').innerHTML = [
         miniChip(localeText('已定价', 'Priced'), fmt.format(pricingSummary.priced_models || 0), 'accent'),
         miniChip(localeText('未定价', 'Unpriced'), fmt.format(pricingSummary.unpriced_models || 0), pricingSummary.unpriced_models ? 'warn' : ''),
@@ -4428,6 +4888,9 @@ const adminHTMLTemplate = `<!doctype html>
         ]),
         'table-requests'
       );
+      } catch (err) {
+        // silently ignore data load errors
+      }
     }
     const settingsView = document.body.classList.contains('page-settings');
     if (settingsView) {
