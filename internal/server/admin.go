@@ -255,12 +255,7 @@ const adminHTMLTemplate = `<!doctype html>
       margin-top: 12px;
     }
     .hero-side {
-      position: relative;
-      z-index: 1;
-      display: grid;
-      align-content: start;
-      gap: 8px;
-      min-width: 0;
+      display: none;
     }
     .hero-priority-grid {
       display: grid;
@@ -2011,7 +2006,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="section-meta-strip" id="economicsMeta"></div>
         </div>
         <div id="modelDistribution" class="hbar-wrap"></div>
-        <button class="detail-toggle" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
+        <button class="detail-toggle collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
         <div class="detail-body collapsed" id="byModelWrap"><div id="byModel"></div></div>
       </div>
       <div class="card span-4 compact-card" id="cost-card">
@@ -2033,7 +2028,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="section-meta-strip" id="usageMeta"></div>
         </div>
         <div id="upstreamDistribution" class="hbar-wrap"></div>
-        <button class="detail-toggle" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
+        <button class="detail-toggle collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
         <div class="detail-body collapsed" id="byUpstreamWrap"><div id="byUpstream"></div></div>
       </div>
       <div class="card span-5 compact-card" id="cache-card">
@@ -2045,7 +2040,7 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="section-meta-strip" id="cacheMeta"></div>
         </div>
         <div class="surface-strip" id="cacheTopline"></div>
-        <button class="detail-toggle" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
+        <button class="detail-toggle collapsed" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('collapsed')" type="button">详细表格</button>
         <div class="detail-body collapsed" id="cacheRankingWrap"><div id="cacheRanking"></div></div>
       </div>
     </div>
