@@ -358,14 +358,14 @@ const adminHTMLTemplate = `<!doctype html>
       letter-spacing: -0.03em;
     }
     .compact-card .title {
-      font-size: 16px;
+      font-size: 17px;
     }
     .caption {
       color: var(--muted);
       font-size: 12px;
     }
     .compact-card .caption {
-      font-size: 11px;
+      font-size: 12px;
     }
     .section-meta-strip {
       display: flex;
@@ -748,9 +748,10 @@ const adminHTMLTemplate = `<!doctype html>
     .settings-jumpbar a {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(72px, 110px);
-      align-items: start;
+      align-items: center;
       gap: 10px;
       padding: 10px 12px;
+      min-height: 39px;
       border-radius: 14px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.04);
@@ -792,11 +793,11 @@ const adminHTMLTemplate = `<!doctype html>
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: rgba(247, 243, 238, 0.72);
-      white-space: normal;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       line-height: 1.3;
       text-align: right;
-      overflow-wrap: anywhere;
-      word-break: break-word;
       min-width: 0;
     }
     .settings-jumpbar em.meta-good {
