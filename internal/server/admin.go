@@ -375,6 +375,7 @@ const adminHTMLTemplate = `<!doctype html>
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 12px;
+      flex: 1 0 auto;
     }
     #runtime-card .surface-strip {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1301,14 +1302,13 @@ const adminHTMLTemplate = `<!doctype html>
     .card-fill-body {
       flex: 1 1 auto;
       min-height: 0;
-      max-height: clamp(220px, 34vh, 420px);
       overflow: auto;
     }
     .priority-feed .card-fill-body {
       max-height: clamp(260px, 42vh, 540px);
     }
     .compact-feed .card-fill-body {
-      max-height: clamp(220px, 34vh, 380px);
+      min-height: 180px;
     }
     .chart-wrap {
       position: relative;
@@ -1317,7 +1317,7 @@ const adminHTMLTemplate = `<!doctype html>
       overflow: hidden;
     }
     .compact-chart .chart-wrap {
-      height: 180px;
+      height: 210px;
     }
     .chart-wrap svg {
       display: block;
