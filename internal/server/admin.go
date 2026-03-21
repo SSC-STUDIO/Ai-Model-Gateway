@@ -539,12 +539,13 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .upstream-tile {
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: 16px;
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
       padding: 12px;
       display: grid;
       gap: 10px;
       min-width: 0;
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
     }
     .upstream-tile.is-degraded {
       border-color: rgba(255, 127, 110, 0.30);
@@ -553,6 +554,11 @@ const adminHTMLTemplate = `<!doctype html>
     .upstream-tile.is-warn {
       border-color: rgba(241, 184, 102, 0.30);
       background: linear-gradient(160deg, rgba(241, 184, 102, 0.12), rgba(255,255,255,0.02));
+    }
+    .upstream-tile:hover {
+      border-color: rgba(126, 231, 214, 0.22);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+      transform: translateY(-1px);
     }
     .upstream-head {
       display: flex;
@@ -614,11 +620,16 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .error-item {
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: 16px;
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
       padding: 12px;
       display: grid;
       gap: 8px;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .error-item:hover {
+      border-color: rgba(255, 127, 110, 0.22);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
     }
     .error-top {
       display: flex;
@@ -803,7 +814,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 5px;
       min-width: 0;
-      transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
     }
     .policy-card.active {
       border-color: rgba(126, 231, 214, 0.42);
@@ -1223,6 +1234,11 @@ const adminHTMLTemplate = `<!doctype html>
       border-radius: 14px;
       border: 1px solid var(--line);
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .history-item:hover {
+      border-color: rgba(126, 231, 214, 0.22);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
     }
     .config-hint {
       display: inline-flex;
@@ -1298,7 +1314,7 @@ const adminHTMLTemplate = `<!doctype html>
       white-space: nowrap;
       box-shadow: var(--shadow-soft);
       opacity: 0;
-      transition: opacity 100ms ease;
+      transition: opacity 150ms ease;
       z-index: 10;
     }
     .chart-tooltip.visible {
@@ -1562,6 +1578,40 @@ const adminHTMLTemplate = `<!doctype html>
         max-width: 880px;
       }
     }
+    html { scroll-behavior: smooth; }
+    .btn:focus-visible,
+    .topnav a:focus-visible,
+    .chart-controls button:focus-visible,
+    .settings-jumpbar a:focus-visible,
+    .mode-preset:focus-visible,
+    .config-field input:focus-visible,
+    .config-field textarea:focus-visible,
+    .config-field select:focus-visible,
+    .config-search:focus-visible,
+    .config-filter:focus-visible {
+      outline: 2px solid rgba(126, 231, 214, 0.6);
+      outline-offset: 2px;
+    }
+    .card-fill-body::-webkit-scrollbar,
+    .diff-lines::-webkit-scrollbar,
+    .probe-preview::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    .card-fill-body::-webkit-scrollbar-thumb,
+    .diff-lines::-webkit-scrollbar-thumb,
+    .probe-preview::-webkit-scrollbar-thumb {
+      background: rgba(121, 230, 215, 0.22);
+      border-radius: 999px;
+    }
+    .card-fill-body::-webkit-scrollbar-track,
+    .diff-lines::-webkit-scrollbar-track,
+    .probe-preview::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .config-hint {
+      transition: color 200ms ease;
+    }
   </style>
 </head>
 <body class="{{BODY_CLASS}}">
@@ -1579,9 +1629,9 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="brand-subtitle">Unified observability, routing, pricing, and runtime control.</div>
         </div>
       </div>
-      <div class="topnav">
+      <nav class="topnav" aria-label="Main navigation">
         {{TOPNAV_LINKS}}
-      </div>
+      </nav>
     </div>
     <div class="hero">
       <div class="hero-main">
@@ -1768,7 +1818,7 @@ const adminHTMLTemplate = `<!doctype html>
         </div>
         <div class="config-panel">
           <div class="settings-shell" id="settingsShell">
-            <aside class="settings-nav">
+            <aside class="settings-nav" aria-label="Settings navigation">
               <div class="settings-sticky">
                 <div class="config-card settings-nav-panel" id="settingsNav">
                   <div class="settings-nav-title">Sections</div>
@@ -1969,7 +2019,7 @@ const adminHTMLTemplate = `<!doctype html>
             </div>
           </div>
             </div>
-            <aside class="settings-rail">
+            <aside class="settings-rail" aria-label="Settings controls">
               <div class="settings-sticky">
                 <div class="config-card settings-rail-panel command-panel">
                     <div class="config-card-head">
@@ -1979,8 +2029,8 @@ const adminHTMLTemplate = `<!doctype html>
                       </div>
                   </div>
                   <div class="config-toolbar">
-                    <input class="config-search" id="configSearch" type="search" placeholder="Search sections or providers..." />
-                    <select class="config-filter" id="providerClassFilter">
+                    <input class="config-search" id="configSearch" type="search" aria-label="Search settings" placeholder="Search sections or providers..." />
+                    <select class="config-filter" id="providerClassFilter" aria-label="Filter by provider class">
                       <option value="all">All Providers</option>
                       <option value="free">Free First</option>
                       <option value="quota_limited">Quota-Limited</option>
@@ -4393,29 +4443,67 @@ func adminHTMLLang(language string) string {
 func renderAdminHTML(settingsView bool, language string) string {
 	language = config.NormalizeAdminLanguage(language)
 	isEnglish := language == config.AdminLanguageEnglish
+	pick := func(zh, en string) string {
+		if isEnglish {
+			return en
+		}
+		return zh
+	}
 	bodyClass := ""
 	topnavLinks := strings.Join([]string{
-		`<a href="#performance" data-topnav-target="performance">` + map[bool]string{true: "Performance", false: "性能"}[isEnglish] + `</a>`,
-		`<a href="#economics" data-topnav-target="economics">` + map[bool]string{true: "Economics", false: "成本"}[isEnglish] + `</a>`,
-		`<a href="#upstreams-card" data-topnav-target="upstreams-card">` + map[bool]string{true: "Upstreams", false: "上游"}[isEnglish] + `</a>`,
-		`<a href="#requests-card" data-topnav-target="requests-card">` + map[bool]string{true: "Requests", false: "请求"}[isEnglish] + `</a>`,
-		`<a href="/admin/settings">` + map[bool]string{true: "Settings", false: "设置"}[isEnglish] + `</a>`,
+		`<a href="#performance" data-topnav-target="performance">` + pick("性能", "Performance") + `</a>`,
+		`<a href="#economics" data-topnav-target="economics">` + pick("成本", "Economics") + `</a>`,
+		`<a href="#upstreams-card" data-topnav-target="upstreams-card">` + pick("上游", "Upstreams") + `</a>`,
+		`<a href="#requests-card" data-topnav-target="requests-card">` + pick("请求", "Requests") + `</a>`,
+		`<a href="/admin/settings">` + pick("设置", "Settings") + `</a>`,
 	}, "")
-	heroEyebrow := map[bool]string{true: "AI Gateway Admin", false: "AI 模型网关管理台"}[isEnglish]
-	heroTitle := map[bool]string{true: "Ops, Cost, Throughput.", false: "运维、成本、吞吐。"}[isEnglish]
-	heroSub := map[bool]string{true: "Check throughput, latency, errors, and upstream health first, then drill into cost and cache.", false: "先看吞吐、延迟、错误和上游健康，再往下追成本与缓存。"}[isEnglish]
-	heroMetaPrimary := `<div class="pill" id="generatedAt">` + map[bool]string{true: "Loading", false: "加载中"}[isEnglish] + `</div>`
-	heroMetaSecondary := `<div class="pill" id="pricingSource">` + map[bool]string{true: "Pricing source", false: "价格来源"}[isEnglish] + `</div>`
+	heroEyebrow := pick("AI 模型网关管理台", "AI Gateway Admin")
+	heroTitle := pick("运维、成本、吞吐。", "Ops, Cost, Throughput.")
+	heroSub := pick("先看吞吐、延迟、错误和上游健康，再往下追成本与缓存。", "Check throughput, latency, errors, and upstream health first, then drill into cost and cache.")
+	heroMetaPrimary := `<div class="pill" id="generatedAt">` + pick("加载中", "Loading") + `</div>`
+	heroMetaSecondary := `<div class="pill" id="pricingSource">` + pick("价格来源", "Pricing source") + `</div>`
 	heroMetaTertiary := ``
 	heroAside := `<div class="hero-priority-grid" id="heroPriority"></div>`
+	brandTitle := pick("AI 模型网关", "AI MODEL GATEWAY")
+	brandSubtitle := pick("统一的可观测性、路由、计价和运行控制台。", "Unified observability, routing, pricing, and runtime control.")
+	performanceTitle := pick("实时性能", "Live Performance")
+	performanceCaption := pick("先看最近 1 分钟与 5 分钟窗口内的真实 RPM、TPM 和延迟。", "Start with the real 1-minute and 5-minute RPM, TPM, and latency windows.")
+	runtimePostureTitle := pick("运行姿态", "Runtime Posture")
+	runtimePostureCaption := pick("当前恢复模式、失败出口和探活状态。", "Current recovery mode, failure exit, and probe posture.")
+	upstreamHealthTitle := pick("上游健康", "Upstream Health")
+	upstreamHealthCaption := pick("先看哪条上游慢、退化、进冷却，再决定是否切换。", "See which upstream is slow, degraded, or cooling down before switching.")
+	recentErrorsTitle := pick("最近错误", "Recent Errors")
+	recentErrorsCaption := pick("压缩看最近错误的归属、状态和主消息。", "Compressed view of ownership, status, and dominant error message.")
+	recentRequestsTitle := pick("最近请求", "Recent Requests")
+	recentRequestsCaption := pick("最新请求轨迹，含状态、尝试次数、延迟和单次估算成本。", "Latest request traces with status, attempts, latency, and estimated cost.")
+	requestThroughputTitle := pick("请求吞吐", "Request Throughput")
+	requestThroughputCaption := pick("RPM 与 TPM 趋势，按时间桶聚合。", "RPM and TPM trends aggregated by time bucket.")
+	latencyTrendTitle := pick("延迟趋势", "Latency Trend")
+	latencyTrendCaption := pick("平均延迟（ms）与成功率趋势。", "Average latency (ms) and success-rate trend.")
+	successFailureTitle := pick("成功 / 失败", "Success / Failure")
+	successFailureCaption := pick("每个时间桶内的成功与失败请求数。", "Successful and failed requests in each bucket.")
+	tokenUsageTitle := pick("按上游 Token 用量", "Token Usage by Upstream")
+	tokenUsageCaption := pick("按上游分组的 Token 消耗。", "Token consumption grouped by upstream.")
+	economicsTitle := pick("模型成本", "Model Economics")
+	economicsCaption := pick("按模型汇总 Token、估算美元成本和官方价格表覆盖情况。", "Model-level token usage, estimated USD cost, and pricing coverage.")
+	costSnapshotTitle := pick("成本快照", "Cost Snapshot")
+	costSnapshotCaption := pick("基于已知官方价格模型估算。", "Estimated from known official model pricing.")
+	upstreamUsageTitle := pick("上游用量", "Upstream Usage")
+	upstreamUsageCaption := pick("按上游汇总 Token 消耗，和健康状态对照看。", "Token usage by upstream, compared against health posture.")
+	cacheRankingTitle := pick("缓存命中排行", "Cache Hit Ranking")
+	cacheRankingCaption := pick("最近 24 小时按上游缓存命中率排序。", "Last-24h cache hit ranking by upstream.")
+	runtimeConfigTitle := pick("运行时配置", "Runtime Config")
+	runtimeConfigCaption := pick("集中编辑探活、桥接、恢复、语言和服务商配置。", "Manage probes, bridge, recovery, language, and providers in one place.")
+	routerStrategyHealthWeightedRR := pick("健康加权轮询", "Health-Weighted Round Robin")
+	routerStrategyRoundRobin := pick("轮询", "Round Robin")
 	if settingsView {
 		bodyClass = "page-settings"
 		topnavLinks = strings.Join([]string{
-			`<a href="/admin">` + map[bool]string{true: "Overview", false: "总览"}[isEnglish] + `</a>`,
+			`<a href="/admin">` + pick("总览", "Overview") + `</a>`,
 		}, "")
-		heroEyebrow = map[bool]string{true: "Configuration Center", false: "配置中心"}[isEnglish]
-		heroTitle = map[bool]string{true: "Runtime Routing, Health, Providers.", false: "运行路由、探活、服务商。"}[isEnglish]
-		heroSub = map[bool]string{true: "Manage probes, bridge, recovery, and providers in one place instead of jumping across surfaces.", false: "集中维护探活、桥接、恢复和服务商，不再在多个面板里来回切换。"}[isEnglish]
+		heroEyebrow = pick("配置中心", "Configuration Center")
+		heroTitle = pick("运行路由、探活、服务商。", "Runtime Routing, Health, Providers.")
+		heroSub = pick("集中维护探活、桥接、恢复和服务商，不再在多个面板里来回切换。", "Manage probes, bridge, recovery, and providers in one place instead of jumping across surfaces.")
 		heroMetaPrimary = ``
 		heroMetaSecondary = ``
 		heroMetaTertiary = ``
@@ -4444,6 +4532,38 @@ func renderAdminHTML(settingsView bool, language string) string {
 		"{{HERO_META_SECONDARY}}", heroMetaSecondary,
 		"{{HERO_META_TERTIARY}}", heroMetaTertiary,
 		"{{HERO_ASIDE}}", heroAside,
+		"{{BRAND_TITLE}}", brandTitle,
+		"{{BRAND_SUBTITLE}}", brandSubtitle,
+		"{{PERFORMANCE_TITLE}}", performanceTitle,
+		"{{PERFORMANCE_CAPTION}}", performanceCaption,
+		"{{RUNTIME_POSTURE_TITLE}}", runtimePostureTitle,
+		"{{RUNTIME_POSTURE_CAPTION}}", runtimePostureCaption,
+		"{{UPSTREAM_HEALTH_TITLE}}", upstreamHealthTitle,
+		"{{UPSTREAM_HEALTH_CAPTION}}", upstreamHealthCaption,
+		"{{RECENT_ERRORS_TITLE}}", recentErrorsTitle,
+		"{{RECENT_ERRORS_CAPTION}}", recentErrorsCaption,
+		"{{RECENT_REQUESTS_TITLE}}", recentRequestsTitle,
+		"{{RECENT_REQUESTS_CAPTION}}", recentRequestsCaption,
+		"{{REQUEST_THROUGHPUT_TITLE}}", requestThroughputTitle,
+		"{{REQUEST_THROUGHPUT_CAPTION}}", requestThroughputCaption,
+		"{{LATENCY_TREND_TITLE}}", latencyTrendTitle,
+		"{{LATENCY_TREND_CAPTION}}", latencyTrendCaption,
+		"{{SUCCESS_FAILURE_TITLE}}", successFailureTitle,
+		"{{SUCCESS_FAILURE_CAPTION}}", successFailureCaption,
+		"{{TOKEN_USAGE_TITLE}}", tokenUsageTitle,
+		"{{TOKEN_USAGE_CAPTION}}", tokenUsageCaption,
+		"{{ECONOMICS_TITLE}}", economicsTitle,
+		"{{ECONOMICS_CAPTION}}", economicsCaption,
+		"{{COST_SNAPSHOT_TITLE}}", costSnapshotTitle,
+		"{{COST_SNAPSHOT_CAPTION}}", costSnapshotCaption,
+		"{{UPSTREAM_USAGE_TITLE}}", upstreamUsageTitle,
+		"{{UPSTREAM_USAGE_CAPTION}}", upstreamUsageCaption,
+		"{{CACHE_RANKING_TITLE}}", cacheRankingTitle,
+		"{{CACHE_RANKING_CAPTION}}", cacheRankingCaption,
+		"{{RUNTIME_CONFIG_TITLE}}", runtimeConfigTitle,
+		"{{RUNTIME_CONFIG_CAPTION}}", runtimeConfigCaption,
+		"{{ROUTER_STRATEGY_HEALTH_WEIGHTED_RR}}", routerStrategyHealthWeightedRR,
+		"{{ROUTER_STRATEGY_ROUND_ROBIN}}", routerStrategyRoundRobin,
 	).Replace(adminHTMLTemplate)
 }
 
