@@ -113,6 +113,11 @@ const (
 	UpstreamClassQuotaLimited = "quota_limited"
 	AdminLanguageChinese      = "zh"
 	AdminLanguageEnglish      = "en"
+	AdminLanguageJapanese     = "ja"
+	AdminLanguageKorean       = "ko"
+	AdminLanguageSpanish      = "es"
+	AdminLanguageFrench       = "fr"
+	AdminLanguageGerman       = "de"
 )
 
 func (c *Config) Normalize() {
@@ -198,6 +203,16 @@ func NormalizeAdminLanguage(language string) string {
 	switch strings.ToLower(strings.TrimSpace(language)) {
 	case AdminLanguageEnglish:
 		return AdminLanguageEnglish
+	case AdminLanguageJapanese:
+		return AdminLanguageJapanese
+	case AdminLanguageKorean:
+		return AdminLanguageKorean
+	case AdminLanguageSpanish:
+		return AdminLanguageSpanish
+	case AdminLanguageFrench:
+		return AdminLanguageFrench
+	case AdminLanguageGerman:
+		return AdminLanguageGerman
 	default:
 		return AdminLanguageChinese
 	}

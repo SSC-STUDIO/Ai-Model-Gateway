@@ -1309,6 +1309,183 @@ func TestHandlerBridgesModelFromConfig(t *testing.T) {
 	}
 }
 
+func TestHandlerBridgedAnthropicMessagesCompatToChatCompletions(t *testing.T) {
+	var messagesCalls atomic.Int32
+	var chatCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/messages":
+			messagesCalls.Add(1)
+			if got := r.Header.Get("x-api-key"); got != "sk-gpt" {
+				t.Fatalf("expected initial anthropic fallback probe to use x-api-key, got %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"error":{"message":"This group does not allow /v1/messages dispatch"}}`)
+		case "/v1/chat/completions":
+			chatCalls.Add(1)
+			if got := r.Header.Get("Authorization"); got != "Bearer sk-gpt" {
+				t.Fatalf("expected upstream auth header, got %q", got)
+			}
+			if got := r.Header.Get("anthropic-version"); got != "" {
+				t.Fatalf("expected anthropic-version stripped for chat compat, got %q", got)
+			}
+			if got := r.Header.Get("anthropic-beta"); got != "" {
+				t.Fatalf("expected anthropic-beta stripped for chat compat, got %q", got)
+			}
+			if got := r.Header.Get("x-api-key"); got != "" {
+				t.Fatalf("expected x-api-key stripped for chat compat, got %q", got)
+			}
+
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode chat compat body: %v", err)
+			}
+			if got := payload["model"]; got != "gpt-5.4" {
+				t.Fatalf("expected bridged model gpt-5.4, got %#v", got)
+			}
+			rawMessages, ok := payload["messages"].([]any)
+			if !ok || len(rawMessages) != 2 {
+				t.Fatalf("expected system + user messages, got %#v", payload["messages"])
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"chatcmpl-bridge","object":"chat.completion","created":1700000000,"model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":8,"completion_tokens":2,"total_tokens":10}}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Bridge: config.ModelBridgeConfig{
+			Enabled: true,
+			Rules: []config.ModelBridgeRule{
+				{From: "claude-opus-4-6", To: "gpt-5.4"},
+			},
+		},
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "bridge", BaseURL: upstream.URL, APIKey: "sk-gpt", Models: []string{"gpt-5.4"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	store := newTestStore(t)
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","system":"You are terse.","max_tokens":64,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-bridge"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "claude-cli/2.1.81 (external, cli)")
+
+	recorder := httptest.NewRecorder()
+	handler.Messages(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "bridge" {
+		t.Fatalf("expected upstream header bridge, got %q", got)
+	}
+	if got := resp.Header.Get(observability.ModelHeader); got != "gpt-5.4" {
+		t.Fatalf("expected effective model header gpt-5.4, got %q", got)
+	}
+	if got := resp.Header.Get(observability.RequestedModelHeader); got != "claude-opus-4-6" {
+		t.Fatalf("expected requested model header claude-opus-4-6, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"type":"message"`) || !strings.Contains(text, `"model":"claude-opus-4-6"`) {
+		t.Fatalf("expected anthropic message response, got %q", text)
+	}
+	if messagesCalls.Load() != 1 || chatCalls.Load() != 1 {
+		t.Fatalf("expected one messages probe and one chat compat call, got messages=%d chat=%d", messagesCalls.Load(), chatCalls.Load())
+	}
+
+	snapshot := store.Snapshot()
+	if len(snapshot.Requests) == 0 {
+		t.Fatalf("expected recorded request")
+	}
+	if got := snapshot.Requests[0].RouteMode; got != "bridged" {
+		t.Fatalf("expected route mode bridged, got %q", got)
+	}
+}
+
+func TestHandlerBridgedAnthropicMessagesCompatToChatCompletionsStream(t *testing.T) {
+	var chatCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/messages":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"error":{"message":"This group does not allow /v1/messages dispatch"}}`)
+		case "/v1/chat/completions":
+			chatCalls.Add(1)
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode chat compat body: %v", err)
+			}
+			if got := payload["stream"]; got != false {
+				t.Fatalf("expected chat compat request to disable stream, got %#v", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"chatcmpl-stream","object":"chat.completion","created":1700000000,"model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Bridge: config.ModelBridgeConfig{
+			Enabled: true,
+			Rules: []config.ModelBridgeRule{
+				{From: "claude-opus-4-6", To: "gpt-5.4"},
+			},
+		},
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "bridge", BaseURL: upstream.URL, APIKey: "sk-gpt", Models: []string{"gpt-5.4"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"Reply with pong"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-bridge-stream"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "claude-cli/2.1.81 (external, cli)")
+
+	recorder := httptest.NewRecorder()
+	handler.Messages(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("expected SSE content type, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "event: content_block_delta") || !strings.Contains(text, "event: message_stop") {
+		t.Fatalf("expected anthropic SSE body, got %q", text)
+	}
+	if strings.Contains(text, "[DONE]") {
+		t.Fatalf("expected anthropic SSE, not OpenAI SSE, got %q", text)
+	}
+	if chatCalls.Load() != 1 {
+		t.Fatalf("expected one chat compat call, got %d", chatCalls.Load())
+	}
+}
+
 func TestHandlerFallsBackToRequestedModelWhenBridgeUpstreamFails(t *testing.T) {
 	var bridgeCalls atomic.Int32
 	bridgeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1743,6 +1920,91 @@ func TestHandlerRetriesSameUpstreamWhenConfigured(t *testing.T) {
 	}
 	if got := resp.Header.Get(observability.AttemptsHeader); got != "3" {
 		t.Fatalf("expected attempts header 3, got %q", got)
+	}
+}
+
+func TestHandlerCancelsDisabledInFlightUpstreamAndFailsOver(t *testing.T) {
+	var badCalls atomic.Int32
+	blocked := make(chan struct{}, 1)
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		badCalls.Add(1)
+		select {
+		case blocked <- struct{}{}:
+		default:
+		}
+		select {
+		case <-r.Context().Done():
+		case <-time.After(time.Second):
+		}
+	}))
+	defer bad.Close()
+
+	var goodCalls atomic.Int32
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		goodCalls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl-failover","object":"chat.completion"}`)
+	}))
+	defer good.Close()
+
+	badEnabled := true
+	cfg := config.Config{
+		Router: config.RouterConfig{
+			Strategy:          "round_robin",
+			MaxRetries:        1,
+			RetryBackoffMs:    1,
+			RetryBackoffMaxMs: 1,
+		},
+		Upstreams: []config.Upstream{
+			{Name: "bad", BaseURL: bad.URL, Models: []string{"gpt-4o-mini"}, Weight: 1, Enabled: &badEnabled},
+			{Name: "good", BaseURL: good.URL, Models: []string{"gpt-4o-mini"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	store := state.NewConfigStore(cfg)
+	handler := NewHandler(router.NewManager(store), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-disable-failover"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		handler.ChatCompletions(recorder, req)
+		close(done)
+	}()
+
+	select {
+	case <-blocked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected bad upstream request to start")
+	}
+
+	disabled := false
+	updated := cfg
+	updated.Upstreams = append([]config.Upstream(nil), cfg.Upstreams...)
+	updated.Upstreams[0].Enabled = &disabled
+	store.Set(updated)
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected request to fail over after disabling bad upstream")
+	}
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 after failover, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "good" {
+		t.Fatalf("expected failover to good upstream, got %q", got)
+	}
+	if badCalls.Load() != 1 {
+		t.Fatalf("expected bad upstream called once, got %d", badCalls.Load())
+	}
+	if goodCalls.Load() != 1 {
+		t.Fatalf("expected good upstream called once, got %d", goodCalls.Load())
 	}
 }
 

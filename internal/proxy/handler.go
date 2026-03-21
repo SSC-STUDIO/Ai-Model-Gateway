@@ -81,6 +81,8 @@ type requestDebugSummary struct {
 	Stream              bool     `json:"stream,omitempty"`
 }
 
+const upstreamDisablePollInterval = 100 * time.Millisecond
+
 func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -457,6 +459,11 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				return
 			}
 		}
+		if shouldAttemptOpenAIChatCompatFromAnthropicMessages(r.URL.Path, model, assessment, captured) {
+			if h.tryAnthropicMessagesOpenAICompat(w, r, startedAt, requestID, upstream, requestedModel, model, routeMode, attempt+1, stickyKey, body) {
+				return
+			}
+		}
 		if shouldAttemptAnthropicMessagesCompat(r.URL.Path, model, assessment, captured) {
 			if strings.HasPrefix(r.URL.Path, "/v1/responses") {
 				if h.tryResponsesAnthropicCompat(w, r, startedAt, requestID, upstream, requestedModel, model, attempt+1, stickyKey, body) {
@@ -562,14 +569,16 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 		timeout = 30 * time.Second
 	}
 
-	ctx := src.Context()
-	var cancel context.CancelFunc
+	ctx, cancel := h.upstreamRequestContext(src.Context(), upstream.Name)
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		var timeoutCancel context.CancelFunc
+		ctx, timeoutCancel = context.WithTimeout(ctx, timeout)
+		cancel = combineCancel(cancel, timeoutCancel)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, src.Method, joinURL(upstream.BaseURL, src.URL.Path), bytes.NewReader(body))
 	if err != nil {
+		cancel()
 		return nil, 0, err
 	}
 	req.URL.RawQuery = src.URL.RawQuery
@@ -603,9 +612,7 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		if cancel != nil {
-			cancel()
-		}
+		cancel()
 		return nil, time.Since(start), err
 	}
 	if cancel != nil && resp != nil && resp.Body != nil {
@@ -620,14 +627,16 @@ func (h *Handler) doAnthropicMessages(src *http.Request, body []byte, upstream c
 		timeout = 30 * time.Second
 	}
 
-	ctx := src.Context()
-	var cancel context.CancelFunc
+	ctx, cancel := h.upstreamRequestContext(src.Context(), upstream.Name)
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		var timeoutCancel context.CancelFunc
+		ctx, timeoutCancel = context.WithTimeout(ctx, timeout)
+		cancel = combineCancel(cancel, timeoutCancel)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(upstream.BaseURL, "/v1/messages"), bytes.NewReader(body))
 	if err != nil {
+		cancel()
 		return nil, 0, err
 	}
 	req.Header = make(http.Header)
@@ -659,15 +668,53 @@ func (h *Handler) doAnthropicMessages(src *http.Request, body []byte, upstream c
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		if cancel != nil {
-			cancel()
-		}
+		cancel()
 		return nil, time.Since(start), err
 	}
 	if cancel != nil && resp != nil && resp.Body != nil {
 		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: cancel}
 	}
 	return resp, time.Since(start), err
+}
+
+func (h *Handler) upstreamRequestContext(parent context.Context, upstreamName string) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(parent)
+	if h == nil || h.Manager == nil || strings.TrimSpace(upstreamName) == "" {
+		return ctx, cancel
+	}
+
+	go func() {
+		ticker := time.NewTicker(upstreamDisablePollInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !h.Manager.IsUpstreamEnabled(upstreamName) {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
+	return ctx, cancel
+}
+
+func combineCancel(first context.CancelFunc, second context.CancelFunc) context.CancelFunc {
+	switch {
+	case first == nil:
+		return second
+	case second == nil:
+		return first
+	default:
+		return func() {
+			first()
+			second()
+		}
+	}
 }
 
 func resolveModel(body []byte, contentType string, userAgent string, cfg config.Config, opts forwardOptions) (resolvedModel, error) {
@@ -1279,14 +1326,14 @@ func extractUsageFromJSON(body []byte) (telemetry.Usage, bool) {
 			PromptTokensDetails struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
-			CompletionTokens        int `json:"completion_tokens"`
-			InputTokens             int `json:"input_tokens"`
-			InputTokensDetails      struct {
+			CompletionTokens   int `json:"completion_tokens"`
+			InputTokens        int `json:"input_tokens"`
+			InputTokensDetails struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"input_tokens_details"`
-			OutputTokens            int `json:"output_tokens"`
-			TotalTokens             int `json:"total_tokens"`
-			CacheReadInputTokens    int `json:"cache_read_input_tokens"`
+			OutputTokens             int `json:"output_tokens"`
+			TotalTokens              int `json:"total_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 		} `json:"usage"`
 	}
@@ -1347,14 +1394,14 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 				PromptTokensDetails struct {
 					CachedTokens int `json:"cached_tokens"`
 				} `json:"prompt_tokens_details"`
-				CompletionTokens        int `json:"completion_tokens"`
-				InputTokens             int `json:"input_tokens"`
-				InputTokensDetails      struct {
+				CompletionTokens   int `json:"completion_tokens"`
+				InputTokens        int `json:"input_tokens"`
+				InputTokensDetails struct {
 					CachedTokens int `json:"cached_tokens"`
 				} `json:"input_tokens_details"`
-				OutputTokens            int `json:"output_tokens"`
-				TotalTokens             int `json:"total_tokens"`
-				CacheReadInputTokens    int `json:"cache_read_input_tokens"`
+				OutputTokens             int `json:"output_tokens"`
+				TotalTokens              int `json:"total_tokens"`
+				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 			} `json:"usage"`
 			Response struct {
@@ -1363,14 +1410,14 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 					PromptTokensDetails struct {
 						CachedTokens int `json:"cached_tokens"`
 					} `json:"prompt_tokens_details"`
-					CompletionTokens        int `json:"completion_tokens"`
-					InputTokens             int `json:"input_tokens"`
-					InputTokensDetails      struct {
+					CompletionTokens   int `json:"completion_tokens"`
+					InputTokens        int `json:"input_tokens"`
+					InputTokensDetails struct {
 						CachedTokens int `json:"cached_tokens"`
 					} `json:"input_tokens_details"`
-					OutputTokens            int `json:"output_tokens"`
-					TotalTokens             int `json:"total_tokens"`
-					CacheReadInputTokens    int `json:"cache_read_input_tokens"`
+					OutputTokens             int `json:"output_tokens"`
+					TotalTokens              int `json:"total_tokens"`
+					CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 				} `json:"usage"`
 			} `json:"response"`
@@ -1472,6 +1519,31 @@ func shouldAttemptAnthropicMessagesCompat(path string, model string, assessment 
 		strings.Contains(message, "messages api") ||
 		strings.Contains(message, "service temporarily unavailable") ||
 		strings.Contains(message, "unsupported")
+}
+
+func shouldAttemptOpenAIChatCompatFromAnthropicMessages(path string, model string, assessment responseAssessment, captured *capturedResponse) bool {
+	if captured == nil {
+		return false
+	}
+	if path != "/v1/messages" {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-") {
+		return false
+	}
+	if captured.StatusCode == http.StatusForbidden ||
+		captured.StatusCode == http.StatusNotFound ||
+		captured.StatusCode == http.StatusMethodNotAllowed ||
+		captured.StatusCode == http.StatusNotImplemented ||
+		captured.StatusCode == http.StatusServiceUnavailable {
+		return true
+	}
+	message := strings.ToLower(strings.TrimSpace(assessment.Message + " " + string(captured.Body)))
+	return strings.Contains(message, "/v1/messages dispatch") ||
+		strings.Contains(message, "anthropic") ||
+		strings.Contains(message, "messages api") ||
+		strings.Contains(message, "unsupported") ||
+		strings.Contains(message, "not allow")
 }
 
 func (h *Handler) tryResponsesCompat(
@@ -1702,6 +1774,91 @@ func (h *Handler) tryResponsesAnthropicCompat(
 	return true
 }
 
+func (h *Handler) tryAnthropicMessagesOpenAICompat(
+	w http.ResponseWriter,
+	r *http.Request,
+	startedAt time.Time,
+	requestID string,
+	upstream config.Upstream,
+	requestedModel string,
+	model string,
+	routeMode string,
+	attempt int,
+	stickyKey string,
+	body []byte,
+) bool {
+	chatPayload, streamRequested, err := buildChatCompletionsFromAnthropic(body, model)
+	if err != nil {
+		return false
+	}
+	if streamRequested {
+		chatPayload["stream"] = false
+	}
+
+	compatBody, err := json.Marshal(chatPayload)
+	if err != nil {
+		return false
+	}
+
+	compatReq := r.Clone(r.Context())
+	compatReq.URL.Path = "/v1/chat/completions"
+	compatReq.Header = compatReq.Header.Clone()
+	compatReq.Header.Del("anthropic-version")
+	compatReq.Header.Del("anthropic-beta")
+	compatReq.Header.Del("x-api-key")
+
+	resp, latency, err := h.do(compatReq, compatBody, "application/json", upstream, requestID)
+	if err != nil {
+		return false
+	}
+
+	assessment, captured, inspectErr := inspectResponse(resp, "/v1/chat/completions", h.Manager.CurrentConfig().Proxy)
+	if inspectErr != nil || captured == nil {
+		return false
+	}
+	if assessment.ErrorBody || captured.StatusCode >= http.StatusBadRequest {
+		return false
+	}
+
+	responseModel := requestedModel
+	if strings.TrimSpace(responseModel) == "" {
+		responseModel = model
+	}
+	anthropicPayload, err := buildAnthropicMessageFromChat(captured.Body, responseModel)
+	if err != nil {
+		return false
+	}
+	anthropicBody, err := json.Marshal(anthropicPayload)
+	if err != nil {
+		return false
+	}
+
+	h.Manager.ReportRequestSuccess(upstream.Name, latency, captured.StatusCode)
+	logProxyAttempt(requestID, model, upstream.Name, attempt, captured.StatusCode, latency, nil)
+	setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt)
+
+	contentType := "application/json"
+	compatCapturedBody := anthropicBody
+	if streamRequested {
+		contentType = "text/event-stream"
+		compatCapturedBody = marshalAnthropicMessageCompatStream(anthropicPayload)
+		writeAnthropicMessageCompatStream(w, compatCapturedBody)
+	} else {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(anthropicBody)
+	}
+
+	compatCaptured := &capturedResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{contentType}},
+		Body:       compatCapturedBody,
+	}
+	rememberStickyRouting(h.Manager, r.URL.Path, stickyKey, upstream.Name, compatCaptured)
+	h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, http.StatusOK, attempt, true, "", extractUsage(captured.Body))
+	return true
+}
+
 func buildChatCompletionsFromResponses(body []byte, model string) (map[string]any, bool, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1739,6 +1896,63 @@ func buildChatCompletionsFromResponses(body []byte, model string) (map[string]an
 	copyIfPresent(payload, chat, "tools", "tool_choice", "temperature", "top_p", "presence_penalty", "frequency_penalty", "stop", "max_tokens")
 	if maxOutput, ok := payload["max_output_tokens"]; ok {
 		chat["max_tokens"] = maxOutput
+	}
+	if stream {
+		chat["stream"] = true
+	}
+	return chat, stream, nil
+}
+
+func buildChatCompletionsFromAnthropic(body []byte, model string) (map[string]any, bool, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, false, fmt.Errorf("parse anthropic message payload: %w", err)
+	}
+	if model == "" {
+		rawModel, _ := payload["model"].(string)
+		model = strings.TrimSpace(rawModel)
+	}
+	if model == "" {
+		return nil, false, fmt.Errorf("anthropic message model is empty")
+	}
+
+	stream, _ := payload["stream"].(bool)
+	var messages []map[string]any
+
+	systemText := extractTextFromContent(payload["system"])
+	if systemText != "" {
+		messages = append(messages, map[string]any{
+			"role":    "system",
+			"content": systemText,
+		})
+	}
+
+	if rawMessages, ok := payload["messages"].([]any); ok {
+		for _, item := range rawMessages {
+			msg, extraSystem := normalizeAnthropicMessage(item)
+			if extraSystem != "" {
+				messages = append(messages, map[string]any{
+					"role":    "system",
+					"content": extraSystem,
+				})
+				continue
+			}
+			if msg != nil {
+				messages = append(messages, msg)
+			}
+		}
+	}
+	if len(messages) == 0 {
+		return nil, stream, fmt.Errorf("anthropic messages are empty")
+	}
+
+	chat := map[string]any{
+		"model":    model,
+		"messages": messages,
+	}
+	copyIfPresent(payload, chat, "max_tokens", "temperature", "top_p")
+	if stopSequences, ok := payload["stop_sequences"]; ok {
+		chat["stop"] = stopSequences
 	}
 	if stream {
 		chat["stream"] = true
@@ -2137,6 +2351,72 @@ func buildChatFromAnthropic(body []byte, model string) (map[string]any, error) {
 	}, nil
 }
 
+func buildAnthropicMessageFromChat(body []byte, model string) (map[string]any, error) {
+	var payload struct {
+		ID      string `json:"id"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Role    string      `json:"role"`
+				Content interface{} `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("parse chat completion for anthropic compat: %w", err)
+	}
+	if model == "" {
+		model = payload.Model
+	}
+
+	messageID := strings.TrimSpace(payload.ID)
+	if messageID == "" {
+		messageID = fmt.Sprintf("msg_%d", time.Now().UnixNano())
+	} else if !strings.HasPrefix(messageID, "msg_") {
+		messageID = "msg_" + strings.TrimPrefix(messageID, "chatcmpl-")
+	}
+
+	text := ""
+	stopReason := "end_turn"
+	if len(payload.Choices) > 0 {
+		text = flattenChatContent(payload.Choices[0].Message.Content)
+		stopReason = anthropicStopReasonFromChat(payload.Choices[0].FinishReason)
+	}
+
+	return map[string]any{
+		"id":            messageID,
+		"type":          "message",
+		"role":          "assistant",
+		"model":         model,
+		"content":       []any{map[string]any{"type": "text", "text": text}},
+		"stop_reason":   stopReason,
+		"stop_sequence": nil,
+		"usage": map[string]any{
+			"input_tokens":  payload.Usage.PromptTokens,
+			"output_tokens": payload.Usage.CompletionTokens,
+		},
+	}, nil
+}
+
+func anthropicStopReasonFromChat(finishReason string) string {
+	switch strings.TrimSpace(finishReason) {
+	case "length":
+		return "max_tokens"
+	case "tool_calls":
+		return "tool_use"
+	case "content_filter":
+		return "stop_sequence"
+	default:
+		return "end_turn"
+	}
+}
+
 func flattenChatContent(content interface{}) string {
 	switch value := content.(type) {
 	case string:
@@ -2192,6 +2472,14 @@ func writeResponsesCompatStream(w http.ResponseWriter, response map[string]any) 
 }
 
 func writeChatCompletionsCompatStream(w http.ResponseWriter, body []byte) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+func writeAnthropicMessageCompatStream(w http.ResponseWriter, body []byte) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -2269,6 +2557,82 @@ func marshalChatCompletionsCompatStream(chat map[string]any) []byte {
 	builder.Write(finalBytes)
 	builder.WriteString("\n\n")
 	builder.WriteString("data: [DONE]\n\n")
+	return []byte(builder.String())
+}
+
+func marshalAnthropicMessageCompatStream(message map[string]any) []byte {
+	usage, _ := message["usage"].(map[string]any)
+	outputTokens := 0
+	if value, ok := usage["output_tokens"]; ok {
+		switch typed := value.(type) {
+		case int:
+			outputTokens = typed
+		case int64:
+			outputTokens = int(typed)
+		case float64:
+			outputTokens = int(typed)
+		}
+	}
+
+	startPayload := map[string]any{
+		"type": "message_start",
+		"message": map[string]any{
+			"id":            message["id"],
+			"type":          "message",
+			"role":          "assistant",
+			"model":         message["model"],
+			"content":       []any{},
+			"stop_reason":   nil,
+			"stop_sequence": nil,
+			"usage":         usage,
+		},
+	}
+	contentStartPayload := map[string]any{
+		"type":          "content_block_start",
+		"index":         0,
+		"content_block": map[string]any{"type": "text", "text": ""},
+	}
+	contentDeltaPayload := map[string]any{
+		"type":  "content_block_delta",
+		"index": 0,
+		"delta": map[string]any{"type": "text_delta", "text": extractTextFromContent(message["content"])},
+	}
+	contentStopPayload := map[string]any{
+		"type":  "content_block_stop",
+		"index": 0,
+	}
+	messageDeltaPayload := map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   message["stop_reason"],
+			"stop_sequence": message["stop_sequence"],
+		},
+		"usage": map[string]any{
+			"output_tokens": outputTokens,
+		},
+	}
+	messageStopPayload := map[string]any{"type": "message_stop"}
+
+	var builder strings.Builder
+	for _, event := range []struct {
+		name    string
+		payload map[string]any
+	}{
+		{name: "message_start", payload: startPayload},
+		{name: "content_block_start", payload: contentStartPayload},
+		{name: "content_block_delta", payload: contentDeltaPayload},
+		{name: "content_block_stop", payload: contentStopPayload},
+		{name: "message_delta", payload: messageDeltaPayload},
+		{name: "message_stop", payload: messageStopPayload},
+	} {
+		body, _ := json.Marshal(event.payload)
+		builder.WriteString("event: ")
+		builder.WriteString(event.name)
+		builder.WriteString("\n")
+		builder.WriteString("data: ")
+		builder.Write(body)
+		builder.WriteString("\n\n")
+	}
 	return []byte(builder.String())
 }
 

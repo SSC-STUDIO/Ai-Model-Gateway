@@ -83,6 +83,25 @@ func (m *Manager) ConfigStore() *state.ConfigStore {
 	return m.store
 }
 
+func (m *Manager) IsUpstreamEnabled(name string) bool {
+	if m == nil || m.store == nil {
+		return false
+	}
+
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+
+	cfg := m.store.Get()
+	for _, upstream := range cfg.Upstreams {
+		if upstream.Name == name {
+			return upstream.IsEnabled()
+		}
+	}
+	return false
+}
+
 func (m *Manager) Models() []string {
 	cfg := m.store.Get()
 	uniq := make(map[string]struct{})
