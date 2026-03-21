@@ -190,7 +190,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .hero-main {
       display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+      grid-template-columns: 1fr;
       gap: 14px;
       padding: 16px 14px;
       overflow: hidden;
@@ -5203,17 +5203,6 @@ const adminHTMLTemplate = `<!doctype html>
       const avgCostPerRequest = (summary.total_requests || 0) > 0 ? (pricingSummary.total_usd || 0) / summary.total_requests : 0;
       const degradedUpstreams = Object.values(upstreamStatuses).filter((status) => status && !status.healthy).length;
       const recent503 = recentRequests.filter((item) => Number(item.status_code || 0) === 503).length;
-      const heroPriority = document.getElementById('heroPriority');
-      if (heroPriority) {
-        heroPriority.innerHTML = [
-          surfaceCard(localeText('1 分钟吞吐', '1m Throughput'), fmtRate(oneMinute.rpm) + ' RPM', fmtRate(oneMinute.tpm) + ' TPM', 'tone-good'),
-          '<div class="surface-card ' + ((oneMinute.success_rate || 0) < 95 ? 'tone-warn' : '') + '"><div class="surface-card-label">' + escapeHTML(localeText('1 分钟成功率', '1m Success Rate')) + '</div><div class="donut-wrap" id="heroSuccessDonut"></div></div>',
-          surfaceCard(localeText('退化上游', 'Degraded Upstreams'), fmt.format(degradedUpstreams), fmt.format(Math.max(Object.keys(upstreamStatuses).length - degradedUpstreams, 0)) + localeText(' 条健康', ' healthy'), degradedUpstreams ? 'tone-danger' : 'tone-good'),
-          surfaceCard(localeText('最近 503', 'Recent 503'), fmt.format(recent503), recent503 ? localeText('最近样本里出现了 503 压力。', 'Latest sample contains 503 pressure') : localeText('最近样本里没有 503。', 'No recent 503 in latest sample'), recent503 ? 'tone-warn' : 'tone-good'),
-        ].join('');
-        drawDonut('heroSuccessDonut', oneMinute.success_rate || 0, (oneMinute.success_rate || 0) >= 95 ? '#7ee7d6' : '#f1b866', 64);
-      }
-      if (heroPriority) { heroPriority.classList.remove('value-refresh'); void heroPriority.offsetWidth; heroPriority.classList.add('value-refresh'); }
       document.getElementById('runtimeTopline').innerHTML = [
         surfaceCard(
           localeText('恢复模式', 'Recovery Mode'),
@@ -5252,6 +5241,7 @@ const adminHTMLTemplate = `<!doctype html>
         [localeText('总 Token', 'Total Tokens'), fmt.format(summary.total_tokens || 0), fmt.format(summary.prompt_tokens || 0) + localeText(' 提示词 / ', ' prompt / ') + fmt.format(summary.completion_tokens || 0) + localeText(' 补全', ' completion')],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
       { const m = document.getElementById('metrics'); if (m) { m.classList.remove('value-refresh'); void m.offsetWidth; m.classList.add('value-refresh'); } }
+      if (latestBuckets.length >= 3) renderMetricSparklines(latestBuckets, chartState.bucket);
 
       document.getElementById('costMetrics').innerHTML = [
         [localeText('估算成本', 'Estimated Cost'), fmtMoney(pricingSummary.total_usd || 0), fmtMoney(pricingSummary.prompt_usd || 0) + localeText(' 输入 / ', ' input / ') + fmtMoney(pricingSummary.completion_usd || 0) + localeText(' 输出', ' output')],
@@ -5468,7 +5458,7 @@ func renderAdminHTML(settingsView bool, language string) string {
 	heroMetaPrimary := `<div class="pill" id="generatedAt">` + pick("加载中", "Loading") + `</div>`
 	heroMetaSecondary := `<div class="pill" id="pricingSource">` + pick("价格来源", "Pricing source") + `</div>`
 	heroMetaTertiary := ``
-	heroAside := `<div class="hero-priority-grid" id="heroPriority"></div>`
+	heroAside := ``
 	brandTitle := pick("AI 模型网关", "AI MODEL GATEWAY")
 	brandSubtitle := pick("统一的可观测性、路由、计价和运行控制台。", "Unified observability, routing, pricing, and runtime control.")
 	performanceTitle := pick("实时性能", "Live Performance")
