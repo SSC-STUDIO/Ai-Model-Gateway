@@ -147,7 +147,8 @@ const adminHTMLTemplate = `<!doctype html>
     .topnav a {
       display: inline-flex;
       align-items: center;
-      padding: 6px 10px;
+      padding: 8px 12px;
+      min-height: 32px;
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.04);
@@ -170,8 +171,8 @@ const adminHTMLTemplate = `<!doctype html>
     .hero {
       display: grid;
       grid-template-columns: 1fr;
-      gap: clamp(10px, 1.2vw, 16px);
-      margin-bottom: clamp(10px, 1.2vw, 16px);
+      gap: clamp(10px, 1.1vw, 14px);
+      margin-bottom: clamp(10px, 1.1vw, 14px);
     }
     .hero-main, .card {
       background: linear-gradient(160deg, rgba(26, 24, 21, 0.92), rgba(14, 13, 12, 0.85));
@@ -189,7 +190,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .hero-main {
       display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
       gap: 14px;
       padding: 16px 18px;
       overflow: hidden;
@@ -285,7 +286,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .card {
       grid-column: span 12;
-      padding: 12px;
+      padding: 14px;
       overflow: hidden;
       align-self: start;
     }
@@ -296,7 +297,6 @@ const adminHTMLTemplate = `<!doctype html>
     .span-7 { grid-column: span 7; }
     .span-5 { grid-column: span 5; }
     .span-8 { grid-column: span 8; }
-    .span-6 { grid-column: span 6; }
     .span-4 { grid-column: span 4; }
     .metrics {
       display: grid;
@@ -530,9 +530,8 @@ const adminHTMLTemplate = `<!doctype html>
     a:hover { text-decoration: underline; }
     .table-requests table { min-width: 1120px; }
     .table-models table { min-width: 720px; }
-    .table-health table { min-width: 900px; }
     .table-usage table { min-width: 520px; }
-    .table-cache table { min-width: 580px; }
+    .table-cache table { min-width: 420px; }
     .upstream-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -684,7 +683,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-shell {
       display: grid;
-      grid-template-columns: 220px minmax(0, 1fr) 340px;
+      grid-template-columns: 200px minmax(0, 1fr) 320px;
       gap: 14px;
       align-items: start;
     }
@@ -721,7 +720,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-jumpbar a {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(64px, 92px);
+      grid-template-columns: minmax(0, 1fr) minmax(72px, 110px);
       align-items: start;
       gap: 10px;
       padding: 10px 12px;
@@ -784,7 +783,7 @@ const adminHTMLTemplate = `<!doctype html>
     .config-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
     .page-settings .config-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1150,7 +1149,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .provider-summary-strip {
       display: grid;
-      grid-template-columns: 1.1fr 1.55fr 0.65fr 0.65fr 0.8fr 0.9fr 1.15fr;
+      grid-template-columns: 1.1fr 1.4fr 0.65fr 0.55fr 0.7fr 0.8fr 1fr 0.9fr;
       gap: 8px;
       margin: 2px 0 4px;
       padding: 8px 10px;
@@ -1270,16 +1269,16 @@ const adminHTMLTemplate = `<!doctype html>
       max-height: clamp(260px, 42vh, 540px);
     }
     .compact-feed .card-fill-body {
-      max-height: clamp(180px, 28vh, 300px);
+      max-height: clamp(220px, 34vh, 380px);
     }
     .chart-wrap {
       position: relative;
       width: 100%;
-      height: 190px;
+      height: 210px;
       overflow: hidden;
     }
     .compact-chart .chart-wrap {
-      height: 160px;
+      height: 180px;
     }
     .chart-wrap svg {
       display: block;
@@ -1462,42 +1461,8 @@ const adminHTMLTemplate = `<!doctype html>
       border-color: rgba(255, 127, 110, 0.36);
       background: rgba(255, 127, 110, 0.10);
     }
-    @media (max-width: 900px) {
-      .hero {
-        grid-template-columns: 1fr;
-      }
-      .hero-main {
-        grid-template-columns: 1fr;
-      }
-      .hero-priority-grid {
-        grid-template-columns: 1fr;
-      }
-      .span-8, .span-7, .span-6, .span-5, .span-4 {
-        grid-column: span 12;
-      }
-      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
-        grid-template-columns: repeat(2, 1fr);
-      }
-      .mode-preset-grid {
-        grid-template-columns: 1fr;
-      }
-      .settings-rail-actions {
-        grid-template-columns: 1fr;
-      }
-      .upstream-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    @media (max-width: 640px) {
-      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
-        grid-template-columns: 1fr;
-      }
-      .mode-preset-grid {
-        grid-template-columns: 1fr;
-      }
-      .upstream-stats {
-        grid-template-columns: 1fr;
-      }
+    .config-field-wide {
+      grid-column: 1 / -1;
     }
     @media (max-width: 1320px) {
       .page-settings .config-grid,
@@ -1512,9 +1477,9 @@ const adminHTMLTemplate = `<!doctype html>
         letter-spacing: 0.06em;
       }
     }
-    @media (max-width: 1380px) {
+    @media (max-width: 1280px) {
       .settings-shell {
-        grid-template-columns: 220px minmax(0, 1fr);
+        grid-template-columns: 200px minmax(0, 1fr);
       }
       .settings-rail {
         grid-column: 1 / -1;
@@ -1544,12 +1509,50 @@ const adminHTMLTemplate = `<!doctype html>
       .topnav {
         justify-content: flex-start;
       }
+      .hero {
+        grid-template-columns: 1fr;
+      }
+      .hero-main {
+        grid-template-columns: 1fr;
+      }
+      .hero-priority-grid {
+        grid-template-columns: 1fr;
+      }
+      .span-8, .span-7, .span-5, .span-4 {
+        grid-column: span 12;
+      }
+      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .mode-preset-grid {
+        grid-template-columns: 1fr;
+      }
+      .settings-rail-actions {
+        grid-template-columns: 1fr;
+      }
+      .upstream-grid {
+        grid-template-columns: 1fr;
+      }
       .settings-shell {
         grid-template-columns: 1fr;
       }
       .settings-sticky {
         position: static;
       }
+    }
+    @media (max-width: 640px) {
+      .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
+        grid-template-columns: 1fr;
+      }
+      .mode-preset-grid {
+        grid-template-columns: 1fr;
+      }
+      .upstream-stats {
+        grid-template-columns: 1fr;
+      }
+    }
+    .page-settings .hero {
+      margin-bottom: clamp(6px, 0.8vw, 10px);
     }
     @media (min-width: 1600px) {
       h1 {
@@ -1604,7 +1607,7 @@ const adminHTMLTemplate = `<!doctype html>
 
     <div id="overviewShell">
     <div class="layout overview-primary">
-      <div class="card span-8" id="performance">
+      <div class="card span-7" id="performance">
         <div class="section-head">
           <div>
             <div class="title">Live Performance</div>
@@ -1614,7 +1617,7 @@ const adminHTMLTemplate = `<!doctype html>
         </div>
         <div class="metrics" id="metrics"></div>
       </div>
-      <div class="card span-4 compact-card" id="runtime-card">
+      <div class="card span-5 compact-card" id="runtime-card">
         <div class="section-head">
           <div>
             <div class="title">Runtime Posture</div>
@@ -1731,7 +1734,7 @@ const adminHTMLTemplate = `<!doctype html>
         </div>
         <div class="metrics" id="costMetrics"></div>
       </div>
-      <div class="card span-8 compact-card" id="usage-card">
+      <div class="card span-7 compact-card" id="usage-card">
         <div class="section-head">
           <div>
             <div class="title">Upstream Usage</div>
@@ -1742,7 +1745,7 @@ const adminHTMLTemplate = `<!doctype html>
         <div class="surface-strip" id="usageTopline"></div>
         <div id="byUpstream"></div>
       </div>
-      <div class="card span-4 compact-card" id="cache-card">
+      <div class="card span-5 compact-card" id="cache-card">
         <div class="section-head">
           <div>
             <div class="title">Cache Hit Ranking</div>
@@ -1847,8 +1850,8 @@ const adminHTMLTemplate = `<!doctype html>
               <div class="config-field">
                 <label>Router Strategy</label>
                 <select id="cfgRouterStrategy">
-                  <option value="health_weighted_rr">health_weighted_rr</option>
-                  <option value="round_robin">round_robin</option>
+                  <option value="health_weighted_rr">{{ROUTER_STRATEGY_HEALTH_WEIGHTED_RR}}</option>
+                  <option value="round_robin">{{ROUTER_STRATEGY_ROUND_ROBIN}}</option>
                 </select>
               </div>
               <div class="config-field">
@@ -1931,7 +1934,7 @@ const adminHTMLTemplate = `<!doctype html>
                 <label>Status Code Min</label>
                 <input type="number" min="0" id="cfgRetryMin" placeholder="500" />
               </div>
-              <div class="config-field" style="grid-column: span 3;">
+              <div class="config-field config-field-wide">
                 <label>Message Keywords</label>
                 <textarea id="cfgRetryKeywords" placeholder="rate limit\nupstream request failed"></textarea>
               </div>
@@ -2336,6 +2339,12 @@ const adminHTMLTemplate = `<!doctype html>
       if (normalized === 'bridge') return localeText('桥接', 'bridge');
       return localeText('直连', 'direct');
     };
+    const routerStrategyLabel = (strategy) => {
+      const normalized = String(strategy || '').trim().toLowerCase();
+      if (normalized === 'health_weighted_rr') return localeText('健康加权轮询', 'Health-Weighted Round Robin');
+      if (normalized === 'round_robin') return localeText('轮询', 'Round Robin');
+      return strategy || '-';
+    };
     const providerClassLabel = (providerClass) => String(providerClass || 'quota_limited').trim() === 'free'
       ? t('freeFirst')
       : t('quotaLimited');
@@ -2635,6 +2644,11 @@ const adminHTMLTemplate = `<!doctype html>
       setTextValue('#cfg-router .config-card-head .config-card-title', localeText('路由恢复', 'Router Retry'));
       setTextValue('#cfg-router .config-card-head .config-help', localeText('控制重试次数、退避窗口和失败出口。', 'Control retry rounds, backoff window, and failure exit.'));
       setTextValue('#cfg-router .config-field:nth-of-type(1) > label', localeText('路由策略', 'Router Strategy'));
+      const routerStrategySelect = byId('cfgRouterStrategy');
+      if (routerStrategySelect?.options?.length >= 2) {
+        routerStrategySelect.options[0].text = routerStrategyLabel('health_weighted_rr');
+        routerStrategySelect.options[1].text = routerStrategyLabel('round_robin');
+      }
       setTextValue('#cfg-router .config-field:nth-of-type(2) > label', localeText('最大重试次数', 'Max Retries'));
       setTextValue('#cfg-router .config-field:nth-of-type(3) > label', localeText('退避基线（毫秒）', 'Backoff Base (ms)'));
       setTextValue('#cfg-router .config-field:nth-of-type(4) > label', localeText('退避上限（毫秒）', 'Backoff Max (ms)'));
@@ -2918,7 +2932,7 @@ const adminHTMLTemplate = `<!doctype html>
         miniChip(localeText('草稿', 'Draft'), bridgeCount ? localeText('已映射', 'mapped') : localeText('为空', 'empty'), bridgeCount ? 'accent' : 'warn'),
       ].join('');
       if (byId('cfgRouterMeta')) byId('cfgRouterMeta').innerHTML = [
-        miniChip(localeText('策略', 'Strategy'), routerStrategy, 'accent'),
+        miniChip(localeText('策略', 'Strategy'), routerStrategyLabel(routerStrategy), 'accent'),
         miniChip(localeText('模式', 'Mode'), recoveryLabel, retryInfinite ? 'accent' : ''),
         miniChip(localeText('重试', 'Retries'), fmt.format(readNumber(byId('cfgMaxRetries')))),
       ].join('');
@@ -2940,7 +2954,8 @@ const adminHTMLTemplate = `<!doctype html>
       ].join('');
       setNavMeta('navMetaHealth', healthPath, diagnostics.healthEnabled ? (diagnostics.healthPath ? 'good' : 'warn') : '');
       setNavMeta('navMetaBridge', fmt.format(bridgeCount) + ' ' + localeText('条规则', 'rules'), bridgeCount ? 'good' : '');
-      setNavMeta('navMetaRouter', retryInfinite ? (routerStrategy + ' · ' + localeText('无限', 'infinite')) : routerStrategy, 'good');
+      const routerStrategyDisplay = routerStrategyLabel(routerStrategy);
+      setNavMeta('navMetaRouter', retryInfinite ? (routerStrategyDisplay + ' · ' + localeText('无限', 'infinite')) : routerStrategyDisplay, 'good');
       setNavMeta('navMetaIntercepts', fmt.format(interceptCount) + ' ' + localeText('条规则', 'rules'), interceptCount ? 'good' : '');
       setNavMeta('navMetaProviders', fmt.format(providerCount) + ' ' + localeText('个服务商', 'providers'), enabledProviders === 0 ? 'danger' : ((diagnostics.emptyKeys || diagnostics.unscopedProviders) ? 'warn' : 'good'));
       setNavMeta('navMetaHistory', fmt.format(configHistoryVersionCount) + ' ' + localeText('个版本', 'versions'), configHistoryVersionCount ? 'good' : '');
@@ -3873,7 +3888,7 @@ const adminHTMLTemplate = `<!doctype html>
       const tip = setupTooltip(wrapId, tipId);
       const W = wrap.clientWidth || 600;
       const H = wrap.clientHeight || 220;
-      const pad = { top: 16, right: 16, bottom: 28, left: 52 };
+      const pad = { top: 16, right: 16, bottom: 28, left: 44 };
       const cw = W - pad.left - pad.right;
       const ch = H - pad.top - pad.bottom;
 
@@ -3962,7 +3977,7 @@ const adminHTMLTemplate = `<!doctype html>
       const tip = setupTooltip(wrapId, tipId);
       const W = wrap.clientWidth || 600;
       const H = wrap.clientHeight || 220;
-      const pad = { top: 16, right: 16, bottom: 28, left: 52 };
+      const pad = { top: 16, right: 16, bottom: 28, left: 44 };
       const cw = W - pad.left - pad.right;
       const ch = H - pad.top - pad.bottom;
       const n = labels.length;
@@ -4162,7 +4177,7 @@ const adminHTMLTemplate = `<!doctype html>
         ),
       ].join('');
       document.getElementById('runtimeMetrics').innerHTML = [
-        [localeText('路由策略', 'Router Strategy'), runtimeStrategy, fmt.format(runtime.max_retries || 0) + localeText(' 次最大重试', ' max retries configured')],
+        [localeText('路由策略', 'Router Strategy'), routerStrategyLabel(runtimeStrategy), fmt.format(runtime.max_retries || 0) + localeText(' 次最大重试', ' max retries configured')],
         [localeText('恢复上限', 'Recovery Ceiling'), runtime.retry_infinite_on_error ? localeText('由客户端取消', 'client cancel') : (fmt.format(runtime.max_retries || 0) + localeText(' 次重试', ' retries')), runtime.retry_infinite_on_error ? localeText('无限模式会忽略最大重试上限。', 'Infinite mode ignores the max retry ceiling.') : localeText('当前为有界故障转移窗口。', 'Bounded failover window.')],
         [localeText('服务商', 'Providers'), fmt.format(enabledRuntimeUpstreams) + ' ' + localeText('已启用', 'enabled'), fmt.format(Math.max(totalRuntimeUpstreams - enabledRuntimeUpstreams, 0)) + ' ' + localeText('已停用', 'disabled') + ' · ' + (runtime.bridge_enabled ? localeText('桥接开启', 'bridge on') : localeText('桥接关闭', 'bridge off'))],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
