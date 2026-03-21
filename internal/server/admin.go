@@ -155,7 +155,7 @@ const adminHTMLTemplate = `<!doctype html>
       color: var(--muted);
       font-size: 11px;
       text-decoration: none;
-      transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+      transition: border-color 140ms ease, color 140ms ease, background 140ms ease, box-shadow 140ms ease;
     }
     .topnav a:hover {
       color: var(--ink);
@@ -234,6 +234,12 @@ const adminHTMLTemplate = `<!doctype html>
       font-size: clamp(26px, 4vw, 44px);
       line-height: 0.96;
       letter-spacing: -0.05em;
+      background: linear-gradient(120deg, var(--ink) 30%, var(--accent) 50%, var(--ink) 70%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 6s linear infinite;
     }
     .sub {
       color: var(--muted);
@@ -751,6 +757,7 @@ const adminHTMLTemplate = `<!doctype html>
       text-decoration: none;
       min-width: 0;
       overflow: hidden;
+      transition: border-color 140ms ease, color 140ms ease, background 140ms ease, box-shadow 140ms ease;
     }
     .settings-jumpbar a:hover {
       color: var(--ink);
@@ -1085,9 +1092,13 @@ const adminHTMLTemplate = `<!doctype html>
       display: none;
     }
     .validation-summary {
-      display: none;
+      display: grid;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 250ms ease, opacity 200ms ease, padding 200ms ease;
+      padding: 0 12px;
       gap: 6px;
-      padding: 10px 12px;
       border-radius: 14px;
       border: 1px solid rgba(255, 127, 110, 0.35);
       background: rgba(255, 127, 110, 0.10);
@@ -1096,7 +1107,9 @@ const adminHTMLTemplate = `<!doctype html>
       line-height: 1.5;
     }
     .validation-summary.visible {
-      display: grid;
+      max-height: 300px;
+      opacity: 1;
+      padding: 10px 12px;
     }
     .validation-list {
       margin: 0;
@@ -1620,11 +1633,62 @@ const adminHTMLTemplate = `<!doctype html>
         border: 1px solid #ddd;
       }
       .chart-wrap { break-inside: avoid; }
+      h1 {
+        -webkit-text-fill-color: #111;
+        background: none;
+        animation: none;
+      }
     }
     html { scroll-behavior: smooth; }
     @keyframes pulse-subtle {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.6; }
+    }
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes sectionReveal {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes valueRefresh {
+      from { opacity: 0.7; }
+      to { opacity: 1; }
+    }
+    @keyframes glowPulse {
+      0%, 100% { box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.08); }
+      50% { box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.18); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    .hero-main {
+      animation: fadeSlideUp 300ms ease both;
+    }
+    .layout .card:nth-child(1) { animation: fadeSlideUp 300ms ease 80ms both; }
+    .layout .card:nth-child(2) { animation: fadeSlideUp 300ms ease 140ms both; }
+    .layout .card:nth-child(3) { animation: fadeSlideUp 300ms ease 200ms both; }
+    .layout .card:nth-child(4) { animation: fadeSlideUp 300ms ease 260ms both; }
+    .layout .card:nth-child(5) { animation: fadeSlideUp 300ms ease 320ms both; }
+    .config-card > :not(.config-card-head) {
+      animation: sectionReveal 250ms ease both;
+    }
+    .provider-card > :not(.config-card-head):not(.provider-summary-strip):not(.probe-status-host) {
+      animation: sectionReveal 250ms ease both;
+    }
+    .chart-wrap svg {
+      animation: fadeSlideUp 350ms ease;
+    }
+    .probe-status {
+      animation: sectionReveal 250ms ease both;
+    }
+    .value-refresh {
+      animation: valueRefresh 300ms ease;
+    }
+    .hero-priority-grid .surface-card.tone-good {
+      animation: glowPulse 3s ease-in-out infinite;
     }
     .btn:focus-visible,
     .topnav a:focus-visible,
@@ -1664,6 +1728,13 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .config-hint {
       transition: color 200ms ease;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
     }
   </style>
 </head>
@@ -2810,22 +2881,276 @@ const adminHTMLTemplate = `<!doctype html>
         provider: "Provider {index}"
       }
     };
+    const SUPPORTED_UI_LOCALES = new Set(['zh', 'en', 'ja', 'ko', 'es', 'fr', 'de']);
+    const normalizeLocale = (language) => {
+      const normalized = String(language || '').trim().toLowerCase().replace(/_/g, '-');
+      const base = normalized.split('-')[0];
+      return SUPPORTED_UI_LOCALES.has(base) ? base : 'zh';
+    };
+    currentLocale = normalizeLocale(currentLocale);
+    const localeCode = (language) => normalizeLocale(language) === 'zh' ? 'zh-CN' : normalizeLocale(language);
+    const LOCALE_TEXT_OVERRIDES = {
+      ja: {
+        'Updated ': '更新 ',
+        'Official pricing: ': '公式価格: ',
+        'Health Check': 'ヘルスチェック',
+        'Router Strategy': 'ルーティング戦略',
+        'Router Retry': 'ルーター再試行',
+        'Model Bridge': 'モデルブリッジ',
+        'Response Intercepts': 'レスポンスインターセプト',
+        'Service Providers': 'サービスプロバイダー',
+        'Provider Matrix': 'プロバイダーマトリクス',
+        'Traffic Strategy': 'トラフィック戦略',
+        'Recovery Policy': '復旧ポリシー',
+        'Recovery Mode': '復旧モード',
+        'Probe': 'プローブ',
+        'Path': 'パス',
+        'Rules': 'ルール',
+        'Draft': 'ドラフト',
+        'mapped': 'マッピング済み',
+        'empty': '空',
+        'Strategy': '戦略',
+        'Mode': 'モード',
+        'Retries': '再試行',
+        'Rows': '行',
+        'Latest': '最新',
+        'Avg Attempts': '平均試行回数',
+        'Providers': 'プロバイダー',
+        'Enabled': '有効',
+        'Disabled': '無効',
+        'Saved': '節約',
+        'Total': '合計',
+        'Unpriced': '未価格設定',
+        'Priced': '価格設定済み',
+        'Prompt': 'Prompt',
+        'Completion': 'Completion',
+        'Requests': 'リクエスト',
+        'Time': '時刻',
+        'Upstream': 'アップストリーム',
+        'Status / Attempts': '状態 / 試行',
+        'Latency + Cache': '遅延 + キャッシュ',
+        'Model Flow': 'モデル遷移',
+        'Route + Path': 'ルート + パス',
+        'Hottest Path': '最頻パス',
+        'Busiest Upstream': '最忙アップストリーム',
+        'Hottest Model': '最頻モデル',
+        'Cache Hit': 'キャッシュヒット',
+        'always recover': '常時復旧',
+        'bounded': '有界',
+        'armed': '有効',
+        'bridge on': 'ブリッジ有効',
+        'bridge off': 'ブリッジ無効'
+      },
+      ko: {
+        'Updated ': '업데이트 ',
+        'Official pricing: ': '공식 가격: ',
+        'Health Check': '헬스 체크',
+        'Router Strategy': '라우팅 전략',
+        'Router Retry': '라우터 재시도',
+        'Model Bridge': '모델 브리지',
+        'Response Intercepts': '응답 인터셉트',
+        'Service Providers': '서비스 공급자',
+        'Provider Matrix': '공급자 매트릭스',
+        'Traffic Strategy': '트래픽 전략',
+        'Recovery Policy': '복구 정책',
+        'Recovery Mode': '복구 모드',
+        'Probe': '프로브',
+        'Path': '경로',
+        'Rules': '규칙',
+        'Draft': '초안',
+        'mapped': '매핑됨',
+        'empty': '비어 있음',
+        'Strategy': '전략',
+        'Mode': '모드',
+        'Retries': '재시도',
+        'Rows': '행',
+        'Latest': '최신',
+        'Avg Attempts': '평균 시도',
+        'Providers': '공급자',
+        'Enabled': '활성',
+        'Disabled': '비활성',
+        'Saved': '절감',
+        'Total': '합계',
+        'Unpriced': '미가격',
+        'Priced': '가격 적용',
+        'Requests': '요청',
+        'Time': '시간',
+        'Upstream': '업스트림',
+        'Status / Attempts': '상태 / 시도',
+        'Latency + Cache': '지연 + 캐시',
+        'Hottest Path': '최다 경로',
+        'Busiest Upstream': '최다 업스트림',
+        'Hottest Model': '최다 모델',
+        'Cache Hit': '캐시 적중',
+        'always recover': '항상 복구',
+        'bounded': '제한됨',
+        'armed': '활성',
+        'bridge on': '브리지 켜짐',
+        'bridge off': '브리지 꺼짐'
+      },
+      es: {
+        'Updated ': 'Actualizado ',
+        'Official pricing: ': 'Precios oficiales: ',
+        'Health Check': 'Health Check',
+        'Router Strategy': 'Estrategia de enrutado',
+        'Router Retry': 'Reintento de router',
+        'Model Bridge': 'Bridge de modelo',
+        'Response Intercepts': 'Interceptores de respuesta',
+        'Service Providers': 'Proveedores de servicio',
+        'Provider Matrix': 'Matriz de proveedores',
+        'Traffic Strategy': 'Estrategia de tráfico',
+        'Recovery Policy': 'Política de recuperación',
+        'Recovery Mode': 'Modo de recuperación',
+        'Probe': 'Sonda',
+        'Path': 'Ruta',
+        'Rules': 'Reglas',
+        'Draft': 'Borrador',
+        'mapped': 'mapeado',
+        'empty': 'vacío',
+        'Strategy': 'Estrategia',
+        'Mode': 'Modo',
+        'Retries': 'Reintentos',
+        'Rows': 'Filas',
+        'Latest': 'Último',
+        'Avg Attempts': 'Intentos medios',
+        'Providers': 'Proveedores',
+        'Enabled': 'Activado',
+        'Disabled': 'Desactivado',
+        'Saved': 'Ahorrado',
+        'Total': 'Total',
+        'Unpriced': 'Sin precio',
+        'Priced': 'Con precio',
+        'Requests': 'Solicitudes',
+        'Time': 'Hora',
+        'Upstream': 'Upstream',
+        'Status / Attempts': 'Estado / intentos',
+        'Latency + Cache': 'Latencia + caché',
+        'Hottest Path': 'Ruta más activa',
+        'Busiest Upstream': 'Upstream más ocupado',
+        'Hottest Model': 'Modelo más activo',
+        'Cache Hit': 'Cache hit',
+        'always recover': 'recuperación continua',
+        'bounded': 'limitado',
+        'armed': 'activado',
+        'bridge on': 'bridge activo',
+        'bridge off': 'bridge inactivo'
+      },
+      fr: {
+        'Updated ': 'Mis à jour ',
+        'Official pricing: ': 'Tarification officielle : ',
+        'Health Check': 'Health Check',
+        'Router Strategy': 'Stratégie de routage',
+        'Router Retry': 'Retry du routeur',
+        'Model Bridge': 'Bridge de modèle',
+        'Response Intercepts': 'Interceptions de réponse',
+        'Service Providers': 'Fournisseurs de service',
+        'Provider Matrix': 'Matrice des fournisseurs',
+        'Traffic Strategy': 'Stratégie de trafic',
+        'Recovery Policy': 'Politique de récupération',
+        'Recovery Mode': 'Mode de récupération',
+        'Probe': 'Sonde',
+        'Path': 'Chemin',
+        'Rules': 'Règles',
+        'Draft': 'Brouillon',
+        'mapped': 'mappé',
+        'empty': 'vide',
+        'Strategy': 'Stratégie',
+        'Mode': 'Mode',
+        'Retries': 'Retries',
+        'Rows': 'Lignes',
+        'Latest': 'Dernier',
+        'Avg Attempts': 'Tentatives moyennes',
+        'Providers': 'Fournisseurs',
+        'Enabled': 'Activé',
+        'Disabled': 'Désactivé',
+        'Saved': 'Économisé',
+        'Total': 'Total',
+        'Unpriced': 'Sans prix',
+        'Priced': 'Tarifé',
+        'Requests': 'Requêtes',
+        'Time': 'Heure',
+        'Upstream': 'Upstream',
+        'Status / Attempts': 'Statut / tentatives',
+        'Latency + Cache': 'Latence + cache',
+        'Hottest Path': 'Chemin le plus actif',
+        'Busiest Upstream': 'Upstream le plus chargé',
+        'Hottest Model': 'Modèle le plus actif',
+        'Cache Hit': 'Cache hit',
+        'always recover': 'récupération continue',
+        'bounded': 'borné',
+        'armed': 'activé',
+        'bridge on': 'bridge actif',
+        'bridge off': 'bridge inactif'
+      },
+      de: {
+        'Updated ': 'Aktualisiert ',
+        'Official pricing: ': 'Offizielle Preise: ',
+        'Health Check': 'Health Check',
+        'Router Strategy': 'Routing-Strategie',
+        'Router Retry': 'Router-Retry',
+        'Model Bridge': 'Modell-Bridge',
+        'Response Intercepts': 'Antwort-Intercepts',
+        'Service Providers': 'Service-Provider',
+        'Provider Matrix': 'Provider-Matrix',
+        'Traffic Strategy': 'Traffic-Strategie',
+        'Recovery Policy': 'Recovery-Richtlinie',
+        'Recovery Mode': 'Recovery-Modus',
+        'Probe': 'Probe',
+        'Path': 'Pfad',
+        'Rules': 'Regeln',
+        'Draft': 'Entwurf',
+        'mapped': 'zugeordnet',
+        'empty': 'leer',
+        'Strategy': 'Strategie',
+        'Mode': 'Modus',
+        'Retries': 'Retries',
+        'Rows': 'Zeilen',
+        'Latest': 'Neueste',
+        'Avg Attempts': 'Durchschn. Versuche',
+        'Providers': 'Provider',
+        'Enabled': 'Aktiv',
+        'Disabled': 'Deaktiviert',
+        'Saved': 'Ersparnis',
+        'Total': 'Gesamt',
+        'Unpriced': 'Unbepreist',
+        'Priced': 'Bepreist',
+        'Requests': 'Anfragen',
+        'Time': 'Zeit',
+        'Upstream': 'Upstream',
+        'Status / Attempts': 'Status / Versuche',
+        'Latency + Cache': 'Latenz + Cache',
+        'Hottest Path': 'Heißester Pfad',
+        'Busiest Upstream': 'Stärkster Upstream',
+        'Hottest Model': 'Heißestes Modell',
+        'Cache Hit': 'Cache-Hit',
+        'always recover': 'dauerhaft wiederherstellen',
+        'bounded': 'begrenzt',
+        'armed': 'aktiv',
+        'bridge on': 'Bridge an',
+        'bridge off': 'Bridge aus'
+      }
+    };
     const t = (key, vars = {}) => {
-      let text = (I18N[currentLocale] && I18N[currentLocale][key]) || I18N.zh[key] || key;
+      let text = (I18N[currentLocale] && I18N[currentLocale][key]) || I18N.en[key] || I18N.zh[key] || key;
       for (const [name, value] of Object.entries(vars)) {
         text = text.replaceAll('{' + name + '}', String(value));
       }
       return text;
     };
-    const localeText = (zh, en) => currentLocale === 'en' ? en : zh;
-    const rebuildFormatters = () => {
-      fmt = new Intl.NumberFormat(currentLocale === 'en' ? "en-US" : "zh-CN");
-      fmtUsd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
-      rtf = new Intl.RelativeTimeFormat(currentLocale === 'en' ? 'en' : 'zh', { numeric: 'auto' });
+    const localeText = (zh, en) => {
+      if (currentLocale === 'zh') return zh;
+      if (currentLocale === 'en') return en;
+      const overrides = LOCALE_TEXT_OVERRIDES[currentLocale] || {};
+      return overrides[en] || overrides[zh] || en;
     };
-    let fmt = new Intl.NumberFormat(currentLocale === 'en' ? "en-US" : "zh-CN");
+    const rebuildFormatters = () => {
+      fmt = new Intl.NumberFormat(localeCode(currentLocale));
+      fmtUsd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
+      rtf = new Intl.RelativeTimeFormat(localeCode(currentLocale), { numeric: 'auto' });
+    };
+    let fmt = new Intl.NumberFormat(localeCode(currentLocale));
     let fmtUsd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
-    let rtf = new Intl.RelativeTimeFormat(currentLocale === 'en' ? 'en' : 'zh', { numeric: 'auto' });
+    let rtf = new Intl.RelativeTimeFormat(localeCode(currentLocale), { numeric: 'auto' });
     const relativeTime = (ts) => {
       if (!ts) return "-";
       const delta = Math.max(0, Date.now() - new Date(ts).getTime());
@@ -3072,10 +3397,10 @@ const adminHTMLTemplate = `<!doctype html>
       if (el) el.setAttribute('data-section-title', value);
     };
     const applyStaticLocale = () => {
-      document.documentElement.lang = currentLocale === 'en' ? 'en' : 'zh-CN';
+      document.documentElement.lang = localeCode(currentLocale);
       document.title = document.body.classList.contains('page-settings')
-        ? (currentLocale === 'en' ? 'AI Gateway Settings' : 'AI 模型网关设置')
-        : (currentLocale === 'en' ? 'AI Gateway Admin' : 'AI 模型网关管理台');
+        ? t('pageTitleSettings')
+        : t('pageTitleAdmin');
       setText('.brand-title', 'brandTitle');
       setText('.brand-subtitle', 'brandSubtitle');
       setText('#performance .title', 'performanceTitle');
@@ -3206,16 +3531,21 @@ const adminHTMLTemplate = `<!doctype html>
         providerClassFilter.options[2].textContent = t('quotaLimited');
       }
       const languageFilter = byId('cfgAdminLanguage');
-      if (languageFilter?.options?.length >= 2) {
+      if (languageFilter?.options?.length >= 7) {
         languageFilter.options[0].textContent = t('languageChinese');
         languageFilter.options[1].textContent = t('languageEnglish');
+        languageFilter.options[2].textContent = t('languageJapanese');
+        languageFilter.options[3].textContent = t('languageKorean');
+        languageFilter.options[4].textContent = t('languageSpanish');
+        languageFilter.options[5].textContent = t('languageFrench');
+        languageFilter.options[6].textContent = t('languageGerman');
         languageFilter.title = t('languageLabel');
         languageFilter.setAttribute('aria-label', t('languageLabel'));
       }
       setPlaceholderValue('#cfgRetryKeywords', localeText('rate limit\nupstream request failed', 'rate limit\nupstream request failed'));
     };
     const setLocale = (language) => {
-      currentLocale = language === 'en' ? 'en' : 'zh';
+      currentLocale = normalizeLocale(language);
       rebuildFormatters();
       applyStaticLocale();
     };
@@ -4662,7 +4992,7 @@ const adminHTMLTemplate = `<!doctype html>
       const runtimeHealthPath = String(runtime.health_path || '').trim() || '/v1/models';
       const runtimeStrategy = String(runtime.router_strategy || data.router_strategy || 'health_weighted_rr');
 
-      document.getElementById('generatedAt').textContent = localeText('更新于 ', 'Updated ') + new Date(data.generated_at).toLocaleString(currentLocale === 'en' ? 'en-US' : 'zh-CN');
+      document.getElementById('generatedAt').textContent = localeText('更新于 ', 'Updated ') + new Date(data.generated_at).toLocaleString(localeCode(currentLocale));
       document.getElementById('pricingSource').innerHTML = pricing.source_url
         ? localeText('官方价格：', 'Official pricing: ') + '<a href="' + pricing.source_url + '" target="_blank" rel="noreferrer">OpenAI</a>' + (pricing.updated_at ? ' · ' + relativeTime(pricing.updated_at) : '')
         : t('officialPriceUnavailable');
@@ -4680,6 +5010,7 @@ const adminHTMLTemplate = `<!doctype html>
           surfaceCard(localeText('最近 503', 'Recent 503'), fmt.format(recent503), recent503 ? localeText('最近样本里出现了 503 压力。', 'Latest sample contains 503 pressure') : localeText('最近样本里没有 503。', 'No recent 503 in latest sample'), recent503 ? 'tone-warn' : 'tone-good'),
         ].join('');
       }
+      if (heroPriority) { heroPriority.classList.remove('value-refresh'); void heroPriority.offsetWidth; heroPriority.classList.add('value-refresh'); }
       document.getElementById('runtimeTopline').innerHTML = [
         surfaceCard(
           localeText('恢复模式', 'Recovery Mode'),
@@ -4717,6 +5048,7 @@ const adminHTMLTemplate = `<!doctype html>
         [localeText('总请求数', 'Total Requests'), fmt.format(summary.total_requests || 0), fmt.format(summary.successes || 0) + localeText(' 成功 / ', ' success / ') + fmt.format(summary.failures || 0) + localeText(' 失败', ' fail')],
         [localeText('总 Token', 'Total Tokens'), fmt.format(summary.total_tokens || 0), fmt.format(summary.prompt_tokens || 0) + localeText(' 提示词 / ', ' prompt / ') + fmt.format(summary.completion_tokens || 0) + localeText(' 补全', ' completion')],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
+      { const m = document.getElementById('metrics'); if (m) { m.classList.remove('value-refresh'); void m.offsetWidth; m.classList.add('value-refresh'); } }
 
       document.getElementById('costMetrics').innerHTML = [
         [localeText('估算成本', 'Estimated Cost'), fmtMoney(pricingSummary.total_usd || 0), fmtMoney(pricingSummary.prompt_usd || 0) + localeText(' 输入 / ', ' input / ') + fmtMoney(pricingSummary.completion_usd || 0) + localeText(' 输出', ' output')],
@@ -4726,6 +5058,7 @@ const adminHTMLTemplate = `<!doctype html>
         [localeText('1 小时缓存命中', '1h Cache Hit'), cacheHitRate(oneHour) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(oneHour)), cacheTrendDetail(oneHour)],
         [localeText('24 小时缓存命中', '24h Cache Hit'), cacheHitRate(dayWindow) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(dayWindow)), cacheTrendDetail(dayWindow)],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
+      { const c = document.getElementById('costMetrics'); if (c) { c.classList.remove('value-refresh'); void c.offsetWidth; c.classList.add('value-refresh'); } }
       document.getElementById('costMeta').innerHTML = [
         miniChip(localeText('总额', 'Total'), compactUsd(pricingSummary.total_usd || 0), 'accent'),
         miniChip(localeText('已节省', 'Saved'), compactUsd(pricingSummary.cache_savings_usd || 0), pricingSummary.cache_savings_usd > 0 ? 'accent' : ''),
@@ -4907,20 +5240,31 @@ const adminHTMLTemplate = `<!doctype html>
 </html>`
 
 func adminHTMLLang(language string) string {
-	if config.NormalizeAdminLanguage(language) == config.AdminLanguageEnglish {
+	switch config.NormalizeAdminLanguage(language) {
+	case config.AdminLanguageEnglish:
 		return "en"
+	case config.AdminLanguageJapanese:
+		return "ja"
+	case config.AdminLanguageKorean:
+		return "ko"
+	case config.AdminLanguageSpanish:
+		return "es"
+	case config.AdminLanguageFrench:
+		return "fr"
+	case config.AdminLanguageGerman:
+		return "de"
 	}
 	return "zh-CN"
 }
 
 func renderAdminHTML(settingsView bool, language string) string {
 	language = config.NormalizeAdminLanguage(language)
-	isEnglish := language == config.AdminLanguageEnglish
+	useChinese := language == config.AdminLanguageChinese
 	pick := func(zh, en string) string {
-		if isEnglish {
-			return en
+		if useChinese {
+			return zh
 		}
-		return zh
+		return en
 	}
 	bodyClass := ""
 	topnavLinks := strings.Join([]string{
@@ -4986,7 +5330,7 @@ func renderAdminHTML(settingsView bool, language string) string {
 	if settingsView {
 		pageTitle = "AI Gateway Settings"
 	}
-	if language == config.AdminLanguageChinese {
+	if useChinese {
 		pageTitle = "AI 模型网关管理台"
 		if settingsView {
 			pageTitle = "AI 模型网关设置"
