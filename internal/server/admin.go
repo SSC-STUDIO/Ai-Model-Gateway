@@ -1302,12 +1302,14 @@ const adminHTMLTemplate = `<!doctype html>
     .card-fill-body {
       flex: 1 1 auto;
       min-height: 0;
+      max-height: 500px;
       overflow: auto;
     }
     .priority-feed .card-fill-body {
       max-height: clamp(260px, 42vh, 540px);
     }
     .compact-feed .card-fill-body {
+      max-height: 500px;
       min-height: 180px;
     }
     .chart-wrap {
