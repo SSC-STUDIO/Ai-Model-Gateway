@@ -33,11 +33,16 @@ type ModelsResponse struct {
 }
 
 type AdminConfigView struct {
+	Admin     configViewAdmin      `json:"admin"`
 	Health    configViewHealth     `json:"health"`
 	Bridge    configViewBridge     `json:"bridge"`
 	Router    configViewRouter     `json:"router"`
 	Proxy     configViewProxy      `json:"proxy"`
 	Upstreams []configViewUpstream `json:"upstreams"`
+}
+
+type configViewAdmin struct {
+	Language string `json:"language"`
 }
 
 type configViewHealth struct {
@@ -171,9 +176,36 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 
 	p := proxy.NewHandler(manager, stats)
 	var adminDataCache struct {
-		mu      sync.Mutex
-		expires time.Time
-		payload []byte
+		mu       sync.Mutex
+		cond     *sync.Cond
+		expires  time.Time
+		payload  []byte
+		building bool
+	}
+	adminDataCache.cond = sync.NewCond(&adminDataCache.mu)
+
+	buildAdminDataPayload := func() ([]byte, error) {
+		cfg := manager.CurrentConfig()
+		snapshot := stats.Snapshot()
+		pricingState := telemetry.BootstrapPricingSnapshot()
+		if pricingCatalog != nil {
+			pricingState = pricingCatalog.Snapshot()
+		}
+		pricing := telemetry.BuildPricingSnapshot(snapshot, pricingState)
+		var buffer bytes.Buffer
+		if err := json.NewEncoder(&buffer).Encode(map[string]any{
+			"generated_at":     snapshot.GeneratedAt,
+			"router_strategy":  cfg.Router.Strategy,
+			"bridge":           cfg.Bridge,
+			"runtime":          buildAdminRuntimeView(cfg),
+			"available_models": manager.Models(),
+			"upstreams":        manager.Snapshot(),
+			"telemetry":        snapshot,
+			"pricing":          pricing,
+		}); err != nil {
+			return nil, err
+		}
+		return append([]byte(nil), buffer.Bytes()...), nil
 	}
 
 	r.Get("/-/health", func(w http.ResponseWriter, r *http.Request) {
@@ -188,45 +220,42 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		})
 	})
 	r.Get("/-/admin/data", func(w http.ResponseWriter, r *http.Request) {
-		now := time.Now()
 		adminDataCache.mu.Lock()
-		cached := adminDataCache.payload
-		expires := adminDataCache.expires
+		for {
+			now := time.Now()
+			if len(adminDataCache.payload) > 0 && now.Before(adminDataCache.expires) {
+				payload := adminDataCache.payload
+				adminDataCache.mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write(payload)
+				return
+			}
+			if !adminDataCache.building {
+				adminDataCache.building = true
+				break
+			}
+			adminDataCache.cond.Wait()
+		}
+		stalePayload := adminDataCache.payload
 		adminDataCache.mu.Unlock()
-		if len(cached) > 0 && now.Before(expires) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(cached)
-			return
-		}
 
-		cfg := manager.CurrentConfig()
-		snapshot := stats.Snapshot()
-		pricingState := telemetry.BootstrapPricingSnapshot()
-		if pricingCatalog != nil {
-			pricingState = pricingCatalog.Snapshot()
+		payload, err := buildAdminDataPayload()
+		adminDataCache.mu.Lock()
+		if err == nil {
+			adminDataCache.payload = payload
+			adminDataCache.expires = time.Now().Add(2 * time.Second)
 		}
-		pricing := telemetry.BuildPricingSnapshot(snapshot, pricingState)
-		var buffer bytes.Buffer
-		if err := json.NewEncoder(&buffer).Encode(map[string]any{
-			"request_id":       observability.RequestIDFromContext(r.Context()),
-			"generated_at":     snapshot.GeneratedAt,
-			"router_strategy":  cfg.Router.Strategy,
-			"bridge":           cfg.Bridge,
-			"runtime":          buildAdminRuntimeView(cfg),
-			"available_models": manager.Models(),
-			"upstreams":        manager.Snapshot(),
-			"telemetry":        snapshot,
-			"pricing":          pricing,
-		}); err != nil {
+		adminDataCache.building = false
+		adminDataCache.cond.Broadcast()
+		if err != nil && len(stalePayload) > 0 {
+			payload = stalePayload
+			err = nil
+		}
+		adminDataCache.mu.Unlock()
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		payload := append([]byte(nil), buffer.Bytes()...)
-		adminDataCache.mu.Lock()
-		adminDataCache.payload = payload
-		adminDataCache.expires = now.Add(2 * time.Second)
-		adminDataCache.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(payload)
@@ -300,6 +329,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		}
 
 		cfg := manager.CurrentConfig()
+		cfg.Admin = applyAdminConfig(cfg.Admin, payload.Admin)
 		cfg.Health = applyHealthConfig(cfg.Health, payload.Health)
 		cfg.Bridge = applyBridgeConfig(cfg.Bridge, payload.Bridge)
 		cfg.Router = applyRouterConfig(cfg.Router, payload.Router)
@@ -359,8 +389,8 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(result)
 	})
-	r.Get("/admin", adminPage(false))
-	r.Get("/admin/settings", adminPage(true))
+	r.Get("/admin", adminPage(false, manager))
+	r.Get("/admin/settings", adminPage(true, manager))
 	r.Get("/favicon.svg", adminFavicon())
 	r.Get("/favicon.ico", adminFavicon())
 
@@ -381,6 +411,8 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	r.Post("/v1/chat/completions", p.ChatCompletions)
 	r.Post("/v1/completions", p.Completions)
 	r.Post("/v1/embeddings", p.Embeddings)
+	r.Post("/v1/messages", p.Messages)
+	r.Post("/v1/messages/count_tokens", p.MessageCountTokens)
 	r.Post("/v1/responses", p.Responses)
 	r.Post("/v1/responses/compact", p.ResponsesCompact)
 	r.Get("/v1/responses/{response_id}", p.ResponseResource)
@@ -403,6 +435,9 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 
 func renderConfigView(cfg config.Config) AdminConfigView {
 	return AdminConfigView{
+		Admin: configViewAdmin{
+			Language: cfg.Admin.Language,
+		},
 		Health: configViewHealth{
 			Enabled:     cfg.Health.Enabled,
 			IntervalSec: cfg.Health.IntervalSec,
@@ -434,6 +469,13 @@ func renderConfigView(cfg config.Config) AdminConfigView {
 		},
 		Upstreams: renderUpstreams(cfg.Upstreams),
 	}
+}
+
+func applyAdminConfig(current config.AdminConfig, incoming configViewAdmin) config.AdminConfig {
+	if strings.TrimSpace(incoming.Language) != "" {
+		current.Language = config.NormalizeAdminLanguage(incoming.Language)
+	}
+	return current
 }
 
 func renderBridgeRules(rules []config.ModelBridgeRule) []configViewBridgeRule {

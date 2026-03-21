@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -108,7 +110,69 @@ type Snapshot struct {
 
 type Store struct {
 	db *sql.DB
+
+	mu             sync.RWMutex
+	summary        Summary
+	recentRequests []RequestRecord
+	recentErrors   []ErrorRecord
+	dataVersion    uint64
+
+	cacheMu         sync.Mutex
+	snapshotCache   cachedSnapshot
+	timeSeriesCache map[string]cachedTimeSeries
+	dbWriteMu       sync.Mutex
+	writeMu         sync.RWMutex
+	writerCh        chan telemetryWriterMessage
+	writerDone      chan struct{}
+	closed          bool
+
+	insertRequestStmt *sql.Stmt
+	insertErrorStmt   *sql.Stmt
 }
+
+type cachedSnapshot struct {
+	version uint64
+	expires time.Time
+	value   Snapshot
+}
+
+type cachedTimeSeries struct {
+	version uint64
+	expires time.Time
+	value   TimeSeries
+}
+
+type telemetryWrite struct {
+	request *RequestRecord
+	errRec  *ErrorRecord
+}
+
+type telemetryWriterMessage struct {
+	write *telemetryWrite
+	flush chan struct{}
+}
+
+const (
+	recentRequestLimit = 200
+	recentErrorLimit   = 200
+	snapshotCacheTTL   = 2 * time.Second
+	timeSeriesCacheTTL = 2 * time.Second
+	writeBatchSize     = 64
+	writeFlushInterval = 200 * time.Millisecond
+	writeQueueSize     = 1024
+)
+
+const (
+	insertRequestSQL = `
+INSERT INTO requests (
+	timestamp, request_id, path, requested_model, model, route_mode, upstream, status_code, attempts, duration_ms,
+	success, error_message, prompt_tokens, cached_prompt_tokens, completion_tokens, total_tokens
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	insertErrorSQL = `
+INSERT INTO errors (
+	timestamp, request_id, path, requested_model, model, route_mode, upstream, status_code, attempt, message
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+)
 
 func NewStore(sqlitePath string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(sqlitePath), 0o755); err != nil {
@@ -120,17 +184,33 @@ func NewStore(sqlitePath string) (*Store, error) {
 		return nil, fmt.Errorf("open telemetry db: %w", err)
 	}
 
-	store := &Store{db: db}
+	store := &Store{
+		db:              db,
+		timeSeriesCache: make(map[string]cachedTimeSeries),
+	}
 	if err := store.init(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := store.prepareStatements(); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	store.hydrateCaches()
+	store.startWriter()
 	return store, nil
 }
 
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
+	}
+	s.stopWriter()
+	if s.insertRequestStmt != nil {
+		_ = s.insertRequestStmt.Close()
+	}
+	if s.insertErrorStmt != nil {
+		_ = s.insertErrorStmt.Close()
 	}
 	return s.db.Close()
 }
@@ -206,28 +286,21 @@ func (s *Store) RecordRequest(record RequestRecord) {
 		return
 	}
 
-	_, _ = s.db.Exec(
-		`INSERT INTO requests (
-			timestamp, request_id, path, requested_model, model, route_mode, upstream, status_code, attempts, duration_ms,
-			success, error_message, prompt_tokens, cached_prompt_tokens, completion_tokens, total_tokens
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		record.Timestamp.UTC().Format(time.RFC3339Nano),
-		record.RequestID,
-		record.Path,
-		record.RequestedModel,
-		record.Model,
-		record.RouteMode,
-		record.Upstream,
-		record.StatusCode,
-		record.Attempts,
-		record.DurationMs,
-		boolToInt(record.Success),
-		record.Error,
-		record.Usage.PromptTokens,
-		record.Usage.CachedPromptTokens,
-		record.Usage.CompletionTokens,
-		record.Usage.TotalTokens,
-	)
+	s.mu.Lock()
+	s.summary.TotalRequests++
+	if record.Success {
+		s.summary.Successes++
+	} else {
+		s.summary.Failures++
+	}
+	s.summary.PromptTokens += int64(record.Usage.PromptTokens)
+	s.summary.CachedPromptTokens += int64(record.Usage.CachedPromptTokens)
+	s.summary.CompletionTokens += int64(record.Usage.CompletionTokens)
+	s.summary.TotalTokens += int64(record.Usage.TotalTokens)
+	s.recentRequests = prependRequestRecord(s.recentRequests, record, recentRequestLimit)
+	s.dataVersion++
+	s.mu.Unlock()
+	s.enqueueWrite(telemetryWrite{request: &record})
 }
 
 func (s *Store) RecordError(record ErrorRecord) {
@@ -235,21 +308,11 @@ func (s *Store) RecordError(record ErrorRecord) {
 		return
 	}
 
-	_, _ = s.db.Exec(
-		`INSERT INTO errors (
-			timestamp, request_id, path, requested_model, model, route_mode, upstream, status_code, attempt, message
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		record.Timestamp.UTC().Format(time.RFC3339Nano),
-		record.RequestID,
-		record.Path,
-		record.RequestedModel,
-		record.Model,
-		record.RouteMode,
-		record.Upstream,
-		record.StatusCode,
-		record.Attempt,
-		record.Message,
-	)
+	s.mu.Lock()
+	s.recentErrors = prependErrorRecord(s.recentErrors, record, recentErrorLimit)
+	s.dataVersion++
+	s.mu.Unlock()
+	s.enqueueWrite(telemetryWrite{errRec: &record})
 }
 
 func (s *Store) Snapshot() Snapshot {
@@ -257,18 +320,40 @@ func (s *Store) Snapshot() Snapshot {
 		return Snapshot{GeneratedAt: time.Now()}
 	}
 
-	return Snapshot{
-		Summary:         s.querySummary(),
+	version := s.currentVersion()
+	now := time.Now()
+
+	s.cacheMu.Lock()
+	if now.Before(s.snapshotCache.expires) && s.snapshotCache.version == version {
+		snapshot := s.snapshotCache.value
+		s.cacheMu.Unlock()
+		return snapshot
+	}
+	s.cacheMu.Unlock()
+
+	s.flushWriter()
+	snapshot := Snapshot{
+		Summary:         s.cachedSummary(),
 		Performance:     s.queryPerformance(),
 		CacheTrends:     s.queryCacheTrends(),
 		CacheHitRanking: s.queryCacheHitRanking(24*time.Hour, 10),
-		Requests:        s.queryRequests(200),
-		Errors:          s.queryErrors(200),
+		Requests:        s.cachedRequests(),
+		Errors:          s.cachedErrors(),
 		ByModel:         s.queryUsageBreakdown("model"),
 		ByUpstream:      s.queryUsageBreakdown("upstream"),
 		ByModelRoute:    s.queryModelRouteBreakdown(),
-		GeneratedAt:     time.Now(),
+		GeneratedAt:     now,
 	}
+
+	s.cacheMu.Lock()
+	s.snapshotCache = cachedSnapshot{
+		version: version,
+		expires: now.Add(snapshotCacheTTL),
+		value:   snapshot,
+	}
+	s.cacheMu.Unlock()
+
+	return snapshot
 }
 
 func (s *Store) queryPerformance() Performance {
@@ -579,6 +664,17 @@ func (s *Store) QueryTimeSeries(hours int, bucketMinutes int) TimeSeries {
 		bucketMinutes = 60
 	}
 
+	version := s.currentVersion()
+	now := time.Now()
+	cacheKey := strconv.Itoa(hours) + ":" + strconv.Itoa(bucketMinutes)
+	s.cacheMu.Lock()
+	if cached, ok := s.timeSeriesCache[cacheKey]; ok && now.Before(cached.expires) && cached.version == version {
+		s.cacheMu.Unlock()
+		return cached.value
+	}
+	s.cacheMu.Unlock()
+
+	s.flushWriter()
 	cutoff := time.Now().Add(-time.Duration(hours) * time.Hour).UTC().Format(time.RFC3339Nano)
 
 	// --- overall buckets ---
@@ -652,7 +748,15 @@ ORDER BY bucket ASC`, bucketMinutes, bucketMinutes, cutoff)
 		byUpstream = append(byUpstream, entry)
 	}
 
-	return TimeSeries{Buckets: buckets, ByUpstream: byUpstream}
+	result := TimeSeries{Buckets: buckets, ByUpstream: byUpstream}
+	s.cacheMu.Lock()
+	s.timeSeriesCache[cacheKey] = cachedTimeSeries{
+		version: version,
+		expires: now.Add(timeSeriesCacheTTL),
+		value:   result,
+	}
+	s.cacheMu.Unlock()
+	return result
 }
 
 func boolToInt(value bool) int {
@@ -698,4 +802,265 @@ func (s *Store) ensureColumn(table string, column string, columnType string) err
 		return fmt.Errorf("add telemetry column %s.%s: %w", table, column, err)
 	}
 	return nil
+}
+
+func (s *Store) startWriter() {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if s.closed || s.writerCh != nil {
+		return
+	}
+	s.writerCh = make(chan telemetryWriterMessage, writeQueueSize)
+	s.writerDone = make(chan struct{})
+	go s.runWriter(s.writerCh, s.writerDone)
+}
+
+func (s *Store) stopWriter() {
+	s.writeMu.Lock()
+	if s.closed {
+		s.writeMu.Unlock()
+		return
+	}
+	s.closed = true
+	writerCh := s.writerCh
+	writerDone := s.writerDone
+	s.writerCh = nil
+	s.writerDone = nil
+	s.writeMu.Unlock()
+
+	if writerCh != nil {
+		close(writerCh)
+	}
+	if writerDone != nil {
+		<-writerDone
+	}
+}
+
+func (s *Store) enqueueWrite(write telemetryWrite) {
+	s.writeMu.RLock()
+	if s.closed || s.writerCh == nil {
+		s.writeMu.RUnlock()
+		s.persistBatch([]telemetryWrite{write})
+		return
+	}
+	writerCh := s.writerCh
+	select {
+	case writerCh <- telemetryWriterMessage{write: &write}:
+		s.writeMu.RUnlock()
+		return
+	default:
+		s.writeMu.RUnlock()
+		s.persistBatch([]telemetryWrite{write})
+		return
+	}
+}
+
+func (s *Store) flushWriter() {
+	s.writeMu.RLock()
+	if s.closed || s.writerCh == nil {
+		s.writeMu.RUnlock()
+		return
+	}
+	ack := make(chan struct{})
+	s.writerCh <- telemetryWriterMessage{flush: ack}
+	s.writeMu.RUnlock()
+	<-ack
+}
+
+func (s *Store) runWriter(writerCh <-chan telemetryWriterMessage, done chan<- struct{}) {
+	defer close(done)
+
+	ticker := time.NewTicker(writeFlushInterval)
+	defer ticker.Stop()
+
+	batch := make([]telemetryWrite, 0, writeBatchSize)
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		s.persistBatch(batch)
+		batch = batch[:0]
+	}
+
+	for {
+		select {
+		case msg, ok := <-writerCh:
+			if !ok {
+				flush()
+				return
+			}
+			if msg.flush != nil {
+				flush()
+				close(msg.flush)
+				continue
+			}
+			if msg.write == nil {
+				continue
+			}
+			batch = append(batch, *msg.write)
+			if len(batch) >= writeBatchSize {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
+}
+
+func (s *Store) persistBatch(batch []telemetryWrite) {
+	if len(batch) == 0 || s == nil || s.db == nil {
+		return
+	}
+
+	s.dbWriteMu.Lock()
+	defer s.dbWriteMu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return
+	}
+
+	requestStmt := tx.Stmt(s.insertRequestStmt)
+	errorStmt := tx.Stmt(s.insertErrorStmt)
+	commit := false
+	defer func() {
+		_ = requestStmt.Close()
+		_ = errorStmt.Close()
+		if commit {
+			return
+		}
+		_ = tx.Rollback()
+	}()
+
+	for _, item := range batch {
+		switch {
+		case item.request != nil:
+			if err := execRequestWrite(requestStmt, *item.request); err != nil {
+				return
+			}
+		case item.errRec != nil:
+			if err := execErrorWrite(errorStmt, *item.errRec); err != nil {
+				return
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return
+	}
+	commit = true
+}
+
+func execRequestWrite(stmt *sql.Stmt, record RequestRecord) error {
+	_, err := stmt.Exec(
+		record.Timestamp.UTC().Format(time.RFC3339Nano),
+		record.RequestID,
+		record.Path,
+		record.RequestedModel,
+		record.Model,
+		record.RouteMode,
+		record.Upstream,
+		record.StatusCode,
+		record.Attempts,
+		record.DurationMs,
+		boolToInt(record.Success),
+		record.Error,
+		record.Usage.PromptTokens,
+		record.Usage.CachedPromptTokens,
+		record.Usage.CompletionTokens,
+		record.Usage.TotalTokens,
+	)
+	return err
+}
+
+func execErrorWrite(stmt *sql.Stmt, record ErrorRecord) error {
+	_, err := stmt.Exec(
+		record.Timestamp.UTC().Format(time.RFC3339Nano),
+		record.RequestID,
+		record.Path,
+		record.RequestedModel,
+		record.Model,
+		record.RouteMode,
+		record.Upstream,
+		record.StatusCode,
+		record.Attempt,
+		record.Message,
+	)
+	return err
+}
+
+func (s *Store) prepareStatements() error {
+	requestStmt, err := s.db.Prepare(insertRequestSQL)
+	if err != nil {
+		return fmt.Errorf("prepare telemetry request insert: %w", err)
+	}
+
+	errorStmt, err := s.db.Prepare(insertErrorSQL)
+	if err != nil {
+		_ = requestStmt.Close()
+		return fmt.Errorf("prepare telemetry error insert: %w", err)
+	}
+
+	s.insertRequestStmt = requestStmt
+	s.insertErrorStmt = errorStmt
+	return nil
+}
+
+func (s *Store) hydrateCaches() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.summary = s.querySummary()
+	s.recentRequests = s.queryRequests(recentRequestLimit)
+	s.recentErrors = s.queryErrors(recentErrorLimit)
+}
+
+func (s *Store) cachedSummary() Summary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.summary
+}
+
+func (s *Store) cachedRequests() []RequestRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]RequestRecord(nil), s.recentRequests...)
+}
+
+func (s *Store) cachedErrors() []ErrorRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]ErrorRecord(nil), s.recentErrors...)
+}
+
+func (s *Store) currentVersion() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.dataVersion
+}
+
+func prependRequestRecord(records []RequestRecord, record RequestRecord, limit int) []RequestRecord {
+	if limit <= 0 {
+		return nil
+	}
+	if len(records) >= limit {
+		records = records[:limit-1]
+	}
+	records = append(records, RequestRecord{})
+	copy(records[1:], records[:len(records)-1])
+	records[0] = record
+	return records
+}
+
+func prependErrorRecord(records []ErrorRecord, record ErrorRecord, limit int) []ErrorRecord {
+	if limit <= 0 {
+		return nil
+	}
+	if len(records) >= limit {
+		records = records[:limit-1]
+	}
+	records = append(records, ErrorRecord{})
+	copy(records[1:], records[:len(records)-1])
+	records[0] = record
+	return records
 }

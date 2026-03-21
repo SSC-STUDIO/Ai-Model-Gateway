@@ -21,6 +21,7 @@ health:
 admin:
   enabled: true
   auth_token: change-me-admin-token
+  language: zh
 telemetry:
   sqlite_path: data/telemetry.db
 pricing:

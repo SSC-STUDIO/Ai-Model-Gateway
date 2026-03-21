@@ -153,6 +153,136 @@ func TestResponsesCompactRouteProxiesPostBody(t *testing.T) {
 	}
 }
 
+func TestMessagesRouteProxiesAnthropicHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("x-api-key"); got != "sk-anthropic" {
+			t.Fatalf("expected x-api-key header, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("expected anthropic-version header, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-beta"); got != "prompt-caching-2024-07-31" {
+			t.Fatalf("expected anthropic-beta header to pass through, got %q", got)
+		}
+
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if payload["model"] != "claude-opus-4-6" {
+			t.Fatalf("expected anthropic model to stay opus, got %#v", payload["model"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"msg_123","type":"message","model":"claude-opus-4-6","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":12,"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "anthropic", BaseURL: upstream.URL, APIKey: "sk-anthropic", Models: []string{"claude-opus-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":64,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-beta", "prompt-caching-2024-07-31")
+	req.Header.Set(observability.RequestIDHeader, "req-messages")
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "anthropic" {
+		t.Fatalf("expected upstream header anthropic, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	if !strings.Contains(string(body), `"type":"message"`) {
+		t.Fatalf("expected anthropic message payload, got %q", string(body))
+	}
+}
+
+func TestMessagesCountTokensRouteProxiesAnthropicHeaders(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("x-api-key"); got != "sk-anthropic" {
+			t.Fatalf("expected x-api-key header, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("expected anthropic-version header, got %q", got)
+		}
+
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if payload["model"] != "claude-sonnet-4-6" {
+			t.Fatalf("expected compat probe model rewrite to sonnet, got %#v", payload["model"])
+		}
+		if payload["max_tokens"] != float64(1) {
+			t.Fatalf("expected compat probe max_tokens=1, got %#v", payload["max_tokens"])
+		}
+		if payload["stream"] != false {
+			t.Fatalf("expected compat probe stream=false, got %#v", payload["stream"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"msg_count","type":"message","model":"claude-opus-4-6","role":"assistant","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":7,"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "anthropic", BaseURL: upstream.URL, APIKey: "sk-anthropic", Models: []string{"claude-opus-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-opus-4-6","system":"test","messages":[{"role":"user","content":"ping"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(observability.RequestIDHeader, "req-count-tokens")
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "anthropic" {
+		t.Fatalf("expected upstream header anthropic, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != `{"input_tokens":7}` {
+		t.Fatalf("expected token count response, got %q", string(body))
+	}
+}
+
 func TestFileContentRouteProxiesWithoutBody(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -294,7 +424,7 @@ func TestAdminRequiresAuth(t *testing.T) {
 
 func TestAdminOverviewRouteTrimsDuplicateOverviewNavigation(t *testing.T) {
 	cfg := config.Config{
-		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageEnglish},
 	}
 	cfg.Normalize()
 
@@ -340,7 +470,7 @@ func TestAdminOverviewRouteTrimsDuplicateOverviewNavigation(t *testing.T) {
 
 func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 	cfg := config.Config{
-		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageEnglish},
 	}
 	cfg.Normalize()
 
@@ -374,12 +504,15 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 		!strings.Contains(settingsText, `id="cfgUpstreamsMeta"`) ||
 		!strings.Contains(settingsText, `Configuration Center`) ||
 		!strings.Contains(settingsText, `Runtime Routing, Health, Providers.`) ||
-		!strings.Contains(settingsText, `Config Directory`) ||
+		!strings.Contains(settingsText, `Sections`) ||
 		!strings.Contains(settingsText, `Free First`) ||
 		!strings.Contains(settingsText, `Quota-Limited`) ||
 		!strings.Contains(settingsText, `href="#cfg-upstreams"`) ||
 		!strings.Contains(settingsText, `data-nav-target="cfg-upstreams"`) ||
 		!strings.Contains(settingsText, `id="navMetaProviders"`) ||
+		!strings.Contains(settingsText, `settings-rail-actions`) ||
+		!strings.Contains(settingsText, `id="saveConfig"`) ||
+		!strings.Contains(settingsText, `id="rollbackConfig"`) ||
 		!strings.Contains(settingsText, `provider-summary-strip`) ||
 		!strings.Contains(settingsText, `Status`) ||
 		!strings.Contains(settingsText, `Models`) ||
@@ -400,7 +533,21 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 		strings.Contains(settingsText, `id="settingsDiagnostics"`) ||
 		strings.Contains(settingsText, `Per-provider probe`) ||
 		strings.Contains(settingsText, `Diff and rollback ready`) ||
-		strings.Contains(settingsText, `Runtime config surface`) {
+		strings.Contains(settingsText, `Runtime config surface`) ||
+		strings.Contains(settingsText, `Config Directory`) ||
+		strings.Contains(settingsText, `Surface Controls`) ||
+		strings.Contains(settingsText, `Config History`) ||
+		strings.Contains(settingsText, `Search config sections, fields, providers...`) ||
+		strings.Contains(settingsText, `先搜索区块，再按 provider class 过滤免费或额度上游；保存、导出和回滚仍在底部固定操作区。`) ||
+		strings.Contains(settingsText, `保存配置前会自动归档旧版本，可选择具体版本回滚`) ||
+		strings.Contains(settingsText, `class="config-footer"`) ||
+		strings.Contains(settingsText, `编辑 health、bridge、重试、拦截和上游服务商配置，支持导出当前配置与回滚上一个版本。`) ||
+		strings.Contains(settingsText, `<a href="#cfg-health">Health</a>`) ||
+		strings.Contains(settingsText, `<a href="#cfg-bridge">Bridge</a>`) ||
+		strings.Contains(settingsText, `<a href="#cfg-router">Router</a>`) ||
+		strings.Contains(settingsText, `<a href="#cfg-upstreams">Providers</a>`) ||
+		strings.Contains(settingsText, `<a href="#cfg-history">History</a>`) ||
+		strings.Contains(settingsText, `在一个页面里维护探活、桥接、重试、拦截和上游服务商。先做 probe，再保存；先看 diff，再回滚。`) {
 		t.Fatalf("expected duplicate settings summary surfaces to be removed, got %q", settingsText)
 	}
 
@@ -416,6 +563,53 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 	body, _ := io.ReadAll(faviconRecorder.Result().Body)
 	if !strings.Contains(string(body), "<svg") {
 		t.Fatalf("expected svg body, got %q", string(body))
+	}
+}
+
+func TestAdminRoutesRenderChineseLocale(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageChinese},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+
+	overviewReq := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	overviewReq.Header.Set("Authorization", "Bearer secret")
+	overviewRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(overviewRecorder, overviewReq)
+	if overviewRecorder.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected overview 200, got %d", overviewRecorder.Result().StatusCode)
+	}
+	overviewBody, err := io.ReadAll(overviewRecorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read overview body: %v", err)
+	}
+	overviewText := string(overviewBody)
+	if !strings.Contains(overviewText, `AI 模型网关管理台`) ||
+		!strings.Contains(overviewText, `运维、成本、吞吐。`) ||
+		!strings.Contains(overviewText, `let currentLocale = "zh";`) {
+		t.Fatalf("expected chinese overview bootstrap markers, got %q", overviewText)
+	}
+
+	settingsReq := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
+	settingsReq.Header.Set("Authorization", "Bearer secret")
+	settingsRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(settingsRecorder, settingsReq)
+	if settingsRecorder.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected settings 200, got %d", settingsRecorder.Result().StatusCode)
+	}
+	settingsBody, err := io.ReadAll(settingsRecorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read settings body: %v", err)
+	}
+	settingsText := string(settingsBody)
+	if !strings.Contains(settingsText, `配置中心`) ||
+		!strings.Contains(settingsText, `运行路由、探活、服务商。`) ||
+		!strings.Contains(settingsText, `AI 模型网关设置`) ||
+		!strings.Contains(settingsText, `let currentLocale = "zh";`) ||
+		!strings.Contains(settingsText, `id="cfgAdminLanguage"`) {
+		t.Fatalf("expected chinese settings bootstrap markers, got %q", settingsText)
 	}
 }
 
@@ -507,6 +701,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	payload := map[string]any{
+		"admin": map[string]any{
+			"language": "en",
+		},
 		"health": map[string]any{
 			"enabled":      false,
 			"interval_sec": 30,
@@ -601,6 +798,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	if updated.Upstreams[0].SameUpstreamRetries != 2 {
 		t.Fatalf("expected same upstream retries 2, got %d", updated.Upstreams[0].SameUpstreamRetries)
 	}
+	if updated.Admin.Language != config.AdminLanguageEnglish {
+		t.Fatalf("expected admin language en, got %q", updated.Admin.Language)
+	}
 	if updated.Router.Strategy != "round_robin" {
 		t.Fatalf("expected router strategy round_robin, got %q", updated.Router.Strategy)
 	}
@@ -633,6 +833,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	}
 	if !strings.Contains(text, "infinite_on_error: true") {
 		t.Fatalf("expected saved config to persist infinite retry mode, got %q", text)
+	}
+	if !strings.Contains(text, "language: en") {
+		t.Fatalf("expected saved config to persist admin language, got %q", text)
 	}
 	if !strings.Contains(text, "/healthz") || !strings.Contains(text, "gpt-5.2-codex") {
 		t.Fatalf("expected saved config to contain updated health/bridge settings, got %q", text)

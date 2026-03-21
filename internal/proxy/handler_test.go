@@ -740,6 +740,322 @@ func TestResponsesAnthropicMessagesCompatFallback(t *testing.T) {
 	}
 }
 
+func TestMessagesRoutePassthroughAnthropicStream(t *testing.T) {
+	store := newTestStore(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("x-api-key"); got != "sk-ant" {
+			t.Fatalf("expected x-api-key header, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("expected anthropic-version header, got %q", got)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: message_start\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_start\"}\n\n")
+		_, _ = io.WriteString(w, "event: content_block_delta\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n")
+		_, _ = io.WriteString(w, "event: message_stop\n")
+		_, _ = io.WriteString(w, "data: {\"type\":\"message_stop\"}\n\n")
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "claude", BaseURL: upstream.URL, APIKey: "sk-ant", Models: []string{"claude-opus-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-direct-messages"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.Messages(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("expected SSE content type, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "event: content_block_delta") || !strings.Contains(text, "event: message_stop") {
+		t.Fatalf("expected anthropic stream body, got %q", text)
+	}
+
+	snapshot := store.Snapshot()
+	if len(snapshot.Requests) == 0 {
+		t.Fatalf("expected recorded request")
+	}
+	if !snapshot.Requests[0].Success {
+		t.Fatalf("expected streamed anthropic request to be recorded as success")
+	}
+}
+
+func TestMessageCountTokensAnthropicCompatStripsAuthorizationAndRecordsTelemetry(t *testing.T) {
+	store := newTestStore(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("expected caller authorization header to be stripped, got %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "sk-ant" {
+			t.Fatalf("expected x-api-key header, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("expected anthropic-version header, got %q", got)
+		}
+		betas := strings.Join(r.Header.Values("anthropic-beta"), ",")
+		if !strings.Contains(betas, "prompt-caching-2024-07-31") || !strings.Contains(betas, "fine-grained-tool-streaming-2025-05-14") {
+			t.Fatalf("expected anthropic-beta headers to pass through, got %q", betas)
+		}
+		if got := r.Header.Get(observability.RequestIDHeader); got != "req-count-tokens-direct" {
+			t.Fatalf("expected request id header, got %q", got)
+		}
+
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if payload["model"] != "claude-sonnet-4-6" {
+			t.Fatalf("expected compat probe model rewrite, got %#v", payload["model"])
+		}
+		if payload["max_tokens"] != float64(1) {
+			t.Fatalf("expected compat probe max_tokens=1, got %#v", payload["max_tokens"])
+		}
+		if payload["stream"] != false {
+			t.Fatalf("expected compat probe stream=false, got %#v", payload["stream"])
+		}
+		if payload["system"] != "Count carefully." {
+			t.Fatalf("expected system prompt preserved, got %#v", payload["system"])
+		}
+		rawMessages, ok := payload["messages"].([]any)
+		if !ok || len(rawMessages) != 1 {
+			t.Fatalf("expected one forwarded message, got %#v", payload["messages"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"msg_count","type":"message","model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":21,"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "claude", BaseURL: upstream.URL, APIKey: "sk-ant", Models: []string{"claude-opus-4-6-thinking"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-opus-4-6-thinking","system":"Count carefully.","messages":[{"role":"user","content":"ping"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-count-tokens-direct"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer user-secret")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Add("anthropic-beta", "prompt-caching-2024-07-31")
+	req.Header.Add("anthropic-beta", "fine-grained-tool-streaming-2025-05-14")
+
+	recorder := httptest.NewRecorder()
+	handler.MessageCountTokens(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "claude" {
+		t.Fatalf("expected upstream header claude, got %q", got)
+	}
+	if got := resp.Header.Get(observability.RequestIDHeader); got != "req-count-tokens-direct" {
+		t.Fatalf("expected request id header, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != `{"input_tokens":21}` {
+		t.Fatalf("expected token count response, got %q", string(body))
+	}
+
+	snapshot := store.Snapshot()
+	if len(snapshot.Requests) == 0 {
+		t.Fatalf("expected recorded request")
+	}
+	record := snapshot.Requests[0]
+	if record.Path != "/v1/messages/count_tokens" {
+		t.Fatalf("expected count_tokens path, got %q", record.Path)
+	}
+	if record.RouteMode != "anthropic_count_tokens_compat" {
+		t.Fatalf("expected anthropic_count_tokens_compat route mode, got %q", record.RouteMode)
+	}
+	if record.RequestedModel != "claude-opus-4-6-thinking" {
+		t.Fatalf("expected requested model preserved, got %q", record.RequestedModel)
+	}
+	if record.Model != "claude-opus-4-6-thinking" {
+		t.Fatalf("expected effective model to reflect original route model, got %q", record.Model)
+	}
+	if !record.Success {
+		t.Fatalf("expected successful telemetry record")
+	}
+	if record.Usage.PromptTokens != 21 || record.Usage.TotalTokens != 21 {
+		t.Fatalf("expected prompt/total tokens 21, got %+v", record.Usage)
+	}
+}
+
+func TestMessagesRouteOverridesCallerCredentialsForAnthropic(t *testing.T) {
+	store := newTestStore(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Fatalf("expected caller authorization header to be stripped, got %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "sk-ant" {
+			t.Fatalf("expected upstream x-api-key header, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-version"); got != "2023-06-01" {
+			t.Fatalf("expected default anthropic-version header, got %q", got)
+		}
+		if got := r.Header.Get("anthropic-beta"); got != "prompt-caching-2024-07-31" {
+			t.Fatalf("expected anthropic-beta header to pass through, got %q", got)
+		}
+
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if payload["model"] != "claude-opus-4-6" {
+			t.Fatalf("expected model to stay unchanged, got %#v", payload["model"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"msg_direct","type":"message","model":"claude-opus-4-6","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":9,"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "claude", BaseURL: upstream.URL, APIKey: "sk-ant", Models: []string{"claude-opus-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":32,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-direct-message-credentials"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer caller-secret")
+	req.Header.Set("x-api-key", "caller-key")
+	req.Header.Set("anthropic-beta", "prompt-caching-2024-07-31")
+
+	recorder := httptest.NewRecorder()
+	handler.Messages(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	if !strings.Contains(string(body), `"type":"message"`) || !strings.Contains(string(body), `"text":"ok"`) {
+		t.Fatalf("expected anthropic message response, got %q", string(body))
+	}
+
+	snapshot := store.Snapshot()
+	if len(snapshot.Requests) == 0 {
+		t.Fatalf("expected recorded request")
+	}
+	record := snapshot.Requests[0]
+	if !record.Success {
+		t.Fatalf("expected successful request record")
+	}
+	if record.RouteMode != "direct" {
+		t.Fatalf("expected direct route mode, got %q", record.RouteMode)
+	}
+	if record.Upstream != "claude" {
+		t.Fatalf("expected claude upstream, got %q", record.Upstream)
+	}
+}
+
+func TestMessageCountTokensAnthropicCompatReturns503WhenUsageMissing(t *testing.T) {
+	store := newTestStore(t)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"msg_bad","type":"message","model":"claude-opus-4-6","role":"assistant","content":[{"type":"text","text":"x"}],"usage":{"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1, RetryBackoffMs: 1, RetryBackoffMaxMs: 1},
+		Upstreams: []config.Upstream{
+			{Name: "claude", BaseURL: upstream.URL, APIKey: "sk-ant", Models: []string{"claude-opus-4-6"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"ping"}]}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-count-tokens-missing-usage"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.MessageCountTokens(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.UpstreamHeader); got != "claude" {
+		t.Fatalf("expected upstream header claude, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	if !strings.Contains(string(body), "anthropic usage missing input_tokens") {
+		t.Fatalf("expected missing usage error, got %q", string(body))
+	}
+
+	snapshot := store.Snapshot()
+	if len(snapshot.Requests) == 0 {
+		t.Fatalf("expected recorded request")
+	}
+	record := snapshot.Requests[0]
+	if record.Success {
+		t.Fatalf("expected failed request record")
+	}
+	if record.RouteMode != "direct" {
+		t.Fatalf("expected direct route mode for failed probe, got %q", record.RouteMode)
+	}
+	if record.Error != "anthropic usage missing input_tokens" {
+		t.Fatalf("expected request error to be recorded, got %q", record.Error)
+	}
+	if len(snapshot.Errors) == 0 {
+		t.Fatalf("expected recorded error")
+	}
+	if snapshot.Errors[0].Message != "anthropic usage missing input_tokens" {
+		t.Fatalf("expected error snapshot to capture missing usage, got %q", snapshot.Errors[0].Message)
+	}
+}
+
 func TestResponsesCompatStreamEmitsCompletedEvent(t *testing.T) {
 	var responsesCalls atomic.Int32
 	var chatCalls atomic.Int32
@@ -1529,6 +1845,189 @@ func TestInspectEventStreamResponseRejectsIncompleteChatCompletionsStream(t *tes
 	}
 }
 
+func TestInspectEventStreamResponseRejectsIncompleteAnthropicMessagesStream(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header: http.Header{
+			"Content-Type": []string{"text/event-stream"},
+		},
+		Body: io.NopCloser(strings.NewReader("event: message_start\ndata: {\"type\":\"message_start\"}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\"}\n\n")),
+	}
+
+	cfg := config.Config{}
+	cfg.Normalize()
+
+	assessment, _, err := inspectEventStreamResponse(resp, "/v1/messages", cfg.Proxy)
+	if err != nil {
+		t.Fatalf("inspect stream: %v", err)
+	}
+	if !assessment.ErrorBody || !assessment.Retryable {
+		t.Fatalf("expected incomplete anthropic stream to be retryable failure, got %+v", assessment)
+	}
+	if assessment.Message != "stream disconnected before completion: stream closed before message_stop" {
+		t.Fatalf("unexpected assessment message %q", assessment.Message)
+	}
+}
+
+func TestBuildAnthropicCountTokensProbeBodyRewritesOpusAndPreservesPayload(t *testing.T) {
+	probe, err := buildAnthropicCountTokensProbeBody([]byte(`{
+		"model":"claude-opus-4-6",
+		"system":"Count carefully.",
+		"messages":[{"role":"user","content":"hello"}],
+		"metadata":{"tenant":"demo"},
+		"max_tokens":256,
+		"stream":true
+	}`))
+	if err != nil {
+		t.Fatalf("build probe body: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(probe, &payload); err != nil {
+		t.Fatalf("unmarshal probe body: %v", err)
+	}
+	if payload["model"] != "claude-sonnet-4-6" {
+		t.Fatalf("expected opus rewrite to sonnet, got %#v", payload["model"])
+	}
+	if payload["max_tokens"] != float64(1) {
+		t.Fatalf("expected max_tokens=1, got %#v", payload["max_tokens"])
+	}
+	if payload["stream"] != false {
+		t.Fatalf("expected stream=false, got %#v", payload["stream"])
+	}
+	if payload["system"] != "Count carefully." {
+		t.Fatalf("expected system prompt preserved, got %#v", payload["system"])
+	}
+	metadata, ok := payload["metadata"].(map[string]any)
+	if !ok || metadata["tenant"] != "demo" {
+		t.Fatalf("expected metadata preserved, got %#v", payload["metadata"])
+	}
+}
+
+func TestBuildAnthropicMessagesFromChatConvertsSystemMessagesAndStopSequences(t *testing.T) {
+	body := []byte(`{
+		"model":"claude-opus-4-6",
+		"messages":[
+			{"role":"system","content":"Follow policy."},
+			{"role":"system","content":[{"type":"text","text":"Use concise replies."}]},
+			{"role":"user","content":[{"type":"text","text":"hello"},{"type":"text","text":" world"}]},
+			{"role":"assistant","content":"ok"}
+		],
+		"max_tokens":42,
+		"temperature":0.2,
+		"top_p":0.8,
+		"stop":["END","STOP"],
+		"stream":true
+	}`)
+
+	anthropicBody, stream, err := buildAnthropicMessagesFromChat(body, "")
+	if err != nil {
+		t.Fatalf("build anthropic body: %v", err)
+	}
+	if !stream {
+		t.Fatalf("expected stream flag to be returned")
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(anthropicBody, &payload); err != nil {
+		t.Fatalf("unmarshal anthropic body: %v", err)
+	}
+	if payload["model"] != "claude-opus-4-6" {
+		t.Fatalf("expected model to be preserved, got %#v", payload["model"])
+	}
+	if payload["system"] != "Follow policy.\n\nUse concise replies." {
+		t.Fatalf("expected joined system prompt, got %#v", payload["system"])
+	}
+	if payload["max_tokens"] != float64(42) {
+		t.Fatalf("expected max_tokens=42, got %#v", payload["max_tokens"])
+	}
+	if payload["temperature"] != 0.2 {
+		t.Fatalf("expected temperature to pass through, got %#v", payload["temperature"])
+	}
+	if payload["top_p"] != 0.8 {
+		t.Fatalf("expected top_p to pass through, got %#v", payload["top_p"])
+	}
+	if payload["stream"] != true {
+		t.Fatalf("expected stream=true, got %#v", payload["stream"])
+	}
+
+	stopSequences, ok := payload["stop_sequences"].([]any)
+	if !ok || len(stopSequences) != 2 || stopSequences[0] != "END" || stopSequences[1] != "STOP" {
+		t.Fatalf("expected stop sequences to be mapped from chat stop, got %#v", payload["stop_sequences"])
+	}
+
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("expected two non-system messages, got %#v", payload["messages"])
+	}
+	first, ok := messages[0].(map[string]any)
+	if !ok || first["role"] != "user" || first["content"] != "hello world" {
+		t.Fatalf("expected normalized user message, got %#v", messages[0])
+	}
+	second, ok := messages[1].(map[string]any)
+	if !ok || second["role"] != "assistant" || second["content"] != "ok" {
+		t.Fatalf("expected normalized assistant message, got %#v", messages[1])
+	}
+}
+
+func TestBuildCountTokensResponseFromAnthropicRequiresInputTokens(t *testing.T) {
+	if _, _, err := buildCountTokensResponseFromAnthropic([]byte(`{"usage":{"input_tokens":0}}`)); err == nil {
+		t.Fatalf("expected missing input_tokens to fail")
+	}
+}
+
+func TestBuildChatFromAnthropicFlattensTextContentAndUsage(t *testing.T) {
+	chat, err := buildChatFromAnthropic([]byte(`{
+		"id":"msg_123",
+		"type":"message",
+		"role":"assistant",
+		"model":"claude-sonnet-4-6",
+		"content":[
+			{"type":"text","text":"first"},
+			{"type":"tool_use","text":"skip me"},
+			{"type":"text","text":"second"}
+		],
+		"usage":{"input_tokens":11,"output_tokens":5}
+	}`), "claude-opus-4-6")
+	if err != nil {
+		t.Fatalf("build chat from anthropic: %v", err)
+	}
+
+	if chat["id"] != "msg_123" {
+		t.Fatalf("expected chat id preserved, got %#v", chat["id"])
+	}
+	if chat["model"] != "claude-opus-4-6" {
+		t.Fatalf("expected explicit override model, got %#v", chat["model"])
+	}
+
+	choices, ok := chat["choices"].([]any)
+	if !ok || len(choices) != 1 {
+		t.Fatalf("expected one choice, got %#v", chat["choices"])
+	}
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected choice payload, got %#v", choices[0])
+	}
+	message, ok := choice["message"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected message payload, got %#v", choice["message"])
+	}
+	if message["content"] != "first\n\nsecond" {
+		t.Fatalf("expected text blocks to be flattened, got %#v", message["content"])
+	}
+	if choice["finish_reason"] != "stop" {
+		t.Fatalf("expected stop finish reason, got %#v", choice["finish_reason"])
+	}
+
+	usage, ok := chat["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected usage payload, got %#v", chat["usage"])
+	}
+	if usage["prompt_tokens"] != 11 || usage["completion_tokens"] != 5 || usage["total_tokens"] != 16 {
+		t.Fatalf("expected anthropic usage to map into chat usage, got %#v", usage)
+	}
+}
+
 func TestExtractUsageSupportsResponsesAPIFields(t *testing.T) {
 	usage := extractUsage([]byte(`{"usage":{"input_tokens":24,"input_tokens_details":{"cached_tokens":10},"output_tokens":7,"total_tokens":31}}`))
 	if usage.PromptTokens != 24 {
@@ -1608,6 +2107,76 @@ func TestResponsesCompactSkipsBridgeRewrite(t *testing.T) {
 	}
 	if string(resolved.Body) != string(body) {
 		t.Fatalf("expected request body to remain unchanged")
+	}
+}
+
+func TestResolveModelFromJSONKeepsOriginalBodyWhenRewriteNotNeeded(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Normalize()
+
+	body := []byte(`{"model":"gpt-5.2-codex","input":"hi"}`)
+	resolved, err := resolveModel(body, "application/json", "Codex Desktop/0.112.0-alpha.3", cfg, forwardOptions{
+		ModelRequired: true,
+	})
+	if err != nil {
+		t.Fatalf("resolve model: %v", err)
+	}
+	if resolved.Requested != "gpt-5.2-codex" || resolved.Effective != "gpt-5.2-codex" {
+		t.Fatalf("unexpected model resolution: %+v", resolved)
+	}
+	if string(resolved.Body) != string(body) {
+		t.Fatalf("expected original json body to remain unchanged")
+	}
+}
+
+func TestResolveModelFromMultipartKeepsOriginalBodyWhenRewriteNotNeeded(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Normalize()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", "gpt-4o-mini-transcribe"); err != nil {
+		t.Fatalf("write field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "sample.wav")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := io.WriteString(fileWriter, "RIFF....WAVE"); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	original := body.Bytes()
+	contentType := writer.FormDataContentType()
+	resolved, err := resolveModel(original, contentType, "Codex Desktop/0.112.0-alpha.3", cfg, forwardOptions{
+		ModelRequired: true,
+	})
+	if err != nil {
+		t.Fatalf("resolve multipart model: %v", err)
+	}
+	if resolved.Requested != "gpt-4o-mini-transcribe" || resolved.Effective != "gpt-4o-mini-transcribe" {
+		t.Fatalf("unexpected multipart model resolution: %+v", resolved)
+	}
+	if resolved.ContentType != contentType {
+		t.Fatalf("expected original content type, got %q", resolved.ContentType)
+	}
+	if string(resolved.Body) != string(original) {
+		t.Fatalf("expected original multipart body to remain unchanged")
+	}
+}
+
+func TestExtractStickyRoutingKeyPrefersPreviousResponseID(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","previous_response_id":"resp_prev","response_id":"resp_current"}`)
+	if got := extractStickyRoutingKey("/v1/responses", body, "application/json"); got != "resp_prev" {
+		t.Fatalf("expected previous_response_id to win, got %q", got)
+	}
+
+	body = []byte(`{"model":"gpt-5.4","response_id":"resp_current"}`)
+	if got := extractStickyRoutingKey("/v1/responses", body, "application/json"); got != "resp_current" {
+		t.Fatalf("expected response_id fallback, got %q", got)
 	}
 }
 

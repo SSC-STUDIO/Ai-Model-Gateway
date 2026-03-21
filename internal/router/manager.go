@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -30,11 +31,13 @@ type UpstreamStatus struct {
 }
 
 type Manager struct {
-	store    *state.ConfigStore
-	mu       sync.Mutex
-	rr       map[string]int
-	statuses map[string]UpstreamStatus
-	sticky   map[string]stickyAssignment
+	store           *state.ConfigStore
+	mu              sync.Mutex
+	rr              map[string]int
+	statuses        map[string]UpstreamStatus
+	sticky          map[string]stickyAssignment
+	healthClient    *http.Client
+	nextStickyPrune time.Time
 }
 
 type stickyAssignment struct {
@@ -42,12 +45,33 @@ type stickyAssignment struct {
 	ExpiresAt time.Time
 }
 
+type weightedUpstream struct {
+	upstream config.Upstream
+	weight   int
+}
+
+const (
+	stickyPruneInterval = time.Minute
+	stickyMaxEntries    = 16384
+)
+
 func NewManager(store *state.ConfigStore) *Manager {
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          64,
+		MaxIdleConnsPerHost:   16,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
 	return &Manager{
-		store:    store,
-		rr:       make(map[string]int),
-		statuses: make(map[string]UpstreamStatus),
-		sticky:   make(map[string]stickyAssignment),
+		store:        store,
+		rr:           make(map[string]int),
+		statuses:     make(map[string]UpstreamStatus),
+		sticky:       make(map[string]stickyAssignment),
+		healthClient: &http.Client{Transport: transport},
 	}
 }
 
@@ -106,19 +130,26 @@ func (m *Manager) PickSticky(model string, stickyKey string, excluded map[string
 		return upstream, true
 	}
 
+	m.mu.Lock()
+	healthyPools, fallbackPools := m.buildPoolsLocked(cfg.Upstreams, cfg.Router.Strategy, model, excluded, now)
 	for _, class := range prioritizedUpstreamClasses() {
-		healthyPool := m.pool(cfg.Upstreams, cfg.Router.Strategy, model, excluded, true, now, class)
+		healthyPool := healthyPools[class]
 		if len(healthyPool) > 0 {
-			return m.pickFromPool(cfg.Router.Strategy, model, class, healthyPool), true
+			upstream := m.pickFromPoolLocked(cfg.Router.Strategy, model, class, healthyPool)
+			m.mu.Unlock()
+			return upstream, true
 		}
 	}
 
 	for _, class := range prioritizedUpstreamClasses() {
-		fallbackPool := m.pool(cfg.Upstreams, cfg.Router.Strategy, model, excluded, false, now, class)
+		fallbackPool := fallbackPools[class]
 		if len(fallbackPool) > 0 {
-			return m.pickFromPool(cfg.Router.Strategy, model, class, fallbackPool), true
+			upstream := m.pickFromPoolLocked(cfg.Router.Strategy, model, class, fallbackPool)
+			m.mu.Unlock()
+			return upstream, true
 		}
 	}
+	m.mu.Unlock()
 	return config.Upstream{}, false
 }
 
@@ -141,9 +172,13 @@ func (m *Manager) RememberSticky(key string, upstream string) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	now := time.Now()
+	if m.nextStickyPrune.IsZero() || now.After(m.nextStickyPrune) || len(m.sticky) >= stickyMaxEntries {
+		m.pruneStickyLocked(now)
+	}
 	m.sticky[key] = stickyAssignment{
 		Upstream:  upstream,
-		ExpiresAt: time.Now().Add(ttl),
+		ExpiresAt: now.Add(ttl),
 	}
 }
 
@@ -258,9 +293,8 @@ func (m *Manager) runHealthChecksOnce(ctx context.Context) {
 				req.Header.Set(key, value)
 			}
 
-			client := &http.Client{Timeout: timeout}
 			start := time.Now()
-			resp, err := client.Do(req)
+			resp, err := m.healthClient.Do(req)
 			latency := time.Since(start)
 			if err != nil {
 				m.ReportProbe(upstream.Name, latency, err)
@@ -344,30 +378,26 @@ func (m *Manager) statusLocked(name string) UpstreamStatus {
 	return status
 }
 
-func (m *Manager) pool(upstreams []config.Upstream, strategy string, model string, excluded map[string]struct{}, healthyOnly bool, now time.Time, providerClass string) []config.Upstream {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	pool := make([]config.Upstream, 0)
+func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy string, model string, excluded map[string]struct{}, now time.Time) (map[string][]weightedUpstream, map[string][]weightedUpstream) {
+	healthyPools := make(map[string][]weightedUpstream, len(prioritizedUpstreamClasses()))
+	fallbackPools := make(map[string][]weightedUpstream, len(prioritizedUpstreamClasses()))
 	for _, upstream := range upstreams {
 		if _, skip := excluded[upstream.Name]; skip {
+			continue
+		}
+		if !upstream.IsEnabled() {
 			continue
 		}
 		if !SupportsModel(upstream, model) {
 			continue
 		}
-		if upstream.ProviderClassNormalized() != providerClass {
-			continue
-		}
 
+		providerClass := upstream.ProviderClassNormalized()
 		status := m.statusLocked(upstream.Name)
 		if status.QuotaBlocked {
 			continue
 		}
 		if status.CooldownUntil.After(now) {
-			continue
-		}
-		if healthyOnly && !status.Healthy {
 			continue
 		}
 
@@ -391,21 +421,42 @@ func (m *Manager) pool(upstreams []config.Upstream, strategy string, model strin
 			}
 		}
 
-		for i := 0; i < effectiveWeight; i++ {
-			pool = append(pool, upstream)
+		candidate := weightedUpstream{upstream: upstream, weight: effectiveWeight}
+		fallbackPools[providerClass] = append(fallbackPools[providerClass], candidate)
+		if status.Healthy {
+			healthyPools[providerClass] = append(healthyPools[providerClass], candidate)
 		}
 	}
-	return pool
+	return healthyPools, fallbackPools
 }
 
-func (m *Manager) pickFromPool(strategy string, model string, class string, pool []config.Upstream) config.Upstream {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+func (m *Manager) pickFromPoolLocked(strategy string, model string, class string, pool []weightedUpstream) config.Upstream {
 	key := strategy + ":" + class + ":" + model
-	idx := m.rr[key] % len(pool)
-	m.rr[key] = (m.rr[key] + 1) % len(pool)
-	return pool[idx]
+	totalWeight := 0
+	for _, candidate := range pool {
+		if candidate.weight < 1 {
+			totalWeight++
+			continue
+		}
+		totalWeight += candidate.weight
+	}
+	if totalWeight <= 0 {
+		return pool[0].upstream
+	}
+
+	cursor := m.rr[key] % totalWeight
+	m.rr[key] = (cursor + 1) % totalWeight
+	for _, candidate := range pool {
+		weight := candidate.weight
+		if weight < 1 {
+			weight = 1
+		}
+		if cursor < weight {
+			return candidate.upstream
+		}
+		cursor -= weight
+	}
+	return pool[len(pool)-1].upstream
 }
 
 func (m *Manager) pickStickyAssignment(upstreams []config.Upstream, model string, stickyKey string, excluded map[string]struct{}, healthyOnly bool, now time.Time) (config.Upstream, bool) {
@@ -452,6 +503,57 @@ func (m *Manager) pickStickyAssignment(upstreams []config.Upstream, model string
 	}
 
 	return config.Upstream{}, false
+}
+
+func (m *Manager) pruneStickyLocked(now time.Time) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	m.nextStickyPrune = now.Add(stickyPruneInterval)
+
+	if len(m.sticky) == 0 {
+		return
+	}
+
+	type stickyEntry struct {
+		key       string
+		expiresAt time.Time
+	}
+
+	entries := make([]stickyEntry, 0, len(m.sticky))
+	for key, assignment := range m.sticky {
+		if !assignment.ExpiresAt.IsZero() && assignment.ExpiresAt.Before(now) {
+			delete(m.sticky, key)
+			continue
+		}
+		entries = append(entries, stickyEntry{key: key, expiresAt: assignment.ExpiresAt})
+	}
+
+	if len(m.sticky) <= stickyMaxEntries {
+		return
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].expiresAt.Equal(entries[j].expiresAt) {
+			return entries[i].key < entries[j].key
+		}
+		if entries[i].expiresAt.IsZero() {
+			return true
+		}
+		if entries[j].expiresAt.IsZero() {
+			return false
+		}
+		return entries[i].expiresAt.Before(entries[j].expiresAt)
+	})
+
+	excess := len(m.sticky) - stickyMaxEntries
+	for _, entry := range entries {
+		if excess <= 0 {
+			break
+		}
+		delete(m.sticky, entry.key)
+		excess--
+	}
 }
 
 func prioritizedUpstreamClasses() []string {

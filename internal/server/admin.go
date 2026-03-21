@@ -3,17 +3,20 @@ package server
 import (
 	"net/http"
 	"strings"
+
+	"ai-model-gateway/internal/config"
+	"ai-model-gateway/internal/router"
 )
 
 const adminIconSVG = `<svg width="256" height="256" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="96" height="96" rx="24" fill="#0B0C0C"/><path d="M24 68V28H38L48 52L58 28H72V68H62V46L54 66H42L34 46V68H24Z" fill="#7EE7D6"/><circle cx="73" cy="24" r="8" fill="#F1B866"/></svg>`
 
 const adminHTMLTemplate = `<!doctype html>
-<html lang="zh-CN">
+<html lang="{{HTML_LANG}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b0c0c">
-  <title>AI Gateway Admin</title>
+  <title>{{PAGE_TITLE}}</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="shortcut icon" href="/favicon.ico">
   <style>
@@ -74,9 +77,9 @@ const adminHTMLTemplate = `<!doctype html>
       z-index: 0;
     }
     .wrap {
-      width: calc(100vw - (var(--page-gutter) * 2));
-      max-width: none;
+      width: 100%;
       margin: clamp(14px, 1.8vw, 24px) auto clamp(20px, 4vw, 56px);
+      padding-inline: var(--page-gutter);
       position: relative;
       z-index: 1;
     }
@@ -144,12 +147,12 @@ const adminHTMLTemplate = `<!doctype html>
     .topnav a {
       display: inline-flex;
       align-items: center;
-      padding: 7px 12px;
+      padding: 6px 10px;
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.04);
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11px;
       text-decoration: none;
       transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
     }
@@ -167,8 +170,8 @@ const adminHTMLTemplate = `<!doctype html>
     .hero {
       display: grid;
       grid-template-columns: 1fr;
-      gap: clamp(14px, 1.4vw, 20px);
-      margin-bottom: clamp(14px, 1.6vw, 20px);
+      gap: clamp(10px, 1.2vw, 16px);
+      margin-bottom: clamp(10px, 1.2vw, 16px);
     }
     .hero-main, .card {
       background: linear-gradient(160deg, rgba(26, 24, 21, 0.92), rgba(14, 13, 12, 0.85));
@@ -185,9 +188,17 @@ const adminHTMLTemplate = `<!doctype html>
       transform: translateY(-1px);
     }
     .hero-main {
-      padding: 20px 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+      gap: 14px;
+      padding: 16px 18px;
       overflow: hidden;
       position: relative;
+    }
+    .hero-copy {
+      min-width: 0;
+      position: relative;
+      z-index: 1;
     }
     .hero-head {
       display: flex;
@@ -218,23 +229,39 @@ const adminHTMLTemplate = `<!doctype html>
       text-transform: uppercase;
     }
     h1 {
-      margin: 10px 0 0;
-      font-size: clamp(30px, 4.6vw, 52px);
+      margin: 8px 0 0;
+      font-size: clamp(26px, 4vw, 44px);
       line-height: 0.96;
       letter-spacing: -0.05em;
     }
     .sub {
       color: var(--muted);
-      margin-top: 12px;
-      max-width: 720px;
-      font-size: 14px;
-      line-height: 1.55;
+      margin-top: 8px;
+      max-width: 640px;
+      font-size: 13px;
+      line-height: 1.45;
     }
     .hero-meta {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 18px;
+      margin-top: 12px;
+    }
+    .hero-side {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      min-width: 0;
+    }
+    .hero-priority-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .hero-priority-grid .surface-card {
+      min-height: 94px;
     }
     .pill {
       display: inline-flex;
@@ -251,15 +278,23 @@ const adminHTMLTemplate = `<!doctype html>
     .layout {
       display: grid;
       grid-template-columns: repeat(12, 1fr);
-      gap: clamp(12px, 1.4vw, 18px);
-      margin-top: clamp(12px, 1.4vw, 18px);
-      align-items: stretch;
+      gap: clamp(10px, 1.1vw, 14px);
+      margin-top: clamp(10px, 1.1vw, 14px);
+      align-items: start;
+      grid-auto-flow: row dense;
     }
     .card {
       grid-column: span 12;
-      padding: 14px;
+      padding: 12px;
       overflow: hidden;
+      align-self: start;
     }
+    .compact-card {
+      padding: 10px;
+      align-self: start;
+    }
+    .span-7 { grid-column: span 7; }
+    .span-5 { grid-column: span 5; }
     .span-8 { grid-column: span 8; }
     .span-6 { grid-column: span 6; }
     .span-4 { grid-column: span 4; }
@@ -270,6 +305,9 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .metrics.two {
       grid-template-columns: repeat(2, 1fr);
+    }
+    .metrics.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
     .metric {
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
@@ -290,6 +328,9 @@ const adminHTMLTemplate = `<!doctype html>
       font-weight: 800;
       letter-spacing: -0.04em;
     }
+    .compact-card .metric .v {
+      font-size: 20px;
+    }
     .metric .small {
       margin-top: 6px;
       font-size: 12px;
@@ -302,14 +343,23 @@ const adminHTMLTemplate = `<!doctype html>
       flex-wrap: wrap;
       margin-bottom: 12px;
     }
+    .compact-card .section-head {
+      margin-bottom: 10px;
+    }
     .title {
       font-size: 17px;
       font-weight: 800;
       letter-spacing: -0.03em;
     }
+    .compact-card .title {
+      font-size: 15px;
+    }
     .caption {
       color: var(--muted);
       font-size: 12px;
+    }
+    .compact-card .caption {
+      font-size: 11px;
     }
     .section-meta-strip {
       display: flex;
@@ -321,8 +371,14 @@ const adminHTMLTemplate = `<!doctype html>
     .surface-strip {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 12px;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    #runtime-card .surface-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    #costMetrics {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
     .surface-card {
       border: 1px solid var(--line);
@@ -347,6 +403,9 @@ const adminHTMLTemplate = `<!doctype html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .compact-card .surface-card-value {
+      font-size: 16px;
     }
     .surface-card-meta {
       color: var(--muted);
@@ -461,7 +520,11 @@ const adminHTMLTemplate = `<!doctype html>
       grid-template-columns: 1fr;
     }
     .page-settings .hero-main {
+      grid-template-columns: 1fr;
       min-height: 0;
+    }
+    .page-settings .hero-side {
+      display: none;
     }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -470,17 +533,93 @@ const adminHTMLTemplate = `<!doctype html>
     .table-health table { min-width: 900px; }
     .table-usage table { min-width: 520px; }
     .table-cache table { min-width: 580px; }
+    .upstream-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .upstream-tile {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+    .upstream-tile.is-degraded {
+      border-color: rgba(255, 127, 110, 0.30);
+      background: linear-gradient(160deg, rgba(255, 127, 110, 0.12), rgba(255,255,255,0.02));
+    }
+    .upstream-tile.is-warn {
+      border-color: rgba(241, 184, 102, 0.30);
+      background: linear-gradient(160deg, rgba(241, 184, 102, 0.12), rgba(255,255,255,0.02));
+    }
+    .upstream-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .upstream-heading {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .upstream-name {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .upstream-note {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .upstream-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .upstream-stat {
+      border: 1px solid rgba(255, 244, 230, 0.10);
+      border-radius: 14px;
+      padding: 10px;
+      background: rgba(255,255,255,0.03);
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .upstream-stat-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .upstream-stat-value {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .error-feed {
       display: grid;
-      gap: 12px;
+      gap: 10px;
     }
     .error-item {
       border: 1px solid var(--line);
       border-radius: 18px;
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-      padding: 14px;
+      padding: 12px;
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }
     .error-top {
       display: flex;
@@ -496,15 +635,19 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 8px;
     }
     .error-title {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 800;
       letter-spacing: -0.02em;
     }
     .error-message {
-      margin-top: 10px;
-      line-height: 1.55;
+      margin-top: 4px;
+      line-height: 1.5;
       overflow-wrap: anywhere;
       word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .error-meta {
       display: flex;
@@ -967,6 +1110,20 @@ const adminHTMLTemplate = `<!doctype html>
         radial-gradient(circle at 0% 0%, rgba(241, 184, 102, 0.08), transparent 42%),
         linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
     }
+    .settings-rail-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .settings-rail-actions .btn {
+      justify-content: center;
+    }
+    .settings-rail-actions .config-hint {
+      grid-column: 1 / -1;
+      min-height: 0;
+      padding: 2px 2px 0;
+    }
     .probe-status {
       display: grid;
       gap: 3px;
@@ -1068,20 +1225,6 @@ const adminHTMLTemplate = `<!doctype html>
       border: 1px solid var(--line);
       background: linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
     }
-    .config-footer {
-      position: sticky;
-      bottom: 0;
-      z-index: 2;
-      padding: 10px 0 0;
-      background: linear-gradient(180deg, rgba(7,7,6,0), rgba(7,7,6,0.9) 28%, rgba(7,7,6,0.98));
-    }
-    .config-footer .config-actions {
-      padding: 10px 12px;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(14, 13, 12, 0.92);
-      box-shadow: var(--shadow-soft);
-    }
     .config-hint {
       display: inline-flex;
       align-items: center;
@@ -1109,19 +1252,34 @@ const adminHTMLTemplate = `<!doctype html>
     .card-fill {
       display: flex;
       flex-direction: column;
-      height: clamp(420px, 54vh, 760px);
+      min-height: 0;
+    }
+    .card-fill.priority-feed {
+      min-height: 0;
+    }
+    .card-fill.compact-feed {
       min-height: 0;
     }
     .card-fill-body {
-      flex: 1 1 auto;
+      flex: 0 1 auto;
       min-height: 0;
+      max-height: clamp(220px, 34vh, 420px);
       overflow: auto;
+    }
+    .priority-feed .card-fill-body {
+      max-height: clamp(260px, 42vh, 540px);
+    }
+    .compact-feed .card-fill-body {
+      max-height: clamp(180px, 28vh, 300px);
     }
     .chart-wrap {
       position: relative;
       width: 100%;
-      height: 220px;
+      height: 190px;
       overflow: hidden;
+    }
+    .compact-chart .chart-wrap {
+      height: 160px;
     }
     .chart-wrap svg {
       display: block;
@@ -1308,7 +1466,13 @@ const adminHTMLTemplate = `<!doctype html>
       .hero {
         grid-template-columns: 1fr;
       }
-      .span-8, .span-6, .span-4 {
+      .hero-main {
+        grid-template-columns: 1fr;
+      }
+      .hero-priority-grid {
+        grid-template-columns: 1fr;
+      }
+      .span-8, .span-7, .span-6, .span-5, .span-4 {
         grid-column: span 12;
       }
       .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
@@ -1317,12 +1481,21 @@ const adminHTMLTemplate = `<!doctype html>
       .mode-preset-grid {
         grid-template-columns: 1fr;
       }
+      .settings-rail-actions {
+        grid-template-columns: 1fr;
+      }
+      .upstream-grid {
+        grid-template-columns: 1fr;
+      }
     }
     @media (max-width: 640px) {
       .metrics, .page-settings .config-grid, .policy-grid, .provider-summary-strip, .surface-strip {
         grid-template-columns: 1fr;
       }
       .mode-preset-grid {
+        grid-template-columns: 1fr;
+      }
+      .upstream-stats {
         grid-template-columns: 1fr;
       }
     }
@@ -1351,7 +1524,7 @@ const adminHTMLTemplate = `<!doctype html>
       }
     }
     @media (max-width: 1180px) {
-      .span-4, .span-8 {
+      .span-4, .span-5, .span-7, .span-8 {
         grid-column: span 12;
       }
       .page-settings .config-grid,
@@ -1379,9 +1552,6 @@ const adminHTMLTemplate = `<!doctype html>
       }
     }
     @media (min-width: 1600px) {
-      .hero {
-        grid-template-columns: 1.45fr 0.55fr;
-      }
       h1 {
         font-size: clamp(40px, 4vw, 72px);
       }
@@ -1412,45 +1582,85 @@ const adminHTMLTemplate = `<!doctype html>
     </div>
     <div class="hero">
       <div class="hero-main">
-        <div class="hero-head">
-          <div>
-            <div class="eyebrow">{{HERO_EYEBROW}}</div>
-            <h1>{{HERO_TITLE}}</h1>
+        <div class="hero-copy">
+          <div class="hero-head">
+            <div>
+              <div class="eyebrow">{{HERO_EYEBROW}}</div>
+              <h1>{{HERO_TITLE}}</h1>
+            </div>
+          </div>
+          <div class="sub">{{HERO_SUB}}</div>
+          <div class="hero-meta">
+            {{HERO_META_PRIMARY}}
+            {{HERO_META_SECONDARY}}
+            {{HERO_META_TERTIARY}}
           </div>
         </div>
-        <div class="sub">{{HERO_SUB}}</div>
-        <div class="hero-meta">
-          {{HERO_META_PRIMARY}}
-          {{HERO_META_SECONDARY}}
-          {{HERO_META_TERTIARY}}
+        <div class="hero-side">
+          {{HERO_ASIDE}}
         </div>
       </div>
     </div>
 
     <div id="overviewShell">
-    <div class="card" id="runtime-card">
-      <div class="section-head">
-        <div>
-          <div class="title">Runtime Posture</div>
-          <div class="caption">把当前恢复模式、失败出口、探活和启用 provider 放在一个面板里，先判断应该继续扛还是暴露错误。</div>
+    <div class="layout overview-primary">
+      <div class="card span-8" id="performance">
+        <div class="section-head">
+          <div>
+            <div class="title">Live Performance</div>
+            <div class="caption">先看最近 1 分钟与 5 分钟窗口内的真实 RPM、TPM 和延迟。</div>
+          </div>
+          <div class="section-meta-strip" id="performanceMeta"></div>
         </div>
+        <div class="metrics" id="metrics"></div>
       </div>
-      <div class="surface-strip" id="runtimeTopline"></div>
-      <div class="metrics two" id="runtimeMetrics"></div>
-    </div>
-    <div class="card" id="performance">
-      <div class="section-head">
-        <div>
-          <div class="title">Live Performance</div>
-          <div class="caption">最近 1 分钟与 5 分钟窗口内的真实 RPM / TPM / 延迟。</div>
+      <div class="card span-4 compact-card" id="runtime-card">
+        <div class="section-head">
+          <div>
+            <div class="title">Runtime Posture</div>
+            <div class="caption">当前恢复模式、失败出口和探活状态。</div>
+          </div>
         </div>
-        <div class="section-meta-strip" id="performanceMeta"></div>
+        <div class="surface-strip" id="runtimeTopline"></div>
+        <div class="metrics three" id="runtimeMetrics"></div>
       </div>
-      <div class="metrics" id="metrics"></div>
+      <div class="card span-7" id="upstreams-card">
+        <div class="section-head">
+          <div>
+            <div class="title">Upstream Health</div>
+            <div class="caption">先看哪条上游慢、退化、进冷却，再决定是否切换。</div>
+          </div>
+          <div class="section-meta-strip" id="upstreamMeta"></div>
+        </div>
+        <div class="surface-strip" id="upstreamTopline"></div>
+        <div id="upstreams"></div>
+      </div>
+      <div class="card span-5 card-fill compact-card compact-feed" id="errors-card">
+        <div class="section-head">
+          <div>
+            <div class="title">Recent Errors</div>
+            <div class="caption">压缩看最近错误的归属、状态和主消息。</div>
+          </div>
+          <div class="section-meta-strip" id="errorsMeta"></div>
+        </div>
+        <div class="surface-strip" id="errorsTopline"></div>
+        <div class="card-fill-body" id="errors"></div>
+      </div>
+      <div class="card span-12 card-fill priority-feed" id="requests-card">
+        <div class="section-head">
+          <div>
+            <div class="title">Recent Requests</div>
+            <div class="caption">最新请求轨迹，含状态、尝试次数、延迟和单次估算成本。</div>
+          </div>
+          <div class="section-meta-strip" id="requestsMeta"></div>
+        </div>
+        <div class="surface-strip" id="requestsTopline"></div>
+        <div class="card-fill-body" id="requests"></div>
+      </div>
     </div>
 
-    <div class="layout" id="chartLayout">
-      <div class="card span-6">
+    <div class="layout overview-charts" id="chartLayout">
+      <div class="card span-7">
         <div class="section-head">
           <div>
             <div class="title">Request Throughput</div>
@@ -1467,7 +1677,7 @@ const adminHTMLTemplate = `<!doctype html>
         <div class="chart-wrap" id="chartRpm"><div class="chart-tooltip" id="tipRpm"></div></div>
         <div class="chart-legend" id="legendRpm"></div>
       </div>
-      <div class="card span-6">
+      <div class="card span-5">
         <div class="section-head">
           <div>
             <div class="title">Latency Trend</div>
@@ -1477,17 +1687,7 @@ const adminHTMLTemplate = `<!doctype html>
         <div class="chart-wrap" id="chartLatency"><div class="chart-tooltip" id="tipLatency"></div></div>
         <div class="chart-legend" id="legendLatency"></div>
       </div>
-      <div class="card span-6">
-        <div class="section-head">
-          <div>
-            <div class="title">Token Usage by Upstream</div>
-            <div class="caption">按上游分组的 token 消耗堆叠柱状图。</div>
-          </div>
-        </div>
-        <div class="chart-wrap" id="chartTokens"><div class="chart-tooltip" id="tipTokens"></div></div>
-        <div class="chart-legend" id="legendTokens"></div>
-      </div>
-      <div class="card span-6">
+      <div class="card span-7">
         <div class="section-head">
           <div>
             <div class="title">Success / Failure</div>
@@ -1497,9 +1697,19 @@ const adminHTMLTemplate = `<!doctype html>
         <div class="chart-wrap" id="chartSuccess"><div class="chart-tooltip" id="tipSuccess"></div></div>
         <div class="chart-legend" id="legendSuccess"></div>
       </div>
+      <div class="card span-5 compact-card compact-chart">
+        <div class="section-head">
+          <div>
+            <div class="title">Token Usage by Upstream</div>
+            <div class="caption">按上游分组的 token 消耗。</div>
+          </div>
+        </div>
+        <div class="chart-wrap" id="chartTokens"><div class="chart-tooltip" id="tipTokens"></div></div>
+        <div class="chart-legend" id="legendTokens"></div>
+      </div>
     </div>
 
-    <div class="layout">
+    <div class="layout overview-economics">
       <div class="card span-8" id="economics">
         <div class="section-head">
           <div>
@@ -1511,48 +1721,28 @@ const adminHTMLTemplate = `<!doctype html>
         <div class="surface-strip" id="economicsTopline"></div>
         <div id="byModel"></div>
       </div>
-      <div class="card span-4">
+      <div class="card span-4 compact-card" id="cost-card">
         <div class="section-head">
           <div>
             <div class="title">Cost Snapshot</div>
-            <div class="caption">基于已知官方价格模型估算，总额单位为美元。</div>
+            <div class="caption">基于已知官方价格模型估算。</div>
           </div>
           <div class="section-meta-strip" id="costMeta"></div>
         </div>
         <div class="metrics" id="costMetrics"></div>
       </div>
-      <div class="card span-6" id="upstreams-card">
-        <div class="section-head">
-          <div>
-            <div class="title">Upstream Health</div>
-            <div class="caption">看当前探活状态、重试性失败计数和冷却信息。</div>
-          </div>
-          <div class="section-meta-strip" id="upstreamMeta"></div>
-        </div>
-        <div class="surface-strip" id="upstreamTopline"></div>
-        <div id="upstreams"></div>
-      </div>
-      <div class="card span-6">
+      <div class="card span-8 compact-card" id="usage-card">
         <div class="section-head">
           <div>
             <div class="title">Upstream Usage</div>
-            <div class="caption">按上游汇总 token 消耗，方便和健康状态对照。</div>
+            <div class="caption">按上游汇总 token 消耗，和健康状态对照看。</div>
           </div>
           <div class="section-meta-strip" id="usageMeta"></div>
         </div>
         <div class="surface-strip" id="usageTopline"></div>
         <div id="byUpstream"></div>
       </div>
-      <div class="card span-4">
-        <div class="section-head">
-          <div>
-            <div class="title">Cache Trends</div>
-            <div class="caption">最近 1 小时 / 24 小时的缓存命中率。</div>
-          </div>
-        </div>
-        <div class="metrics two" id="cacheTrends"></div>
-      </div>
-      <div class="card span-8">
+      <div class="card span-4 compact-card" id="cache-card">
         <div class="section-head">
           <div>
             <div class="title">Cache Hit Ranking</div>
@@ -1563,35 +1753,13 @@ const adminHTMLTemplate = `<!doctype html>
         <div class="surface-strip" id="cacheTopline"></div>
         <div id="cacheRanking"></div>
       </div>
-      <div class="card span-4 card-fill">
-        <div class="section-head">
-          <div>
-            <div class="title">Recent Errors</div>
-            <div class="caption">最近错误优先看消息类型和上游归属。</div>
-          </div>
-          <div class="section-meta-strip" id="errorsMeta"></div>
-        </div>
-        <div class="surface-strip" id="errorsTopline"></div>
-        <div class="card-fill-body" id="errors"></div>
-      </div>
-      <div class="card span-8 card-fill" id="requests-card">
-        <div class="section-head">
-          <div>
-            <div class="title">Recent Requests</div>
-            <div class="caption">最新请求轨迹，含状态、尝试次数、延迟和单次估算成本。</div>
-          </div>
-          <div class="section-meta-strip" id="requestsMeta"></div>
-        </div>
-        <div class="surface-strip" id="requestsTopline"></div>
-        <div class="card-fill-body" id="requests"></div>
-      </div>
     </div>
     </div>
     <div class="card span-12 is-hidden" id="runtimeConfig">
         <div class="section-head">
           <div>
             <div class="title">Runtime Config</div>
-            <div class="caption">编辑 health、bridge、重试、拦截和上游服务商配置，支持导出当前配置与回滚上一个版本。</div>
+            <div class="caption">集中编辑探活、桥接、恢复和服务商配置。</div>
           </div>
           <div class="config-status" id="configStatus">加载中</div>
         </div>
@@ -1600,14 +1768,14 @@ const adminHTMLTemplate = `<!doctype html>
             <aside class="settings-nav">
               <div class="settings-sticky">
                 <div class="config-card settings-nav-panel" id="settingsNav">
-                  <div class="settings-nav-title">Config Directory</div>
+                  <div class="settings-nav-title">Sections</div>
                   <div class="settings-jumpbar">
-                    <a href="#cfg-health" data-nav-target="cfg-health"><div class="settings-jumpbar-copy"><strong>Health</strong><span>Probe path and cadence</span></div><em id="navMetaHealth">path</em></a>
-                    <a href="#cfg-bridge" data-nav-target="cfg-bridge"><div class="settings-jumpbar-copy"><strong>Bridge</strong><span>Model rewrite rules</span></div><em id="navMetaBridge">0 rules</em></a>
-                    <a href="#cfg-router" data-nav-target="cfg-router"><div class="settings-jumpbar-copy"><strong>Router</strong><span>Retry and cooldown</span></div><em id="navMetaRouter">strategy</em></a>
-                    <a href="#cfg-intercepts" data-nav-target="cfg-intercepts"><div class="settings-jumpbar-copy"><strong>Intercepts</strong><span>Retry/fail shortcuts</span></div><em id="navMetaIntercepts">0 rules</em></a>
-                    <a href="#cfg-upstreams" data-nav-target="cfg-upstreams"><div class="settings-jumpbar-copy"><strong>Providers</strong><span>Base URLs and model scopes</span></div><em id="navMetaProviders">0 providers</em></a>
-                    <a href="#cfg-history" data-nav-target="cfg-history"><div class="settings-jumpbar-copy"><strong>History</strong><span>Preview and rollback</span></div><em id="navMetaHistory">0 versions</em></a>
+                    <a href="#cfg-health" data-nav-target="cfg-health"><div class="settings-jumpbar-copy"><strong>Health</strong></div><em id="navMetaHealth">path</em></a>
+                    <a href="#cfg-bridge" data-nav-target="cfg-bridge"><div class="settings-jumpbar-copy"><strong>Bridge</strong></div><em id="navMetaBridge">0 rules</em></a>
+                    <a href="#cfg-router" data-nav-target="cfg-router"><div class="settings-jumpbar-copy"><strong>Router</strong></div><em id="navMetaRouter">strategy</em></a>
+                    <a href="#cfg-intercepts" data-nav-target="cfg-intercepts"><div class="settings-jumpbar-copy"><strong>Intercepts</strong></div><em id="navMetaIntercepts">0 rules</em></a>
+                    <a href="#cfg-upstreams" data-nav-target="cfg-upstreams"><div class="settings-jumpbar-copy"><strong>Providers</strong></div><em id="navMetaProviders">0 providers</em></a>
+                    <a href="#cfg-history" data-nav-target="cfg-history"><div class="settings-jumpbar-copy"><strong>History</strong></div><em id="navMetaHistory">0 versions</em></a>
                   </div>
                 </div>
               </div>
@@ -1801,43 +1969,43 @@ const adminHTMLTemplate = `<!doctype html>
             <aside class="settings-rail">
               <div class="settings-sticky">
                 <div class="config-card settings-rail-panel command-panel">
-                  <div class="config-card-head">
-                    <div class="config-card-head-main">
-                      <div class="section-kicker"><strong>Ops</strong><span>Control Deck</span></div>
-                      <div class="config-card-title">Surface Controls</div>
-                      <div class="config-help">先搜索区块，再按 provider class 过滤免费或额度上游；保存、导出和回滚仍在底部固定操作区。</div>
-                    </div>
+                    <div class="config-card-head">
+                      <div class="config-card-head-main">
+                        <div class="section-kicker"><strong>Ops</strong><span>Control Deck</span></div>
+                        <div class="config-card-title">Controls</div>
+                      </div>
                   </div>
                   <div class="config-toolbar">
-                    <input class="config-search" id="configSearch" type="search" placeholder="Search config sections, fields, providers..." />
+                    <input class="config-search" id="configSearch" type="search" placeholder="Search sections or providers..." />
                     <select class="config-filter" id="providerClassFilter">
                       <option value="all">All Providers</option>
                       <option value="free">Free First</option>
                       <option value="quota_limited">Quota-Limited</option>
                     </select>
+                    <select class="config-filter" id="cfgAdminLanguage">
+                      <option value="zh">中文</option>
+                      <option value="en">English</option>
+                    </select>
                     <button class="btn secondary" id="expandSections" type="button">Expand All</button>
                     <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
                   </div>
                   <div class="validation-summary" id="configValidation"></div>
-                </div>
-                <div class="config-card settings-rail-panel" id="cfg-history">
-                  <div class="config-card-head">
-                    <div class="config-card-head-main">
-                      <div class="config-card-title">Config History</div>
-                      <div class="config-help">保存配置前会自动归档旧版本，可选择具体版本回滚</div>
-                    </div>
-                  </div>
-                  <div id="configHistoryList"></div>
-                  <div id="configDiffPreview"></div>
-                </div>
-                <div class="config-footer">
-                  <div class="config-actions">
+                  <div class="config-actions settings-rail-actions">
                     <button class="btn" id="saveConfig">Save Config</button>
                     <button class="btn secondary" id="reloadConfig">Reload</button>
                     <button class="btn secondary" id="exportConfig">Export</button>
                     <button class="btn danger" id="rollbackConfig">Rollback</button>
                     <span class="config-hint" id="configHint"></span>
                   </div>
+                </div>
+                <div class="config-card settings-rail-panel" id="cfg-history">
+                  <div class="config-card-head">
+                    <div class="config-card-head-main">
+                      <div class="config-card-title">History</div>
+                    </div>
+                  </div>
+                  <div id="configHistoryList"></div>
+                  <div id="configDiffPreview"></div>
                 </div>
               </div>
             </aside>
@@ -1846,14 +2014,303 @@ const adminHTMLTemplate = `<!doctype html>
       </div>
   </div>
   <script>
-    const fmt = new Intl.NumberFormat("zh-CN");
-    const fmtUsd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    let currentLocale = "{{BOOTSTRAP_LANGUAGE}}";
+    const I18N = {
+      zh: {
+        brandTitle: "AI MODEL GATEWAY",
+        brandSubtitle: "统一的可观测性、路由、计价和运行控制台。",
+        overviewNavPerformance: "性能",
+        overviewNavEconomics: "成本",
+        overviewNavUpstreams: "上游",
+        overviewNavRequests: "请求",
+        overviewNavSettings: "设置",
+        settingsNavOverview: "总览",
+        performanceTitle: "实时性能",
+        performanceCaption: "先看最近 1 分钟与 5 分钟窗口内的真实 RPM、TPM 和延迟。",
+        runtimePostureTitle: "运行姿态",
+        runtimePostureCaption: "当前恢复模式、失败出口和探活状态。",
+        upstreamHealthTitle: "上游健康",
+        upstreamHealthCaption: "先看哪条上游慢、退化、进冷却，再决定是否切换。",
+        recentErrorsTitle: "最近错误",
+        recentErrorsCaption: "压缩看最近错误的归属、状态和主消息。",
+        recentRequestsTitle: "最近请求",
+        recentRequestsCaption: "最新请求轨迹，含状态、尝试次数、延迟和单次估算成本。",
+        requestThroughputTitle: "请求吞吐",
+        requestThroughputCaption: "RPM 与 TPM 趋势，按时间桶聚合。",
+        latencyTrendTitle: "延迟趋势",
+        latencyTrendCaption: "平均延迟（ms）与成功率趋势。",
+        successFailureTitle: "成功 / 失败",
+        successFailureCaption: "每个时间桶内的成功与失败请求数。",
+        tokenUsageTitle: "按上游 Token 用量",
+        tokenUsageCaption: "按上游分组的 token 消耗。",
+        economicsTitle: "模型成本",
+        economicsCaption: "按模型汇总 token、估算美元成本和官方价格表覆盖情况。",
+        costSnapshotTitle: "成本快照",
+        costSnapshotCaption: "基于已知官方价格模型估算。",
+        upstreamUsageTitle: "上游用量",
+        upstreamUsageCaption: "按上游汇总 token 消耗，和健康状态对照看。",
+        cacheRankingTitle: "缓存命中排行",
+        cacheRankingCaption: "最近 24 小时按上游缓存命中率排序。",
+        runtimeConfigTitle: "运行时配置",
+        runtimeConfigCaption: "集中编辑探活、桥接、恢复、语言和服务商配置。",
+        settingsNavTitle: "区块",
+        settingsHealth: "探活",
+        settingsBridge: "桥接",
+        settingsRouter: "路由",
+        settingsIntercepts: "拦截",
+        settingsProviders: "服务商",
+        settingsHistory: "历史",
+        settingsControlsTitle: "控制",
+        settingsHistoryTitle: "历史版本",
+        settingsSearchPlaceholder: "搜索区块或服务商...",
+        settingsExpandAll: "全部展开",
+        settingsCollapseAll: "全部折叠",
+        saveConfig: "保存配置",
+        reloadConfig: "重新载入",
+        exportConfig: "导出",
+        rollbackConfig: "回滚",
+        allProviders: "全部服务商",
+        freeFirst: "免费优先",
+        quotaLimited: "额度受限",
+        languageLabel: "界面语言",
+        languageChinese: "中文",
+        languageEnglish: "English",
+        loading: "加载中",
+        loaded: "已载入",
+        configSynced: "配置已同步",
+        loadConfigFailed: "配置载入失败",
+        loadingDiff: "加载差异中...",
+        diffLoaded: "差异已载入",
+        loadDiffFailed: "差异载入失败",
+        testingProvider: "正在测试服务商...",
+        providerTestPassed: "服务商测试通过",
+        providerTestFailed: "服务商测试失败",
+        fixValidationErrors: "请先修复校验错误再保存",
+        saving: "保存中...",
+        saved: "已保存",
+        saveFailed: "保存失败",
+        rollbackLatestConfirm: "回滚到最近一次保存的配置版本？",
+        rollbackSelectedConfirm: "回滚到选中的配置版本？",
+        rollingBack: "回滚中...",
+        rolledBack: "已回滚",
+        rollbackFailed: "回滚失败",
+        appliedBridgePreset: "已应用 GPT-5.x 桥接预设",
+        appliedBoundedPreset: "已应用有界故障转移预设",
+        appliedInfinitePreset: "已应用无限恢复预设",
+        unsavedChanges: "有未保存更改",
+        noData: "暂无数据",
+        noBridgeRules: "暂无桥接规则",
+        noInterceptRules: "暂无拦截规则",
+        noProviders: "暂无服务商配置",
+        noHistoryVersions: "暂无历史版本",
+        bridgeRule: "桥接规则 {index}",
+        rule: "规则 {index}",
+        version: "版本 {index}",
+        remove: "移除",
+        preview: "预览",
+        collapse: "折叠",
+        expand: "展开",
+        probe: "探测",
+        testing: "测试中",
+        untested: "未测试",
+        reachable: "可达",
+        failed: "失败",
+        target: "目标",
+        status: "状态",
+        healthy: "健康",
+        degraded: "退化",
+        quotaBlocked: "额度封禁",
+        officialPriceUnavailable: "官方价格不可用",
+        perMillion: "每百万",
+        cached: "缓存",
+        promptCache: "提示缓存",
+        requestsShort: "请求",
+        requestRows: "行",
+        savedAt: "保存于",
+        added: "新增",
+        removed: "删除",
+        changedBlocks: "变更块",
+        diffPreview: "差异预览",
+        class: "类别",
+        models: "模型",
+        count: "数量",
+        weight: "权重",
+        timeout: "超时",
+        auth: "鉴权",
+        providerName: "服务商名称",
+        baseUrl: "基础 URL",
+        apiKey: "API Key",
+        providerClass: "服务商类别",
+        providerClassHelp: "先选免费上游；命中拥塞后再回退到额度受限上游。",
+        modelsLabel: "模型范围",
+        headersLabel: "请求头",
+        sameUpstreamRetries: "同上游重试",
+        tokenSet: "已配置 token",
+        noToken: "无 token",
+        unscoped: "未限定",
+        enabled: "启用",
+        disabled: "停用",
+        provider: "服务商 {index}"
+      },
+      en: {
+        brandTitle: "AI MODEL GATEWAY",
+        brandSubtitle: "Unified observability, routing, pricing, and runtime control.",
+        overviewNavPerformance: "Performance",
+        overviewNavEconomics: "Economics",
+        overviewNavUpstreams: "Upstreams",
+        overviewNavRequests: "Requests",
+        overviewNavSettings: "Settings",
+        settingsNavOverview: "Overview",
+        performanceTitle: "Live Performance",
+        performanceCaption: "Start with the real 1-minute and 5-minute RPM, TPM, and latency windows.",
+        runtimePostureTitle: "Runtime Posture",
+        runtimePostureCaption: "Current recovery mode, failure exit, and probe posture.",
+        upstreamHealthTitle: "Upstream Health",
+        upstreamHealthCaption: "See which upstream is slow, degraded, or cooling down before switching.",
+        recentErrorsTitle: "Recent Errors",
+        recentErrorsCaption: "Compressed view of ownership, status, and dominant error message.",
+        recentRequestsTitle: "Recent Requests",
+        recentRequestsCaption: "Latest request traces with status, attempts, latency, and estimated cost.",
+        requestThroughputTitle: "Request Throughput",
+        requestThroughputCaption: "RPM and TPM trends aggregated by time bucket.",
+        latencyTrendTitle: "Latency Trend",
+        latencyTrendCaption: "Average latency (ms) and success-rate trend.",
+        successFailureTitle: "Success / Failure",
+        successFailureCaption: "Successful and failed requests in each bucket.",
+        tokenUsageTitle: "Token Usage by Upstream",
+        tokenUsageCaption: "Token consumption grouped by upstream.",
+        economicsTitle: "Model Economics",
+        economicsCaption: "Model-level token usage, estimated USD cost, and pricing coverage.",
+        costSnapshotTitle: "Cost Snapshot",
+        costSnapshotCaption: "Estimated from known official model pricing.",
+        upstreamUsageTitle: "Upstream Usage",
+        upstreamUsageCaption: "Token usage by upstream, compared against health posture.",
+        cacheRankingTitle: "Cache Hit Ranking",
+        cacheRankingCaption: "Last-24h cache hit ranking by upstream.",
+        runtimeConfigTitle: "Runtime Config",
+        runtimeConfigCaption: "Manage probes, bridge, recovery, language, and providers in one place.",
+        settingsNavTitle: "Sections",
+        settingsHealth: "Health",
+        settingsBridge: "Bridge",
+        settingsRouter: "Router",
+        settingsIntercepts: "Intercepts",
+        settingsProviders: "Providers",
+        settingsHistory: "History",
+        settingsControlsTitle: "Controls",
+        settingsHistoryTitle: "History",
+        settingsSearchPlaceholder: "Search sections or providers...",
+        settingsExpandAll: "Expand All",
+        settingsCollapseAll: "Collapse All",
+        saveConfig: "Save Config",
+        reloadConfig: "Reload",
+        exportConfig: "Export",
+        rollbackConfig: "Rollback",
+        allProviders: "All Providers",
+        freeFirst: "Free First",
+        quotaLimited: "Quota-Limited",
+        languageLabel: "Interface Language",
+        languageChinese: "Chinese",
+        languageEnglish: "English",
+        loading: "Loading",
+        loaded: "Loaded",
+        configSynced: "Config synced",
+        loadConfigFailed: "Load config failed",
+        loadingDiff: "Loading diff...",
+        diffLoaded: "Diff loaded",
+        loadDiffFailed: "Load diff failed",
+        testingProvider: "Testing provider...",
+        providerTestPassed: "Provider test passed",
+        providerTestFailed: "Provider test failed",
+        fixValidationErrors: "Fix validation errors before saving",
+        saving: "Saving...",
+        saved: "Saved",
+        saveFailed: "Save failed",
+        rollbackLatestConfirm: "Rollback to the latest saved config version?",
+        rollbackSelectedConfirm: "Rollback to the selected config version?",
+        rollingBack: "Rolling back...",
+        rolledBack: "Rolled back",
+        rollbackFailed: "Rollback failed",
+        appliedBridgePreset: "Applied GPT-5.x bridge preset",
+        appliedBoundedPreset: "Applied bounded failover preset",
+        appliedInfinitePreset: "Applied infinite recovery preset",
+        unsavedChanges: "Unsaved changes",
+        noData: "No data yet",
+        noBridgeRules: "No bridge rules yet",
+        noInterceptRules: "No intercept rules yet",
+        noProviders: "No provider configs yet",
+        noHistoryVersions: "No config history yet",
+        bridgeRule: "Bridge Rule {index}",
+        rule: "Rule {index}",
+        version: "Version {index}",
+        remove: "Remove",
+        preview: "Preview",
+        collapse: "Collapse",
+        expand: "Expand",
+        probe: "Probe",
+        testing: "Testing",
+        untested: "Untested",
+        reachable: "Reachable",
+        failed: "Failed",
+        target: "Target",
+        status: "Status",
+        healthy: "Healthy",
+        degraded: "Degraded",
+        quotaBlocked: "Quota Blocked",
+        officialPriceUnavailable: "Official pricing unavailable",
+        perMillion: "per 1M",
+        cached: "cached",
+        promptCache: "prompt cache",
+        requestsShort: "reqs",
+        requestRows: "rows",
+        savedAt: "saved",
+        added: "added",
+        removed: "removed",
+        changedBlocks: "changed blocks",
+        diffPreview: "Diff Preview",
+        class: "Class",
+        models: "Models",
+        count: "Count",
+        weight: "Weight",
+        timeout: "Timeout",
+        auth: "Auth",
+        providerName: "Provider Name",
+        baseUrl: "Base URL",
+        apiKey: "API Key",
+        providerClass: "Provider Class",
+        providerClassHelp: "Prefer free providers first; fall back to quota-limited only under pressure.",
+        modelsLabel: "Models",
+        headersLabel: "Headers",
+        sameUpstreamRetries: "Same Upstream Retries",
+        tokenSet: "token set",
+        noToken: "no token",
+        unscoped: "unscoped",
+        enabled: "Enabled",
+        disabled: "Disabled",
+        provider: "Provider {index}"
+      }
+    };
+    const t = (key, vars = {}) => {
+      let text = (I18N[currentLocale] && I18N[currentLocale][key]) || I18N.zh[key] || key;
+      for (const [name, value] of Object.entries(vars)) {
+        text = text.replaceAll('{' + name + '}', String(value));
+      }
+      return text;
+    };
+    const localeText = (zh, en) => currentLocale === 'en' ? en : zh;
+    const rebuildFormatters = () => {
+      fmt = new Intl.NumberFormat(currentLocale === 'en' ? "en-US" : "zh-CN");
+      fmtUsd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
+      rtf = new Intl.RelativeTimeFormat(currentLocale === 'en' ? 'en' : 'zh', { numeric: 'auto' });
+    };
+    let fmt = new Intl.NumberFormat(currentLocale === 'en' ? "en-US" : "zh-CN");
+    let fmtUsd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    let rtf = new Intl.RelativeTimeFormat(currentLocale === 'en' ? 'en' : 'zh', { numeric: 'auto' });
     const relativeTime = (ts) => {
       if (!ts) return "-";
       const delta = Math.max(0, Date.now() - new Date(ts).getTime());
-      if (delta < 60000) return Math.round(delta / 1000) + "s 前";
-      if (delta < 3600000) return Math.round(delta / 60000) + "m 前";
-      return Math.round(delta / 3600000) + "h 前";
+      if (delta < 60000) return rtf.format(-Math.round(delta / 1000), 'second');
+      if (delta < 3600000) return rtf.format(-Math.round(delta / 60000), 'minute');
+      return rtf.format(-Math.round(delta / 3600000), 'hour');
     };
     const fmtRate = (value) => Number(value || 0).toFixed(1);
     const fmtMs = (value) => fmt.format(Math.round(value || 0)) + " ms";
@@ -1874,6 +2331,14 @@ const adminHTMLTemplate = `<!doctype html>
       if (amount >= 1) return '$' + amount.toFixed(1);
       return fmtMoney(amount);
     };
+    const routeModeLabel = (mode) => {
+      const normalized = String(mode || 'direct').trim().toLowerCase();
+      if (normalized === 'bridge') return localeText('桥接', 'bridge');
+      return localeText('直连', 'direct');
+    };
+    const providerClassLabel = (providerClass) => String(providerClass || 'quota_limited').trim() === 'free'
+      ? t('freeFirst')
+      : t('quotaLimited');
     const statusChip = (statusCode) => {
       const code = Number(statusCode || 0);
       let tone = '';
@@ -1890,8 +2355,8 @@ const adminHTMLTemplate = `<!doctype html>
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
     const priceLine = (pricing) => {
-      if (!pricing) return '<span class="small">official price unavailable</span>';
-      return '<span class="small mono">$' + pricing.input_per_1m_usd + ' / $' + pricing.output_per_1m_usd + ' per 1M</span>';
+      if (!pricing) return '<span class="small">' + escapeHTML(t('officialPriceUnavailable')) + '</span>';
+      return '<span class="small mono">$' + pricing.input_per_1m_usd + ' / $' + pricing.output_per_1m_usd + ' ' + escapeHTML(t('perMillion')) + '</span>';
     };
     const resolveRequestPrice = (item, pricing) => {
       const routeCatalog = pricing.route_catalog || {};
@@ -1928,13 +2393,13 @@ const adminHTMLTemplate = `<!doctype html>
       const promptTokens = fmt.format((usage && usage.prompt_tokens) || 0);
       const cachedTokens = (usage && usage.cached_prompt_tokens) || 0;
       if (!cachedTokens) return promptTokens;
-      return promptTokens + '<br><span class="small">cached ' + fmt.format(cachedTokens) + '</span>';
+      return promptTokens + '<br><span class="small">' + escapeHTML(t('cached')) + ' ' + fmt.format(cachedTokens) + '</span>';
     };
     const totalUsageCell = (usage) => {
       const totalTokens = fmt.format((usage && usage.total_tokens) || 0);
       const cachedTokens = (usage && usage.cached_prompt_tokens) || 0;
       if (!cachedTokens) return totalTokens;
-      return totalTokens + '<br><span class="small">prompt cache ' + fmt.format(cachedTokens) + '</span>';
+      return totalTokens + '<br><span class="small">' + escapeHTML(t('promptCache')) + ' ' + fmt.format(cachedTokens) + '</span>';
     };
     const cacheHitRate = (usage) => {
       const promptTokens = Math.max(0, (usage && usage.prompt_tokens) || 0);
@@ -1944,15 +2409,15 @@ const adminHTMLTemplate = `<!doctype html>
     };
     const cacheRateCell = (usage) => {
       const rate = cacheHitRate(usage);
-      if (rate === null) return '<span class="small">n/a</span>';
+      if (rate === null) return '<span class="small">' + escapeHTML(localeText('无', 'n/a')) + '</span>';
       const cachedTokens = Math.max(0, (usage && usage.cached_prompt_tokens) || 0);
-      return fmtPct(rate) + '<br><span class="small">' + fmt.format(cachedTokens) + ' cached</span>';
+      return fmtPct(rate) + '<br><span class="small">' + fmt.format(cachedTokens) + ' ' + escapeHTML(t('cached')) + '</span>';
     };
     const cacheTrendDetail = (window) => {
       const cached = fmt.format((window && window.cached_prompt_tokens) || 0);
       const prompt = fmt.format((window && window.prompt_tokens) || 0);
       const reqs = fmt.format((window && window.requests) || 0);
-      return cached + ' / ' + prompt + ' prompt · ' + reqs + ' reqs';
+      return cached + ' / ' + prompt + ' prompt · ' + reqs + ' ' + escapeHTML(t('requestsShort'));
     };
     const modelFlow = (item) => {
       const requested = escapeHTML(item.requested_model || item.model || '-');
@@ -1963,12 +2428,50 @@ const adminHTMLTemplate = `<!doctype html>
       return requested + ' <span class="small">-&gt;</span> ' + effective;
     };
     const table = (headers, rows, className = '') => {
-      if (!rows.length) return '<div class="small">暂无数据</div>';
+      if (!rows.length) return '<div class="small">' + escapeHTML(t('noData')) + '</div>';
       return '<div class="table-shell ' + className + '"><table><thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map(cell => '<td>' + cell + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
     };
+    const upstreamStatePill = (status) => {
+      if (status && status.quota_blocked) return '<span class="status bad">' + escapeHTML(t('quotaBlocked')) + '</span>';
+      if (status && !status.healthy) return '<span class="status bad">' + escapeHTML(t('degraded')) + '</span>';
+      return '<span class="status">' + escapeHTML(t('healthy')) + '</span>';
+    };
+    const formatCooldown = (status) => {
+      if (!status) return '-';
+      if (status.quota_blocked) return t('quotaBlocked');
+      if (status.cooldown_until && status.cooldown_until !== '0001-01-01T00:00:00Z') return relativeTime(status.cooldown_until);
+      return '-';
+    };
+    const renderUpstreamHealth = (entries) => {
+      if (!entries.length) return '<div class="small">' + escapeHTML(t('noData')) + '</div>';
+      return '<div class="upstream-grid">' + entries.map(([name, status]) => {
+        const safeStatus = status || {};
+        const lastError = safeStatus.last_error ? escapeHTML(safeStatus.last_error) : (safeStatus.healthy ? localeText('最近无错误', 'no recent error') : localeText('无详情', 'no detail'));
+        const latency = safeStatus.last_latency ? fmtMs((safeStatus.last_latency || 0) / 1000000) : localeText('无', 'n/a');
+        const retryableFails = fmt.format(safeStatus.consecutive_retryable_failures || 0);
+        const cooldown = formatCooldown(safeStatus);
+        let tone = '';
+        if (safeStatus.quota_blocked || !safeStatus.healthy) tone = ' is-degraded';
+        else if ((safeStatus.last_latency || 0) / 1000000 > 3000) tone = ' is-warn';
+        return '<article class="upstream-tile' + tone + '">'
+          + '<div class="upstream-head">'
+          + '<div class="upstream-heading">'
+          + '<div class="upstream-name">' + escapeHTML(name) + '</div>'
+          + '<div class="upstream-note">' + lastError + '</div>'
+          + '</div>'
+          + upstreamStatePill(safeStatus)
+          + '</div>'
+          + '<div class="upstream-stats">'
+          + '<div class="upstream-stat"><div class="upstream-stat-label">' + escapeHTML(localeText('延迟', 'Latency')) + '</div><div class="upstream-stat-value mono">' + escapeHTML(latency) + '</div></div>'
+          + '<div class="upstream-stat"><div class="upstream-stat-label">' + escapeHTML(localeText('失败', 'Failures')) + '</div><div class="upstream-stat-value mono">' + retryableFails + '</div></div>'
+          + '<div class="upstream-stat"><div class="upstream-stat-label">' + escapeHTML(localeText('冷却', 'Cooldown')) + '</div><div class="upstream-stat-value">' + escapeHTML(cooldown) + '</div></div>'
+          + '</div>'
+          + '</article>';
+      }).join('') + '</div>';
+    };
     const errorFeed = (items) => {
-      if (!items.length) return '<div class="small">暂无数据</div>';
-      return '<div class="error-feed">' + items.slice(0, 16).map(item => {
+      if (!items.length) return '<div class="small">' + escapeHTML(t('noData')) + '</div>';
+      return '<div class="error-feed">' + items.slice(0, 12).map(item => {
         const code = Number(item.status_code || 0);
         const upstream = escapeHTML(item.upstream || '-');
         const model = escapeHTML(item.model || '-');
@@ -1978,7 +2481,7 @@ const adminHTMLTemplate = `<!doctype html>
         return '<article class="error-item">'
           + '<div class="error-top">'
           + '<div class="error-frame">'
-          + '<div class="error-heading"><div class="error-title mono">' + escapeHTML(relativeTime(item.timestamp)) + '</div><div class="small">attempt ' + attempt + '</div></div>'
+          + '<div class="error-heading"><div class="error-title mono">' + escapeHTML(relativeTime(item.timestamp)) + '</div><div class="small">' + escapeHTML(localeText('尝试', 'attempt')) + ' ' + attempt + '</div></div>'
           + '<div class="error-context">'
           + '<div class="error-message">' + message + '</div>'
           + '<div class="small">' + upstream + ' · ' + model + '</div>'
@@ -1989,13 +2492,202 @@ const adminHTMLTemplate = `<!doctype html>
           + '<div class="error-meta">'
           + '<span class="tag">' + upstream + '</span>'
           + '<span class="tag">' + model + '</span>'
-          + '<span class="tag accent">' + escapeHTML(item.route_mode || 'direct') + '</span>'
-          + '<span class="tag">status ' + escapeHTML(code || '-') + '</span>'
+          + '<span class="tag accent">' + escapeHTML(routeModeLabel(item.route_mode)) + '</span>'
+          + '<span class="tag">' + escapeHTML(localeText('状态', 'status')) + ' ' + escapeHTML(code || '-') + '</span>'
           + '</div>'
           + '</article>';
       }).join('') + '</div>';
     };
     const byId = (id) => document.getElementById(id);
+    const setText = (selector, key) => {
+      const el = document.querySelector(selector);
+      if (el) el.textContent = t(key);
+    };
+    const setTextValue = (selector, value) => {
+      const el = document.querySelector(selector);
+      if (el) el.textContent = value;
+    };
+    const setPlaceholder = (selector, key) => {
+      const el = document.querySelector(selector);
+      if (el) el.setAttribute('placeholder', t(key));
+    };
+    const setPlaceholderValue = (selector, value) => {
+      const el = document.querySelector(selector);
+      if (el) el.setAttribute('placeholder', value);
+    };
+    const setAttrValue = (selector, attr, value) => {
+      const el = document.querySelector(selector);
+      if (el) el.setAttribute(attr, value);
+    };
+    const setCheckboxLabelText = (id, key) => {
+      const input = byId(id);
+      const label = input?.parentElement;
+      if (!input || !label) return;
+      Array.from(label.childNodes).forEach((node) => {
+        if (node !== input) {
+          node.remove();
+        }
+      });
+      label.appendChild(document.createTextNode(' ' + t(key)));
+    };
+    const setCheckboxLabelValue = (id, value) => {
+      const input = byId(id);
+      const label = input?.parentElement;
+      if (!input || !label) return;
+      Array.from(label.childNodes).forEach((node) => {
+        if (node !== input) {
+          node.remove();
+        }
+      });
+      label.appendChild(document.createTextNode(' ' + value));
+    };
+    const setSectionTitleValue = (id, value) => {
+      const el = byId(id);
+      if (el) el.setAttribute('data-section-title', value);
+    };
+    const applyStaticLocale = () => {
+      document.documentElement.lang = currentLocale === 'en' ? 'en' : 'zh-CN';
+      document.title = document.body.classList.contains('page-settings')
+        ? (currentLocale === 'en' ? 'AI Gateway Settings' : 'AI 模型网关设置')
+        : (currentLocale === 'en' ? 'AI Gateway Admin' : 'AI 模型网关管理台');
+      setText('.brand-title', 'brandTitle');
+      setText('.brand-subtitle', 'brandSubtitle');
+      setText('#performance .title', 'performanceTitle');
+      setText('#performance .caption', 'performanceCaption');
+      setText('#runtime-card .title', 'runtimePostureTitle');
+      setText('#runtime-card .caption', 'runtimePostureCaption');
+      setText('#upstreams-card .title', 'upstreamHealthTitle');
+      setText('#upstreams-card .caption', 'upstreamHealthCaption');
+      setText('#errors-card .title', 'recentErrorsTitle');
+      setText('#errors-card .caption', 'recentErrorsCaption');
+      setText('#requests-card .title', 'recentRequestsTitle');
+      setText('#requests-card .caption', 'recentRequestsCaption');
+      setText('#chartLayout .card:nth-of-type(1) .title', 'requestThroughputTitle');
+      setText('#chartLayout .card:nth-of-type(1) .caption', 'requestThroughputCaption');
+      setText('#chartLayout .card:nth-of-type(2) .title', 'latencyTrendTitle');
+      setText('#chartLayout .card:nth-of-type(2) .caption', 'latencyTrendCaption');
+      setText('#chartLayout .card:nth-of-type(3) .title', 'successFailureTitle');
+      setText('#chartLayout .card:nth-of-type(3) .caption', 'successFailureCaption');
+      setText('#chartLayout .card:nth-of-type(4) .title', 'tokenUsageTitle');
+      setText('#chartLayout .card:nth-of-type(4) .caption', 'tokenUsageCaption');
+      setText('#economics .title', 'economicsTitle');
+      setText('#economics .caption', 'economicsCaption');
+      setText('#cost-card .title', 'costSnapshotTitle');
+      setText('#cost-card .caption', 'costSnapshotCaption');
+      setText('#usage-card .title', 'upstreamUsageTitle');
+      setText('#usage-card .caption', 'upstreamUsageCaption');
+      setText('#cache-card .title', 'cacheRankingTitle');
+      setText('#cache-card .caption', 'cacheRankingCaption');
+      setText('#runtimeConfig .title', 'runtimeConfigTitle');
+      setText('#runtimeConfig .caption', 'runtimeConfigCaption');
+      document.querySelectorAll('.topnav a[data-topnav-target]').forEach((link) => {
+        const target = link.getAttribute('data-topnav-target');
+        if (target === 'performance') link.textContent = t('overviewNavPerformance');
+        if (target === 'economics') link.textContent = t('overviewNavEconomics');
+        if (target === 'upstreams-card') link.textContent = t('overviewNavUpstreams');
+        if (target === 'requests-card') link.textContent = t('overviewNavRequests');
+      });
+      setTextValue('.topnav a[href="/admin/settings"]', t('overviewNavSettings'));
+      setTextValue('.topnav a[href="/admin"]', t('settingsNavOverview'));
+      setTextValue('.eyebrow', document.body.classList.contains('page-settings') ? localeText('配置中心', 'Configuration Center') : localeText('AI 模型网关管理台', 'AI Gateway Admin'));
+      setTextValue('.hero-copy h1', document.body.classList.contains('page-settings') ? localeText('运行路由、探活、服务商。', 'Runtime Routing, Health, Providers.') : localeText('运维、成本、吞吐。', 'Ops, Cost, Throughput.'));
+      setTextValue('.hero-copy .sub', document.body.classList.contains('page-settings')
+        ? localeText('集中维护探活、桥接、恢复和服务商，不再在多个面板里来回切换。', 'Manage probes, bridge, recovery, and providers in one place instead of jumping across surfaces.')
+        : localeText('先看吞吐、延迟、错误和上游健康，再往下追成本与缓存。', 'Check throughput, latency, errors, and upstream health first, then drill into cost and cache.'));
+      setText('#settingsNav .settings-nav-title', 'settingsNavTitle');
+      setText('#cfg-history .config-card-title', 'settingsHistoryTitle');
+      setText('[data-nav-target="cfg-health"] strong', 'settingsHealth');
+      setText('[data-nav-target="cfg-bridge"] strong', 'settingsBridge');
+      setText('[data-nav-target="cfg-router"] strong', 'settingsRouter');
+      setText('[data-nav-target="cfg-intercepts"] strong', 'settingsIntercepts');
+      setText('[data-nav-target="cfg-upstreams"] strong', 'settingsProviders');
+      setText('[data-nav-target="cfg-history"] strong', 'settingsHistory');
+      setText('.command-panel .config-card-title', 'settingsControlsTitle');
+      setPlaceholder('#configSearch', 'settingsSearchPlaceholder');
+      setText('#expandSections', 'settingsExpandAll');
+      setText('#collapseSections', 'settingsCollapseAll');
+      setText('#saveConfig', 'saveConfig');
+      setText('#reloadConfig', 'reloadConfig');
+      setText('#exportConfig', 'exportConfig');
+      setText('#rollbackConfig', 'rollbackConfig');
+      setSectionTitleValue('cfg-health', localeText('探活', 'Health Check'));
+      setSectionTitleValue('cfg-bridge', localeText('模型桥接', 'Model Bridge'));
+      setSectionTitleValue('cfg-router', localeText('路由恢复', 'Router Retry'));
+      setSectionTitleValue('cfg-intercepts', localeText('响应拦截', 'Response Intercepts'));
+      setSectionTitleValue('cfg-upstreams', localeText('服务商', 'Service Providers'));
+      setTextValue('#cfg-health .section-kicker span', localeText('运行守护', 'Runtime Guardrail'));
+      setTextValue('#cfg-health .config-card-head .config-card-title', localeText('探活检查', 'Health Check'));
+      setTextValue('#cfg-health .config-card-head .config-help', localeText('控制主动探活的开关、间隔、超时和路径。', 'Control health polling, interval, timeout, and path.'));
+      setTextValue('#cfg-health .config-field:nth-of-type(1) > label', localeText('启用', 'Enabled'));
+      setCheckboxLabelValue('cfgHealthEnabled', localeText('启用探活检查', 'Health checks enabled'));
+      setTextValue('#cfg-health .config-field:nth-of-type(2) > label', localeText('路径', 'Path'));
+      setTextValue('#cfg-health .config-field:nth-of-type(3) > label', localeText('间隔（秒）', 'Interval (sec)'));
+      setTextValue('#cfg-health .config-field:nth-of-type(4) > label', localeText('超时（毫秒）', 'Timeout (ms)'));
+      setTextValue('#cfg-bridge .section-kicker span', localeText('改写入口', 'Rewrite Surface'));
+      setTextValue('#cfg-bridge .config-card-head .config-card-title', localeText('模型桥接', 'Model Bridge'));
+      setTextValue('#cfg-bridge .config-card-head .config-help', localeText('维护模型别名映射和需跳过桥接的 User-Agent。', 'Maintain alias rewrites and excluded bridge User-Agents.'));
+      setTextValue('#cfg-bridge .config-field:nth-of-type(1) > label', localeText('启用', 'Enabled'));
+      setCheckboxLabelValue('cfgBridgeEnabled', localeText('在路由前改写请求模型', 'Rewrite requested model before routing'));
+      setTextValue('#cfg-bridge .config-field:nth-of-type(2) > label', localeText('排除的 User-Agent', 'Exclude User-Agents'));
+      setTextValue('#applyCodexBridgePreset', localeText('应用 GPT-5.x 桥接预设', 'Apply GPT-5.x Bridge Preset'));
+      setTextValue('#addBridgeRule', localeText('新增桥接规则', 'Add Bridge Rule'));
+      setTextValue('#cfg-router .section-kicker span', localeText('流量策略', 'Traffic Strategy'));
+      setTextValue('#cfg-router .config-card-head .config-card-title', localeText('路由恢复', 'Router Retry'));
+      setTextValue('#cfg-router .config-card-head .config-help', localeText('控制重试次数、退避窗口和失败出口。', 'Control retry rounds, backoff window, and failure exit.'));
+      setTextValue('#cfg-router .config-field:nth-of-type(1) > label', localeText('路由策略', 'Router Strategy'));
+      setTextValue('#cfg-router .config-field:nth-of-type(2) > label', localeText('最大重试次数', 'Max Retries'));
+      setTextValue('#cfg-router .config-field:nth-of-type(3) > label', localeText('退避基线（毫秒）', 'Backoff Base (ms)'));
+      setTextValue('#cfg-router .config-field:nth-of-type(4) > label', localeText('退避上限（毫秒）', 'Backoff Max (ms)'));
+      setTextValue('#cfg-router .config-field:nth-of-type(5) > label', localeText('失败阈值', 'Failure Threshold'));
+      setTextValue('#cfg-router .config-field:nth-of-type(6) > label', localeText('冷却时间（秒）', 'Cooldown (sec)'));
+      setTextValue('#cfg-router .config-field:nth-of-type(7) > label', localeText('透传窗口（秒）', 'Passthrough After (sec)'));
+      setTextValue('.retry-focus .section-kicker span', localeText('恢复策略', 'Recovery Policy'));
+      setTextValue('.retry-focus .config-card-head .config-card-title', localeText('重试策略', 'Retry Policy'));
+      setTextValue('.retry-focus .config-card-head .config-help', localeText('命中状态码或关键字后触发重试，也可以切到“任何错误都无限重试”的恢复模式。', 'Retry matched status codes or keywords, or switch to infinite recovery for any error.'));
+      setTextValue('#retryModeCard .policy-card-label', localeText('恢复模式', 'Recovery Mode'));
+      setTextValue('#retryBackoffCard .policy-card-label', localeText('退避窗口', 'Backoff Window'));
+      setTextValue('#retryPassthroughCard .policy-card-label', localeText('失败出口', 'Failure Exit'));
+      setTextValue('#retryModePresetBounded .policy-card-label', localeText('预设', 'Preset'));
+      setTextValue('#retryModePresetBounded .policy-card-value', localeText('有界故障转移', 'Bounded Failover'));
+      setTextValue('#retryModePresetBounded .policy-card-meta', localeText('遵守最大重试次数，并在失败窗口后允许透传上游错误。', 'Respect max retries and allow passthrough after the configured failure window.'));
+      setTextValue('#retryModePresetInfinite .policy-card-label', localeText('预设', 'Preset'));
+      setTextValue('#retryModePresetInfinite .policy-card-value', localeText('无限恢复', 'Infinite Recovery'));
+      setTextValue('#retryModePresetInfinite .policy-card-meta', localeText('传输、状态码和拦截到的错误都会持续重试，直到调用方取消。', 'Retry transport, status, and intercepted body failures until the caller cancels.'));
+      setTextValue('.retry-focus .config-field:nth-of-type(1) > label', localeText('恢复模式', 'Recovery Mode'));
+      setCheckboxLabelValue('cfgRetryInfiniteOnError', localeText('任何错误都无限重试', 'Infinite retry on any error'));
+      setTextValue('.retry-focus .config-field:nth-of-type(1) .config-help', localeText('传输错误、响应状态错误和拦截到的响应体错误会持续重试，直到客户端取消。', 'Transport, response status, and intercepted body errors keep retrying until the client cancels.'));
+      setTextValue('.retry-focus .config-field:nth-of-type(2) > label', localeText('状态码', 'Status Codes'));
+      setTextValue('.retry-focus .config-field:nth-of-type(3) > label', localeText('最小状态码', 'Status Code Min'));
+      setTextValue('.retry-focus .config-field:nth-of-type(4) > label', localeText('消息关键字', 'Message Keywords'));
+      setTextValue('#cfg-intercepts .section-kicker span', localeText('响应陷阱', 'Response Traps'));
+      setTextValue('#cfg-intercepts .config-card-head .config-card-title', localeText('响应拦截', 'Response Intercepts'));
+      setTextValue('#cfg-intercepts .config-card-head .config-help', localeText('按路径、状态码或错误关键字提前判定重试或失败。', 'Decide retry / fail early by path, status code, or message keywords.'));
+      setTextValue('#addIntercept', localeText('新增拦截规则', 'Add Intercept'));
+      setTextValue('#cfg-upstreams .section-kicker span', localeText('服务商矩阵', 'Provider Matrix'));
+      setTextValue('#cfg-upstreams .config-card-head .config-card-title', localeText('服务商', 'Service Providers'));
+      setTextValue('#cfg-upstreams .config-card-head .config-help', localeText('维护上游 URL、API key、模型范围和超时；每一项都可先测再保存。', 'Manage provider URLs, API keys, model scopes, and timeouts; test each one before saving.'));
+      setTextValue('#addUpstream', localeText('新增服务商', 'Add Provider'));
+      setTextValue('.command-panel .section-kicker span', localeText('控制台', 'Control Deck'));
+      const providerClassFilter = byId('providerClassFilter');
+      if (providerClassFilter?.options?.length >= 3) {
+        providerClassFilter.options[0].textContent = t('allProviders');
+        providerClassFilter.options[1].textContent = t('freeFirst');
+        providerClassFilter.options[2].textContent = t('quotaLimited');
+      }
+      const languageFilter = byId('cfgAdminLanguage');
+      if (languageFilter?.options?.length >= 2) {
+        languageFilter.options[0].textContent = t('languageChinese');
+        languageFilter.options[1].textContent = t('languageEnglish');
+        languageFilter.title = t('languageLabel');
+        languageFilter.setAttribute('aria-label', t('languageLabel'));
+      }
+      setPlaceholderValue('#cfgRetryKeywords', localeText('rate limit\nupstream request failed', 'rate limit\nupstream request failed'));
+    };
+    const setLocale = (language) => {
+      currentLocale = language === 'en' ? 'en' : 'zh';
+      rebuildFormatters();
+      applyStaticLocale();
+    };
     const revealSettingsIfHash = () => {
       const panel = byId('runtimeConfig');
       if (!panel) return;
@@ -2096,6 +2788,9 @@ const adminHTMLTemplate = `<!doctype html>
       });
     };
     const buildConfigPayload = () => ({
+      admin: {
+        language: byId('cfgAdminLanguage')?.value || currentLocale
+      },
       health: {
         enabled: byId('cfgHealthEnabled')?.checked ?? false,
         interval_sec: readNumber(byId('cfgHealthInterval')),
@@ -2200,11 +2895,12 @@ const adminHTMLTemplate = `<!doctype html>
     };
     const updateSettingsSummary = () => {
       const diagnostics = computeSettingsDiagnostics();
+      const providerCount = diagnostics.providers.length;
       const enabledProviders = diagnostics.enabledProviders;
       const bridgeCount = diagnostics.bridgeRules;
       const interceptCount = diagnostics.interceptRules;
       const retryInfinite = diagnostics.retryInfinite;
-      const recoveryLabel = retryInfinite ? 'always recover' : 'bounded';
+      const recoveryLabel = retryInfinite ? localeText('无限恢复', 'always recover') : localeText('有界', 'bounded');
       const backoffBase = readNumber(byId('cfgBackoff'));
       const backoffMax = readNumber(byId('cfgBackoffMax'));
       const passthroughAfter = readNumber(byId('cfgPassthrough'));
@@ -2212,50 +2908,62 @@ const adminHTMLTemplate = `<!doctype html>
       const retryCodeCount = parseCodes(byId('cfgRetryCodes')?.value).length;
       const routerStrategy = String(byId('cfgRouterStrategy')?.value || 'health_weighted_rr').trim() || 'health_weighted_rr';
       const rawHealthPath = String(byId('cfgHealthPath')?.value || '').trim();
-      const healthPath = rawHealthPath || (diagnostics.healthEnabled ? 'path missing' : 'disabled');
+      const healthPath = rawHealthPath || (diagnostics.healthEnabled ? localeText('路径缺失', 'path missing') : t('disabled'));
       if (byId('cfgHealthMeta')) byId('cfgHealthMeta').innerHTML = [
-        miniChip('Probe', diagnostics.healthEnabled ? 'enabled' : 'disabled', diagnostics.healthEnabled ? 'accent' : ''),
-        miniChip('Path', healthPath, diagnostics.healthEnabled && !diagnostics.healthPath ? 'warn' : ''),
+        miniChip(localeText('探活', 'Probe'), diagnostics.healthEnabled ? t('enabled') : t('disabled'), diagnostics.healthEnabled ? 'accent' : ''),
+        miniChip(localeText('路径', 'Path'), healthPath, diagnostics.healthEnabled && !diagnostics.healthPath ? 'warn' : ''),
       ].join('');
       if (byId('cfgBridgeMeta')) byId('cfgBridgeMeta').innerHTML = [
-        miniChip('Rules', fmt.format(bridgeCount), bridgeCount ? 'accent' : ''),
-        miniChip('Draft', bridgeCount ? 'mapped' : 'empty', bridgeCount ? 'accent' : 'warn'),
+        miniChip(localeText('规则', 'Rules'), fmt.format(bridgeCount), bridgeCount ? 'accent' : ''),
+        miniChip(localeText('草稿', 'Draft'), bridgeCount ? localeText('已映射', 'mapped') : localeText('为空', 'empty'), bridgeCount ? 'accent' : 'warn'),
       ].join('');
       if (byId('cfgRouterMeta')) byId('cfgRouterMeta').innerHTML = [
-        miniChip('Strategy', routerStrategy, 'accent'),
-        miniChip('Mode', recoveryLabel, retryInfinite ? 'accent' : ''),
-        miniChip('Retries', fmt.format(readNumber(byId('cfgMaxRetries')))),
+        miniChip(localeText('策略', 'Strategy'), routerStrategy, 'accent'),
+        miniChip(localeText('模式', 'Mode'), recoveryLabel, retryInfinite ? 'accent' : ''),
+        miniChip(localeText('重试', 'Retries'), fmt.format(readNumber(byId('cfgMaxRetries')))),
       ].join('');
       if (byId('cfgRetryMeta')) byId('cfgRetryMeta').innerHTML = [
-        miniChip('Mode', recoveryLabel, retryInfinite ? 'accent' : ''),
-        miniChip('Codes', fmt.format(retryCodeCount)),
-        miniChip('Keywords', fmt.format(retryKeywordCount), retryKeywordCount ? 'accent' : ''),
+        miniChip(localeText('模式', 'Mode'), recoveryLabel, retryInfinite ? 'accent' : ''),
+        miniChip(localeText('状态码', 'Codes'), fmt.format(retryCodeCount)),
+        miniChip(localeText('关键字', 'Keywords'), fmt.format(retryKeywordCount), retryKeywordCount ? 'accent' : ''),
       ].join('');
       if (byId('cfgInterceptMeta')) byId('cfgInterceptMeta').innerHTML = [
-        miniChip('Rules', fmt.format(interceptCount), interceptCount ? 'accent' : ''),
-        miniChip('Mode', interceptCount ? 'active' : 'idle', interceptCount ? 'accent' : ''),
+        miniChip(localeText('规则', 'Rules'), fmt.format(interceptCount), interceptCount ? 'accent' : ''),
+        miniChip(localeText('模式', 'Mode'), interceptCount ? localeText('启用中', 'active') : localeText('空闲', 'idle'), interceptCount ? 'accent' : ''),
       ].join('');
       if (byId('cfgUpstreamsMeta')) byId('cfgUpstreamsMeta').innerHTML = [
-        miniChip('Enabled', fmt.format(enabledProviders), enabledProviders ? 'accent' : 'danger'),
-        miniChip('Free', fmt.format(diagnostics.freeProviders), diagnostics.freeProviders ? 'accent' : ''),
-        miniChip('Quota', fmt.format(diagnostics.quotaLimitedProviders), diagnostics.quotaLimitedProviders ? '' : 'warn'),
-        miniChip('Needs Auth', fmt.format(diagnostics.emptyKeys), diagnostics.emptyKeys ? 'warn' : ''),
-        miniChip('Unscoped', fmt.format(diagnostics.unscopedProviders), diagnostics.unscopedProviders ? 'warn' : ''),
+        miniChip(localeText('启用中', 'Enabled'), fmt.format(enabledProviders), enabledProviders ? 'accent' : 'danger'),
+        miniChip(localeText('免费', 'Free'), fmt.format(diagnostics.freeProviders), diagnostics.freeProviders ? 'accent' : ''),
+        miniChip(localeText('额度', 'Quota'), fmt.format(diagnostics.quotaLimitedProviders), diagnostics.quotaLimitedProviders ? '' : 'warn'),
+        miniChip(localeText('缺鉴权', 'Needs Auth'), fmt.format(diagnostics.emptyKeys), diagnostics.emptyKeys ? 'warn' : ''),
+        miniChip(localeText('未限模', 'Unscoped'), fmt.format(diagnostics.unscopedProviders), diagnostics.unscopedProviders ? 'warn' : ''),
       ].join('');
       setNavMeta('navMetaHealth', healthPath, diagnostics.healthEnabled ? (diagnostics.healthPath ? 'good' : 'warn') : '');
-      setNavMeta('navMetaBridge', fmt.format(bridgeCount) + ' rules', bridgeCount ? 'good' : '');
-      setNavMeta('navMetaRouter', retryInfinite ? (routerStrategy + ' · infinite') : routerStrategy, retryInfinite ? 'good' : 'good');
-      setNavMeta('navMetaIntercepts', fmt.format(interceptCount) + ' rules', interceptCount ? 'good' : '');
-      setNavMeta('navMetaProviders', fmt.format(providerCount) + ' providers', enabledProviders === 0 ? 'danger' : ((diagnostics.emptyKeys || diagnostics.unscopedProviders) ? 'warn' : 'good'));
-      setNavMeta('navMetaHistory', fmt.format(configHistoryVersionCount) + ' versions', configHistoryVersionCount ? 'good' : '');
+      setNavMeta('navMetaBridge', fmt.format(bridgeCount) + ' ' + localeText('条规则', 'rules'), bridgeCount ? 'good' : '');
+      setNavMeta('navMetaRouter', retryInfinite ? (routerStrategy + ' · ' + localeText('无限', 'infinite')) : routerStrategy, 'good');
+      setNavMeta('navMetaIntercepts', fmt.format(interceptCount) + ' ' + localeText('条规则', 'rules'), interceptCount ? 'good' : '');
+      setNavMeta('navMetaProviders', fmt.format(providerCount) + ' ' + localeText('个服务商', 'providers'), enabledProviders === 0 ? 'danger' : ((diagnostics.emptyKeys || diagnostics.unscopedProviders) ? 'warn' : 'good'));
+      setNavMeta('navMetaHistory', fmt.format(configHistoryVersionCount) + ' ' + localeText('个版本', 'versions'), configHistoryVersionCount ? 'good' : '');
       if (byId('retryModeValue')) byId('retryModeValue').textContent = recoveryLabel;
-      if (byId('retryModeMeta')) byId('retryModeMeta').textContent = retryInfinite ? 'Any transport, status, or intercepted body error keeps retrying.' : 'Only retryable status/message matches continue to the next attempt.';
+      if (byId('retryModeMeta')) byId('retryModeMeta').textContent = retryInfinite
+        ? localeText('传输、状态码或拦截到的响应体错误都会持续重试。', 'Any transport, status, or intercepted body error keeps retrying.')
+        : localeText('只有命中可重试状态码或消息关键字才会继续下一次尝试。', 'Only retryable status/message matches continue to the next attempt.');
       if (byId('retryBackoffValue')) byId('retryBackoffValue').textContent = fmt.format(backoffBase) + ' -> ' + fmt.format(backoffMax) + ' ms';
-      if (byId('retryBackoffMeta')) byId('retryBackoffMeta').textContent = retryInfinite ? 'Backoff stays in effect across unlimited recovery attempts.' : 'Exponential backoff inside the bounded retry window.';
-      if (byId('retryPassthroughValue')) byId('retryPassthroughValue').textContent = retryInfinite ? 'suppressed' : 'after ' + fmt.format(passthroughAfter) + ' s';
-      if (byId('retryPassthroughMeta')) byId('retryPassthroughMeta').textContent = retryInfinite ? 'Infinite mode keeps retrying instead of surfacing the upstream error window.' : 'Retryable failures can be surfaced after the configured window.';
-      if (byId('cfgMaxRetriesHint')) byId('cfgMaxRetriesHint').textContent = retryInfinite ? 'Stored but ignored while Infinite Recovery is active.' : 'Maximum retry rounds before the gateway stops retrying.';
-      if (byId('cfgPassthroughHint')) byId('cfgPassthroughHint').textContent = retryInfinite ? 'Stored but inactive while Infinite Recovery keeps retrying until cancel.' : 'After this window, retryable failures can surface the upstream response.';
+      if (byId('retryBackoffMeta')) byId('retryBackoffMeta').textContent = retryInfinite
+        ? localeText('无限恢复下也会继续遵守退避窗口。', 'Backoff stays in effect across unlimited recovery attempts.')
+        : localeText('有界重试窗口内执行指数退避。', 'Exponential backoff inside the bounded retry window.');
+      if (byId('retryPassthroughValue')) byId('retryPassthroughValue').textContent = retryInfinite
+        ? localeText('已抑制', 'suppressed')
+        : localeText('在 ', 'after ') + fmt.format(passthroughAfter) + localeText(' 秒后', ' s');
+      if (byId('retryPassthroughMeta')) byId('retryPassthroughMeta').textContent = retryInfinite
+        ? localeText('无限模式会持续重试，而不会进入上游错误透传窗口。', 'Infinite mode keeps retrying instead of surfacing the upstream error window.')
+        : localeText('到达配置窗口后，可透传可重试失败的上游响应。', 'Retryable failures can be surfaced after the configured window.');
+      if (byId('cfgMaxRetriesHint')) byId('cfgMaxRetriesHint').textContent = retryInfinite
+        ? localeText('已保存，但在无限恢复开启时不会生效。', 'Stored but ignored while Infinite Recovery is active.')
+        : localeText('达到此次数后，网关停止继续重试。', 'Maximum retry rounds before the gateway stops retrying.');
+      if (byId('cfgPassthroughHint')) byId('cfgPassthroughHint').textContent = retryInfinite
+        ? localeText('已保存，但无限恢复会一直重试直到取消，因此该窗口不生效。', 'Stored but inactive while Infinite Recovery keeps retrying until cancel.')
+        : localeText('超过该窗口后，可重试失败可以透传上游响应。', 'After this window, retryable failures can surface the upstream response.');
       byId('cfgMaxRetries')?.closest('.config-field')?.classList.toggle('subdued', retryInfinite);
       byId('cfgPassthrough')?.closest('.config-field')?.classList.toggle('subdued', retryInfinite);
       byId('retryModeCard')?.classList.toggle('active', retryInfinite);
@@ -2272,7 +2980,7 @@ const adminHTMLTemplate = `<!doctype html>
         if (!head || head.querySelector('.section-toggle')) return;
         const actions = document.createElement('div');
         actions.className = 'config-actions';
-        actions.innerHTML = '<button class="btn secondary section-toggle" type="button">Collapse</button>';
+        actions.innerHTML = '<button class="btn secondary section-toggle" type="button">' + escapeHTML(t('collapse')) + '</button>';
         head.appendChild(actions);
       });
     };
@@ -2280,7 +2988,7 @@ const adminHTMLTemplate = `<!doctype html>
       section.classList.toggle('collapsed', !!collapsed);
       const button = section.querySelector('.section-toggle');
       if (button) {
-        button.textContent = collapsed ? 'Expand' : 'Collapse';
+        button.textContent = collapsed ? t('expand') : t('collapse');
       }
     };
     const setUpstreamCollapsed = (card, collapsed) => {
@@ -2288,7 +2996,7 @@ const adminHTMLTemplate = `<!doctype html>
       card.classList.toggle('collapsed', !!collapsed);
       const button = card.querySelector('.upstream-toggle');
       if (button) {
-        button.textContent = collapsed ? 'Expand' : 'Collapse';
+        button.textContent = collapsed ? t('expand') : t('collapse');
       }
     };
     const applyConfigSearch = () => {
@@ -2331,10 +3039,10 @@ const adminHTMLTemplate = `<!doctype html>
       }
       let html = '';
       if (errors.length) {
-        html += '<div><strong>Save blocked:</strong><ul class="validation-list">' + errors.map((msg) => '<li>' + escapeHTML(msg) + '</li>').join('') + '</ul></div>';
+        html += '<div><strong>' + escapeHTML(localeText('保存已阻止：', 'Save blocked:')) + '</strong><ul class="validation-list">' + errors.map((msg) => '<li>' + escapeHTML(msg) + '</li>').join('') + '</ul></div>';
       }
       if (warnings.length) {
-        html += '<div><strong>Warnings:</strong><ul class="validation-list">' + warnings.map((msg) => '<li>' + escapeHTML(msg) + '</li>').join('') + '</ul></div>';
+        html += '<div><strong>' + escapeHTML(localeText('警告：', 'Warnings:')) + '</strong><ul class="validation-list">' + warnings.map((msg) => '<li>' + escapeHTML(msg) + '</li>').join('') + '</ul></div>';
       }
       host.innerHTML = html;
       host.classList.add('visible');
@@ -2358,9 +3066,9 @@ const adminHTMLTemplate = `<!doctype html>
       if (collapsedCard) {
         collapsedCard.classList.remove('collapsed');
         const sectionButton = collapsedCard.querySelector('.section-toggle');
-        if (sectionButton) sectionButton.textContent = 'Collapse';
+        if (sectionButton) sectionButton.textContent = t('collapse');
         const providerButton = collapsedCard.querySelector('.upstream-toggle');
-        if (providerButton) providerButton.textContent = 'Collapse';
+        if (providerButton) providerButton.textContent = t('collapse');
       }
       el.classList.add(warning ? 'validation-warning' : 'input-invalid');
       if (message) {
@@ -2382,8 +3090,8 @@ const adminHTMLTemplate = `<!doctype html>
 
       const healthPath = byId('cfgHealthPath');
       if (byId('cfgHealthEnabled')?.checked && !String(healthPath?.value || '').trim()) {
-        errors.push('Health Check path is required when health checks are enabled.');
-        markInvalid(healthPath, 'Path is required while health checks are enabled.');
+        errors.push(localeText('启用探活检查时必须填写路径。', 'Health Check path is required when health checks are enabled.'));
+        markInvalid(healthPath, localeText('启用探活检查时必须填写路径。', 'Path is required while health checks are enabled.'));
       }
 
       const bridgeCards = Array.from(document.querySelectorAll('[data-bridge-rule]'));
@@ -2393,9 +3101,9 @@ const adminHTMLTemplate = `<!doctype html>
         const fromValue = String(from?.value || '').trim();
         const toValue = String(to?.value || '').trim();
         if (!fromValue || !toValue) {
-          errors.push('Bridge Rule ' + (idx + 1) + ' requires both From and To.');
-          if (!fromValue) markInvalid(from, 'Bridge source model is required.');
-          if (!toValue) markInvalid(to, 'Bridge target model is required.');
+          errors.push(localeText('桥接规则 ', 'Bridge Rule ') + (idx + 1) + localeText(' 必须同时填写来源模型和目标模型。', ' requires both From and To.'));
+          if (!fromValue) markInvalid(from, localeText('必须填写桥接来源模型。', 'Bridge source model is required.'));
+          if (!toValue) markInvalid(to, localeText('必须填写桥接目标模型。', 'Bridge target model is required.'));
         }
       });
 
@@ -2403,14 +3111,14 @@ const adminHTMLTemplate = `<!doctype html>
       const retryCodesInput = byId('cfgRetryCodes');
       const retryMinValue = readOptionalNumber(retryMin);
       if (retryMinValue !== null && retryMinValue < 100) {
-        errors.push('Retry Policy status code min must be at least 100.');
-        markInvalid(retryMin, 'Minimum retry status code must be between 100 and 599.');
+        errors.push(localeText('重试策略的最小状态码必须大于等于 100。', 'Retry Policy status code min must be at least 100.'));
+        markInvalid(retryMin, localeText('最小状态码必须在 100 到 599 之间。', 'Minimum retry status code must be between 100 and 599.'));
       }
       parseList(retryCodesInput?.value).forEach((raw) => {
         const value = Number.parseInt(raw, 10);
         if (!Number.isFinite(value) || value < 100 || value > 599) {
-          errors.push('Retry Policy contains an invalid status code: ' + raw + '.');
-          markInvalid(retryCodesInput, 'Retry status codes must be integers between 100 and 599.');
+          errors.push(localeText('重试策略包含非法状态码：', 'Retry Policy contains an invalid status code: ') + raw + '.');
+          markInvalid(retryCodesInput, localeText('重试状态码必须是 100 到 599 之间的整数。', 'Retry status codes must be integers between 100 and 599.'));
         }
       });
 
@@ -2420,14 +3128,14 @@ const adminHTMLTemplate = `<!doctype html>
         parseList(codesInput?.value).forEach((raw) => {
           const value = Number.parseInt(raw, 10);
           if (!Number.isFinite(value) || value < 100 || value > 599) {
-            errors.push('Response Intercept ' + (idx + 1) + ' contains an invalid status code: ' + raw + '.');
-            markInvalid(codesInput, 'Intercept status codes must be integers between 100 and 599.');
+            errors.push(localeText('响应拦截规则 ', 'Response Intercept ') + (idx + 1) + localeText(' 包含非法状态码：', ' contains an invalid status code: ') + raw + '.');
+            markInvalid(codesInput, localeText('拦截状态码必须是 100 到 599 之间的整数。', 'Intercept status codes must be integers between 100 and 599.'));
           }
         });
         const minValue = readOptionalNumber(minInput);
         if (minValue !== null && minValue < 100) {
-          errors.push('Response Intercept ' + (idx + 1) + ' status code min must be at least 100.');
-          markInvalid(minInput, 'Intercept minimum status code must be between 100 and 599.');
+          errors.push(localeText('响应拦截规则 ', 'Response Intercept ') + (idx + 1) + localeText(' 的最小状态码必须大于等于 100。', ' status code min must be at least 100.'));
+          markInvalid(minInput, localeText('拦截最小状态码必须在 100 到 599 之间。', 'Intercept minimum status code must be between 100 and 599.'));
         }
       });
 
@@ -2448,40 +3156,40 @@ const adminHTMLTemplate = `<!doctype html>
 
         if (enabled) enabledCount++;
         if (!name) {
-          errors.push('Service Provider ' + (idx + 1) + ' requires a provider name.');
-          markInvalid(nameInput, 'Provider name is required.');
+          errors.push(localeText('服务商 ', 'Service Provider ') + (idx + 1) + localeText(' 必须填写名称。', ' requires a provider name.'));
+          markInvalid(nameInput, localeText('必须填写服务商名称。', 'Provider name is required.'));
         } else {
           const key = name.toLowerCase();
           if (seenNames.has(key)) {
-            errors.push('Duplicate provider name: ' + name + '.');
-            markInvalid(nameInput, 'Provider name must be unique.');
-            markInvalid(seenNames.get(key), 'Provider name must be unique.');
+            errors.push(localeText('服务商名称重复：', 'Duplicate provider name: ') + name + '.');
+            markInvalid(nameInput, localeText('服务商名称必须唯一。', 'Provider name must be unique.'));
+            markInvalid(seenNames.get(key), localeText('服务商名称必须唯一。', 'Provider name must be unique.'));
           } else {
             seenNames.set(key, nameInput);
           }
         }
         if (!baseURL || !isValidHTTPURL(baseURL)) {
-          errors.push('Service Provider ' + (idx + 1) + ' requires a valid http/https Base URL.');
-          markInvalid(baseURLInput, 'Base URL must start with http:// or https://.');
+          errors.push(localeText('服务商 ', 'Service Provider ') + (idx + 1) + localeText(' 必须填写有效的 http/https Base URL。', ' requires a valid http/https Base URL.'));
+          markInvalid(baseURLInput, localeText('Base URL 必须以 http:// 或 https:// 开头。', 'Base URL must start with http:// or https://.'));
         }
         if (providerClass !== 'free' && providerClass !== 'quota_limited') {
-          errors.push('Service Provider ' + (idx + 1) + ' provider class must be free or quota_limited.');
-          markInvalid(classInput, 'Provider class must be free or quota_limited.');
+          errors.push(localeText('服务商 ', 'Service Provider ') + (idx + 1) + localeText(' 的类别只能是 free 或 quota_limited。', ' provider class must be free or quota_limited.'));
+          markInvalid(classInput, localeText('服务商类别只能是 free 或 quota_limited。', 'Provider class must be free or quota_limited.'));
         }
         if (!String(keyInput?.value || '').trim()) {
-          warnings.push('Service Provider ' + (idx + 1) + ' has an empty API key.');
-          markInvalid(keyInput, 'API key is empty. Requests may fail if this upstream requires auth.', true);
+          warnings.push(localeText('服务商 ', 'Service Provider ') + (idx + 1) + localeText(' 的 API key 为空。', ' has an empty API key.'));
+          markInvalid(keyInput, localeText('API key 为空。如果该上游需要鉴权，请求可能失败。', 'API key is empty. Requests may fail if this upstream requires auth.'), true);
         }
         if (!models.length) {
-          warnings.push('Service Provider ' + (idx + 1) + ' has no model scope configured.');
-          markInvalid(modelsInput, 'No models configured. This provider will not match model-based routing.', true);
+          warnings.push(localeText('服务商 ', 'Service Provider ') + (idx + 1) + localeText(' 未配置模型范围。', ' has no model scope configured.'));
+          markInvalid(modelsInput, localeText('未配置模型范围，该服务商不会命中按模型路由。', 'No models configured. This provider will not match model-based routing.'), true);
         }
       });
 
       if (!upstreamCards.length) {
-        errors.push('At least one service provider is required.');
+        errors.push(localeText('至少需要一个服务商配置。', 'At least one service provider is required.'));
       } else if (enabledCount === 0) {
-        errors.push('At least one service provider must be enabled.');
+        errors.push(localeText('至少需要启用一个服务商。', 'At least one service provider must be enabled.'));
       }
 
       renderValidationSummary(errors, warnings);
@@ -2495,25 +3203,25 @@ const adminHTMLTemplate = `<!doctype html>
       const list = byId('bridgeRuleList');
       const items = rules || [];
       if (!items.length) {
-        list.innerHTML = '<div class="small">暂无桥接规则</div>';
+        list.innerHTML = '<div class="small">' + escapeHTML(t('noBridgeRules')) + '</div>';
         return;
       }
       list.innerHTML = items.map((rule, idx) => {
         return '' +
           '<div class="config-card" data-bridge-rule data-bridge-index="' + escapeHTML(idx) + '">' +
             '<div class="config-card-head">' +
-              '<div class="config-card-title">Bridge Rule ' + (idx + 1) + '</div>' +
+              '<div class="config-card-title">' + escapeHTML(t('bridgeRule', { index: idx + 1 })) + '</div>' +
               '<div class="config-actions">' +
-                '<button class="btn danger bridge-rule-remove" type="button">Remove</button>' +
+                '<button class="btn danger bridge-rule-remove" type="button">' + escapeHTML(t('remove')) + '</button>' +
               '</div>' +
             '</div>' +
             '<div class="config-grid">' +
               '<div class="config-field">' +
-                '<label>From</label>' +
+                '<label>' + escapeHTML(localeText('来源模型', 'From')) + '</label>' +
                 '<input type="text" class="bridge-from" placeholder="gpt-5.2" value="' + escapeHTML(rule.from || '') + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>To</label>' +
+                '<label>' + escapeHTML(localeText('目标模型', 'To')) + '</label>' +
                 '<input type="text" class="bridge-to" placeholder="gpt-5.4" value="' + escapeHTML(rule.to || '') + '">' +
               '</div>' +
             '</div>' +
@@ -2524,7 +3232,7 @@ const adminHTMLTemplate = `<!doctype html>
       const list = byId('interceptList');
       const items = rules || [];
       if (!items.length) {
-        list.innerHTML = '<div class="small">暂无拦截规则</div>';
+        list.innerHTML = '<div class="small">' + escapeHTML(t('noInterceptRules')) + '</div>';
         return;
       }
       list.innerHTML = items.map((rule, idx) => {
@@ -2533,38 +3241,38 @@ const adminHTMLTemplate = `<!doctype html>
         return '' +
           '<div class="config-card" data-intercept>' +
             '<div class="config-card-head">' +
-              '<div class="config-card-title">Rule ' + (idx + 1) + '</div>' +
+              '<div class="config-card-title">' + escapeHTML(t('rule', { index: idx + 1 })) + '</div>' +
               '<div class="config-actions">' +
-                '<label class="small"><input type="checkbox" class="intercept-enabled" ' + enabled + '> Enabled</label>' +
-                '<button class="btn danger intercept-remove" type="button">Remove</button>' +
+                '<label class="small"><input type="checkbox" class="intercept-enabled" ' + enabled + '> ' + escapeHTML(t('enabled')) + '</label>' +
+                '<button class="btn danger intercept-remove" type="button">' + escapeHTML(t('remove')) + '</button>' +
               '</div>' +
             '</div>' +
             '<div class="config-grid">' +
               '<div class="config-field">' +
-                '<label>Name</label>' +
+                '<label>' + escapeHTML(localeText('名称', 'Name')) + '</label>' +
                 '<input type="text" class="intercept-name" value="' + escapeHTML(rule.name || '') + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Action</label>' +
+                '<label>' + escapeHTML(localeText('动作', 'Action')) + '</label>' +
                 '<select class="intercept-action">' +
-                  '<option value="retry" ' + (action === 'retry' ? 'selected' : '') + '>retry</option>' +
-                  '<option value="fail" ' + (action === 'fail' ? 'selected' : '') + '>fail</option>' +
+                  '<option value="retry" ' + (action === 'retry' ? 'selected' : '') + '>' + escapeHTML(localeText('重试', 'retry')) + '</option>' +
+                  '<option value="fail" ' + (action === 'fail' ? 'selected' : '') + '>' + escapeHTML(localeText('失败', 'fail')) + '</option>' +
                 '</select>' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Paths</label>' +
+                '<label>' + escapeHTML(localeText('路径', 'Paths')) + '</label>' +
                 '<input type="text" class="intercept-paths" placeholder="/v1/responses, /v1/chat/*" value="' + escapeHTML(listToString(rule.paths || [])) + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Status Codes</label>' +
+                '<label>' + escapeHTML(localeText('状态码', 'Status Codes')) + '</label>' +
                 '<input type="text" class="intercept-codes" placeholder="429,502" value="' + escapeHTML(listToString(rule.status_codes || [])) + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Status Code Min</label>' +
+                '<label>' + escapeHTML(localeText('最小状态码', 'Status Code Min')) + '</label>' +
                 '<input type="number" min="0" class="intercept-min" value="' + (rule.status_code_min ?? '') + '">' +
               '</div>' +
               '<div class="config-field" style="grid-column: span 2;">' +
-                '<label>Message Keywords</label>' +
+                '<label>' + escapeHTML(localeText('消息关键字', 'Message Keywords')) + '</label>' +
                 '<textarea class="intercept-keywords" placeholder="upstream request failed">' + escapeHTML(keywordsToString(rule.message_keywords || [])) + '</textarea>' +
               '</div>' +
             '</div>' +
@@ -2617,33 +3325,33 @@ const adminHTMLTemplate = `<!doctype html>
       const probeValue = card.querySelector('.provider-summary-probe');
       if (pending) {
         if (probeValue) {
-          probeValue.textContent = 'testing';
+          probeValue.textContent = t('testing');
           probeValue.className = 'provider-summary-value provider-summary-probe probe-idle';
         }
-        host.innerHTML = '<div class="probe-status"><div class="probe-summary"><span class="status">testing</span><span class="small">正在探测 provider...</span></div></div>';
+        host.innerHTML = '<div class="probe-status"><div class="probe-summary"><span class="status">' + escapeHTML(t('testing')) + '</span><span class="small">' + escapeHTML(t('testingProvider')) + '</span></div></div>';
         return;
       }
       if (!result) {
         if (probeValue) {
-          probeValue.textContent = 'untested';
+          probeValue.textContent = t('untested');
           probeValue.className = 'provider-summary-value provider-summary-probe probe-idle';
         }
         host.innerHTML = '';
         return;
       }
       const kind = result.ok ? 'ok' : 'fail';
-      const state = result.ok ? '<span class="status">reachable</span>' : '<span class="status bad">failed</span>';
-      const target = result.target_url ? '<div class="small">Target · ' + escapeHTML(result.target_url) + '</div>' : '';
+      const state = result.ok ? '<span class="status">' + escapeHTML(t('reachable')) + '</span>' : '<span class="status bad">' + escapeHTML(t('failed')) + '</span>';
+      const target = result.target_url ? '<div class="small">' + escapeHTML(t('target')) + ' · ' + escapeHTML(result.target_url) + '</div>' : '';
       const preview = result.body_preview ? '<div class="probe-preview">' + escapeHTML(result.body_preview) + '</div>' : '';
       const detailBits = [
-        result.status_code ? '<span class="tag">status ' + escapeHTML(result.status_code) + '</span>' : '',
+        result.status_code ? '<span class="tag">' + escapeHTML(localeText('状态', 'status')) + ' ' + escapeHTML(result.status_code) + '</span>' : '',
         result.latency_ms ? '<span class="tag">' + escapeHTML(result.latency_ms) + ' ms</span>' : '',
         result.checked_at ? '<span class="tag">' + escapeHTML(relativeTime(result.checked_at)) + '</span>' : ''
       ].filter(Boolean).join('');
       if (probeValue) {
         const probeText = result.ok
-          ? ('ok' + (result.latency_ms ? ' · ' + result.latency_ms + ' ms' : ''))
-          : (result.status_code ? ('fail · ' + result.status_code) : 'failed');
+          ? (localeText('可达', 'ok') + (result.latency_ms ? ' · ' + result.latency_ms + ' ms' : ''))
+          : (result.status_code ? (t('failed') + ' · ' + result.status_code) : t('failed'));
         probeValue.textContent = probeText;
         probeValue.className = 'provider-summary-value provider-summary-probe ' + (result.ok ? 'probe-ok' : 'probe-fail');
       }
@@ -2658,23 +3366,23 @@ const adminHTMLTemplate = `<!doctype html>
       const list = byId('upstreamConfigList');
       const items = upstreams || [];
       if (!items.length) {
-        list.innerHTML = '<div class="small">暂无服务商配置</div>';
+        list.innerHTML = '<div class="small">' + escapeHTML(t('noProviders')) + '</div>';
         updateSettingsSummary();
         return;
       }
       list.innerHTML = items.map((upstream, idx) => {
         const enabled = upstream.enabled === false ? '' : 'checked';
-        const title = escapeHTML(upstream.name || ('Provider ' + (idx + 1)));
-        const base = escapeHTML(upstream.base_url || 'base url not set');
+        const title = escapeHTML(upstream.name || t('provider', { index: idx + 1 }));
+        const base = escapeHTML(upstream.base_url || (localeText('基础 URL 未设置', 'Base URL not set')));
         const providerClass = String(upstream.provider_class || 'quota_limited').trim() === 'free' ? 'free' : 'quota_limited';
         const models = upstream.models || [];
         const modelCount = models.length;
-        const modelPreview = escapeHTML(modelCount ? models.slice(0, 2).join(', ') + (modelCount > 2 ? ' +' + (modelCount - 2) : '') : 'unscoped');
-        const authMode = String(upstream.api_key || '').trim() ? 'token set' : 'no token';
+        const modelPreview = escapeHTML(modelCount ? models.slice(0, 2).join(', ') + (modelCount > 2 ? ' +' + (modelCount - 2) : '') : t('unscoped'));
+        const authMode = String(upstream.api_key || '').trim() ? t('tokenSet') : t('noToken');
         const collapsed = idx === 0 ? '' : ' collapsed';
         const enabledChip = upstream.enabled === false
-          ? '<span class="provider-chip warn">disabled</span>'
-          : '<span class="provider-chip accent">enabled</span>';
+          ? '<span class="provider-chip warn">' + escapeHTML(t('disabled')) + '</span>'
+          : '<span class="provider-chip accent">' + escapeHTML(t('enabled')) + '</span>';
         return '' +
           '<div class="config-card provider-card' + collapsed + '" data-upstream-config data-upstream-name="' + escapeHTML(String(upstream.name || '').toLowerCase()) + '" data-upstream-class="' + escapeHTML(providerClass) + '">' +
             '<div class="config-card-head">' +
@@ -2683,61 +3391,61 @@ const adminHTMLTemplate = `<!doctype html>
                 '<div class="config-help">' + base + '</div>' +
               '</div>' +
               '<div class="config-actions">' +
-                '<label class="small"><input type="checkbox" class="upstream-enabled" ' + enabled + '> Enabled</label>' +
-                '<button class="btn secondary upstream-toggle" type="button">' + (idx === 0 ? 'Collapse' : 'Expand') + '</button>' +
-                '<button class="btn secondary upstream-test" type="button">Probe</button>' +
-                '<button class="btn danger upstream-remove" type="button">Remove</button>' +
+                '<label class="small"><input type="checkbox" class="upstream-enabled" ' + enabled + '> ' + escapeHTML(t('enabled')) + '</label>' +
+                '<button class="btn secondary upstream-toggle" type="button">' + escapeHTML(idx === 0 ? t('collapse') : t('expand')) + '</button>' +
+                '<button class="btn secondary upstream-test" type="button">' + escapeHTML(t('probe')) + '</button>' +
+                '<button class="btn danger upstream-remove" type="button">' + escapeHTML(t('remove')) + '</button>' +
               '</div>' +
             '</div>' +
             '<div class="provider-summary-strip">' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Status</div><div class="provider-summary-value">' + enabledChip + '</div></div>' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Class</div><div class="provider-summary-value">' + escapeHTML(providerClass) + '</div></div>' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Models</div><div class="provider-summary-value">' + modelPreview + '</div></div>' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Count</div><div class="provider-summary-value">' + escapeHTML(modelCount) + '</div></div>' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Weight</div><div class="provider-summary-value">' + escapeHTML(upstream.weight ?? 0) + '</div></div>' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Timeout</div><div class="provider-summary-value">' + escapeHTML(upstream.timeout_ms ?? 0) + ' ms</div></div>' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Auth</div><div class="provider-summary-value">' + escapeHTML(authMode) + '</div></div>' +
-              '<div class="provider-summary-item"><div class="provider-summary-label">Probe</div><div class="provider-summary-value provider-summary-probe probe-idle">untested</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('status')) + '</div><div class="provider-summary-value">' + enabledChip + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('class')) + '</div><div class="provider-summary-value">' + escapeHTML(providerClassLabel(providerClass)) + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('models')) + '</div><div class="provider-summary-value">' + modelPreview + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('count')) + '</div><div class="provider-summary-value">' + escapeHTML(modelCount) + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('weight')) + '</div><div class="provider-summary-value">' + escapeHTML(upstream.weight ?? 0) + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('timeout')) + '</div><div class="provider-summary-value">' + escapeHTML(upstream.timeout_ms ?? 0) + ' ms</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('auth')) + '</div><div class="provider-summary-value">' + escapeHTML(authMode) + '</div></div>' +
+              '<div class="provider-summary-item"><div class="provider-summary-label">' + escapeHTML(t('probe')) + '</div><div class="provider-summary-value provider-summary-probe probe-idle">' + escapeHTML(t('untested')) + '</div></div>' +
             '</div>' +
             '<div class="config-grid">' +
               '<div class="config-field">' +
-                '<label>Provider Name</label>' +
+                '<label>' + escapeHTML(t('providerName')) + '</label>' +
                 '<input type="text" class="upstream-name" value="' + escapeHTML(upstream.name || '') + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Base URL</label>' +
+                '<label>' + escapeHTML(t('baseUrl')) + '</label>' +
                 '<input type="text" class="upstream-base-url" placeholder="https://api.example.com" value="' + escapeHTML(upstream.base_url || '') + '">' +
               '</div>' +
               '<div class="config-field" style="grid-column: span 2;">' +
-                '<label>API Key</label>' +
+                '<label>' + escapeHTML(t('apiKey')) + '</label>' +
                 '<input type="text" class="upstream-api-key" placeholder="sk-..." value="' + escapeHTML(upstream.api_key || '') + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Provider Class</label>' +
+                '<label>' + escapeHTML(t('providerClass')) + '</label>' +
                 '<select class="upstream-provider-class">' +
-                  '<option value="free" ' + (providerClass === 'free' ? 'selected' : '') + '>free</option>' +
-                  '<option value="quota_limited" ' + (providerClass === 'quota_limited' ? 'selected' : '') + '>quota_limited</option>' +
+                  '<option value="free" ' + (providerClass === 'free' ? 'selected' : '') + '>' + escapeHTML(t('freeFirst')) + '</option>' +
+                  '<option value="quota_limited" ' + (providerClass === 'quota_limited' ? 'selected' : '') + '>' + escapeHTML(t('quotaLimited')) + '</option>' +
                 '</select>' +
-                '<div class="config-help">free 先选；命中拥塞后再回退到 quota_limited。</div>' +
+                '<div class="config-help">' + escapeHTML(t('providerClassHelp')) + '</div>' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Models</label>' +
+                '<label>' + escapeHTML(t('modelsLabel')) + '</label>' +
                 '<textarea class="upstream-models" placeholder="gpt-5.2&#10;gpt-5.2-codex">' + escapeHTML((upstream.models || []).join("\n")) + '</textarea>' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Headers</label>' +
+                '<label>' + escapeHTML(t('headersLabel')) + '</label>' +
                 '<textarea class="upstream-headers" placeholder="X-Org: demo&#10;X-Region: cn">' + escapeHTML(headersToString(upstream.headers || {})) + '</textarea>' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Weight</label>' +
+                '<label>' + escapeHTML(t('weight')) + '</label>' +
                 '<input type="number" min="0" class="upstream-weight" value="' + (upstream.weight ?? 0) + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Timeout (ms)</label>' +
+                '<label>' + escapeHTML(t('timeout')) + ' (ms)</label>' +
                 '<input type="number" min="0" class="upstream-timeout" value="' + (upstream.timeout_ms ?? 0) + '">' +
               '</div>' +
               '<div class="config-field">' +
-                '<label>Same Upstream Retries</label>' +
+                '<label>' + escapeHTML(t('sameUpstreamRetries')) + '</label>' +
                 '<input type="number" min="0" class="upstream-same-retries" value="' + (upstream.same_upstream_retries ?? 0) + '">' +
               '</div>' +
             '</div>' +
@@ -2755,7 +3463,7 @@ const adminHTMLTemplate = `<!doctype html>
       const items = versions || [];
       configHistoryVersionCount = items.length;
       if (!items.length) {
-        list.innerHTML = '<div class="small">暂无历史版本</div>';
+        list.innerHTML = '<div class="small">' + escapeHTML(t('noHistoryVersions')) + '</div>';
         byId('configDiffPreview').innerHTML = '';
         updateSettingsSummary();
         return;
@@ -2764,12 +3472,12 @@ const adminHTMLTemplate = `<!doctype html>
         return '' +
           '<div class="history-item">' +
             '<div class="history-meta">' +
-              '<div class="history-name">' + escapeHTML(item.filename || item.id || ('Version ' + (idx + 1))) + '</div>' +
-              '<div class="small">saved ' + escapeHTML(relativeTime(item.created_at)) + ' · ' + escapeHTML(fmtBytes(item.size)) + '</div>' +
+              '<div class="history-name">' + escapeHTML(item.filename || item.id || t('version', { index: idx + 1 })) + '</div>' +
+              '<div class="small">' + escapeHTML(t('savedAt')) + ' ' + escapeHTML(relativeTime(item.created_at)) + ' · ' + escapeHTML(fmtBytes(item.size)) + '</div>' +
             '</div>' +
             '<div class="config-actions">' +
-              '<button class="btn secondary history-preview" type="button" data-version-id="' + escapeHTML(item.id || '') + '">Preview</button>' +
-              '<button class="btn danger history-rollback" type="button" data-version-id="' + escapeHTML(item.id || '') + '">Rollback</button>' +
+              '<button class="btn secondary history-preview" type="button" data-version-id="' + escapeHTML(item.id || '') + '">' + escapeHTML(t('preview')) + '</button>' +
+              '<button class="btn danger history-rollback" type="button" data-version-id="' + escapeHTML(item.id || '') + '">' + escapeHTML(t('rollbackConfig')) + '</button>' +
             '</div>' +
           '</div>';
       }).join('') + '</div>';
@@ -2785,13 +3493,13 @@ const adminHTMLTemplate = `<!doctype html>
       host.innerHTML = '' +
         '<div class="config-card" style="margin-top: 12px;">' +
           '<div class="config-card-head">' +
-            '<div class="config-card-title">Diff Preview</div>' +
+            '<div class="config-card-title">' + escapeHTML(localeText('差异预览', 'Diff Preview')) + '</div>' +
             '<div class="config-help">' + escapeHTML(payload.version?.filename || '') + '</div>' +
           '</div>' +
           '<div class="diff-summary">' +
-            '<span class="tag accent">+' + escapeHTML(summary.added_lines || 0) + ' added</span>' +
-            '<span class="tag">' + escapeHTML(summary.removed_lines || 0) + ' removed</span>' +
-            '<span class="tag">' + escapeHTML(summary.changed_blocks || 0) + ' changed blocks</span>' +
+            '<span class="tag accent">+' + escapeHTML(summary.added_lines || 0) + ' ' + escapeHTML(t('added')) + '</span>' +
+            '<span class="tag">' + escapeHTML(summary.removed_lines || 0) + ' ' + escapeHTML(t('removed')) + '</span>' +
+            '<span class="tag">' + escapeHTML(summary.changed_blocks || 0) + ' ' + escapeHTML(t('changedBlocks')) + '</span>' +
           '</div>' +
           '<div class="diff-shell"><div class="diff-lines">' +
             payload.lines.map((line) => {
@@ -2815,19 +3523,21 @@ const adminHTMLTemplate = `<!doctype html>
         renderConfigDiffPreview(null);
         return;
       }
-      byId('configHint').textContent = 'Loading diff...';
+      byId('configHint').textContent = t('loadingDiff');
       try {
         const payload = await apiJSON('/-/admin/config/history/' + encodeURIComponent(versionId) + '/diff');
         renderConfigDiffPreview(payload);
-        byId('configHint').textContent = 'Diff loaded';
+        byId('configHint').textContent = t('diffLoaded');
       } catch (err) {
-        byId('configHint').textContent = String(err?.message || err || 'Load diff failed');
+        byId('configHint').textContent = String(err?.message || err || t('loadDiffFailed'));
       }
     };
     const loadConfig = async () => {
-      byId('configStatus').textContent = '加载中';
+      byId('configStatus').textContent = t('loading');
       try {
         const cfg = await apiJSON('/-/admin/config');
+        setLocale(cfg.admin?.language || currentLocale);
+        if (byId('cfgAdminLanguage')) byId('cfgAdminLanguage').value = cfg.admin?.language || currentLocale;
         byId('cfgHealthEnabled').checked = !!cfg.health?.enabled;
         byId('cfgHealthInterval').value = cfg.health?.interval_sec ?? 0;
         byId('cfgHealthTimeout').value = cfg.health?.timeout_ms ?? 0;
@@ -2859,17 +3569,17 @@ const adminHTMLTemplate = `<!doctype html>
         clearValidationState();
         loadedConfigSnapshot = JSON.stringify(buildConfigPayload());
         updateSettingsSummary();
-        byId('configStatus').textContent = '已载入';
-        setConfigHintState('Config synced', 'saved');
+        byId('configStatus').textContent = t('loaded');
+        setConfigHintState(t('configSynced'), 'saved');
       } catch (err) {
-        byId('configStatus').textContent = '配置载入失败';
-        setConfigHintState(String(err?.message || err || 'Load config failed'));
+        byId('configStatus').textContent = t('loadConfigFailed');
+        setConfigHintState(String(err?.message || err || t('loadConfigFailed')));
       }
     };
     const testUpstreamCard = async (card) => {
       if (!card) return;
       renderUpstreamProbe(card, null, true);
-      setConfigHintState('Testing provider...');
+      setConfigHintState(t('testingProvider'));
       try {
         const payload = await apiJSON('/-/admin/upstreams/test', {
           method: 'POST',
@@ -2877,21 +3587,21 @@ const adminHTMLTemplate = `<!doctype html>
           body: JSON.stringify({ upstream: collectUpstreamCard(card) })
         });
         renderUpstreamProbe(card, payload, false);
-        setConfigHintState(payload.ok ? 'Provider test passed' : 'Provider test failed', payload.ok ? 'saved' : '');
+        setConfigHintState(payload.ok ? t('providerTestPassed') : t('providerTestFailed'), payload.ok ? 'saved' : '');
       } catch (err) {
-        renderUpstreamProbe(card, { ok: false, error: String(err?.message || err || 'probe failed') }, false);
-        setConfigHintState(String(err?.message || err || 'Provider test failed'));
+        renderUpstreamProbe(card, { ok: false, error: String(err?.message || err || localeText('探测失败', 'probe failed')) }, false);
+        setConfigHintState(String(err?.message || err || t('providerTestFailed')));
       }
     };
     const saveConfig = async () => {
       const validation = validateConfigForm();
       if (!validation.valid) {
-        setConfigHintState('Fix validation errors before saving');
+        setConfigHintState(t('fixValidationErrors'));
         return;
       }
       const payload = buildConfigPayload();
 
-      setConfigHintState('Saving...');
+      setConfigHintState(t('saving'));
       try {
         await apiJSON('/-/admin/config', {
           method: 'PUT',
@@ -2899,9 +3609,9 @@ const adminHTMLTemplate = `<!doctype html>
           body: JSON.stringify(payload)
         });
         await loadConfig();
-        setConfigHintState('Saved', 'saved');
+        setConfigHintState(t('saved'), 'saved');
       } catch (err) {
-        setConfigHintState(String(err?.message || err || 'Save failed'));
+        setConfigHintState(String(err?.message || err || t('saveFailed')));
       }
     };
     const exportConfig = () => {
@@ -2909,12 +3619,12 @@ const adminHTMLTemplate = `<!doctype html>
     };
     const rollbackConfig = async (versionId = '') => {
       const confirmText = versionId
-        ? 'Rollback to the selected config version?'
-        : 'Rollback to the latest saved config version?';
+        ? t('rollbackSelectedConfirm')
+        : t('rollbackLatestConfirm');
       if (!window.confirm(confirmText)) {
         return;
       }
-      setConfigHintState('Rolling back...');
+      setConfigHintState(t('rollingBack'));
       try {
         await apiJSON('/-/admin/config/rollback', {
           method: 'POST',
@@ -2922,9 +3632,9 @@ const adminHTMLTemplate = `<!doctype html>
           body: JSON.stringify({ version_id: versionId })
         });
         await loadConfig();
-        setConfigHintState('Rolled back', 'saved');
+        setConfigHintState(t('rolledBack'), 'saved');
       } catch (err) {
-        setConfigHintState(String(err?.message || err || 'Rollback failed'));
+        setConfigHintState(String(err?.message || err || t('rollbackFailed')));
       }
     };
     document.addEventListener('click', (event) => {
@@ -2935,21 +3645,21 @@ const adminHTMLTemplate = `<!doctype html>
         byId('cfgBridgeEnabled').checked = true;
         clearValidationState();
         updateSettingsSummary();
-        setConfigHintState('Applied GPT-5.x bridge preset', 'dirty');
+        setConfigHintState(t('appliedBridgePreset'), 'dirty');
       }
       if (button && button.id === 'retryModePresetBounded') {
         event.preventDefault();
         byId('cfgRetryInfiniteOnError').checked = false;
         clearValidationState();
         updateSettingsSummary();
-        setConfigHintState('Applied bounded failover preset', 'dirty');
+        setConfigHintState(t('appliedBoundedPreset'), 'dirty');
       }
       if (button && button.id === 'retryModePresetInfinite') {
         event.preventDefault();
         byId('cfgRetryInfiniteOnError').checked = true;
         clearValidationState();
         updateSettingsSummary();
-        setConfigHintState('Applied infinite recovery preset', 'dirty');
+        setConfigHintState(t('appliedInfinitePreset'), 'dirty');
       }
       if (button && button.id === 'addBridgeRule') {
         event.preventDefault();
@@ -2977,7 +3687,7 @@ const adminHTMLTemplate = `<!doctype html>
         if (card) {
           card.remove();
           if (!document.querySelector('[data-intercept]')) {
-            byId('interceptList').innerHTML = '<div class="small">暂无拦截规则</div>';
+            byId('interceptList').innerHTML = '<div class="small">' + escapeHTML(t('noInterceptRules')) + '</div>';
           }
           clearValidationState();
         }
@@ -2988,7 +3698,7 @@ const adminHTMLTemplate = `<!doctype html>
         if (card) {
           card.remove();
           if (!document.querySelector('[data-bridge-rule]')) {
-            byId('bridgeRuleList').innerHTML = '<div class="small">暂无桥接规则</div>';
+            byId('bridgeRuleList').innerHTML = '<div class="small">' + escapeHTML(t('noBridgeRules')) + '</div>';
           }
           clearValidationState();
           updateSettingsSummary();
@@ -3000,7 +3710,7 @@ const adminHTMLTemplate = `<!doctype html>
         if (card) {
           card.remove();
           if (!document.querySelector('[data-upstream-config]')) {
-            byId('upstreamConfigList').innerHTML = '<div class="small">暂无服务商配置</div>';
+            byId('upstreamConfigList').innerHTML = '<div class="small">' + escapeHTML(t('noProviders')) + '</div>';
           }
           updateSettingsSummary();
           clearValidationState();
@@ -3070,10 +3780,16 @@ const adminHTMLTemplate = `<!doctype html>
         updateSettingsSummary();
         return;
       }
+      if (event.target && event.target.id === 'cfgAdminLanguage') {
+        setLocale(event.target.value || currentLocale);
+        updateSettingsSummary();
+        setConfigHintState(t('unsavedChanges'), 'dirty');
+        return;
+      }
       if (event.target && event.target.closest('.config-panel')) {
         updateSettingsSummary();
         clearValidationState();
-        setConfigHintState('Unsaved changes', 'dirty');
+        setConfigHintState(t('unsavedChanges'), 'dirty');
       }
     });
     document.addEventListener('change', (event) => {
@@ -3082,12 +3798,19 @@ const adminHTMLTemplate = `<!doctype html>
         updateSettingsSummary();
         return;
       }
+      if (event.target && event.target.id === 'cfgAdminLanguage') {
+        setLocale(event.target.value || currentLocale);
+        updateSettingsSummary();
+        setConfigHintState(t('unsavedChanges'), 'dirty');
+        return;
+      }
       if (event.target && event.target.closest('.config-panel')) {
         updateSettingsSummary();
         clearValidationState();
-        setConfigHintState('Unsaved changes', 'dirty');
+        setConfigHintState(t('unsavedChanges'), 'dirty');
       }
     });
+    applyStaticLocale();
     ensureSectionControls();
     revealSettingsIfHash();
     window.addEventListener('scroll', updateActiveSettingsNav, { passive: true });
@@ -3344,10 +4067,10 @@ const adminHTMLTemplate = `<!doctype html>
         const latVals = buckets.map(b => b.avg_latency_ms);
         const srVals = buckets.map(b => b.requests > 0 ? (b.successes / b.requests) * 100 : 0);
         drawLineChart('chartLatency', 'tipLatency', [
-          { name: 'Avg Latency (ms)', values: latVals, labels, color: CHART_COLORS[3] },
-          { name: 'Success %', values: srVals, labels, color: CHART_COLORS[0] },
+          { name: localeText('平均延迟 (ms)', 'Avg Latency (ms)'), values: latVals, labels, color: CHART_COLORS[3] },
+          { name: localeText('成功率 %', 'Success %'), values: srVals, labels, color: CHART_COLORS[0] },
         ], { area: false, fmtVal: (v) => v.toFixed(1) });
-        renderLegend('legendLatency', [['Avg Latency (ms)', CHART_COLORS[3]], ['Success %', CHART_COLORS[0]]]);
+        renderLegend('legendLatency', [[localeText('平均延迟 (ms)', 'Avg Latency (ms)'), CHART_COLORS[3]], [localeText('成功率 %', 'Success %'), CHART_COLORS[0]]]);
 
         // Token by upstream stacked bar
         const allUpstreams = new Set();
@@ -3359,9 +4082,11 @@ const adminHTMLTemplate = `<!doctype html>
 
         // Success / failure stacked bar
         const sfLabels = labels;
-        const sfStack = buckets.map(b => ({ 'Success': b.successes, 'Failure': b.failures }));
-        drawStackedBarChart('chartSuccess', 'tipSuccess', sfLabels, sfStack, ['Success', 'Failure']);
-        renderLegend('legendSuccess', [['Success', CHART_COLORS[0]], ['Failure', CHART_COLORS[3]]]);
+        const successLabel = localeText('成功', 'Success');
+        const failureLabel = localeText('失败', 'Failure');
+        const sfStack = buckets.map(b => ({ [successLabel]: b.successes, [failureLabel]: b.failures }));
+        drawStackedBarChart('chartSuccess', 'tipSuccess', sfLabels, sfStack, [successLabel, failureLabel]);
+        renderLegend('legendSuccess', [[successLabel, CHART_COLORS[0]], [failureLabel, CHART_COLORS[3]]]);
       } catch (err) {
         // silently ignore chart load errors
       }
@@ -3396,91 +4121,98 @@ const adminHTMLTemplate = `<!doctype html>
       const upstreamStatuses = data.upstreams || {};
       const upstreamUsageEntries = Object.entries(data.telemetry.by_upstream || {});
       const runtime = data.runtime || {};
-      const recoveryMode = runtime.retry_infinite_on_error ? 'always recover' : 'bounded';
+      const recoveryMode = runtime.retry_infinite_on_error ? localeText('无限恢复', 'always recover') : localeText('有界', 'bounded');
       const enabledRuntimeUpstreams = Number(runtime.enabled_upstreams || 0);
       const totalRuntimeUpstreams = Number(runtime.total_upstreams || 0);
       const runtimeHealthPath = String(runtime.health_path || '').trim() || '/v1/models';
       const runtimeStrategy = String(runtime.router_strategy || data.router_strategy || 'health_weighted_rr');
 
-      document.getElementById('generatedAt').textContent = 'Updated ' + new Date(data.generated_at).toLocaleString();
+      document.getElementById('generatedAt').textContent = localeText('更新于 ', 'Updated ') + new Date(data.generated_at).toLocaleString(currentLocale === 'en' ? 'en-US' : 'zh-CN');
       document.getElementById('pricingSource').innerHTML = pricing.source_url
-        ? 'Official pricing: <a href="' + pricing.source_url + '" target="_blank" rel="noreferrer">OpenAI</a>' + (pricing.updated_at ? ' · ' + relativeTime(pricing.updated_at) : '')
-        : 'Official pricing unavailable';
-      const overallSuccessRate = (summary.total_requests || 0) > 0 ? ((summary.successes || 0) / summary.total_requests) * 100 : 0;
+        ? localeText('官方价格：', 'Official pricing: ') + '<a href="' + pricing.source_url + '" target="_blank" rel="noreferrer">OpenAI</a>' + (pricing.updated_at ? ' · ' + relativeTime(pricing.updated_at) : '')
+        : t('officialPriceUnavailable');
       const overallCacheRate = cacheHitRate(summary);
       const dayCacheRate = cacheHitRate(dayWindow);
       const avgCostPerRequest = (summary.total_requests || 0) > 0 ? (pricingSummary.total_usd || 0) / summary.total_requests : 0;
       const degradedUpstreams = Object.values(upstreamStatuses).filter((status) => status && !status.healthy).length;
       const recent503 = recentRequests.filter((item) => Number(item.status_code || 0) === 503).length;
+      const heroPriority = document.getElementById('heroPriority');
+      if (heroPriority) {
+        heroPriority.innerHTML = [
+          surfaceCard(localeText('1 分钟吞吐', '1m Throughput'), fmtRate(oneMinute.rpm) + ' RPM', fmtRate(oneMinute.tpm) + ' TPM', 'tone-good'),
+          surfaceCard(localeText('1 分钟延迟', '1m Latency'), fmtMs(oneMinute.avg_latency_ms || 0), fmtPct(oneMinute.success_rate || 0) + localeText(' 成功率', ' success'), (oneMinute.avg_latency_ms || 0) > 4000 ? 'tone-warn' : ''),
+          surfaceCard(localeText('退化上游', 'Degraded Upstreams'), fmt.format(degradedUpstreams), fmt.format(Math.max(Object.keys(upstreamStatuses).length - degradedUpstreams, 0)) + localeText(' 条健康', ' healthy'), degradedUpstreams ? 'tone-danger' : 'tone-good'),
+          surfaceCard(localeText('最近 503', 'Recent 503'), fmt.format(recent503), recent503 ? localeText('最近样本里出现了 503 压力。', 'Latest sample contains 503 pressure') : localeText('最近样本里没有 503。', 'No recent 503 in latest sample'), recent503 ? 'tone-warn' : 'tone-good'),
+        ].join('');
+      }
       document.getElementById('runtimeTopline').innerHTML = [
         surfaceCard(
-          'Recovery Mode',
+          localeText('恢复模式', 'Recovery Mode'),
           recoveryMode,
-          runtime.retry_infinite_on_error ? 'Retries transport, status, and intercepted body failures until the caller cancels.' : 'Retries only matched retryable failures before exiting.',
+          runtime.retry_infinite_on_error
+            ? localeText('传输、状态码和拦截到的响应体错误都会持续重试，直到调用方取消。', 'Retries transport, status, and intercepted body failures until the caller cancels.')
+            : localeText('只有命中可重试失败时才会继续，达到边界后退出。', 'Retries only matched retryable failures before exiting.'),
           runtime.retry_infinite_on_error ? 'tone-good' : 'tone-warn'
         ),
         surfaceCard(
-          'Failure Exit',
-          runtime.retry_infinite_on_error ? 'suppressed' : ('after ' + fmt.format(runtime.failure_passthrough_after_sec || 0) + ' s'),
-          runtime.retry_infinite_on_error ? 'Infinite mode bypasses the upstream passthrough window.' : 'Retryable failures can surface after the configured window.',
-          runtime.retry_infinite_on_error ? 'tone-warn' : 'tone-good'
-        ),
-        surfaceCard(
-          'Health Probe',
-          runtime.health_enabled ? 'armed' : 'disabled',
-          runtime.health_enabled ? runtimeHealthPath : 'No active health polling',
+          localeText('探活状态', 'Health Probe'),
+          runtime.health_enabled ? localeText('已启用', 'armed') : t('disabled'),
+          runtime.health_enabled ? runtimeHealthPath : localeText('当前未启用主动探活。', 'No active health polling'),
           runtime.health_enabled ? 'tone-good' : 'tone-warn'
         ),
       ].join('');
       document.getElementById('runtimeMetrics').innerHTML = [
-        ['Router Strategy', runtimeStrategy, fmt.format(runtime.max_retries || 0) + ' max retries configured'],
-        ['Recovery Ceiling', runtime.retry_infinite_on_error ? 'client cancel' : (fmt.format(runtime.max_retries || 0) + ' retries'), runtime.retry_infinite_on_error ? 'Infinite mode ignores the max retry ceiling.' : 'Bounded failover window.'],
-        ['Backoff', fmt.format(runtime.retry_backoff_ms || 0) + ' -> ' + fmt.format(runtime.retry_backoff_max_ms || 0) + ' ms', 'Exponential retry backoff remains active in both modes.'],
-        ['Providers', fmt.format(enabledRuntimeUpstreams) + ' enabled', fmt.format(Math.max(totalRuntimeUpstreams - enabledRuntimeUpstreams, 0)) + ' disabled · ' + (runtime.bridge_enabled ? 'bridge on' : 'bridge off')],
+        [localeText('路由策略', 'Router Strategy'), runtimeStrategy, fmt.format(runtime.max_retries || 0) + localeText(' 次最大重试', ' max retries configured')],
+        [localeText('恢复上限', 'Recovery Ceiling'), runtime.retry_infinite_on_error ? localeText('由客户端取消', 'client cancel') : (fmt.format(runtime.max_retries || 0) + localeText(' 次重试', ' retries')), runtime.retry_infinite_on_error ? localeText('无限模式会忽略最大重试上限。', 'Infinite mode ignores the max retry ceiling.') : localeText('当前为有界故障转移窗口。', 'Bounded failover window.')],
+        [localeText('服务商', 'Providers'), fmt.format(enabledRuntimeUpstreams) + ' ' + localeText('已启用', 'enabled'), fmt.format(Math.max(totalRuntimeUpstreams - enabledRuntimeUpstreams, 0)) + ' ' + localeText('已停用', 'disabled') + ' · ' + (runtime.bridge_enabled ? localeText('桥接开启', 'bridge on') : localeText('桥接关闭', 'bridge off'))],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
       document.getElementById('performanceMeta').innerHTML = [
         miniChip('1m RPM', fmtRate(oneMinute.rpm), 'accent'),
-        miniChip('1m TPM', fmtRate(oneMinute.tpm)),
-        miniChip('1m Latency', fmtMs(oneMinute.avg_latency_ms || 0), oneMinute.avg_latency_ms > 4000 ? 'warn' : ''),
+        miniChip(localeText('1 分钟成功率', '1m Success'), fmtPct(oneMinute.success_rate || 0), (oneMinute.success_rate || 0) < 95 ? 'warn' : 'accent'),
+        miniChip(localeText('1 分钟延迟', '1m Latency'), fmtMs(oneMinute.avg_latency_ms || 0), oneMinute.avg_latency_ms > 4000 ? 'warn' : ''),
       ].join('');
 
       document.getElementById('metrics').innerHTML = [
-        ['Requests', fmt.format(summary.total_requests || 0), fmt.format(summary.successes || 0) + ' success / ' + fmt.format(summary.failures || 0) + ' fail'],
-        ['Total Tokens', fmt.format(summary.total_tokens || 0), fmt.format(summary.prompt_tokens || 0) + ' prompt / ' + fmt.format(summary.completion_tokens || 0) + ' completion'],
-        ['1m Window', fmtRate(oneMinute.rpm) + ' RPM', fmtRate(oneMinute.tpm) + ' TPM'],
-        ['5m Window', fmtRate(fiveMinute.rpm) + ' RPM', fmtRate(fiveMinute.tpm) + ' TPM'],
-        ['1m Success', fmtPct(oneMinute.success_rate), fmtMs(oneMinute.avg_latency_ms)],
-        ['5m Success', fmtPct(fiveMinute.success_rate), fmtMs(fiveMinute.avg_latency_ms)],
-        ['1m Requests', fmt.format(oneMinute.requests || 0), fmt.format(oneMinute.failures || 0) + ' failures'],
-        ['5m Requests', fmt.format(fiveMinute.requests || 0), fmt.format(fiveMinute.failures || 0) + ' failures'],
+        [localeText('1 分钟吞吐', '1m Throughput'), fmtRate(oneMinute.rpm) + ' RPM', fmtRate(oneMinute.tpm) + ' TPM'],
+        [localeText('1 分钟成功率', '1m Success'), fmtPct(oneMinute.success_rate), fmtMs(oneMinute.avg_latency_ms)],
+        [localeText('5 分钟吞吐', '5m Throughput'), fmtRate(fiveMinute.rpm) + ' RPM', fmtRate(fiveMinute.tpm) + ' TPM'],
+        [localeText('5 分钟成功率', '5m Success'), fmtPct(fiveMinute.success_rate), fmtMs(fiveMinute.avg_latency_ms)],
+        [localeText('1 分钟请求数', '1m Requests'), fmt.format(oneMinute.requests || 0), fmt.format(oneMinute.failures || 0) + localeText(' 次失败', ' failures')],
+        [localeText('5 分钟请求数', '5m Requests'), fmt.format(fiveMinute.requests || 0), fmt.format(fiveMinute.failures || 0) + localeText(' 次失败', ' failures')],
+        [localeText('总请求数', 'Total Requests'), fmt.format(summary.total_requests || 0), fmt.format(summary.successes || 0) + localeText(' 成功 / ', ' success / ') + fmt.format(summary.failures || 0) + localeText(' 失败', ' fail')],
+        [localeText('总 Token', 'Total Tokens'), fmt.format(summary.total_tokens || 0), fmt.format(summary.prompt_tokens || 0) + localeText(' 提示词 / ', ' prompt / ') + fmt.format(summary.completion_tokens || 0) + localeText(' 补全', ' completion')],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
 
       document.getElementById('costMetrics').innerHTML = [
-        ['Estimated Cost', fmtMoney(pricingSummary.total_usd || 0), fmtMoney(pricingSummary.prompt_usd || 0) + ' input / ' + fmtMoney(pricingSummary.completion_usd || 0) + ' output'],
-        ['Priced Models', fmt.format(pricingSummary.priced_models || 0), fmt.format(pricingSummary.unpriced_models || 0) + ' unpriced'],
-        ['Cached Prompt', fmt.format(pricingSummary.cached_prompt_tokens || 0), fmtMoney(pricingSummary.cache_savings_usd || 0) + ' saved'],
-        ['Cache Hit', cacheHitRate(summary) === null ? 'n/a' : fmtPct(cacheHitRate(summary)), fmt.format(summary.cached_prompt_tokens || 0) + ' / ' + fmt.format(summary.prompt_tokens || 0) + ' prompt tokens'],
+        [localeText('估算成本', 'Estimated Cost'), fmtMoney(pricingSummary.total_usd || 0), fmtMoney(pricingSummary.prompt_usd || 0) + localeText(' 输入 / ', ' input / ') + fmtMoney(pricingSummary.completion_usd || 0) + localeText(' 输出', ' output')],
+        [localeText('已定价模型', 'Priced Models'), fmt.format(pricingSummary.priced_models || 0), fmt.format(pricingSummary.unpriced_models || 0) + localeText(' 个未定价', ' unpriced')],
+        [localeText('缓存提示词', 'Cached Prompt'), fmt.format(pricingSummary.cached_prompt_tokens || 0), fmtMoney(pricingSummary.cache_savings_usd || 0) + localeText(' 已节省', ' saved')],
+        [localeText('缓存命中', 'Cache Hit'), overallCacheRate === null ? localeText('无', 'n/a') : fmtPct(overallCacheRate), fmt.format(summary.cached_prompt_tokens || 0) + ' / ' + fmt.format(summary.prompt_tokens || 0) + localeText(' 提示词 token', ' prompt tokens')],
+        [localeText('1 小时缓存命中', '1h Cache Hit'), cacheHitRate(oneHour) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(oneHour)), cacheTrendDetail(oneHour)],
+        [localeText('24 小时缓存命中', '24h Cache Hit'), cacheHitRate(dayWindow) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(dayWindow)), cacheTrendDetail(dayWindow)],
       ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
       document.getElementById('costMeta').innerHTML = [
-        miniChip('Total', compactUsd(pricingSummary.total_usd || 0), 'accent'),
-        miniChip('Saved', compactUsd(pricingSummary.cache_savings_usd || 0), pricingSummary.cache_savings_usd > 0 ? 'accent' : ''),
+        miniChip(localeText('总额', 'Total'), compactUsd(pricingSummary.total_usd || 0), 'accent'),
+        miniChip(localeText('已节省', 'Saved'), compactUsd(pricingSummary.cache_savings_usd || 0), pricingSummary.cache_savings_usd > 0 ? 'accent' : ''),
         miniChip('Avg / 1k', compactUsd(avgCostPerRequest * 1000)),
       ].join('');
 
       const topCostModel = pricingModels.slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0))[0];
       const topEconomics = pricingModels.slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0)).slice(0, 3);
       document.getElementById('economicsMeta').innerHTML = [
-        miniChip('Priced', fmt.format(pricingSummary.priced_models || 0), 'accent'),
-        miniChip('Unpriced', fmt.format(pricingSummary.unpriced_models || 0), pricingSummary.unpriced_models ? 'warn' : ''),
-        miniChip('Top Spend', topCostModel ? ((topCostModel.display_model || '-') + ' · ' + compactUsd(topCostModel.cost?.total_usd || 0)) : 'n/a'),
+        miniChip(localeText('已定价', 'Priced'), fmt.format(pricingSummary.priced_models || 0), 'accent'),
+        miniChip(localeText('未定价', 'Unpriced'), fmt.format(pricingSummary.unpriced_models || 0), pricingSummary.unpriced_models ? 'warn' : ''),
+        miniChip(localeText('最高花费', 'Top Spend'), topCostModel ? ((topCostModel.display_model || '-') + ' · ' + compactUsd(topCostModel.cost?.total_usd || 0)) : localeText('无', 'n/a')),
       ].join('');
       document.getElementById('economicsTopline').innerHTML = topEconomics.length
         ? topEconomics.map((item, idx) => surfaceCard(
-            'Top Model ' + (idx + 1),
+            localeText('重点模型 ', 'Top Model ') + (idx + 1),
             item.display_model || '-',
-            compactUsd(item.cost?.total_usd || 0) + ' · ' + fmt.format(item.usage?.total_tokens || 0) + ' tokens'
+            compactUsd(item.cost?.total_usd || 0) + ' · ' + fmt.format(item.usage?.total_tokens || 0) + localeText(' token', ' tokens')
           )).join('')
-        : surfaceCard('Top Model 1', 'n/a', 'No priced usage yet') + surfaceCard('Top Model 2', 'n/a', 'No priced usage yet') + surfaceCard('Top Model 3', 'n/a', 'No priced usage yet');
+        : surfaceCard(localeText('重点模型 1', 'Top Model 1'), localeText('无', 'n/a'), localeText('还没有已定价用量。', 'No priced usage yet'))
+          + surfaceCard(localeText('重点模型 2', 'Top Model 2'), localeText('无', 'n/a'), localeText('还没有已定价用量。', 'No priced usage yet'))
+          + surfaceCard(localeText('重点模型 3', 'Top Model 3'), localeText('无', 'n/a'), localeText('还没有已定价用量。', 'No priced usage yet'));
 
       const unhealthyCount = degradedUpstreams;
       const healthEntries = Object.entries(upstreamStatuses);
@@ -3491,33 +4223,23 @@ const adminHTMLTemplate = `<!doctype html>
         .slice()
         .sort((a, b) => ((b[1] && b[1].last_latency) || 0) - ((a[1] && a[1].last_latency) || 0))[0];
       document.getElementById('upstreamMeta').innerHTML = [
-        miniChip('Total', fmt.format(Object.keys(upstreamStatuses).length), 'accent'),
-        miniChip('Degraded', fmt.format(unhealthyCount), unhealthyCount ? 'danger' : ''),
-        miniChip('Window', 'health snapshot'),
+        miniChip(localeText('总数', 'Total'), fmt.format(Object.keys(upstreamStatuses).length), 'accent'),
+        miniChip(localeText('退化', 'Degraded'), fmt.format(unhealthyCount), unhealthyCount ? 'danger' : ''),
+        miniChip(localeText('窗口', 'Window'), localeText('探活快照', 'health snapshot')),
       ].join('');
       document.getElementById('upstreamTopline').innerHTML = [
-        surfaceCard('Degraded Routes', fmt.format(unhealthyCount), fmt.format(healthEntries.length - unhealthyCount) + ' healthy'),
-        surfaceCard('Highest Failures', mostFailedUpstream ? mostFailedUpstream[0] : 'n/a', mostFailedUpstream ? (fmt.format(mostFailedUpstream[1].consecutive_retryable_failures || 0) + ' retryable fails') : 'No upstream telemetry'),
-        surfaceCard('Slowest Probe', slowestUpstream ? slowestUpstream[0] : 'n/a', slowestUpstream && slowestUpstream[1].last_latency ? fmtMs((slowestUpstream[1].last_latency || 0) / 1000000) : 'No latency sample'),
+        surfaceCard(localeText('退化路由', 'Degraded Routes'), fmt.format(unhealthyCount), fmt.format(healthEntries.length - unhealthyCount) + localeText(' 条健康', ' healthy')),
+        surfaceCard(localeText('失败最多', 'Highest Failures'), mostFailedUpstream ? mostFailedUpstream[0] : localeText('无', 'n/a'), mostFailedUpstream ? (fmt.format(mostFailedUpstream[1].consecutive_retryable_failures || 0) + localeText(' 次可重试失败', ' retryable fails')) : localeText('暂无上游探活数据。', 'No upstream telemetry')),
+        surfaceCard(localeText('最慢探活', 'Slowest Probe'), slowestUpstream ? slowestUpstream[0] : localeText('无', 'n/a'), slowestUpstream && slowestUpstream[1].last_latency ? fmtMs((slowestUpstream[1].last_latency || 0) / 1000000) : localeText('暂无延迟样本。', 'No latency sample')),
       ].join('');
 
-      const upstreamRows = healthEntries.map(([name, status]) => {
-        const cooldown = status.cooldown_until && status.cooldown_until !== '0001-01-01T00:00:00Z' ? relativeTime(status.cooldown_until) : '-';
-        const latency = status.last_latency ? fmtMs((status.last_latency || 0) / 1000000) : '-';
-        return [
-          stackCell('<strong>' + escapeHTML(name) + '</strong>', status.last_error ? escapeHTML(status.last_error) : 'no recent error'),
-          stackCell(statusPill(status.healthy), latency),
-          stackCell(fmt.format(status.consecutive_retryable_failures || 0), 'retryable failures'),
-          stackCell(cooldown, 'cooldown window'),
-        ];
-      });
-      document.getElementById('upstreams').innerHTML = table(['Upstream', 'State + Latency', 'Failures', 'Cooldown'], upstreamRows, 'table-health');
+      document.getElementById('upstreams').innerHTML = renderUpstreamHealth(healthEntries);
 
       const modelRows = pricingModels
         .map((item) => [
           stackCell(
             '<strong>' + escapeHTML(item.display_model || '-') + '</strong>',
-            (item.pricing_model && item.pricing_model !== item.display_model ? 'priced as ' + escapeHTML(item.pricing_model) + ' · ' : '') + (item.pricing ? ('$' + item.pricing.input_per_1m_usd + ' / $' + item.pricing.output_per_1m_usd + ' per 1M') : 'official price unavailable')
+            (item.pricing_model && item.pricing_model !== item.display_model ? localeText('按 ' + escapeHTML(item.pricing_model) + ' 计价 · ', 'priced as ' + escapeHTML(item.pricing_model) + ' · ') : '') + (item.pricing ? ('$' + item.pricing.input_per_1m_usd + ' / $' + item.pricing.output_per_1m_usd + ' ' + t('perMillion')) : t('officialPriceUnavailable'))
           ),
           promptUsageCell(item.usage),
           cacheRateCell(item.usage),
@@ -3525,12 +4247,12 @@ const adminHTMLTemplate = `<!doctype html>
           totalUsageCell(item.usage),
           fmtMoney(item.cost.total_usd || 0),
         ]);
-      document.getElementById('byModel').innerHTML = table(['Model', 'Prompt', 'Cache Hit', 'Completion', 'Total', 'USD'], modelRows, 'table-models');
+      document.getElementById('byModel').innerHTML = table([localeText('模型', 'Model'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total'), 'USD'], modelRows, 'table-models');
 
       const topUsageUpstream = upstreamUsageEntries.slice().sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))[0];
       document.getElementById('usageMeta').innerHTML = [
-        miniChip('Upstreams', fmt.format(upstreamUsageEntries.length), 'accent'),
-        miniChip('Top Volume', topUsageUpstream ? (topUsageUpstream[0] + ' · ' + fmt.format(topUsageUpstream[1].total_tokens || 0)) : 'n/a'),
+        miniChip(localeText('上游', 'Upstreams'), fmt.format(upstreamUsageEntries.length), 'accent'),
+        miniChip(localeText('最高吞吐', 'Top Volume'), topUsageUpstream ? (topUsageUpstream[0] + ' · ' + fmt.format(topUsageUpstream[1].total_tokens || 0)) : localeText('无', 'n/a')),
       ].join('');
       const topUsageEntries = upstreamUsageEntries
         .slice()
@@ -3538,63 +4260,62 @@ const adminHTMLTemplate = `<!doctype html>
         .slice(0, 3);
       document.getElementById('usageTopline').innerHTML = topUsageEntries.length
         ? topUsageEntries.map((entry, idx) => surfaceCard(
-            'Top Upstream ' + (idx + 1),
+            localeText('重点上游 ', 'Top Upstream ') + (idx + 1),
             entry[0],
-            fmt.format(entry[1].total_tokens || 0) + ' total · ' + fmt.format(entry[1].completion_tokens || 0) + ' completion'
+            fmt.format(entry[1].total_tokens || 0) + localeText(' 总量 · ', ' total · ') + fmt.format(entry[1].completion_tokens || 0) + localeText(' 补全', ' completion')
           )).join('')
-        : surfaceCard('Top Upstream 1', 'n/a', 'No usage data') + surfaceCard('Top Upstream 2', 'n/a', 'No usage data') + surfaceCard('Top Upstream 3', 'n/a', 'No usage data');
+        : surfaceCard(localeText('重点上游 1', 'Top Upstream 1'), localeText('无', 'n/a'), localeText('还没有用量数据。', 'No usage data'))
+          + surfaceCard(localeText('重点上游 2', 'Top Upstream 2'), localeText('无', 'n/a'), localeText('还没有用量数据。', 'No usage data'))
+          + surfaceCard(localeText('重点上游 3', 'Top Upstream 3'), localeText('无', 'n/a'), localeText('还没有用量数据。', 'No usage data'));
 
       const upstreamUsageRows = upstreamUsageEntries
         .slice()
         .sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))
         .map(([name, usage]) => [
-          stackCell('<strong>' + escapeHTML(name) + '</strong>', fmt.format(usage.total_tokens || 0) + ' total'),
+          stackCell('<strong>' + escapeHTML(name) + '</strong>', fmt.format(usage.total_tokens || 0) + localeText(' 总量', ' total')),
           promptUsageCell(usage),
           cacheRateCell(usage),
-          stackCell(fmt.format(usage.completion_tokens || 0), 'completion tokens'),
+          stackCell(fmt.format(usage.completion_tokens || 0), localeText('补全 token', 'completion tokens')),
           totalUsageCell(usage),
         ]);
-      document.getElementById('byUpstream').innerHTML = table(['Upstream', 'Prompt', 'Cache Hit', 'Completion', 'Total'], upstreamUsageRows, 'table-usage');
-
-      document.getElementById('cacheTrends').innerHTML = [
-        ['1h Cache Hit', cacheHitRate(oneHour) === null ? 'n/a' : fmtPct(cacheHitRate(oneHour)), cacheTrendDetail(oneHour)],
-        ['24h Cache Hit', cacheHitRate(dayWindow) === null ? 'n/a' : fmtPct(cacheHitRate(dayWindow)), cacheTrendDetail(dayWindow)],
-      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
+      document.getElementById('byUpstream').innerHTML = table([localeText('上游', 'Upstream'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total')], upstreamUsageRows, 'table-usage');
 
       const cacheRanking = data.telemetry.cache_hit_ranking || [];
       const topErrorUpstream = aggregateBy(recentErrors, (item) => item.upstream || '-')[0];
       const topErrorStatus = aggregateBy(recentErrors, (item) => item.status_code || '-')[0];
       const topErrorModel = aggregateBy(recentErrors, (item) => item.model || '-')[0];
       document.getElementById('cacheMeta').innerHTML = [
-        miniChip('24h Hit', dayCacheRate === null ? 'n/a' : fmtPct(dayCacheRate), dayCacheRate !== null && dayCacheRate >= 50 ? 'accent' : ''),
-        miniChip('Saved', compactUsd(pricingSummary.cache_savings_usd || 0), 'accent'),
-        miniChip('Leaders', fmt.format(cacheRanking.length)),
+        miniChip(localeText('24 小时命中', '24h Hit'), dayCacheRate === null ? localeText('无', 'n/a') : fmtPct(dayCacheRate), dayCacheRate !== null && dayCacheRate >= 50 ? 'accent' : ''),
+        miniChip(localeText('已节省', 'Saved'), compactUsd(pricingSummary.cache_savings_usd || 0), 'accent'),
+        miniChip(localeText('领先者', 'Leaders'), fmt.format(cacheRanking.length)),
       ].join('');
       document.getElementById('cacheTopline').innerHTML = cacheRanking.slice(0, 3).map((item, idx) => surfaceCard(
-        'Cache Leader ' + (idx + 1),
+        localeText('缓存领先 ', 'Cache Leader ') + (idx + 1),
         item.upstream || '-',
-        (cacheHitRate(item.usage) === null ? 'n/a' : fmtPct(cacheHitRate(item.usage))) + ' hit · ' + fmt.format(item.requests || 0) + ' req'
-      )).join('') || surfaceCard('Cache Leader 1', 'n/a', 'No cache ranking') + surfaceCard('Cache Leader 2', 'n/a', 'No cache ranking') + surfaceCard('Cache Leader 3', 'n/a', 'No cache ranking');
+        (cacheHitRate(item.usage) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(item.usage))) + localeText(' 命中 · ', ' hit · ') + fmt.format(item.requests || 0) + localeText(' 次请求', ' req')
+      )).join('') || surfaceCard(localeText('缓存领先 1', 'Cache Leader 1'), localeText('无', 'n/a'), localeText('还没有缓存排行。', 'No cache ranking'))
+        + surfaceCard(localeText('缓存领先 2', 'Cache Leader 2'), localeText('无', 'n/a'), localeText('还没有缓存排行。', 'No cache ranking'))
+        + surfaceCard(localeText('缓存领先 3', 'Cache Leader 3'), localeText('无', 'n/a'), localeText('还没有缓存排行。', 'No cache ranking'));
 
       const cacheRankingRows = cacheRanking.map((item, idx) => [
-        stackCell('<strong>' + escapeHTML((idx + 1) + '. ' + (item.upstream || '-')) + '</strong>', fmt.format(item.requests || 0) + ' requests'),
+        stackCell('<strong>' + escapeHTML((idx + 1) + '. ' + (item.upstream || '-')) + '</strong>', fmt.format(item.requests || 0) + localeText(' 次请求', ' requests')),
         cacheRateCell(item.usage),
-        stackCell(fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0), 'cached prompt'),
-        stackCell(fmt.format((item.usage && item.usage.prompt_tokens) || 0), 'prompt total'),
-        stackCell(fmt.format(item.requests || 0), 'ranking window'),
+        stackCell(fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0), localeText('缓存提示词', 'cached prompt')),
+        stackCell(fmt.format((item.usage && item.usage.prompt_tokens) || 0), localeText('提示词总量', 'prompt total')),
+        stackCell(fmt.format(item.requests || 0), localeText('排行窗口', 'ranking window')),
       ]);
-      document.getElementById('cacheRanking').innerHTML = table(['Upstream', 'Cache Hit', 'Cached', 'Prompt', 'Requests'], cacheRankingRows, 'table-cache');
+      document.getElementById('cacheRanking').innerHTML = table([localeText('上游', 'Upstream'), localeText('缓存命中', 'Cache Hit'), localeText('缓存量', 'Cached'), localeText('提示词', 'Prompt'), localeText('请求数', 'Requests')], cacheRankingRows, 'table-cache');
 
       const leadingError = recentErrors[0];
       document.getElementById('errorsMeta').innerHTML = [
-        miniChip('Rows', fmt.format(recentErrors.length), recentErrors.length ? 'danger' : 'accent'),
-        miniChip('Top Upstream', leadingError?.upstream || 'n/a'),
-        miniChip('Latest', leadingError?.status_code ? ('status ' + leadingError.status_code) : 'clean', leadingError ? 'warn' : 'accent'),
+        miniChip(localeText('行数', 'Rows'), fmt.format(recentErrors.length), recentErrors.length ? 'danger' : 'accent'),
+        miniChip(localeText('主要上游', 'Top Upstream'), leadingError?.upstream || localeText('无', 'n/a')),
+        miniChip(localeText('最新', 'Latest'), leadingError?.status_code ? (localeText('状态 ', 'status ') + leadingError.status_code) : localeText('干净', 'clean'), leadingError ? 'warn' : 'accent'),
       ].join('');
       document.getElementById('errorsTopline').innerHTML = [
-        surfaceCard('Dominant Upstream', topErrorUpstream ? topErrorUpstream[0] : 'n/a', topErrorUpstream ? (fmt.format(topErrorUpstream[1]) + ' error rows') : 'No recent errors'),
-        surfaceCard('Dominant Status', topErrorStatus ? String(topErrorStatus[0]) : 'n/a', topErrorStatus ? (fmt.format(topErrorStatus[1]) + ' rows in sample') : 'No recent errors'),
-        surfaceCard('Dominant Model', topErrorModel ? topErrorModel[0] : 'n/a', topErrorModel ? (fmt.format(topErrorModel[1]) + ' error rows') : 'No recent errors'),
+        surfaceCard(localeText('主导上游', 'Dominant Upstream'), topErrorUpstream ? topErrorUpstream[0] : localeText('无', 'n/a'), topErrorUpstream ? (fmt.format(topErrorUpstream[1]) + localeText(' 条错误行', ' error rows')) : localeText('最近没有错误。', 'No recent errors')),
+        surfaceCard(localeText('主导状态码', 'Dominant Status'), topErrorStatus ? String(topErrorStatus[0]) : localeText('无', 'n/a'), topErrorStatus ? (fmt.format(topErrorStatus[1]) + localeText(' 行样本', ' rows in sample')) : localeText('最近没有错误。', 'No recent errors')),
+        surfaceCard(localeText('主导模型', 'Dominant Model'), topErrorModel ? topErrorModel[0] : localeText('无', 'n/a'), topErrorModel ? (fmt.format(topErrorModel[1]) + localeText(' 条错误行', ' error rows')) : localeText('最近没有错误。', 'No recent errors')),
       ].join('');
       document.getElementById('errors').innerHTML = errorFeed(recentErrors);
 
@@ -3605,30 +4326,30 @@ const adminHTMLTemplate = `<!doctype html>
       const busiestUpstream = aggregateBy(recentRequests, (item) => item.upstream || '-')[0];
       const hottestModel = aggregateBy(recentRequests, (item) => item.model || item.requested_model || '-')[0];
       document.getElementById('requestsMeta').innerHTML = [
-        miniChip('Rows', fmt.format(recentRequests.length), 'accent'),
+        miniChip(localeText('行数', 'Rows'), fmt.format(recentRequests.length), 'accent'),
         miniChip('503', fmt.format(recent503), recent503 ? 'danger' : ''),
-        miniChip('Avg Attempts', recentRequests.length ? avgAttempts.toFixed(1) : 'n/a'),
+        miniChip(localeText('平均尝试', 'Avg Attempts'), recentRequests.length ? avgAttempts.toFixed(1) : localeText('无', 'n/a')),
       ].join('');
       document.getElementById('requestsTopline').innerHTML = [
-        surfaceCard('Hottest Path', hottestPath ? hottestPath[0] : 'n/a', hottestPath ? (fmt.format(hottestPath[1]) + ' rows in current sample') : 'No recent requests'),
-        surfaceCard('Busiest Upstream', busiestUpstream ? busiestUpstream[0] : 'n/a', busiestUpstream ? (fmt.format(busiestUpstream[1]) + ' routed requests') : 'No upstream traffic'),
-        surfaceCard('Hottest Model', hottestModel ? hottestModel[0] : 'n/a', hottestModel ? (fmt.format(hottestModel[1]) + ' rows in current sample') : 'No model traffic'),
+        surfaceCard(localeText('最热路径', 'Hottest Path'), hottestPath ? hottestPath[0] : localeText('无', 'n/a'), hottestPath ? (fmt.format(hottestPath[1]) + localeText(' 行当前样本', ' rows in current sample')) : localeText('最近没有请求。', 'No recent requests')),
+        surfaceCard(localeText('最忙上游', 'Busiest Upstream'), busiestUpstream ? busiestUpstream[0] : localeText('无', 'n/a'), busiestUpstream ? (fmt.format(busiestUpstream[1]) + localeText(' 次路由请求', ' routed requests')) : localeText('当前没有上游流量。', 'No upstream traffic')),
+        surfaceCard(localeText('最热模型', 'Hottest Model'), hottestModel ? hottestModel[0] : localeText('无', 'n/a'), hottestModel ? (fmt.format(hottestModel[1]) + localeText(' 行当前样本', ' rows in current sample')) : localeText('当前没有模型流量。', 'No model traffic')),
       ].join('');
       document.getElementById('requests').innerHTML = table(
-        ['Time', 'Route + Path', 'Model Flow', 'Upstream', 'Status / Attempts', 'Latency + Cache', 'Tokens', 'USD'],
+        [localeText('时间', 'Time'), localeText('路径与路由', 'Route + Path'), localeText('模型流向', 'Model Flow'), localeText('上游', 'Upstream'), localeText('状态 / 尝试', 'Status / Attempts'), localeText('延迟 / 缓存', 'Latency + Cache'), localeText('Token', 'Tokens'), 'USD'],
         recentRequests.map(item => [
           stackCell(escapeHTML(relativeTime(item.timestamp)), escapeHTML(item.request_id || '-')),
           stackCell(
             escapeHTML(item.path || '-'),
-            escapeHTML(item.route_mode || 'direct'),
-            '<div class="cell-tags"><span class="tag accent">' + escapeHTML(item.route_mode || 'direct') + '</span></div>'
+            escapeHTML(routeModeLabel(item.route_mode)),
+            '<div class="cell-tags"><span class="tag accent">' + escapeHTML(routeModeLabel(item.route_mode)) + '</span></div>'
           ),
-          stackCell(modelFlow(item), item.requested_model && item.requested_model !== item.model ? 'bridge applied' : 'direct model'),
+          stackCell(modelFlow(item), item.requested_model && item.requested_model !== item.model ? localeText('已桥接', 'bridge applied') : localeText('直接模型', 'direct model')),
           stackCell(escapeHTML(item.upstream || '-'), item.error_message ? escapeHTML(item.error_message) : ''),
-          stackCell(statusChip(item.status_code), 'attempt ' + escapeHTML(item.attempts || 0)),
-          stackCell(fmtMs(item.duration_ms || 0), 'cache ' + (cacheHitRate(item.usage) === null ? 'n/a' : fmtPct(cacheHitRate(item.usage)))),
-          stackCell(fmt.format((item.usage && item.usage.total_tokens) || 0), 'cached ' + fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0)),
-          stackCell(estimateRequestCost(item, pricing) || '<span class="small">n/a</span>', fmt.format((item.usage && item.usage.completion_tokens) || 0) + ' completion'),
+          stackCell(statusChip(item.status_code), localeText('尝试 ', 'attempt ') + escapeHTML(item.attempts || 0)),
+          stackCell(fmtMs(item.duration_ms || 0), localeText('缓存 ', 'cache ') + (cacheHitRate(item.usage) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(item.usage)))),
+          stackCell(fmt.format((item.usage && item.usage.total_tokens) || 0), localeText('缓存 ', 'cached ') + fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0)),
+          stackCell(estimateRequestCost(item, pricing) || ('<span class="small">' + escapeHTML(localeText('无', 'n/a')) + '</span>'), fmt.format((item.usage && item.usage.completion_tokens) || 0) + localeText(' 补全', ' completion')),
         ]),
         'table-requests'
       );
@@ -3647,39 +4368,58 @@ const adminHTMLTemplate = `<!doctype html>
 </body>
 </html>`
 
-func renderAdminHTML(settingsView bool) string {
+func adminHTMLLang(language string) string {
+	if config.NormalizeAdminLanguage(language) == config.AdminLanguageEnglish {
+		return "en"
+	}
+	return "zh-CN"
+}
+
+func renderAdminHTML(settingsView bool, language string) string {
+	language = config.NormalizeAdminLanguage(language)
+	isEnglish := language == config.AdminLanguageEnglish
 	bodyClass := ""
 	topnavLinks := strings.Join([]string{
-		`<a href="#performance" data-topnav-target="performance">Performance</a>`,
-		`<a href="#economics" data-topnav-target="economics">Economics</a>`,
-		`<a href="#upstreams-card" data-topnav-target="upstreams-card">Upstreams</a>`,
-		`<a href="#requests-card" data-topnav-target="requests-card">Requests</a>`,
-		`<a href="/admin/settings">Settings</a>`,
+		`<a href="#performance" data-topnav-target="performance">` + map[bool]string{true: "Performance", false: "性能"}[isEnglish] + `</a>`,
+		`<a href="#economics" data-topnav-target="economics">` + map[bool]string{true: "Economics", false: "成本"}[isEnglish] + `</a>`,
+		`<a href="#upstreams-card" data-topnav-target="upstreams-card">` + map[bool]string{true: "Upstreams", false: "上游"}[isEnglish] + `</a>`,
+		`<a href="#requests-card" data-topnav-target="requests-card">` + map[bool]string{true: "Requests", false: "请求"}[isEnglish] + `</a>`,
+		`<a href="/admin/settings">` + map[bool]string{true: "Settings", false: "设置"}[isEnglish] + `</a>`,
 	}, "")
-	heroEyebrow := "AI Gateway Admin"
-	heroTitle := "Ops, Cost, Throughput."
-	heroSub := "把请求量、吞吐、延迟、失败轨迹和 USD 成本放在同一块面板里，先判断是不是上游波动，再判断是不是代理放大。"
-	heroMetaPrimary := `<div class="pill" id="generatedAt">加载中</div>`
-	heroMetaSecondary := `<div class="pill" id="pricingSource">Pricing source</div>`
+	heroEyebrow := map[bool]string{true: "AI Gateway Admin", false: "AI 模型网关管理台"}[isEnglish]
+	heroTitle := map[bool]string{true: "Ops, Cost, Throughput.", false: "运维、成本、吞吐。"}[isEnglish]
+	heroSub := map[bool]string{true: "Check throughput, latency, errors, and upstream health first, then drill into cost and cache.", false: "先看吞吐、延迟、错误和上游健康，再往下追成本与缓存。"}[isEnglish]
+	heroMetaPrimary := `<div class="pill" id="generatedAt">` + map[bool]string{true: "Loading", false: "加载中"}[isEnglish] + `</div>`
+	heroMetaSecondary := `<div class="pill" id="pricingSource">` + map[bool]string{true: "Pricing source", false: "价格来源"}[isEnglish] + `</div>`
 	heroMetaTertiary := ``
+	heroAside := `<div class="hero-priority-grid" id="heroPriority"></div>`
 	if settingsView {
 		bodyClass = "page-settings"
 		topnavLinks = strings.Join([]string{
-			`<a href="#cfg-health">Health</a>`,
-			`<a href="#cfg-bridge">Bridge</a>`,
-			`<a href="#cfg-router">Router</a>`,
-			`<a href="#cfg-upstreams">Providers</a>`,
-			`<a href="#cfg-history">History</a>`,
-			`<a href="/admin">Overview</a>`,
+			`<a href="/admin">` + map[bool]string{true: "Overview", false: "总览"}[isEnglish] + `</a>`,
 		}, "")
-		heroEyebrow = "Configuration Center"
-		heroTitle = "Runtime Routing, Health, Providers."
-		heroSub = "在一个页面里维护探活、桥接、重试、拦截和上游服务商。先做 probe，再保存；先看 diff，再回滚。"
+		heroEyebrow = map[bool]string{true: "Configuration Center", false: "配置中心"}[isEnglish]
+		heroTitle = map[bool]string{true: "Runtime Routing, Health, Providers.", false: "运行路由、探活、服务商。"}[isEnglish]
+		heroSub = map[bool]string{true: "Manage probes, bridge, recovery, and providers in one place instead of jumping across surfaces.", false: "集中维护探活、桥接、恢复和服务商，不再在多个面板里来回切换。"}[isEnglish]
 		heroMetaPrimary = ``
 		heroMetaSecondary = ``
 		heroMetaTertiary = ``
+		heroAside = ``
+	}
+	pageTitle := "AI Gateway Admin"
+	if settingsView {
+		pageTitle = "AI Gateway Settings"
+	}
+	if language == config.AdminLanguageChinese {
+		pageTitle = "AI 模型网关管理台"
+		if settingsView {
+			pageTitle = "AI 模型网关设置"
+		}
 	}
 	return strings.NewReplacer(
+		"{{HTML_LANG}}", adminHTMLLang(language),
+		"{{PAGE_TITLE}}", pageTitle,
+		"{{BOOTSTRAP_LANGUAGE}}", language,
 		"{{BODY_CLASS}}", bodyClass,
 		"{{TOPNAV_LINKS}}", topnavLinks,
 		"{{HERO_EYEBROW}}", heroEyebrow,
@@ -3688,13 +4428,18 @@ func renderAdminHTML(settingsView bool) string {
 		"{{HERO_META_PRIMARY}}", heroMetaPrimary,
 		"{{HERO_META_SECONDARY}}", heroMetaSecondary,
 		"{{HERO_META_TERTIARY}}", heroMetaTertiary,
+		"{{HERO_ASIDE}}", heroAside,
 	).Replace(adminHTMLTemplate)
 }
 
-func adminPage(settingsView bool) http.HandlerFunc {
+func adminPage(settingsView bool, manager *router.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(renderAdminHTML(settingsView)))
+		language := config.AdminLanguageChinese
+		if manager != nil {
+			language = manager.CurrentConfig().Admin.Language
+		}
+		_, _ = w.Write([]byte(renderAdminHTML(settingsView, language)))
 	}
 }
 

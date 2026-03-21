@@ -157,3 +157,90 @@ func TestManagerPickPrefersFreeClassBeforeQuotaLimited(t *testing.T) {
 		t.Fatalf("expected free class upstream first, got %s", upstream.Name)
 	}
 }
+
+func TestManagerRememberStickyPrunesExpiredAssignments(t *testing.T) {
+	cfg := config.Config{
+		Router: config.RouterConfig{
+			Strategy: "round_robin",
+			StickySessions: config.StickySessionConfig{
+				Enabled: true,
+				TTLSec:  1800,
+			},
+		},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Models: []string{"gpt-4o-mini"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	manager := NewManager(state.NewConfigStore(cfg))
+	manager.mu.Lock()
+	manager.sticky["expired"] = stickyAssignment{Upstream: "alpha", ExpiresAt: time.Now().Add(-time.Minute)}
+	manager.nextStickyPrune = time.Now().Add(-time.Second)
+	manager.mu.Unlock()
+
+	manager.RememberSticky("resp_123", "alpha")
+
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	if _, ok := manager.sticky["expired"]; ok {
+		t.Fatalf("expected expired sticky assignment to be pruned")
+	}
+	if _, ok := manager.sticky["resp_123"]; !ok {
+		t.Fatalf("expected new sticky assignment to be retained")
+	}
+}
+
+func TestManagerPickPreservesWeightedSelectionWithoutPoolExpansion(t *testing.T) {
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "weighted_rr"},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Models: []string{"gpt-4o-mini"}, Weight: 2},
+			{Name: "beta", BaseURL: "https://beta.example.com", Models: []string{"gpt-4o-mini"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	manager := NewManager(state.NewConfigStore(cfg))
+	manager.ReportRequestSuccess("alpha", time.Millisecond, http.StatusOK)
+	manager.ReportRequestSuccess("beta", time.Millisecond, http.StatusOK)
+
+	expected := []string{"alpha", "alpha", "beta", "alpha", "alpha", "beta"}
+	for index, name := range expected {
+		upstream, ok := manager.Pick("gpt-4o-mini", map[string]struct{}{})
+		if !ok {
+			t.Fatalf("pick %d: expected an upstream", index)
+		}
+		if upstream.Name != name {
+			t.Fatalf("pick %d: expected %s, got %s", index, name, upstream.Name)
+		}
+	}
+}
+
+func BenchmarkManagerPickHealthWeightedRR(b *testing.B) {
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "health_weighted_rr"},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", ProviderClass: config.UpstreamClassFree, Models: []string{"gpt-5.4"}, Weight: 4},
+			{Name: "beta", BaseURL: "https://beta.example.com", ProviderClass: config.UpstreamClassFree, Models: []string{"gpt-5.4"}, Weight: 3},
+			{Name: "gamma", BaseURL: "https://gamma.example.com", ProviderClass: config.UpstreamClassFree, Models: []string{"gpt-5.4"}, Weight: 2},
+			{Name: "delta", BaseURL: "https://delta.example.com", ProviderClass: config.UpstreamClassQuotaLimited, Models: []string{"gpt-5.4"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	manager := NewManager(state.NewConfigStore(cfg))
+	manager.ReportRequestSuccess("alpha", time.Millisecond, http.StatusOK)
+	manager.ReportRequestSuccess("beta", time.Millisecond, http.StatusOK)
+	manager.ReportRequestFailure("gamma", time.Millisecond, http.StatusTooManyRequests, errors.New("rate limit"), true, "status")
+	manager.ReportRequestSuccess("delta", time.Millisecond, http.StatusOK)
+
+	excluded := map[string]struct{}{}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, ok := manager.Pick("gpt-5.4", excluded); !ok {
+			b.Fatal("expected upstream")
+		}
+	}
+}

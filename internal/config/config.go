@@ -49,6 +49,7 @@ type HealthConfig struct {
 type AdminConfig struct {
 	Enabled   bool   `yaml:"enabled"`
 	AuthToken string `yaml:"auth_token"`
+	Language  string `yaml:"language"`
 }
 
 type TelemetryConfig struct {
@@ -110,6 +111,8 @@ type Upstream struct {
 const (
 	UpstreamClassFree         = "free"
 	UpstreamClassQuotaLimited = "quota_limited"
+	AdminLanguageChinese      = "zh"
+	AdminLanguageEnglish      = "en"
 )
 
 func (c *Config) Normalize() {
@@ -155,6 +158,7 @@ func (c *Config) Normalize() {
 	if !c.Admin.Enabled {
 		c.Admin.Enabled = true
 	}
+	c.Admin.Language = NormalizeAdminLanguage(c.Admin.Language)
 	if c.Telemetry.SQLitePath == "" {
 		c.Telemetry.SQLitePath = "data/telemetry.db"
 	}
@@ -188,6 +192,15 @@ func (u Upstream) IsEnabled() bool {
 
 func (u Upstream) ProviderClassNormalized() string {
 	return NormalizeUpstreamClass(u.ProviderClass)
+}
+
+func NormalizeAdminLanguage(language string) string {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case AdminLanguageEnglish:
+		return AdminLanguageEnglish
+	default:
+		return AdminLanguageChinese
+	}
 }
 
 func (c Config) RewriteModel(model string) string {

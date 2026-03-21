@@ -37,6 +37,11 @@ type modelRequest struct {
 	Model string `json:"model"`
 }
 
+type stickyRoutingRequest struct {
+	PreviousResponseID string `json:"previous_response_id"`
+	ResponseID         string `json:"response_id"`
+}
+
 type resolvedModel struct {
 	Requested   string
 	Effective   string
@@ -110,6 +115,141 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
+	h.forward(w, r, forwardOptions{ModelRequired: true})
+}
+
+func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
+	requestID := observability.RequestIDFromContext(r.Context())
+	startedAt := time.Now()
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.Header().Set(observability.RequestIDHeader, requestID)
+		writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
+		return
+	}
+	_ = r.Body.Close()
+
+	cfg := h.Manager.CurrentConfig()
+	resolved, err := resolveModel(body, r.Header.Get("Content-Type"), r.UserAgent(), cfg, forwardOptions{ModelRequired: true})
+	if err != nil {
+		w.Header().Set(observability.RequestIDHeader, requestID)
+		writeProxyError(w, http.StatusBadRequest, err.Error(), "invalid_request_error")
+		return
+	}
+
+	requestedModel := resolved.Requested
+	model := resolved.Effective
+	body = resolved.Body
+	probeBody, err := buildAnthropicCountTokensProbeBody(body)
+	if err != nil {
+		w.Header().Set(observability.RequestIDHeader, requestID)
+		writeProxyError(w, http.StatusBadRequest, err.Error(), "invalid_request_error")
+		return
+	}
+
+	maxAttempts := cfg.Router.MaxRetries + 1
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+
+	excluded := make(map[string]struct{})
+	sameUpstreamRetriesUsed := make(map[string]int)
+	routeMode := requestRouteMode(requestedModel, model, false)
+	var lastErr error
+	var lastUpstream string
+	var lastAttempts int
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		upstream, ok := h.Manager.PickSticky(model, "", excluded)
+		if !ok {
+			break
+		}
+
+		resp, latency, err := h.doAnthropicMessages(r, probeBody, upstream, requestID)
+		if err != nil {
+			h.Manager.ReportRequestFailure(upstream.Name, latency, 0, err, true, "transport")
+			h.recordError(requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, 0, attempt+1, err.Error())
+			logProxyAttempt(requestID, model, upstream.Name, attempt+1, 0, latency, err)
+			lastErr = err
+			lastUpstream = upstream.Name
+			lastAttempts = attempt + 1
+			if shouldRetrySameUpstream(upstream, sameUpstreamRetriesUsed[upstream.Name]) {
+				sameUpstreamRetriesUsed[upstream.Name]++
+			} else {
+				excluded[upstream.Name] = struct{}{}
+			}
+			if attempt+1 < maxAttempts {
+				if sleepRetryBackoff(r.Context(), cfg.Router.RetryBackoffMs, cfg.Router.RetryBackoffMaxMs, attempt+1) != nil {
+					break
+				}
+			}
+			continue
+		}
+
+		assessment, captured, inspectErr := inspectResponse(resp, "/v1/messages", cfg.Proxy)
+		if inspectErr == nil && captured != nil && !assessment.ErrorBody && captured.StatusCode < http.StatusBadRequest {
+			countBody, inputTokens, buildErr := buildCountTokensResponseFromAnthropic(captured.Body)
+			if buildErr == nil {
+				h.Manager.ReportRequestSuccess(upstream.Name, latency, captured.StatusCode)
+				logProxyAttempt(requestID, model, upstream.Name, attempt+1, captured.StatusCode, latency, nil)
+				setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt+1)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(countBody)
+				h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, "anthropic_count_tokens_compat", upstream.Name, http.StatusOK, attempt+1, true, "", telemetry.Usage{PromptTokens: inputTokens, TotalTokens: inputTokens})
+				return
+			}
+			inspectErr = buildErr
+		}
+
+		reason := ""
+		kind := "body_error"
+		retryable := true
+		statusCode := 0
+		if captured != nil {
+			statusCode = captured.StatusCode
+		}
+		if inspectErr != nil {
+			reason = inspectErr.Error()
+			kind = "inspect"
+		} else {
+			reason = assessment.Message
+			kind = assessment.Kind
+			retryable = assessment.Retryable || shouldRetryResponse(statusCode, cfg.Proxy.Retry)
+		}
+		if reason == "" {
+			reason = fmt.Sprintf("upstream %s did not return usable anthropic usage", upstream.Name)
+		}
+
+		h.Manager.ReportRequestFailure(upstream.Name, latency, statusCode, fmt.Errorf(reason), retryable, kind)
+		h.recordError(requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, statusCode, attempt+1, reason)
+		logProxyAttempt(requestID, model, upstream.Name, attempt+1, statusCode, latency, fmt.Errorf(reason))
+		lastErr = fmt.Errorf(reason)
+		lastUpstream = upstream.Name
+		lastAttempts = attempt + 1
+		if shouldRetrySameUpstream(upstream, sameUpstreamRetriesUsed[upstream.Name]) {
+			sameUpstreamRetriesUsed[upstream.Name]++
+		} else {
+			excluded[upstream.Name] = struct{}{}
+		}
+		if attempt+1 < maxAttempts {
+			if sleepRetryBackoff(r.Context(), cfg.Router.RetryBackoffMs, cfg.Router.RetryBackoffMaxMs, attempt+1) != nil {
+				break
+			}
+		}
+	}
+
+	setProxyHeaders(w.Header(), requestID, lastUpstream, model, requestedModel, lastAttempts)
+	if lastErr != nil {
+		h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, routeMode, lastUpstream, http.StatusServiceUnavailable, lastAttempts, false, lastErrString(lastErr), telemetry.Usage{})
+		writeProxyError(w, http.StatusServiceUnavailable, lastErr.Error(), "service_unavailable")
+		return
+	}
+	h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, routeMode, lastUpstream, http.StatusServiceUnavailable, lastAttempts, false, "no upstream available", telemetry.Usage{})
+	writeProxyError(w, http.StatusServiceUnavailable, "no upstream available", "service_unavailable")
+}
+
 func (h *Handler) ResponsesCompact(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true, SkipModelRewrite: true})
 }
@@ -170,6 +310,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 	_ = r.Body.Close()
 
 	cfg := h.Manager.CurrentConfig()
+	var originalBody []byte
+	if cfg.Bridge.Enabled && len(cfg.Bridge.Rules) > 0 {
+		originalBody = append([]byte(nil), body...)
+	}
 	originalContentType := r.Header.Get("Content-Type")
 	resolved, err := resolveModel(body, r.Header.Get("Content-Type"), r.UserAgent(), cfg, opts)
 	if err != nil {
@@ -177,7 +321,6 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 		writeProxyError(w, http.StatusBadRequest, err.Error(), "invalid_request_error")
 		return
 	}
-	originalBody := append([]byte(nil), body...)
 	requestedModel := resolved.Requested
 	model := resolved.Effective
 	var debugSummary *requestDebugSummary
@@ -267,7 +410,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 			continue
 		}
 
-		if shouldPassthroughResponsesStream(resp, r.URL.Path, infiniteRetry) {
+		if shouldPassthroughStreaming(resp, r.URL.Path, infiniteRetry) {
 			setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt+1)
 			captured, streamErr := copyResponseAndCapture(w, resp)
 			reason := ""
@@ -439,7 +582,14 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 	if requestID != "" {
 		req.Header.Set(observability.RequestIDHeader, requestID)
 	}
-	if upstream.APIKey != "" {
+	if isAnthropicMessagesPath(src.URL.Path) {
+		if req.Header.Get("anthropic-version") == "" {
+			req.Header.Set("anthropic-version", "2023-06-01")
+		}
+		if upstream.APIKey != "" {
+			req.Header.Set("x-api-key", upstream.APIKey)
+		}
+	} else if upstream.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+upstream.APIKey)
 	}
 	for key, value := range upstream.Headers {
@@ -482,7 +632,16 @@ func (h *Handler) doAnthropicMessages(src *http.Request, body []byte, upstream c
 	}
 	req.Header = make(http.Header)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
+	if version := strings.TrimSpace(src.Header.Get("anthropic-version")); version != "" {
+		req.Header.Set("anthropic-version", version)
+	} else {
+		req.Header.Set("anthropic-version", "2023-06-01")
+	}
+	for _, value := range src.Header.Values("anthropic-beta") {
+		if strings.TrimSpace(value) != "" {
+			req.Header.Add("anthropic-beta", value)
+		}
+	}
 	if requestID != "" {
 		req.Header.Set(observability.RequestIDHeader, requestID)
 	}
@@ -533,7 +692,7 @@ func resolveModel(body []byte, contentType string, userAgent string, cfg config.
 	case "", "application/json":
 		return resolveModelFromJSON(body, mediaType, userAgent, cfg, opts)
 	case "multipart/form-data":
-		return resolveModelFromMultipart(body, params["boundary"], userAgent, cfg, opts)
+		return resolveModelFromMultipart(body, contentType, params["boundary"], userAgent, cfg, opts)
 	default:
 		if opts.ModelRequired {
 			return resolved, fmt.Errorf("model extraction not supported for content type %q", mediaType)
@@ -548,16 +707,15 @@ func resolveModelFromJSON(body []byte, mediaType string, userAgent string, cfg c
 		ContentType: mediaType,
 	}
 
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
+	var request modelRequest
+	if err := json.Unmarshal(body, &request); err != nil {
 		if opts.ModelRequired {
 			return resolved, fmt.Errorf("parse json body: %w", err)
 		}
 		return resolved, nil
 	}
 
-	model, _ := payload["model"].(string)
-	model = strings.TrimSpace(model)
+	model := strings.TrimSpace(request.Model)
 	if opts.ModelRequired && model == "" {
 		return resolved, fmt.Errorf("model is required")
 	}
@@ -571,20 +729,27 @@ func resolveModelFromJSON(body []byte, mediaType string, userAgent string, cfg c
 		resolved.Effective = model
 	}
 
-	if resolved.Requested != "" && resolved.Effective != "" && resolved.Effective != resolved.Requested {
-		payload["model"] = resolved.Effective
-		rewrittenBody, err := json.Marshal(payload)
-		if err != nil {
-			return resolved, fmt.Errorf("rewrite json body: %w", err)
-		}
-		resolved.Body = rewrittenBody
+	if resolved.Requested == "" || resolved.Effective == "" || resolved.Effective == resolved.Requested {
+		return resolved, nil
 	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return resolved, fmt.Errorf("parse json body for rewrite: %w", err)
+	}
+	payload["model"] = resolved.Effective
+	rewrittenBody, err := json.Marshal(payload)
+	if err != nil {
+		return resolved, fmt.Errorf("rewrite json body: %w", err)
+	}
+	resolved.Body = rewrittenBody
 	return resolved, nil
 }
 
-func resolveModelFromMultipart(body []byte, boundary string, userAgent string, cfg config.Config, opts forwardOptions) (resolvedModel, error) {
+func resolveModelFromMultipart(body []byte, contentType string, boundary string, userAgent string, cfg config.Config, opts forwardOptions) (resolvedModel, error) {
 	resolved := resolvedModel{
-		Body: body,
+		Body:        body,
+		ContentType: contentType,
 	}
 	if boundary == "" {
 		if opts.ModelRequired {
@@ -594,8 +759,6 @@ func resolveModelFromMultipart(body []byte, boundary string, userAgent string, c
 	}
 
 	reader := multipart.NewReader(bytes.NewReader(body), boundary)
-	var buffer bytes.Buffer
-	writer := multipart.NewWriter(&buffer)
 	var modelFound bool
 
 	for {
@@ -607,7 +770,6 @@ func resolveModelFromMultipart(body []byte, boundary string, userAgent string, c
 			return resolved, fmt.Errorf("read multipart body: %w", err)
 		}
 
-		headers := cloneMIMEHeader(part.Header)
 		if part.FormName() == "model" {
 			value, err := io.ReadAll(part)
 			_ = part.Close()
@@ -625,6 +787,40 @@ func resolveModelFromMultipart(body []byte, boundary string, userAgent string, c
 			if resolved.Effective == "" {
 				resolved.Effective = resolved.Requested
 			}
+			modelFound = true
+			break
+		}
+		_, _ = io.Copy(io.Discard, part)
+		_ = part.Close()
+	}
+
+	if modelFound && (resolved.Requested == "" || resolved.Effective == "" || resolved.Effective == resolved.Requested) {
+		return resolved, nil
+	}
+	if !modelFound && opts.ModelRequired {
+		return resolved, fmt.Errorf("model is required")
+	}
+	if !modelFound {
+		return resolved, nil
+	}
+
+	reader = multipart.NewReader(bytes.NewReader(body), boundary)
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return resolved, fmt.Errorf("read multipart body: %w", err)
+		}
+
+		headers := cloneMIMEHeader(part.Header)
+		if part.FormName() == "model" {
+			_, _ = io.Copy(io.Discard, part)
+			_ = part.Close()
 			fieldWriter, err := writer.CreateFormField("model")
 			if err != nil {
 				return resolved, fmt.Errorf("rewrite multipart model field: %w", err)
@@ -632,7 +828,6 @@ func resolveModelFromMultipart(body []byte, boundary string, userAgent string, c
 			if _, err := io.WriteString(fieldWriter, resolved.Effective); err != nil {
 				return resolved, fmt.Errorf("write multipart model field: %w", err)
 			}
-			modelFound = true
 			continue
 		}
 
@@ -651,15 +846,8 @@ func resolveModelFromMultipart(body []byte, boundary string, userAgent string, c
 	if err := writer.Close(); err != nil {
 		return resolved, fmt.Errorf("close multipart writer: %w", err)
 	}
-
-	if modelFound {
-		resolved.Body = buffer.Bytes()
-		resolved.ContentType = writer.FormDataContentType()
-		return resolved, nil
-	}
-	if opts.ModelRequired {
-		return resolved, fmt.Errorf("model is required")
-	}
+	resolved.Body = buffer.Bytes()
+	resolved.ContentType = writer.FormDataContentType()
 	return resolved, nil
 }
 
@@ -679,14 +867,14 @@ func extractStickyRoutingKey(path string, body []byte, contentType string) strin
 		return ""
 	}
 
-	var payload map[string]any
+	var payload stickyRoutingRequest
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return ""
 	}
 
-	for _, key := range []string{"previous_response_id", "response_id"} {
-		if value, ok := payload[key].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+	for _, value := range []string{payload.PreviousResponseID, payload.ResponseID} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
 		}
 	}
 	return ""
@@ -830,8 +1018,8 @@ func inspectEventStreamResponse(resp *http.Response, path string, policy config.
 	return applyInterceptRules(assessment, path, resp.StatusCode, body, policy), captured, nil
 }
 
-func shouldPassthroughResponsesStream(resp *http.Response, path string, infiniteRetry bool) bool {
-	if resp == nil || infiniteRetry || !expectsResponsesCompletedEvent(path) {
+func shouldPassthroughStreaming(resp *http.Response, path string, infiniteRetry bool) bool {
+	if resp == nil || infiniteRetry || !expectsStructuredStreamCompletion(path) {
 		return false
 	}
 	contentType := resp.Header.Get("Content-Type")
@@ -864,6 +1052,9 @@ func hasCompletedEventStream(body []byte, path string) bool {
 	if expectsResponsesCompletedEvent(path) {
 		return hasResponseCompletedEvent(body)
 	}
+	if expectsAnthropicMessagesCompletedEvent(path) {
+		return hasAnthropicMessageStopEvent(body)
+	}
 	return hasDoneEvent(body)
 }
 
@@ -871,11 +1062,27 @@ func expectedStreamCompletionMarker(path string) string {
 	if expectsResponsesCompletedEvent(path) {
 		return "response.completed"
 	}
+	if expectsAnthropicMessagesCompletedEvent(path) {
+		return "message_stop"
+	}
 	return "[DONE]"
 }
 
 func expectsResponsesCompletedEvent(path string) bool {
 	return strings.HasPrefix(path, "/v1/responses")
+}
+
+func expectsAnthropicMessagesCompletedEvent(path string) bool {
+	return path == "/v1/messages"
+}
+
+func expectsStructuredStreamCompletion(path string) bool {
+	return expectsResponsesCompletedEvent(path) || expectsAnthropicMessagesCompletedEvent(path)
+}
+
+func hasAnthropicMessageStopEvent(body []byte) bool {
+	text := strings.ToLower(string(body))
+	return strings.Contains(text, "event: message_stop") || strings.Contains(text, `"type":"message_stop"`)
 }
 
 func hasDoneEvent(body []byte) bool {
@@ -1550,6 +1757,7 @@ func buildAnthropicMessagesFromChat(body []byte, model string) ([]byte, bool, er
 		anthropic["max_tokens"] = maxTokens
 	}
 	copyIfPresent(payload, anthropic, "temperature", "top_p", "stop_sequences")
+	copyChatStopToAnthropic(payload, anthropic)
 	if stream {
 		anthropic["stream"] = true
 	}
@@ -1558,6 +1766,76 @@ func buildAnthropicMessagesFromChat(body []byte, model string) ([]byte, bool, er
 		return nil, stream, err
 	}
 	return data, stream, nil
+}
+
+func buildAnthropicCountTokensProbeBody(body []byte) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("parse anthropic count tokens payload: %w", err)
+	}
+	model, _ := payload["model"].(string)
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return nil, fmt.Errorf("anthropic count tokens model is empty")
+	}
+	payload["model"] = countTokensCompatModel(model)
+	payload["max_tokens"] = 1
+	payload["stream"] = false
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal anthropic count tokens probe: %w", err)
+	}
+	return data, nil
+}
+
+func countTokensCompatModel(model string) string {
+	switch strings.TrimSpace(model) {
+	case "claude-opus-4-6", "claude-opus-4-6-thinking":
+		return "claude-sonnet-4-6"
+	default:
+		return model
+	}
+}
+
+func buildCountTokensResponseFromAnthropic(body []byte) ([]byte, int, error) {
+	var payload struct {
+		Usage struct {
+			InputTokens int `json:"input_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, 0, fmt.Errorf("parse anthropic usage payload: %w", err)
+	}
+	if payload.Usage.InputTokens <= 0 {
+		return nil, 0, fmt.Errorf("anthropic usage missing input_tokens")
+	}
+	response, err := json.Marshal(map[string]any{
+		"input_tokens": payload.Usage.InputTokens,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("marshal anthropic count tokens response: %w", err)
+	}
+	return response, payload.Usage.InputTokens, nil
+}
+
+func copyChatStopToAnthropic(src map[string]any, dst map[string]any) {
+	if _, ok := dst["stop_sequences"]; ok {
+		return
+	}
+	stop, ok := src["stop"]
+	if !ok {
+		return
+	}
+	switch value := stop.(type) {
+	case string:
+		if strings.TrimSpace(value) != "" {
+			dst["stop_sequences"] = []string{value}
+		}
+	case []any:
+		if len(value) > 0 {
+			dst["stop_sequences"] = value
+		}
+	}
 }
 
 func forceAnthropicNonStream(body []byte) ([]byte, error) {
@@ -2054,6 +2332,10 @@ func copyResponse(w http.ResponseWriter, resp *http.Response) {
 		flusher.Flush()
 	}
 	_, _ = io.Copy(w, resp.Body)
+}
+
+func isAnthropicMessagesPath(path string) bool {
+	return path == "/v1/messages" || path == "/v1/messages/count_tokens"
 }
 
 func copyResponseAndCapture(w http.ResponseWriter, resp *http.Response) (*capturedResponse, error) {

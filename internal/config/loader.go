@@ -57,6 +57,9 @@ func (c *Config) Validate() error {
 	if c.Admin.Enabled && c.Admin.AuthToken == "" {
 		return errors.New("admin.auth_token is required when admin is enabled")
 	}
+	if normalized := NormalizeAdminLanguage(c.Admin.Language); c.Admin.Language != "" && c.Admin.Language != normalized {
+		return errors.New("admin.language must be zh or en")
+	}
 	if c.Pricing.RefreshIntervalHours < 0 {
 		return errors.New("pricing.refresh_interval_hours must be >= 0")
 	}
