@@ -504,6 +504,11 @@ const adminHTMLTemplate = `<!doctype html>
     tbody tr:hover {
       background: rgba(121, 230, 215, 0.06);
     }
+    tr.row-fail { background: rgba(255, 127, 110, 0.04); }
+    tr.row-fail:hover { background: rgba(255, 127, 110, 0.08); }
+    tr.row-warn { background: rgba(241, 184, 102, 0.04); }
+    tr.row-warn:hover { background: rgba(241, 184, 102, 0.08); }
+    tr.row-ok td:first-child { box-shadow: inset 3px 0 0 rgba(126, 231, 214, 0.3); }
     .status {
       display: inline-flex;
       align-items: center;
@@ -1360,6 +1365,72 @@ const adminHTMLTemplate = `<!doctype html>
       height: 10px;
       border-radius: 3px;
     }
+    .metric-spark {
+      height: 30px;
+      margin-top: 4px;
+      opacity: 0.7;
+    }
+    .metric-spark svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .donut-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .donut-wrap svg {
+      display: block;
+    }
+    .donut-label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+      pointer-events: none;
+    }
+    .hbar-wrap {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .hbar-row {
+      display: grid;
+      grid-template-columns: 120px 1fr 60px;
+      gap: 8px;
+      align-items: center;
+      font-size: 11px;
+    }
+    .hbar-label {
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hbar-track {
+      height: 14px;
+      border-radius: 7px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+    .hbar-fill {
+      height: 100%;
+      border-radius: 7px;
+      transition: width 300ms ease;
+    }
+    .hbar-value {
+      color: var(--ink);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
     .chart-controls {
       display: flex;
       gap: 6px;
@@ -1900,7 +1971,7 @@ const adminHTMLTemplate = `<!doctype html>
           </div>
           <div class="section-meta-strip" id="economicsMeta"></div>
         </div>
-        <div class="surface-strip" id="economicsTopline"></div>
+        <div id="modelDistribution" class="hbar-wrap"></div>
         <div id="byModel"></div>
       </div>
       <div class="card span-4 compact-card" id="cost-card">
@@ -1921,7 +1992,7 @@ const adminHTMLTemplate = `<!doctype html>
           </div>
           <div class="section-meta-strip" id="usageMeta"></div>
         </div>
-        <div class="surface-strip" id="usageTopline"></div>
+        <div id="upstreamDistribution" class="hbar-wrap"></div>
         <div id="byUpstream"></div>
       </div>
       <div class="card span-5 compact-card" id="cache-card">
@@ -3283,9 +3354,9 @@ const adminHTMLTemplate = `<!doctype html>
       }
       return requested + ' <span class="small">-&gt;</span> ' + effective;
     };
-    const table = (headers, rows, className = '') => {
+    const table = (headers, rows, className = '', rowClasses = []) => {
       if (!rows.length) return '<div class="small">' + escapeHTML(t('noData')) + '</div>';
-      return '<div class="table-shell ' + className + '"><table><thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map(cell => '<td>' + cell + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
+      return '<div class="table-shell ' + className + '"><table><thead><tr>' + headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' + rows.map((row, i) => '<tr class="' + (rowClasses[i] || '') + '">' + row.map(cell => '<td>' + cell + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
     };
     const upstreamStatePill = (status) => {
       if (status && status.quota_blocked) return '<span class="status bad">' + escapeHTML(t('quotaBlocked')) + '</span>';
@@ -4690,6 +4761,7 @@ const adminHTMLTemplate = `<!doctype html>
     /* ── Chart engine (pure SVG, no external lib) ── */
     const CHART_COLORS = ['#7ee7d6','#f1b866','#a78bfa','#f87171','#38bdf8','#4ade80','#fb923c','#e879f9'];
     const chartState = { hours: 24, bucket: 60 };
+    let latestBuckets = [];
 
     const svgNS = 'http://www.w3.org/2000/svg';
     const svgEl = (tag, attrs = {}) => {
@@ -4910,6 +4982,85 @@ const adminHTMLTemplate = `<!doctype html>
       wrap.insertBefore(svg, wrap.firstChild);
     };
 
+    /* ── Sparkline renderer ── */
+    const drawSparkline = (containerId, values, color) => {
+      const el = byId(containerId);
+      if (!el || !values || values.length < 2) return;
+      const W = el.clientWidth || 120;
+      const H = el.clientHeight || 30;
+      const max = Math.max(...values) || 1;
+      const n = values.length;
+      const points = values.map((v, i) => {
+        const x = (i / (n - 1)) * W;
+        const y = H - (v / max) * H * 0.85 - 1;
+        return [x.toFixed(1), y.toFixed(1)];
+      });
+      const pathD = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0] + ',' + p[1]).join(' ');
+      const areaD = pathD + ' L' + W + ',' + H + ' L0,' + H + ' Z';
+      const svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none', role: 'img', 'aria-hidden': 'true' });
+      svg.appendChild(svgEl('path', { d: areaD, fill: color, opacity: '0.15' }));
+      svg.appendChild(svgEl('path', { d: pathD, fill: 'none', stroke: color, 'stroke-width': '1.5', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+      const old = el.querySelector('svg');
+      if (old) old.remove();
+      el.appendChild(svg);
+    };
+
+    /* ── Donut chart renderer ── */
+    const drawDonut = (containerId, pct, color, size) => {
+      const el = byId(containerId);
+      if (!el) return;
+      const sz = size || 64;
+      const r = sz / 2 - 4;
+      const circ = 2 * Math.PI * r;
+      const filled = Math.max(0, Math.min(100, pct)) / 100 * circ;
+      const svg = svgEl('svg', { width: sz, height: sz, viewBox: '0 0 ' + sz + ' ' + sz, role: 'img', 'aria-hidden': 'true' });
+      svg.appendChild(svgEl('circle', { cx: sz / 2, cy: sz / 2, r: r, fill: 'none', stroke: 'rgba(255,255,255,0.08)', 'stroke-width': '6' }));
+      svg.appendChild(svgEl('circle', { cx: sz / 2, cy: sz / 2, r: r, fill: 'none', stroke: color, 'stroke-width': '6', 'stroke-dasharray': filled.toFixed(1) + ' ' + circ.toFixed(1), 'stroke-linecap': 'round', transform: 'rotate(-90 ' + sz / 2 + ' ' + sz / 2 + ')' }));
+      el.innerHTML = '';
+      el.appendChild(svg);
+      const label = document.createElement('div');
+      label.className = 'donut-label';
+      label.textContent = pct.toFixed(1) + '%';
+      el.appendChild(label);
+    };
+
+    /* ── Horizontal bar chart renderer ── */
+    const drawHorizontalBar = (containerId, items) => {
+      const el = byId(containerId);
+      if (!el || !items || !items.length) { if (el) el.innerHTML = ''; return; }
+      const maxVal = Math.max(...items.map(i => i.value)) || 1;
+      el.innerHTML = items.slice(0, 8).map((item, idx) => {
+        const pct = (item.value / maxVal) * 100;
+        const color = item.color || CHART_COLORS[idx % CHART_COLORS.length];
+        return '<div class="hbar-row">' +
+          '<div class="hbar-label">' + escapeHTML(item.label) + '</div>' +
+          '<div class="hbar-track"><div class="hbar-fill" style="width:' + pct.toFixed(1) + '%;background:' + color + '"></div></div>' +
+          '<div class="hbar-value">' + escapeHTML(item.display || fmt.format(item.value)) + '</div>' +
+          '</div>';
+      }).join('');
+    };
+
+    const renderMetricSparklines = (buckets, bucketMin) => {
+      if (!buckets || buckets.length < 3) return;
+      const metricEls = document.querySelectorAll('#metrics .metric');
+      if (metricEls.length < 8) return;
+      const ensureSpark = (el) => {
+        let s = el.querySelector('.metric-spark');
+        if (!s) { s = document.createElement('div'); s.className = 'metric-spark'; el.appendChild(s); }
+        s.id = 'sp-' + Math.random().toString(36).slice(2, 8);
+        return s.id;
+      };
+      const rpm = buckets.map(b => b.requests / Math.max(1, bucketMin / 60));
+      const lat = buckets.map(b => b.avg_latency_ms);
+      const tok = buckets.map(b => b.total_tokens);
+      drawSparkline(ensureSpark(metricEls[0]), rpm, CHART_COLORS[0]);
+      drawSparkline(ensureSpark(metricEls[1]), lat, CHART_COLORS[3]);
+      drawSparkline(ensureSpark(metricEls[2]), rpm, CHART_COLORS[0]);
+      drawSparkline(ensureSpark(metricEls[3]), lat, CHART_COLORS[3]);
+      drawSparkline(ensureSpark(metricEls[6]), tok.map(v => v / 1000), CHART_COLORS[4]);
+      drawSparkline(ensureSpark(metricEls[7]), tok, CHART_COLORS[1]);
+    };
+
     /* Load and render charts */
     const loadCharts = async () => {
       try {
@@ -4917,6 +5068,7 @@ const adminHTMLTemplate = `<!doctype html>
         if (!res.ok) return;
         const ts = await res.json();
         const buckets = ts.buckets || [];
+        latestBuckets = buckets;
         const byUp = ts.by_upstream || [];
         if (!buckets.length) return;
 
@@ -4935,11 +5087,13 @@ const adminHTMLTemplate = `<!doctype html>
         // Latency / success rate chart
         const latVals = buckets.map(b => b.avg_latency_ms);
         const srVals = buckets.map(b => b.requests > 0 ? (b.successes / b.requests) * 100 : 0);
+        const cacheVals = buckets.map(b => b.prompt_tokens > 0 ? (b.cached_prompt_tokens / b.prompt_tokens) * 100 : 0);
         drawLineChart('chartLatency', 'tipLatency', [
           { name: localeText('平均延迟 (ms)', 'Avg Latency (ms)'), values: latVals, labels, color: CHART_COLORS[3] },
           { name: localeText('成功率 %', 'Success %'), values: srVals, labels, color: CHART_COLORS[0] },
+          { name: localeText('缓存命中 %', 'Cache Hit %'), values: cacheVals, labels, color: CHART_COLORS[1] },
         ], { area: false, fmtVal: (v) => v.toFixed(1) });
-        renderLegend('legendLatency', [[localeText('平均延迟 (ms)', 'Avg Latency (ms)'), CHART_COLORS[3]], [localeText('成功率 %', 'Success %'), CHART_COLORS[0]]]);
+        renderLegend('legendLatency', [[localeText('平均延迟 (ms)', 'Avg Latency (ms)'), CHART_COLORS[3]], [localeText('成功率 %', 'Success %'), CHART_COLORS[0]], [localeText('缓存命中 %', 'Cache Hit %'), CHART_COLORS[1]]]);
 
         // Token by upstream stacked bar
         const allUpstreams = new Set();
@@ -4956,6 +5110,7 @@ const adminHTMLTemplate = `<!doctype html>
         const sfStack = buckets.map(b => ({ [successLabel]: b.successes, [failureLabel]: b.failures }));
         drawStackedBarChart('chartSuccess', 'tipSuccess', sfLabels, sfStack, [successLabel, failureLabel]);
         renderLegend('legendSuccess', [[successLabel, CHART_COLORS[0]], [failureLabel, CHART_COLORS[3]]]);
+        renderMetricSparklines(buckets, bucketMin);
       } catch (err) {
         // silently ignore chart load errors
       }
@@ -5010,10 +5165,11 @@ const adminHTMLTemplate = `<!doctype html>
       if (heroPriority) {
         heroPriority.innerHTML = [
           surfaceCard(localeText('1 分钟吞吐', '1m Throughput'), fmtRate(oneMinute.rpm) + ' RPM', fmtRate(oneMinute.tpm) + ' TPM', 'tone-good'),
-          surfaceCard(localeText('1 分钟延迟', '1m Latency'), fmtMs(oneMinute.avg_latency_ms || 0), fmtPct(oneMinute.success_rate || 0) + localeText(' 成功率', ' success'), (oneMinute.avg_latency_ms || 0) > 4000 ? 'tone-warn' : ''),
+          '<div class="surface-card ' + ((oneMinute.success_rate || 0) < 95 ? 'tone-warn' : '') + '"><div class="surface-card-label">' + escapeHTML(localeText('1 分钟成功率', '1m Success Rate')) + '</div><div class="donut-wrap" id="heroSuccessDonut"></div></div>',
           surfaceCard(localeText('退化上游', 'Degraded Upstreams'), fmt.format(degradedUpstreams), fmt.format(Math.max(Object.keys(upstreamStatuses).length - degradedUpstreams, 0)) + localeText(' 条健康', ' healthy'), degradedUpstreams ? 'tone-danger' : 'tone-good'),
           surfaceCard(localeText('最近 503', 'Recent 503'), fmt.format(recent503), recent503 ? localeText('最近样本里出现了 503 压力。', 'Latest sample contains 503 pressure') : localeText('最近样本里没有 503。', 'No recent 503 in latest sample'), recent503 ? 'tone-warn' : 'tone-good'),
         ].join('');
+        drawDonut('heroSuccessDonut', oneMinute.success_rate || 0, (oneMinute.success_rate || 0) >= 95 ? '#7ee7d6' : '#f1b866', 64);
       }
       if (heroPriority) { heroPriority.classList.remove('value-refresh'); void heroPriority.offsetWidth; heroPriority.classList.add('value-refresh'); }
       document.getElementById('runtimeTopline').innerHTML = [
@@ -5077,15 +5233,6 @@ const adminHTMLTemplate = `<!doctype html>
         miniChip(localeText('未定价', 'Unpriced'), fmt.format(pricingSummary.unpriced_models || 0), pricingSummary.unpriced_models ? 'warn' : ''),
         miniChip(localeText('最高花费', 'Top Spend'), topCostModel ? ((topCostModel.display_model || '-') + ' · ' + compactUsd(topCostModel.cost?.total_usd || 0)) : localeText('无', 'n/a')),
       ].join('');
-      document.getElementById('economicsTopline').innerHTML = topEconomics.length
-        ? topEconomics.map((item, idx) => surfaceCard(
-            localeText('重点模型 ', 'Top Model ') + (idx + 1),
-            item.display_model || '-',
-            compactUsd(item.cost?.total_usd || 0) + ' · ' + fmt.format(item.usage?.total_tokens || 0) + localeText(' token', ' tokens')
-          )).join('')
-        : surfaceCard(localeText('重点模型 1', 'Top Model 1'), localeText('无', 'n/a'), localeText('还没有已定价用量。', 'No priced usage yet'))
-          + surfaceCard(localeText('重点模型 2', 'Top Model 2'), localeText('无', 'n/a'), localeText('还没有已定价用量。', 'No priced usage yet'))
-          + surfaceCard(localeText('重点模型 3', 'Top Model 3'), localeText('无', 'n/a'), localeText('还没有已定价用量。', 'No priced usage yet'));
 
       const unhealthyCount = degradedUpstreams;
       const healthEntries = Object.entries(upstreamStatuses);
@@ -5120,6 +5267,7 @@ const adminHTMLTemplate = `<!doctype html>
           totalUsageCell(item.usage),
           fmtMoney(item.cost.total_usd || 0),
         ]);
+      drawHorizontalBar('modelDistribution', pricingModels.slice(0, 8).map((item, idx) => ({ label: item.display_model || '-', value: (item.usage && item.usage.total_tokens) || 0, display: fmt.format((item.usage && item.usage.total_tokens) || 0), color: CHART_COLORS[idx % CHART_COLORS.length] })));
       document.getElementById('byModel').innerHTML = table([localeText('模型', 'Model'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total'), 'USD'], modelRows, 'table-models');
 
       const topUsageUpstream = upstreamUsageEntries.slice().sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))[0];
@@ -5131,15 +5279,6 @@ const adminHTMLTemplate = `<!doctype html>
         .slice()
         .sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))
         .slice(0, 3);
-      document.getElementById('usageTopline').innerHTML = topUsageEntries.length
-        ? topUsageEntries.map((entry, idx) => surfaceCard(
-            localeText('重点上游 ', 'Top Upstream ') + (idx + 1),
-            entry[0],
-            fmt.format(entry[1].total_tokens || 0) + localeText(' 总量 · ', ' total · ') + fmt.format(entry[1].completion_tokens || 0) + localeText(' 补全', ' completion')
-          )).join('')
-        : surfaceCard(localeText('重点上游 1', 'Top Upstream 1'), localeText('无', 'n/a'), localeText('还没有用量数据。', 'No usage data'))
-          + surfaceCard(localeText('重点上游 2', 'Top Upstream 2'), localeText('无', 'n/a'), localeText('还没有用量数据。', 'No usage data'))
-          + surfaceCard(localeText('重点上游 3', 'Top Upstream 3'), localeText('无', 'n/a'), localeText('还没有用量数据。', 'No usage data'));
 
       const upstreamUsageRows = upstreamUsageEntries
         .slice()
@@ -5151,6 +5290,7 @@ const adminHTMLTemplate = `<!doctype html>
           stackCell(fmt.format(usage.completion_tokens || 0), localeText('补全 token', 'completion tokens')),
           totalUsageCell(usage),
         ]);
+      drawHorizontalBar('upstreamDistribution', upstreamUsageEntries.slice(0, 6).map(([name, usage], idx) => ({ label: name, value: (usage && usage.total_tokens) || 0, display: fmt.format((usage && usage.total_tokens) || 0), color: CHART_COLORS[idx % CHART_COLORS.length] })));
       document.getElementById('byUpstream').innerHTML = table([localeText('上游', 'Upstream'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total')], upstreamUsageRows, 'table-usage');
 
       const cacheRanking = data.telemetry.cache_hit_ranking || [];
@@ -5224,7 +5364,8 @@ const adminHTMLTemplate = `<!doctype html>
           stackCell(fmt.format((item.usage && item.usage.total_tokens) || 0), localeText('缓存 ', 'cached ') + fmt.format((item.usage && item.usage.cached_prompt_tokens) || 0)),
           stackCell(estimateRequestCost(item, pricing) || ('<span class="small">' + escapeHTML(localeText('无', 'n/a')) + '</span>'), fmt.format((item.usage && item.usage.completion_tokens) || 0) + localeText(' 补全', ' completion')),
         ]),
-        'table-requests'
+        'table-requests',
+        recentRequests.map(item => { const c = Number(item.status_code || 0); return c >= 500 ? 'row-fail' : c >= 400 ? 'row-warn' : c >= 200 && c < 300 ? 'row-ok' : ''; })
       );
       } catch (err) {
         // silently ignore data load errors
