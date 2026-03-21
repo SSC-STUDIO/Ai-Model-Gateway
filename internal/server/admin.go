@@ -754,6 +754,7 @@ const adminHTMLTemplate = `<!doctype html>
       font-size: 12px;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+      white-space: nowrap;
     }
     .settings-jumpbar span {
       color: var(--muted);
