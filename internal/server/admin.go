@@ -4938,7 +4938,7 @@ const adminHTMLTemplate = `<!doctype html>
     };
 
     /* Stacked bar chart renderer */
-    const drawStackedBarChart = (wrapId, tipId, labels, stackData, upstreamNames) => {
+    const drawStackedBarChart = (wrapId, tipId, labels, stackData, upstreamNames, customColors) => {
       const wrap = byId(wrapId);
       if (!wrap) return;
       const tip = setupTooltip(wrapId, tipId);
@@ -4992,7 +4992,7 @@ const adminHTMLTemplate = `<!doctype html>
           if (val <= 0) return;
           const barH = (val / maxVal) * ch;
           const by = pad.top + ch - yOffset - barH;
-          const color = CHART_COLORS[ui % CHART_COLORS.length];
+          const color = (customColors && customColors[ui]) || CHART_COLORS[ui % CHART_COLORS.length];
           svg.appendChild(svgEl('rect', { x: bx, y: by, width: barW, height: barH, fill: color, rx: '2', opacity: '0.85' }));
           yOffset += barH;
         });
@@ -5009,7 +5009,7 @@ const adminHTMLTemplate = `<!doctype html>
         upstreamNames.forEach((name, ui) => {
           const val = stackData[idx]?.[name] || 0;
           if (val <= 0) return;
-          const color = CHART_COLORS[ui % CHART_COLORS.length];
+          const color = (customColors && customColors[ui]) || CHART_COLORS[ui % CHART_COLORS.length];
           html += '<br><span style="color:' + color + '">' + escapeHTML(name) + '</span>: ' + fmt.format(val);
         });
         html += '<br>Total: ' + fmt.format(totals[idx]);
@@ -5149,8 +5149,8 @@ const adminHTMLTemplate = `<!doctype html>
         const successLabel = localeText('成功', 'Success');
         const failureLabel = localeText('失败', 'Failure');
         const sfStack = buckets.map(b => ({ [successLabel]: b.successes, [failureLabel]: b.failures }));
-        drawStackedBarChart('chartSuccess', 'tipSuccess', sfLabels, sfStack, [successLabel, failureLabel]);
-        renderLegend('legendSuccess', [[successLabel, CHART_COLORS[0]], [failureLabel, CHART_COLORS[3]]]);
+        drawStackedBarChart('chartSuccess', 'tipSuccess', sfLabels, sfStack, [successLabel, failureLabel], ['#7ee7d6', '#f87171']);
+        renderLegend('legendSuccess', [[successLabel, '#7ee7d6'], [failureLabel, '#f87171']]);
         renderMetricSparklines(buckets, bucketMin);
       } catch (err) {
         // silently ignore chart load errors
