@@ -303,6 +303,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
+      flex: 1 0 auto;
     }
     .metrics.two {
       grid-template-columns: repeat(2, 1fr);
@@ -1298,7 +1299,7 @@ const adminHTMLTemplate = `<!doctype html>
       min-height: 0;
     }
     .card-fill-body {
-      flex: 0 1 auto;
+      flex: 1 1 auto;
       min-height: 0;
       max-height: clamp(220px, 34vh, 420px);
       overflow: auto;
@@ -1397,6 +1398,7 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 6px;
       margin-top: 8px;
       margin-bottom: 8px;
+      flex: 1 0 auto;
     }
     .hbar-row {
       display: grid;
