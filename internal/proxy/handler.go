@@ -1279,13 +1279,15 @@ func extractUsageFromJSON(body []byte) (telemetry.Usage, bool) {
 			PromptTokensDetails struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
-			CompletionTokens   int `json:"completion_tokens"`
-			InputTokens        int `json:"input_tokens"`
-			InputTokensDetails struct {
+			CompletionTokens        int `json:"completion_tokens"`
+			InputTokens             int `json:"input_tokens"`
+			InputTokensDetails      struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"input_tokens_details"`
-			OutputTokens int `json:"output_tokens"`
-			TotalTokens  int `json:"total_tokens"`
+			OutputTokens            int `json:"output_tokens"`
+			TotalTokens             int `json:"total_tokens"`
+			CacheReadInputTokens    int `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -1311,11 +1313,18 @@ func extractUsageFromJSON(body []byte) (telemetry.Usage, bool) {
 	if cachedPromptTokens == 0 {
 		cachedPromptTokens = payload.Usage.InputTokensDetails.CachedTokens
 	}
+	if cachedPromptTokens == 0 {
+		cachedPromptTokens = payload.Usage.CacheReadInputTokens
+	}
+	totalTokens := payload.Usage.TotalTokens
+	if totalTokens == 0 {
+		totalTokens = promptTokens + completionTokens
+	}
 	return telemetry.Usage{
 		PromptTokens:       promptTokens,
 		CachedPromptTokens: cachedPromptTokens,
 		CompletionTokens:   completionTokens,
-		TotalTokens:        payload.Usage.TotalTokens,
+		TotalTokens:        totalTokens,
 	}, true
 }
 
@@ -1338,13 +1347,15 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 				PromptTokensDetails struct {
 					CachedTokens int `json:"cached_tokens"`
 				} `json:"prompt_tokens_details"`
-				CompletionTokens   int `json:"completion_tokens"`
-				InputTokens        int `json:"input_tokens"`
-				InputTokensDetails struct {
+				CompletionTokens        int `json:"completion_tokens"`
+				InputTokens             int `json:"input_tokens"`
+				InputTokensDetails      struct {
 					CachedTokens int `json:"cached_tokens"`
 				} `json:"input_tokens_details"`
-				OutputTokens int `json:"output_tokens"`
-				TotalTokens  int `json:"total_tokens"`
+				OutputTokens            int `json:"output_tokens"`
+				TotalTokens             int `json:"total_tokens"`
+				CacheReadInputTokens    int `json:"cache_read_input_tokens"`
+				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 			} `json:"usage"`
 			Response struct {
 				Usage struct {
@@ -1352,15 +1363,24 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 					PromptTokensDetails struct {
 						CachedTokens int `json:"cached_tokens"`
 					} `json:"prompt_tokens_details"`
-					CompletionTokens   int `json:"completion_tokens"`
-					InputTokens        int `json:"input_tokens"`
-					InputTokensDetails struct {
+					CompletionTokens        int `json:"completion_tokens"`
+					InputTokens             int `json:"input_tokens"`
+					InputTokensDetails      struct {
 						CachedTokens int `json:"cached_tokens"`
 					} `json:"input_tokens_details"`
-					OutputTokens int `json:"output_tokens"`
-					TotalTokens  int `json:"total_tokens"`
+					OutputTokens            int `json:"output_tokens"`
+					TotalTokens             int `json:"total_tokens"`
+					CacheReadInputTokens    int `json:"cache_read_input_tokens"`
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 				} `json:"usage"`
 			} `json:"response"`
+			Message struct {
+				Usage struct {
+					InputTokens          int `json:"input_tokens"`
+					OutputTokens         int `json:"output_tokens"`
+					CacheReadInputTokens int `json:"cache_read_input_tokens"`
+				} `json:"usage"`
+			} `json:"message"`
 		}
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
@@ -1371,7 +1391,14 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 			usage = event.Usage
 		}
 		if usage.TotalTokens == 0 && usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.InputTokens == 0 && usage.OutputTokens == 0 {
-			continue
+			// Anthropic message_start event puts usage under message.usage
+			if event.Message.Usage.InputTokens > 0 || event.Message.Usage.OutputTokens > 0 {
+				usage.InputTokens = event.Message.Usage.InputTokens
+				usage.OutputTokens = event.Message.Usage.OutputTokens
+				usage.CacheReadInputTokens = event.Message.Usage.CacheReadInputTokens
+			} else {
+				continue
+			}
 		}
 
 		promptTokens := usage.PromptTokens
@@ -1386,12 +1413,19 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 		if cachedPromptTokens == 0 {
 			cachedPromptTokens = usage.InputTokensDetails.CachedTokens
 		}
+		if cachedPromptTokens == 0 {
+			cachedPromptTokens = usage.CacheReadInputTokens
+		}
+		totalTokens := usage.TotalTokens
+		if totalTokens == 0 {
+			totalTokens = promptTokens + completionTokens
+		}
 
 		return telemetry.Usage{
 			PromptTokens:       promptTokens,
 			CachedPromptTokens: cachedPromptTokens,
 			CompletionTokens:   completionTokens,
-			TotalTokens:        usage.TotalTokens,
+			TotalTokens:        totalTokens,
 		}, true
 	}
 
