@@ -544,16 +544,6 @@ const adminHTMLTemplate = `<!doctype html>
       padding-bottom: 2px;
       align-items: flex-end;
     }
-    .page-settings .hero {
-      grid-template-columns: 1fr;
-    }
-    .page-settings .hero-main {
-      grid-template-columns: 1fr;
-      min-height: 0;
-    }
-    .page-settings .hero-side {
-      display: none;
-    }
     .page-settings .config-panel {
       gap: 14px;
     }
@@ -2804,7 +2794,6 @@ const adminHTMLTemplate = `<!doctype html>
         loaded: "読み込み済み",
         configSynced: "設定同期済み",
         loadConfigFailed: "設定の読み込みに失敗しました",
-        loaded: "読み込み済み",
         noData: "データなし",
         enabled: "有効",
         disabled: "無効",
@@ -3455,10 +3444,6 @@ const adminHTMLTemplate = `<!doctype html>
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
-    const priceLine = (pricing) => {
-      if (!pricing) return '<span class="small">' + escapeHTML(t('officialPriceUnavailable')) + '</span>';
-      return '<span class="small mono">$' + escapeHTML(pricing.input_per_1m_usd) + ' / $' + escapeHTML(pricing.output_per_1m_usd) + ' ' + escapeHTML(t('perMillion')) + '</span>';
-    };
     const resolveRequestPrice = (item, pricing) => {
       const routeCatalog = pricing.route_catalog || {};
       const catalog = pricing.catalog || {};
@@ -3615,21 +3600,6 @@ const adminHTMLTemplate = `<!doctype html>
     const setPlaceholderValue = (selector, value) => {
       const el = document.querySelector(selector);
       if (el) el.setAttribute('placeholder', value);
-    };
-    const setAttrValue = (selector, attr, value) => {
-      const el = document.querySelector(selector);
-      if (el) el.setAttribute(attr, value);
-    };
-    const setCheckboxLabelText = (id, key) => {
-      const input = byId(id);
-      const label = input?.parentElement;
-      if (!input || !label) return;
-      Array.from(label.childNodes).forEach((node) => {
-        if (node !== input) {
-          node.remove();
-        }
-      });
-      label.appendChild(document.createTextNode(' ' + t(key)));
     };
     const setCheckboxLabelValue = (id, value) => {
       const input = byId(id);
@@ -4532,7 +4502,7 @@ const adminHTMLTemplate = `<!doctype html>
               '</div>' +
               '<div class="config-field config-field-wide">' +
                 '<label>' + escapeHTML(t('apiKey')) + '</label>' +
-                '<input type="text" class="upstream-api-key" placeholder="sk-..." value="' + escapeHTML(upstream.api_key || '') + '">' +
+                '<input type="password" class="upstream-api-key" placeholder="sk-..." value="' + escapeHTML(upstream.api_key || '') + '">' +
               '</div>' +
               '<div class="config-field">' +
                 '<label>' + escapeHTML(t('providerClass')) + '</label>' +
@@ -5305,20 +5275,21 @@ const adminHTMLTemplate = `<!doctype html>
       try {
       const res = await fetch('/-/admin/data', { cache: 'no-store' });
       const data = await res.json();
-      const summary = data.telemetry.summary || {};
-      const perf = data.telemetry.performance || {};
+      const telemetry = data.telemetry || {};
+      const summary = telemetry.summary || {};
+      const perf = telemetry.performance || {};
       const oneMinute = perf.last_1m || {};
       const fiveMinute = perf.last_5m || {};
-      const cacheTrends = data.telemetry.cache_trends || {};
+      const cacheTrends = telemetry.cache_trends || {};
       const oneHour = cacheTrends.last_1h || {};
       const dayWindow = cacheTrends.last_24h || {};
       const pricing = data.pricing || {};
       const pricingSummary = pricing.summary || {};
       const pricingModels = (pricing.models || []).slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0));
-      const recentRequests = (data.telemetry.requests || []).slice(0, 24);
-      const recentErrors = data.telemetry.errors || [];
+      const recentRequests = (telemetry.requests || []).slice(0, 24);
+      const recentErrors = telemetry.errors || [];
       const upstreamStatuses = data.upstreams || {};
-      const upstreamUsageEntries = Object.entries(data.telemetry.by_upstream || {});
+      const upstreamUsageEntries = Object.entries(telemetry.by_upstream || {});
       const runtime = data.runtime || {};
       const recoveryMode = runtime.retry_infinite_on_error ? localeText('无限恢复', 'always recover') : localeText('有界', 'bounded');
       const enabledRuntimeUpstreams = Number(runtime.enabled_upstreams || 0);
@@ -5457,7 +5428,7 @@ const adminHTMLTemplate = `<!doctype html>
       drawHorizontalBar('upstreamDistribution', upstreamUsageEntries.slice(0, 6).map(([name, usage], idx) => ({ label: name, value: (usage && usage.total_tokens) || 0, display: fmt.format((usage && usage.total_tokens) || 0), color: CHART_COLORS[idx % CHART_COLORS.length] })));
       document.getElementById('byUpstream').innerHTML = table([localeText('上游', 'Upstream'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total')], upstreamUsageRows, 'table-usage');
 
-      const cacheRanking = data.telemetry.cache_hit_ranking || [];
+      const cacheRanking = telemetry.cache_hit_ranking || [];
       const topErrorUpstream = aggregateBy(recentErrors, (item) => item.upstream || '-')[0];
       const topErrorStatus = aggregateBy(recentErrors, (item) => item.status_code || '-')[0];
       const topErrorModel = aggregateBy(recentErrors, (item) => item.model || '-')[0];
@@ -5591,36 +5562,6 @@ func renderAdminHTML(settingsView bool, language string) string {
 	heroMetaSecondary := `<div class="pill" id="pricingSource">` + pick("价格来源", "Pricing source") + `</div>`
 	heroMetaTertiary := ``
 	heroAside := ``
-	brandTitle := pick("AI 模型网关", "AI MODEL GATEWAY")
-	brandSubtitle := pick("统一的可观测性、路由、计价和运行控制台。", "Unified observability, routing, pricing, and runtime control.")
-	performanceTitle := pick("实时性能", "Live Performance")
-	performanceCaption := pick("先看最近 1 分钟与 5 分钟窗口内的真实 RPM、TPM 和延迟。", "Start with the real 1-minute and 5-minute RPM, TPM, and latency windows.")
-	runtimePostureTitle := pick("运行姿态", "Runtime Posture")
-	runtimePostureCaption := pick("当前恢复模式、失败出口和探活状态。", "Current recovery mode, failure exit, and probe posture.")
-	upstreamHealthTitle := pick("上游健康", "Upstream Health")
-	upstreamHealthCaption := pick("先看哪条上游慢、退化、进冷却，再决定是否切换。", "See which upstream is slow, degraded, or cooling down before switching.")
-	recentErrorsTitle := pick("最近错误", "Recent Errors")
-	recentErrorsCaption := pick("压缩看最近错误的归属、状态和主消息。", "Compressed view of ownership, status, and dominant error message.")
-	recentRequestsTitle := pick("最近请求", "Recent Requests")
-	recentRequestsCaption := pick("最新请求轨迹，含状态、尝试次数、延迟和单次估算成本。", "Latest request traces with status, attempts, latency, and estimated cost.")
-	requestThroughputTitle := pick("请求吞吐", "Request Throughput")
-	requestThroughputCaption := pick("RPM 与 TPM 趋势，按时间桶聚合。", "RPM and TPM trends aggregated by time bucket.")
-	latencyTrendTitle := pick("延迟趋势", "Latency Trend")
-	latencyTrendCaption := pick("平均延迟（ms）与成功率趋势。", "Average latency (ms) and success-rate trend.")
-	successFailureTitle := pick("成功 / 失败", "Success / Failure")
-	successFailureCaption := pick("每个时间桶内的成功与失败请求数。", "Successful and failed requests in each bucket.")
-	tokenUsageTitle := pick("按上游 Token 用量", "Token Usage by Upstream")
-	tokenUsageCaption := pick("按上游分组的 Token 消耗。", "Token consumption grouped by upstream.")
-	economicsTitle := pick("模型成本", "Model Economics")
-	economicsCaption := pick("按模型汇总 Token、估算美元成本和官方价格表覆盖情况。", "Model-level token usage, estimated USD cost, and pricing coverage.")
-	costSnapshotTitle := pick("成本快照", "Cost Snapshot")
-	costSnapshotCaption := pick("基于已知官方价格模型估算。", "Estimated from known official model pricing.")
-	upstreamUsageTitle := pick("上游用量", "Upstream Usage")
-	upstreamUsageCaption := pick("按上游汇总 Token 消耗，和健康状态对照看。", "Token usage by upstream, compared against health posture.")
-	cacheRankingTitle := pick("缓存命中排行", "Cache Hit Ranking")
-	cacheRankingCaption := pick("最近 24 小时按上游缓存命中率排序。", "Last-24h cache hit ranking by upstream.")
-	runtimeConfigTitle := pick("运行时配置", "Runtime Config")
-	runtimeConfigCaption := pick("集中编辑探活、桥接、恢复、语言和服务商配置。", "Manage probes, bridge, recovery, language, and providers in one place.")
 	routerStrategyHealthWeightedRR := pick("健康加权轮询", "Health-Weighted Round Robin")
 	routerStrategyRoundRobin := pick("轮询", "Round Robin")
 	if settingsView {
@@ -5659,36 +5600,6 @@ func renderAdminHTML(settingsView bool, language string) string {
 		"{{HERO_META_SECONDARY}}", heroMetaSecondary,
 		"{{HERO_META_TERTIARY}}", heroMetaTertiary,
 		"{{HERO_ASIDE}}", heroAside,
-		"{{BRAND_TITLE}}", brandTitle,
-		"{{BRAND_SUBTITLE}}", brandSubtitle,
-		"{{PERFORMANCE_TITLE}}", performanceTitle,
-		"{{PERFORMANCE_CAPTION}}", performanceCaption,
-		"{{RUNTIME_POSTURE_TITLE}}", runtimePostureTitle,
-		"{{RUNTIME_POSTURE_CAPTION}}", runtimePostureCaption,
-		"{{UPSTREAM_HEALTH_TITLE}}", upstreamHealthTitle,
-		"{{UPSTREAM_HEALTH_CAPTION}}", upstreamHealthCaption,
-		"{{RECENT_ERRORS_TITLE}}", recentErrorsTitle,
-		"{{RECENT_ERRORS_CAPTION}}", recentErrorsCaption,
-		"{{RECENT_REQUESTS_TITLE}}", recentRequestsTitle,
-		"{{RECENT_REQUESTS_CAPTION}}", recentRequestsCaption,
-		"{{REQUEST_THROUGHPUT_TITLE}}", requestThroughputTitle,
-		"{{REQUEST_THROUGHPUT_CAPTION}}", requestThroughputCaption,
-		"{{LATENCY_TREND_TITLE}}", latencyTrendTitle,
-		"{{LATENCY_TREND_CAPTION}}", latencyTrendCaption,
-		"{{SUCCESS_FAILURE_TITLE}}", successFailureTitle,
-		"{{SUCCESS_FAILURE_CAPTION}}", successFailureCaption,
-		"{{TOKEN_USAGE_TITLE}}", tokenUsageTitle,
-		"{{TOKEN_USAGE_CAPTION}}", tokenUsageCaption,
-		"{{ECONOMICS_TITLE}}", economicsTitle,
-		"{{ECONOMICS_CAPTION}}", economicsCaption,
-		"{{COST_SNAPSHOT_TITLE}}", costSnapshotTitle,
-		"{{COST_SNAPSHOT_CAPTION}}", costSnapshotCaption,
-		"{{UPSTREAM_USAGE_TITLE}}", upstreamUsageTitle,
-		"{{UPSTREAM_USAGE_CAPTION}}", upstreamUsageCaption,
-		"{{CACHE_RANKING_TITLE}}", cacheRankingTitle,
-		"{{CACHE_RANKING_CAPTION}}", cacheRankingCaption,
-		"{{RUNTIME_CONFIG_TITLE}}", runtimeConfigTitle,
-		"{{RUNTIME_CONFIG_CAPTION}}", runtimeConfigCaption,
 		"{{ROUTER_STRATEGY_HEALTH_WEIGHTED_RR}}", routerStrategyHealthWeightedRR,
 		"{{ROUTER_STRATEGY_ROUND_ROBIN}}", routerStrategyRoundRobin,
 	).Replace(adminHTMLTemplate)
