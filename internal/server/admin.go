@@ -540,8 +540,8 @@ const adminHTMLTemplate = `<!doctype html>
       transform: none;
     }
     .page-settings #runtimeConfig > .section-head {
-      margin: 0 2px 14px;
-      padding-bottom: 4px;
+      margin: 0 2px 10px;
+      padding-bottom: 2px;
       align-items: flex-end;
     }
     .page-settings .hero {
@@ -555,7 +555,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: none;
     }
     .page-settings .config-panel {
-      gap: 18px;
+      gap: 14px;
     }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -729,27 +729,41 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .config-panel {
       display: grid;
-      gap: 16px;
+      gap: 14px;
+    }
+    .settings-command-deck {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.68fr) minmax(240px, 0.76fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+    .settings-toolbar-cluster {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+      grid-column: 2 / -1;
+    }
+    .settings-command-deck > .config-card,
+    .settings-toolbar-cluster > .config-card {
+      min-height: 100%;
     }
     .settings-shell {
       display: grid;
-      grid-template-columns: 200px minmax(0, 1fr) 260px;
-      gap: 14px;
+      grid-template-columns: minmax(0, 1fr) 292px;
+      gap: 12px;
       align-items: start;
-    }
-    .page-settings .settings-shell {
-      gap: 16px;
     }
     .settings-nav,
     .settings-main,
     .settings-rail {
       display: grid;
-      gap: 12px;
+      gap: 10px;
       min-width: 0;
     }
     .settings-sticky {
       position: sticky;
-      top: 14px;
+      top: 16px;
       display: grid;
       gap: 12px;
     }
@@ -763,26 +777,39 @@ const adminHTMLTemplate = `<!doctype html>
     .page-settings .settings-rail-panel {
       padding: 12px;
     }
+    .page-settings .settings-nav-panel {
+      background:
+        radial-gradient(circle at 100% 0%, rgba(121, 230, 215, 0.14), transparent 36%),
+        linear-gradient(160deg, rgba(26, 24, 21, 0.94), rgba(14, 13, 12, 0.88));
+      min-height: 100%;
+      display: grid;
+      align-content: start;
+    }
     .settings-nav-title {
-      font-size: 11px;
+      font-size: 10px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
     .settings-jumpbar {
       display: grid;
       gap: 8px;
       margin-bottom: 2px;
     }
+    .page-settings .settings-jumpbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 0;
+    }
     .settings-jumpbar a {
-      display: grid;
-      grid-template-columns: 1fr;
-      align-items: start;
+      display: inline-flex;
+      align-items: center;
       gap: 4px;
       padding: 7px 10px;
       min-height: 32px;
-      border-radius: 14px;
+      border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.04);
       color: var(--muted);
@@ -793,11 +820,12 @@ const adminHTMLTemplate = `<!doctype html>
       transition: border-color 140ms ease, color 140ms ease, background 140ms ease, box-shadow 140ms ease;
     }
     .page-settings .settings-jumpbar a {
-      min-height: 44px;
-      padding: 9px 12px;
-      border-radius: 16px;
-      background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+      min-height: 32px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      align-content: center;
+      background: rgba(255,255,255,0.04);
+      box-shadow: none;
     }
     .settings-jumpbar a:hover {
       color: var(--ink);
@@ -811,26 +839,26 @@ const adminHTMLTemplate = `<!doctype html>
       box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12);
     }
     .settings-jumpbar-copy {
-      display: grid;
+      display: inline-flex;
+      align-items: center;
       gap: 3px;
       min-width: 0;
     }
     .settings-jumpbar strong {
-      font-size: 12px;
+      font-size: 11px;
       letter-spacing: 0.04em;
       text-transform: uppercase;
       white-space: nowrap;
     }
     .settings-jumpbar span {
-      color: var(--muted);
-      font-size: 11px;
+      display: none;
     }
     .settings-jumpbar em {
       font-style: normal;
       font-size: 10px;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
-      color: rgba(247, 243, 238, 0.72);
+      color: rgba(247, 243, 238, 0.55);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -853,22 +881,22 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 8px;
     }
     .page-settings .config-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
     }
     .policy-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-bottom: 10px;
+      gap: 7px;
+      margin-bottom: 8px;
     }
     .policy-card {
       border: 1px solid var(--line);
       border-radius: 14px;
-      padding: 12px;
+      padding: 10px;
       background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
       display: grid;
-      gap: 5px;
+      gap: 4px;
       min-width: 0;
       transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
     }
@@ -888,21 +916,21 @@ const adminHTMLTemplate = `<!doctype html>
       text-transform: uppercase;
     }
     .policy-card-value {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 800;
       letter-spacing: -0.04em;
       line-height: 1;
     }
     .policy-card-meta {
       color: var(--muted);
-      font-size: 11px;
-      line-height: 1.45;
+      font-size: 10px;
+      line-height: 1.35;
     }
     .mode-preset-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-bottom: 10px;
+      gap: 7px;
+      margin-bottom: 8px;
     }
     .mode-preset {
       width: 100%;
@@ -939,8 +967,8 @@ const adminHTMLTemplate = `<!doctype html>
       border-radius: 12px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.06);
-      padding: 9px 11px;
-      font-size: 12px;
+      padding: 8px 10px;
+      font-size: 11px;
       color: var(--ink);
       outline: none;
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
@@ -954,13 +982,13 @@ const adminHTMLTemplate = `<!doctype html>
       background: rgba(10, 10, 9, 0.55);
     }
     .config-field textarea {
-      min-height: 82px;
+      min-height: 68px;
       resize: vertical;
     }
     .config-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 7px;
       align-items: center;
     }
     .btn {
@@ -968,8 +996,8 @@ const adminHTMLTemplate = `<!doctype html>
       border: 1px solid rgba(121, 230, 215, 0.4);
       background: linear-gradient(120deg, rgba(121, 230, 215, 0.16), rgba(121, 230, 215, 0.08));
       color: var(--accent);
-      padding: 7px 13px;
-      font-size: 11px;
+      padding: 6px 11px;
+      font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
@@ -1011,9 +1039,9 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .page-settings .config-card {
       border: 1px solid rgba(255, 244, 230, 0.16);
-      border-radius: 20px;
-      padding: 14px;
-      gap: 10px;
+      border-radius: 18px;
+      padding: 11px;
+      gap: 8px;
       background: linear-gradient(160deg, rgba(26, 24, 21, 0.92), rgba(14, 13, 12, 0.85));
       box-shadow: var(--shadow-soft);
       backdrop-filter: blur(18px) saturate(120%);
@@ -1051,33 +1079,33 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .page-settings .config-card-head {
       position: static;
-      margin: 0 0 10px;
+      margin: 0 0 7px;
       padding: 0;
       flex-wrap: wrap;
       background: none;
     }
     .config-card-title {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
     }
     .config-card-head-main {
       display: grid;
-      gap: 4px;
+      gap: 3px;
       min-width: 0;
     }
     .section-kicker {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       color: var(--muted);
-      font-size: 10px;
-      letter-spacing: 0.14em;
+      font-size: 9px;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
     }
     .section-kicker strong {
       color: var(--accent-strong);
-      font-size: 11px;
-      letter-spacing: 0.18em;
+      font-size: 10px;
+      letter-spacing: 0.14em;
     }
     .section-kicker span {
       padding-top: 1px;
@@ -1085,8 +1113,8 @@ const adminHTMLTemplate = `<!doctype html>
     .section-inline-meta {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 2px;
+      gap: 5px;
+      margin-top: 1px;
       min-width: 0;
     }
     .section-inline-meta .mini-chip {
@@ -1096,7 +1124,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .config-help {
       color: var(--muted);
-      font-size: 11px;
+      font-size: 10px;
     }
     .config-status {
       color: var(--muted);
@@ -1110,28 +1138,50 @@ const adminHTMLTemplate = `<!doctype html>
       align-items: center;
       margin-bottom: 4px;
     }
+    .page-settings .config-toolbar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+      margin-bottom: 0;
+      grid-auto-rows: minmax(40px, auto);
+    }
     .config-search {
       min-width: min(360px, 100%);
       flex: 1 1 240px;
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.06);
-      padding: 9px 12px;
-      font-size: 12px;
+      padding: 8px 11px;
+      font-size: 11px;
       color: var(--ink);
       outline: none;
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
+    .page-settings .config-search {
+      grid-column: 1 / -1;
+      min-width: 0;
     }
     .config-filter {
       min-width: min(160px, 100%);
       border-radius: 999px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.06);
-      padding: 9px 12px;
-      font-size: 12px;
+      padding: 8px 11px;
+      font-size: 11px;
       color: var(--ink);
       outline: none;
       transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
+    .page-settings .config-filter {
+      min-width: 0;
+      width: 100%;
+    }
+    .page-settings .config-toolbar > .btn,
+    .page-settings .settings-rail-actions > .btn {
+      width: 100%;
+      min-height: 40px;
+      justify-content: center;
     }
     .config-card.collapsed > :not(.config-card-head) {
       display: none;
@@ -1163,7 +1213,7 @@ const adminHTMLTemplate = `<!doctype html>
     .validation-summary.visible {
       max-height: 300px;
       opacity: 1;
-      padding: 10px 12px;
+      padding: 8px 10px;
     }
     .validation-list {
       margin: 0;
@@ -1190,7 +1240,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .history-list {
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }
     .settings-rail-panel.command-panel {
       background:
@@ -1208,6 +1258,11 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 8px;
       margin-top: 2px;
     }
+    .page-settings .settings-rail-actions {
+      gap: 8px;
+      margin-top: 0;
+      grid-auto-rows: minmax(40px, auto);
+    }
     .settings-rail-actions .btn {
       justify-content: center;
     }
@@ -1220,12 +1275,12 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 3px;
       width: 100%;
-      padding: 8px 10px;
+      padding: 7px 9px;
       border-radius: 12px;
       border: 1px solid var(--line);
       background: rgba(0,0,0,0.18);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
-      font-size: 11px;
+      font-size: 10px;
     }
     .page-settings .probe-status,
     .page-settings .provider-summary-strip {
@@ -1249,9 +1304,9 @@ const adminHTMLTemplate = `<!doctype html>
     .provider-summary-strip {
       display: grid;
       grid-template-columns: 1.1fr 1.4fr 0.65fr 0.55fr 0.7fr 0.8fr 1fr 0.9fr;
-      gap: 8px;
-      margin: 2px 0 4px;
-      padding: 8px 10px;
+      gap: 6px;
+      margin: 0 0 3px;
+      padding: 7px 8px;
       border-radius: 14px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.03);
@@ -1263,12 +1318,12 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .provider-summary-label {
       color: var(--muted);
-      font-size: 10px;
+      font-size: 9px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
     .provider-summary-value {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--ink);
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1304,6 +1359,9 @@ const adminHTMLTemplate = `<!doctype html>
       border-color: rgba(241, 184, 102, 0.28);
       color: var(--amber);
       background: rgba(241, 184, 102, 0.08);
+    }
+    .page-settings #cfg-history {
+      min-height: 220px;
     }
     .probe-preview {
       color: var(--muted);
@@ -1677,18 +1735,24 @@ const adminHTMLTemplate = `<!doctype html>
       margin-top: 12px;
     }
     @media (max-width: 1320px) {
-      .page-settings .config-grid,
+      .page-settings .config-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
       .policy-grid,
       .mode-preset-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     @media (max-width: 1100px) {
-      .settings-shell {
-        grid-template-columns: 200px minmax(0, 1fr);
+      .settings-command-deck {
+        grid-template-columns: 1fr;
       }
-      .settings-rail {
-        grid-column: 1 / -1;
+      .settings-toolbar-cluster {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-column: auto;
+      }
+      .settings-shell {
+        grid-template-columns: 1fr;
       }
       .settings-rail .settings-sticky {
         position: static;
@@ -1698,7 +1762,9 @@ const adminHTMLTemplate = `<!doctype html>
       .span-4, .span-5, .span-7, .span-8 {
         grid-column: span 12;
       }
-      .page-settings .config-grid,
+      .page-settings .config-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       .policy-grid,
       .surface-strip {
         grid-template-columns: 1fr;
@@ -1733,6 +1799,9 @@ const adminHTMLTemplate = `<!doctype html>
       .mode-preset-grid {
         grid-template-columns: 1fr;
       }
+      .page-settings .settings-jumpbar {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       .settings-rail-actions {
         grid-template-columns: 1fr;
       }
@@ -1748,6 +1817,12 @@ const adminHTMLTemplate = `<!doctype html>
     }
     @media (max-width: 640px) {
       .metrics, .page-settings .config-grid, .policy-grid, .surface-strip {
+        grid-template-columns: 1fr;
+      }
+      .page-settings .settings-jumpbar,
+      .page-settings .config-toolbar,
+      .page-settings .settings-rail-actions,
+      .settings-toolbar-cluster {
         grid-template-columns: 1fr;
       }
       .provider-summary-strip {
@@ -2109,22 +2184,60 @@ const adminHTMLTemplate = `<!doctype html>
           <div class="config-status" id="configStatus">加载中</div>
         </div>
         <div class="config-panel">
-          <div class="settings-shell" id="settingsShell">
-            <aside class="settings-nav" aria-label="Settings navigation">
-              <div class="settings-sticky">
-                <div class="config-card settings-nav-panel" id="settingsNav">
-                  <div class="settings-nav-title">Sections</div>
-                  <div class="settings-jumpbar">
-                    <a href="#cfg-health" data-nav-target="cfg-health"><div class="settings-jumpbar-copy"><strong>Health</strong></div><em id="navMetaHealth">path</em></a>
-                    <a href="#cfg-bridge" data-nav-target="cfg-bridge"><div class="settings-jumpbar-copy"><strong>Bridge</strong></div><em id="navMetaBridge">0 rules</em></a>
-                    <a href="#cfg-router" data-nav-target="cfg-router"><div class="settings-jumpbar-copy"><strong>Router</strong></div><em id="navMetaRouter">strategy</em></a>
-                    <a href="#cfg-intercepts" data-nav-target="cfg-intercepts"><div class="settings-jumpbar-copy"><strong>Intercepts</strong></div><em id="navMetaIntercepts">0 rules</em></a>
-                    <a href="#cfg-upstreams" data-nav-target="cfg-upstreams"><div class="settings-jumpbar-copy"><strong>Providers</strong></div><em id="navMetaProviders">0 providers</em></a>
-                    <a href="#cfg-history" data-nav-target="cfg-history"><div class="settings-jumpbar-copy"><strong>History</strong></div><em id="navMetaHistory">0 versions</em></a>
+          <div class="settings-command-deck">
+            <div class="config-card settings-nav-panel" id="settingsNav">
+              <div class="settings-nav-title">Sections</div>
+              <div class="settings-jumpbar">
+                <a href="#cfg-health" data-nav-target="cfg-health"><div class="settings-jumpbar-copy"><strong>Health</strong></div><em id="navMetaHealth">path</em></a>
+                <a href="#cfg-bridge" data-nav-target="cfg-bridge"><div class="settings-jumpbar-copy"><strong>Bridge</strong></div><em id="navMetaBridge">0 rules</em></a>
+                <a href="#cfg-router" data-nav-target="cfg-router"><div class="settings-jumpbar-copy"><strong>Router</strong></div><em id="navMetaRouter">strategy</em></a>
+                <a href="#cfg-intercepts" data-nav-target="cfg-intercepts"><div class="settings-jumpbar-copy"><strong>Intercepts</strong></div><em id="navMetaIntercepts">0 rules</em></a>
+                <a href="#cfg-upstreams" data-nav-target="cfg-upstreams"><div class="settings-jumpbar-copy"><strong>Providers</strong></div><em id="navMetaProviders">0 providers</em></a>
+                <a href="#cfg-history" data-nav-target="cfg-history"><div class="settings-jumpbar-copy"><strong>History</strong></div><em id="navMetaHistory">0 versions</em></a>
+              </div>
+            </div>
+            <div class="settings-toolbar-cluster">
+              <div class="config-card settings-rail-panel">
+                <div class="config-card-head">
+                  <div class="config-card-head-main">
+                    <div class="config-card-title">Filters</div>
                   </div>
                 </div>
+                <div class="config-toolbar">
+                  <input class="config-search" id="configSearch" type="search" aria-label="Search settings" placeholder="Search sections or providers..." />
+                  <select class="config-filter" id="providerClassFilter" aria-label="Filter by provider class">
+                    <option value="all">All Providers</option>
+                    <option value="free">Free First</option>
+                    <option value="quota_limited">Quota-Limited</option>
+                  </select>
+                  <select class="config-filter" id="cfgAdminLanguage">
+                    <option value="zh">中文</option>
+                    <option value="en">English</option>
+                    <option value="ja">日本語</option>
+                  </select>
+                  <button class="btn secondary" id="expandSections" type="button">Expand All</button>
+                  <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
+                </div>
               </div>
-            </aside>
+              <div class="config-card settings-rail-panel command-panel">
+                <div class="config-card-head">
+                  <div class="config-card-head-main">
+                    <div class="section-kicker"><strong>Ops</strong><span>Control Deck</span></div>
+                    <div class="config-card-title">Actions</div>
+                  </div>
+                </div>
+                <div class="validation-summary" id="configValidation"></div>
+                <div class="config-actions settings-rail-actions">
+                  <button class="btn" id="saveConfig">Save Config</button>
+                  <button class="btn secondary" id="reloadConfig">Reload</button>
+                  <button class="btn secondary" id="exportConfig">Export</button>
+                  <button class="btn danger" id="rollbackConfig">Rollback</button>
+                  <span class="config-hint" id="configHint"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="settings-shell" id="settingsShell">
             <div class="settings-main">
           <div class="config-card config-section" id="cfg-health" data-section-title="Health Check">
             <div class="config-card-head">
@@ -2313,44 +2426,6 @@ const adminHTMLTemplate = `<!doctype html>
             </div>
             <aside class="settings-rail" aria-label="Settings controls">
               <div class="settings-sticky">
-                <div class="config-card settings-rail-panel">
-                    <div class="config-card-head">
-                      <div class="config-card-head-main">
-                        <div class="config-card-title">Filters</div>
-                      </div>
-                  </div>
-                  <div class="config-toolbar">
-                    <input class="config-search" id="configSearch" type="search" aria-label="Search settings" placeholder="Search sections or providers..." />
-                    <select class="config-filter" id="providerClassFilter" aria-label="Filter by provider class">
-                      <option value="all">All Providers</option>
-                      <option value="free">Free First</option>
-                      <option value="quota_limited">Quota-Limited</option>
-                    </select>
-                    <select class="config-filter" id="cfgAdminLanguage">
-                      <option value="zh">中文</option>
-                      <option value="en">English</option>
-                      <option value="ja">日本語</option>
-                    </select>
-                    <button class="btn secondary" id="expandSections" type="button">Expand All</button>
-                    <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
-                  </div>
-                </div>
-                <div class="config-card settings-rail-panel command-panel">
-                    <div class="config-card-head">
-                      <div class="config-card-head-main">
-                        <div class="section-kicker"><strong>Ops</strong><span>Control Deck</span></div>
-                        <div class="config-card-title">Actions</div>
-                      </div>
-                  </div>
-                  <div class="validation-summary" id="configValidation"></div>
-                  <div class="config-actions settings-rail-actions">
-                    <button class="btn" id="saveConfig">Save Config</button>
-                    <button class="btn secondary" id="reloadConfig">Reload</button>
-                    <button class="btn secondary" id="exportConfig">Export</button>
-                    <button class="btn danger" id="rollbackConfig">Rollback</button>
-                    <span class="config-hint" id="configHint"></span>
-                  </div>
-                </div>
                 <div class="config-card settings-rail-panel" id="cfg-history">
                   <div class="config-card-head">
                     <div class="config-card-head-main">
