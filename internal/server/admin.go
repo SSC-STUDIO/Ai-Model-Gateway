@@ -32,11 +32,11 @@ const adminHTMLTemplate = `<!doctype html>
       --accent-strong: #9af2e5;
       --amber: #f1b866;
       --danger: #ff7f6e;
-      --ok-bg: rgba(121, 230, 215, 0.16);
+      --ok-bg: rgba(126, 231, 214, 0.16);
       --danger-bg: rgba(255, 127, 110, 0.18);
       --shadow: 0 28px 62px rgba(0, 0, 0, 0.5);
       --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.32);
-      --glow: 0 0 0 1px rgba(126, 231, 214, 0.1), 0 12px 40px rgba(121, 230, 215, 0.14);
+      --glow: 0 0 0 1px rgba(126, 231, 214, 0.1), 0 12px 40px rgba(126, 231, 214, 0.14);
       --page-gutter: clamp(14px, 1.8vw, 36px);
     }
     * { box-sizing: border-box; }
@@ -214,16 +214,16 @@ const adminHTMLTemplate = `<!doctype html>
       width: 220px;
       height: 220px;
       border-radius: 999px;
-      background: radial-gradient(circle, rgba(121,230,215,0.22), rgba(121,230,215,0));
+      background: radial-gradient(circle, rgba(126,231,214,0.22), rgba(126,231,214,0));
       pointer-events: none;
     }
     .eyebrow {
       display: inline-flex;
       padding: 7px 11px;
       border-radius: 999px;
-      background: rgba(121,230,215,0.16);
+      background: rgba(126,231,214,0.16);
       color: var(--accent-strong);
-      border: 1px solid rgba(121, 230, 215, 0.26);
+      border: 1px solid rgba(126, 231, 214, 0.26);
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.12em;
@@ -499,7 +499,7 @@ const adminHTMLTemplate = `<!doctype html>
     th:first-child, td:first-child { padding-left: 14px; }
     th:last-child, td:last-child { padding-right: 14px; }
     tbody tr:hover {
-      background: rgba(121, 230, 215, 0.06);
+      background: rgba(126, 231, 214, 0.06);
     }
     tr.row-fail { background: rgba(255, 127, 110, 0.04); }
     tr.row-fail:hover { background: rgba(255, 127, 110, 0.08); }
@@ -714,8 +714,8 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .tag.accent {
       color: var(--accent);
-      border-color: rgba(121, 230, 215, 0.24);
-      background: rgba(121, 230, 215, 0.08);
+      border-color: rgba(126, 231, 214, 0.24);
+      background: rgba(126, 231, 214, 0.08);
     }
     .config-panel {
       display: grid;
@@ -769,7 +769,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .page-settings .settings-nav-panel {
       background:
-        radial-gradient(circle at 100% 0%, rgba(121, 230, 215, 0.14), transparent 36%),
+        radial-gradient(circle at 100% 0%, rgba(126, 231, 214, 0.14), transparent 36%),
         linear-gradient(160deg, rgba(26, 24, 21, 0.94), rgba(14, 13, 12, 0.88));
       min-height: 100%;
       display: grid;
@@ -892,7 +892,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .policy-card.active {
       border-color: rgba(126, 231, 214, 0.42);
-      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12), 0 14px 26px rgba(121, 230, 215, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12), 0 14px 26px rgba(126, 231, 214, 0.08);
       transform: translateY(-1px);
     }
     .policy-card.warn {
@@ -935,7 +935,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .mode-preset.active {
       border-color: rgba(126, 231, 214, 0.44);
-      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.14), 0 16px 32px rgba(121, 230, 215, 0.08);
+      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.14), 0 16px 32px rgba(126, 231, 214, 0.08);
     }
     .config-field {
       display: flex;
@@ -983,8 +983,8 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .btn {
       border-radius: 999px;
-      border: 1px solid rgba(121, 230, 215, 0.4);
-      background: linear-gradient(120deg, rgba(121, 230, 215, 0.16), rgba(121, 230, 215, 0.08));
+      border: 1px solid rgba(126, 231, 214, 0.4);
+      background: linear-gradient(120deg, rgba(126, 231, 214, 0.16), rgba(126, 231, 214, 0.08));
       color: var(--accent);
       padding: 6px 11px;
       font-size: 10px;
@@ -997,7 +997,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .btn:hover {
       border-color: rgba(126, 231, 214, 0.65);
-      box-shadow: 0 12px 26px rgba(121, 230, 215, 0.16);
+      box-shadow: 0 12px 26px rgba(126, 231, 214, 0.16);
       transform: translateY(-1px);
     }
     .btn:active {
@@ -1088,7 +1088,7 @@ const adminHTMLTemplate = `<!doctype html>
       align-items: center;
       gap: 6px;
       color: var(--muted);
-      font-size: 9px;
+      font-size: 10px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }
@@ -1214,8 +1214,8 @@ const adminHTMLTemplate = `<!doctype html>
       box-shadow: 0 0 0 3px rgba(255, 127, 110, 0.10);
     }
     .validation-warning {
-      border-color: rgba(240, 179, 90, 0.55) !important;
-      box-shadow: 0 0 0 3px rgba(240, 179, 90, 0.08);
+      border-color: rgba(241, 184, 102, 0.55) !important;
+      box-shadow: 0 0 0 3px rgba(241, 184, 102, 0.08);
     }
     .field-message {
       margin-top: 4px;
@@ -1278,8 +1278,8 @@ const adminHTMLTemplate = `<!doctype html>
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
     }
     .probe-status.ok {
-      border-color: rgba(121, 230, 215, 0.35);
-      background: rgba(121, 230, 215, 0.08);
+      border-color: rgba(126, 231, 214, 0.35);
+      background: rgba(126, 231, 214, 0.08);
     }
     .probe-status.fail {
       border-color: rgba(255, 127, 110, 0.4);
@@ -1308,7 +1308,7 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .provider-summary-label {
       color: var(--muted);
-      font-size: 9px;
+      font-size: 10px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
@@ -1341,9 +1341,9 @@ const adminHTMLTemplate = `<!doctype html>
       line-height: 1.2;
     }
     .provider-chip.accent {
-      border-color: rgba(121, 230, 215, 0.24);
+      border-color: rgba(126, 231, 214, 0.24);
       color: var(--accent);
-      background: rgba(121, 230, 215, 0.08);
+      background: rgba(126, 231, 214, 0.08);
     }
     .provider-chip.warn {
       border-color: rgba(241, 184, 102, 0.28);
@@ -1642,7 +1642,7 @@ const adminHTMLTemplate = `<!doctype html>
       margin-top: 2px;
     }
     .diff-line.add {
-      background: rgba(121, 230, 215, 0.10);
+      background: rgba(126, 231, 214, 0.10);
     }
     .diff-line.remove {
       background: rgba(255, 127, 110, 0.12);
@@ -1656,13 +1656,13 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .table-shell {
       scrollbar-width: thin;
-      scrollbar-color: rgba(121, 230, 215, 0.28) transparent;
+      scrollbar-color: rgba(126, 231, 214, 0.28) transparent;
     }
     .table-shell::-webkit-scrollbar {
       height: 10px;
     }
     .table-shell::-webkit-scrollbar-thumb {
-      background: rgba(121, 230, 215, 0.28);
+      background: rgba(126, 231, 214, 0.28);
       border-radius: 999px;
     }
     .cell-stack {
@@ -1705,8 +1705,8 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .status-chip.ok {
       color: var(--accent);
-      border-color: rgba(121, 230, 215, 0.32);
-      background: rgba(121, 230, 215, 0.08);
+      border-color: rgba(126, 231, 214, 0.32);
+      background: rgba(126, 231, 214, 0.08);
     }
     .status-chip.warn {
       color: var(--amber);
@@ -1928,7 +1928,8 @@ const adminHTMLTemplate = `<!doctype html>
     .config-field textarea:focus-visible,
     .config-field select:focus-visible,
     .config-search:focus-visible,
-    .config-filter:focus-visible {
+    .config-filter:focus-visible,
+    .detail-toggle:focus-visible {
       outline: 2px solid rgba(126, 231, 214, 0.6);
       outline-offset: 2px;
     }
@@ -1936,7 +1937,7 @@ const adminHTMLTemplate = `<!doctype html>
     .diff-lines,
     .probe-preview {
       scrollbar-width: thin;
-      scrollbar-color: rgba(121, 230, 215, 0.22) transparent;
+      scrollbar-color: rgba(126, 231, 214, 0.22) transparent;
     }
     .card-fill-body::-webkit-scrollbar,
     .diff-lines::-webkit-scrollbar,
@@ -1947,7 +1948,7 @@ const adminHTMLTemplate = `<!doctype html>
     .card-fill-body::-webkit-scrollbar-thumb,
     .diff-lines::-webkit-scrollbar-thumb,
     .probe-preview::-webkit-scrollbar-thumb {
-      background: rgba(121, 230, 215, 0.22);
+      background: rgba(126, 231, 214, 0.22);
       border-radius: 999px;
     }
     .card-fill-body::-webkit-scrollbar-track,
@@ -4903,7 +4904,7 @@ const adminHTMLTemplate = `<!doctype html>
     window.addEventListener('hashchange', updateActiveTopnav);
 
     /* ── Chart engine (pure SVG, no external lib) ── */
-    const CHART_COLORS = ['#7ee7d6','#f1b866','#a78bfa','#f87171','#38bdf8','#4ade80','#fb923c','#e879f9'];
+    const CHART_COLORS = ['#7ee7d6','#f1b866','#a78bfa','#ff7f6e','#38bdf8','#4ade80','#fb923c','#e879f9'];
     const chartState = { hours: 24, bucket: 60 };
     let latestBuckets = [];
 
@@ -5252,8 +5253,8 @@ const adminHTMLTemplate = `<!doctype html>
         const successLabel = localeText('成功', 'Success');
         const failureLabel = localeText('失败', 'Failure');
         const sfStack = buckets.map(b => ({ [successLabel]: b.successes, [failureLabel]: b.failures }));
-        drawStackedBarChart('chartSuccess', 'tipSuccess', sfLabels, sfStack, [successLabel, failureLabel], ['#7ee7d6', '#f87171']);
-        renderLegend('legendSuccess', [[successLabel, '#7ee7d6'], [failureLabel, '#f87171']]);
+        drawStackedBarChart('chartSuccess', 'tipSuccess', sfLabels, sfStack, [successLabel, failureLabel], ['#7ee7d6', '#ff7f6e']);
+        renderLegend('legendSuccess', [[successLabel, '#7ee7d6'], [failureLabel, '#ff7f6e']]);
         renderMetricSparklines(buckets, bucketMin);
       } catch (err) {
         // silently ignore chart load errors
