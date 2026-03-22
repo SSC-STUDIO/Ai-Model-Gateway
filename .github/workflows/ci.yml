@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pattern='(^|[[:space:]])(//|#|/\*+|\*|<!--)[[:space:]]*(FIXME|TODO)\b'
+          pattern="(^|[[:space:]])(//|#|/\\*+|\\*|<!--|--|'|;|REM)[[:space:]]*(FIXME|TODO)\\b"
           if git grep -n -I -i -E "$pattern"; then
             echo "Remove TODO/FIXME markers before merging."
             exit 1

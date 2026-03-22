@@ -10,7 +10,7 @@ This project is operational software first: changes should improve reliability, 
 - Keep changes narrowly scoped. Large refactors need a concrete operational reason.
 - Preserve OpenAI-compatible behavior unless the change is explicitly about protocol compatibility.
 - Prefer configuration over hard-coded policy when the behavior may need runtime tuning.
-- Do not leave `TODO` or `FIXME` comments in tracked files. Open an issue or document the follow-up in the pull request instead.
+- Do not leave `TODO` or `FIXME` comments in tracked files. CI rejects common comment styles across Go, PowerShell, YAML, HTML, VBS, and shell-like files. Open an issue or document the follow-up in the pull request instead.
 
 ## Local setup
 
