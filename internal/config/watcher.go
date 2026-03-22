@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"log"
 	"path/filepath"
 	"time"
 
@@ -47,9 +48,14 @@ func (w Watcher) WatchFile(ctx context.Context, path string, onChange func(Confi
 			timer = time.AfterFunc(w.Debounce, func() {
 				if cfg, err := LoadFromFile(path); err == nil {
 					onChange(cfg)
+				} else {
+					log.Printf("config reload failed: %v", err)
 				}
 			})
-		case <-watcher.Errors:
+		case err := <-watcher.Errors:
+			if err != nil {
+				log.Printf("config watcher error: %v", err)
+			}
 		}
 	}
 }

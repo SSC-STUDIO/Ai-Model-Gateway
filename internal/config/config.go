@@ -160,9 +160,6 @@ func (c *Config) Normalize() {
 	if c.Health.Path == "" {
 		c.Health.Path = "/v1/models"
 	}
-	if !c.Admin.Enabled {
-		c.Admin.Enabled = true
-	}
 	c.Admin.Language = NormalizeAdminLanguage(c.Admin.Language)
 	if c.Telemetry.SQLitePath == "" {
 		c.Telemetry.SQLitePath = "data/telemetry.db"

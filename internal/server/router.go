@@ -322,6 +322,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		_ = json.NewEncoder(w).Encode(diff)
 	})
 	r.Put("/-/admin/config", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10 MB limit
 		var payload AdminConfigView
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, "invalid config payload", http.StatusBadRequest)

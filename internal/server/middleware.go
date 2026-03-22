@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -81,7 +82,7 @@ func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Ha
 				return
 			}
 
-			if token := strings.TrimSpace(r.URL.Query().Get("token")); token == expected {
+			if token := strings.TrimSpace(r.URL.Query().Get("token")); subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
 				http.SetCookie(w, &http.Cookie{
 					Name:     adminAuthCookie,
 					Value:    token,
@@ -93,7 +94,7 @@ func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Ha
 				return
 			}
 
-			if bearerToken(r) == expected || cookieToken(r) == expected {
+			if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 || subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
 				next.ServeHTTP(w, r)
 				return
 			}
