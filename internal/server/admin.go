@@ -5565,6 +5565,12 @@ func renderAdminHTML(settingsView bool, language string) string {
 		bodyClass = "page-settings"
 		topnavLinks = strings.Join([]string{
 			`<a href="/admin">` + pick("总览", "Overview") + `</a>`,
+			`<a href="#cfg-health" data-topnav-target="cfg-health">` + pick("探活", "Health") + `</a>`,
+			`<a href="#cfg-bridge" data-topnav-target="cfg-bridge">` + pick("桥接", "Bridge") + `</a>`,
+			`<a href="#cfg-router" data-topnav-target="cfg-router">` + pick("路由", "Router") + `</a>`,
+			`<a href="#cfg-intercepts" data-topnav-target="cfg-intercepts">` + pick("拦截", "Intercepts") + `</a>`,
+			`<a href="#cfg-upstreams" data-topnav-target="cfg-upstreams">` + pick("服务商", "Providers") + `</a>`,
+			`<a href="#cfg-history" data-topnav-target="cfg-history">` + pick("历史", "History") + `</a>`,
 		}, "")
 		heroEyebrow = pick("配置中心", "Configuration Center")
 		heroTitle = pick("运行路由、探活、服务商。", "Runtime Routing, Health, Providers.")
