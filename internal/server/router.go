@@ -221,6 +221,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	})
 	r.Get("/-/admin/data", func(w http.ResponseWriter, r *http.Request) {
 		adminDataCache.mu.Lock()
+		deadline := time.Now().Add(3 * time.Second)
 		for {
 			now := time.Now()
 			if len(adminDataCache.payload) > 0 && now.Before(adminDataCache.expires) {
@@ -231,6 +232,19 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 				return
 			}
 			if !adminDataCache.building {
+				adminDataCache.building = true
+				break
+			}
+			if time.Now().After(deadline) {
+				// Timed out waiting for builder; serve stale data if available
+				if adminDataCache.payload != nil {
+					payload := adminDataCache.payload
+					adminDataCache.mu.Unlock()
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(payload)
+					return
+				}
+				// No stale data, become the builder ourselves
 				adminDataCache.building = true
 				break
 			}

@@ -5,12 +5,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+var sqlIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
+
+func validSQLIdentifier(name string) bool {
+	return sqlIdentifierRe.MatchString(name)
+}
 
 type Usage struct {
 	PromptTokens       int `json:"prompt_tokens"`
@@ -482,6 +489,9 @@ LIMIT ?`, cutoff, limit)
 		}
 		result = append(result, item)
 	}
+	if err := rows.Err(); err != nil {
+		return result
+	}
 	return result
 }
 
@@ -526,6 +536,9 @@ LIMIT ?`, limit)
 		record.Timestamp = parseTime(timestamp)
 		records = append(records, record)
 	}
+	if err := rows.Err(); err != nil {
+		return records
+	}
 	return records
 }
 
@@ -561,10 +574,16 @@ LIMIT ?`, limit)
 		record.Timestamp = parseTime(timestamp)
 		records = append(records, record)
 	}
+	if err := rows.Err(); err != nil {
+		return records
+	}
 	return records
 }
 
 func (s *Store) queryUsageBreakdown(column string) map[string]Usage {
+	if !validSQLIdentifier(column) {
+		return nil
+	}
 	query := fmt.Sprintf(`
 SELECT %s, COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0), COALESCE(SUM(total_tokens), 0)
                  , COALESCE(SUM(cached_prompt_tokens), 0)
@@ -586,6 +605,9 @@ ORDER BY COALESCE(SUM(total_tokens), 0) DESC`, column, column, column, column)
 			continue
 		}
 		result[key] = usage
+	}
+	if err := rows.Err(); err != nil {
+		return result
 	}
 	return result
 }
@@ -622,6 +644,9 @@ ORDER BY COALESCE(SUM(total_tokens), 0) DESC`)
 			continue
 		}
 		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return result
 	}
 	return result
 }
@@ -707,6 +732,10 @@ ORDER BY bucket ASC`, bucketMinutes, bucketMinutes, cutoff)
 		}
 		buckets = append(buckets, b)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return TimeSeries{}
+	}
 	rows.Close()
 
 	// --- per-upstream token usage buckets ---
@@ -735,6 +764,10 @@ ORDER BY bucket ASC`, bucketMinutes, bucketMinutes, cutoff)
 			upstreamMap[bucket] = make(map[string]int64)
 		}
 		upstreamMap[bucket][upstream] = tokens
+	}
+	if err := rows2.Err(); err != nil {
+		rows2.Close()
+		return TimeSeries{Buckets: buckets}
 	}
 	rows2.Close()
 
@@ -775,6 +808,9 @@ func parseTime(value string) time.Time {
 }
 
 func (s *Store) ensureColumn(table string, column string, columnType string) error {
+	if !validSQLIdentifier(table) || !validSQLIdentifier(column) {
+		return nil
+	}
 	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
 	if err != nil {
 		return fmt.Errorf("inspect telemetry table %s: %w", table, err)
@@ -796,6 +832,9 @@ func (s *Store) ensureColumn(table string, column string, columnType string) err
 		if name == column {
 			return nil
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate telemetry table info %s: %w", table, err)
 	}
 
 	if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, columnType)); err != nil {
