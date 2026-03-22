@@ -6,6 +6,44 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-03-22
+
+### Added
+
+- Settings page section nav links (Health, Bridge, Router, Intercepts, Providers, History) added to topbar, matching overview page navigation style.
+- Config package test coverage: `config_test.go` with tests for Normalize defaults, NormalizeAdminLanguage, RewriteModel, Upstream.IsEnabled, NormalizeUpstreamClass.
+- SQL identifier validation (`validSQLIdentifier` regex guard) in telemetry store before any `fmt.Sprintf` with table/column names.
+- `rows.Err()` checks after all 7 `for rows.Next()` loops in telemetry store.
+
+### Changed
+
+- Settings page nav redesigned: jumpbar changed from 3x2 grid cards to horizontal pill tabs matching topbar style.
+- Settings rail (history panel) now scrollable with `max-height: calc(100vh - 100px)` to prevent exceeding left column height.
+- Settings shell `align-items: stretch` for provider card bottom alignment.
+- Frontend performance: `setHTML()` helper skips unchanged DOM updates (~22 elements per 5s cycle).
+- Frontend performance: unified polling — `loadCharts()` piggybacks on every 3rd `load()` cycle instead of independent `setInterval`.
+- Frontend performance: forced reflows replaced with double-`requestAnimationFrame`.
+- Frontend performance: sparkline IDs stabilized (deterministic `sp-m-{idx}` instead of `Math.random()`).
+- Upstream disable poll interval: 100ms → 1s (10x reduction in goroutine overhead).
+- Frontend style consistency: unified green RGB values, normalized chip padding (two tiers), semantic state alphas (border 0.30/bg 0.08), background alpha 0.04, hover patterns with translateY(-1px), transition timings, media query ordering.
+- Chart danger color `#f87171` → `#ff7f6e` (matches `--danger` CSS variable).
+- Validation-warning amber corrected from `rgba(240,179,90)` to `rgba(241,184,102)`.
+- 9px font-size normalized to 10px.
+- Removed 3 no-op compact-card CSS overrides and unused `.hero-side` CSS/HTML/Go code.
+- Bumped VERSION from 0.2.0 to 0.2.1.
+
+### Fixed
+
+- Security: auth token comparison uses `crypto/subtle.ConstantTimeCompare` (prevents timing attacks on all 3 auth paths).
+- Security: admin config PUT endpoint capped at 10MB via `http.MaxBytesReader`.
+- Config watcher: fsnotify errors and reload failures now logged (were silently discarded).
+- Config `Normalize()` no longer forces `admin.enabled=true` — respects user setting.
+- Telemetry `flushWriter`: `select` with 5s timeout prevents deadlock when channel full.
+- Router `PickSticky`: refactored to `defer m.mu.Unlock()` via helper, eliminating fragile manual unlock across return paths.
+- Admin data endpoint: `sync.Cond.Wait()` now has 3s deadline, serves stale data on timeout instead of blocking forever.
+- Server shutdown errors now logged instead of discarded.
+- `.detail-toggle` added to focus-visible selector list.
+
 ## [0.2.0] — 2026-03-22
 
 ### Added
