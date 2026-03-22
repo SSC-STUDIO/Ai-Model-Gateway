@@ -124,7 +124,7 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
 	requestID := observability.RequestIDFromContext(r.Context())
 	startedAt := time.Now()
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20)) // 100 MB limit
 	if err != nil {
 		w.Header().Set(observability.RequestIDHeader, requestID)
 		writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
@@ -224,10 +224,10 @@ func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
 			reason = fmt.Sprintf("upstream %s did not return usable anthropic usage", upstream.Name)
 		}
 
-		h.Manager.ReportRequestFailure(upstream.Name, latency, statusCode, fmt.Errorf(reason), retryable, kind)
+		h.Manager.ReportRequestFailure(upstream.Name, latency, statusCode, fmt.Errorf("%s", reason), retryable, kind)
 		h.recordError(requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, statusCode, attempt+1, reason)
-		logProxyAttempt(requestID, model, upstream.Name, attempt+1, statusCode, latency, fmt.Errorf(reason))
-		lastErr = fmt.Errorf(reason)
+		logProxyAttempt(requestID, model, upstream.Name, attempt+1, statusCode, latency, fmt.Errorf("%s", reason))
+		lastErr = fmt.Errorf("%s", reason)
 		lastUpstream = upstream.Name
 		lastAttempts = attempt + 1
 		if shouldRetrySameUpstream(upstream, sameUpstreamRetriesUsed[upstream.Name]) {
@@ -303,7 +303,7 @@ func (h *Handler) FileContent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOptions) {
 	requestID := observability.RequestIDFromContext(r.Context())
 	startedAt := time.Now()
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20)) // 100 MB limit
 	if err != nil {
 		w.Header().Set(observability.RequestIDHeader, requestID)
 		writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
@@ -423,8 +423,8 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				} else {
 					reason = fmt.Sprintf("stream disconnected before completion: stream closed before %s", expectedStreamCompletionMarker(r.URL.Path))
 				}
-				h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf(reason), true, "stream_passthrough")
-				logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, fmt.Errorf(reason))
+				h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf("%s", reason), true, "stream_passthrough")
+				logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, fmt.Errorf("%s", reason))
 			} else {
 				h.Manager.ReportRequestSuccess(upstream.Name, latency, resp.StatusCode)
 				logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, nil)
@@ -489,13 +489,13 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 			if quotaExhausted {
 				h.Manager.BlockUpstreamQuota(upstream.Name, reason)
 			} else {
-				h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf(reason), retryableFailure, assessment.Kind)
+				h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf("%s", reason), retryableFailure, assessment.Kind)
 			}
 			h.recordError(requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, resp.StatusCode, attempt+1, reason)
-			logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, fmt.Errorf(reason))
+			logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, fmt.Errorf("%s", reason))
 			logFailureDiagnostics(requestID, getDebugSummary(), upstream.Name, resp.StatusCode, captured)
 
-			lastErr = fmt.Errorf(reason)
+			lastErr = fmt.Errorf("%s", reason)
 			lastCaptured = captured
 			lastUpstream = upstream.Name
 			lastAttempts = attempt + 1
@@ -1377,6 +1377,9 @@ func extractUsageFromJSON(body []byte) (telemetry.Usage, bool) {
 
 func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 	lines := strings.Split(string(body), "\n")
+	var bestPrompt, bestCompletion, bestCached, bestTotal int
+	found := false
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "data:") {
@@ -1438,7 +1441,6 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 			usage = event.Usage
 		}
 		if usage.TotalTokens == 0 && usage.PromptTokens == 0 && usage.CompletionTokens == 0 && usage.InputTokens == 0 && usage.OutputTokens == 0 {
-			// Anthropic message_start event puts usage under message.usage
 			if event.Message.Usage.InputTokens > 0 || event.Message.Usage.OutputTokens > 0 {
 				usage.InputTokens = event.Message.Usage.InputTokens
 				usage.OutputTokens = event.Message.Usage.OutputTokens
@@ -1463,20 +1465,39 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 		if cachedPromptTokens == 0 {
 			cachedPromptTokens = usage.CacheReadInputTokens
 		}
+
+		// Accumulate: take the max of each field across all events
+		if promptTokens > bestPrompt {
+			bestPrompt = promptTokens
+		}
+		if completionTokens > bestCompletion {
+			bestCompletion = completionTokens
+		}
+		if cachedPromptTokens > bestCached {
+			bestCached = cachedPromptTokens
+		}
 		totalTokens := usage.TotalTokens
 		if totalTokens == 0 {
 			totalTokens = promptTokens + completionTokens
 		}
-
-		return telemetry.Usage{
-			PromptTokens:       promptTokens,
-			CachedPromptTokens: cachedPromptTokens,
-			CompletionTokens:   completionTokens,
-			TotalTokens:        totalTokens,
-		}, true
+		if totalTokens > bestTotal {
+			bestTotal = totalTokens
+		}
+		found = true
 	}
 
-	return telemetry.Usage{}, false
+	if !found {
+		return telemetry.Usage{}, false
+	}
+	if bestTotal == 0 {
+		bestTotal = bestPrompt + bestCompletion
+	}
+	return telemetry.Usage{
+		PromptTokens:       bestPrompt,
+		CachedPromptTokens: bestCached,
+		CompletionTokens:   bestCompletion,
+		TotalTokens:        bestTotal,
+	}, true
 }
 
 func shouldAttemptResponsesCompat(path string, model string, assessment responseAssessment, captured *capturedResponse) bool {
@@ -3007,7 +3028,7 @@ func isRetryableMessage(message string, policy config.RetryPolicyConfig) bool {
 func copyRequestHeaders(dst http.Header, src http.Header) {
 	for key, values := range src {
 		normalized := http.CanonicalHeaderKey(key)
-		if normalized == "Authorization" || normalized == "Host" || normalized == "Content-Length" {
+		if normalized == "Authorization" || normalized == "Host" || normalized == "Content-Length" || normalized == "X-Api-Key" {
 			continue
 		}
 		for _, value := range values {

@@ -2214,6 +2214,10 @@ const adminHTMLTemplate = `<!doctype html>
                     <option value="zh">中文</option>
                     <option value="en">English</option>
                     <option value="ja">日本語</option>
+                    <option value="ko">한국어</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="de">Deutsch</option>
                   </select>
                   <button class="btn secondary" id="expandSections" type="button">Expand All</button>
                   <button class="btn secondary" id="collapseSections" type="button">Collapse All</button>
@@ -3453,7 +3457,7 @@ const adminHTMLTemplate = `<!doctype html>
       .replaceAll("'", '&#39;');
     const priceLine = (pricing) => {
       if (!pricing) return '<span class="small">' + escapeHTML(t('officialPriceUnavailable')) + '</span>';
-      return '<span class="small mono">$' + pricing.input_per_1m_usd + ' / $' + pricing.output_per_1m_usd + ' ' + escapeHTML(t('perMillion')) + '</span>';
+      return '<span class="small mono">$' + escapeHTML(pricing.input_per_1m_usd) + ' / $' + escapeHTML(pricing.output_per_1m_usd) + ' ' + escapeHTML(t('perMillion')) + '</span>';
     };
     const resolveRequestPrice = (item, pricing) => {
       const routeCatalog = pricing.route_catalog || {};
@@ -5141,7 +5145,7 @@ const adminHTMLTemplate = `<!doctype html>
           const color = (customColors && customColors[ui]) || CHART_COLORS[ui % CHART_COLORS.length];
           html += '<br><span style="color:' + color + '">' + escapeHTML(name) + '</span>: ' + fmt.format(val);
         });
-        html += '<br>Total: ' + fmt.format(totals[idx]);
+        html += '<br>' + escapeHTML(localeText('合计', 'Total')) + ': ' + fmt.format(totals[idx]);
         tip.show(mx, e.clientY - rect.top, html);
       });
       overlay.addEventListener('mouseleave', () => tip.hide());
@@ -5324,7 +5328,7 @@ const adminHTMLTemplate = `<!doctype html>
 
       document.getElementById('generatedAt').textContent = localeText('更新于 ', 'Updated ') + new Date(data.generated_at).toLocaleString(localeCode(currentLocale));
       document.getElementById('pricingSource').innerHTML = pricing.source_url
-        ? localeText('官方价格：', 'Official pricing: ') + '<a href="' + pricing.source_url + '" target="_blank" rel="noreferrer">OpenAI</a>' + (pricing.updated_at ? ' · ' + relativeTime(pricing.updated_at) : '')
+        ? localeText('官方价格：', 'Official pricing: ') + '<a href="' + escapeHTML(pricing.source_url) + '" target="_blank" rel="noreferrer">OpenAI</a>' + (pricing.updated_at ? ' · ' + relativeTime(pricing.updated_at) : '')
         : t('officialPriceUnavailable');
       const overallCacheRate = cacheHitRate(summary);
       const dayCacheRate = cacheHitRate(dayWindow);
@@ -5419,7 +5423,7 @@ const adminHTMLTemplate = `<!doctype html>
         .map((item) => [
           stackCell(
             '<strong>' + escapeHTML(item.display_model || '-') + '</strong>',
-            (item.pricing_model && item.pricing_model !== item.display_model ? localeText('按 ' + escapeHTML(item.pricing_model) + ' 计价 · ', 'priced as ' + escapeHTML(item.pricing_model) + ' · ') : '') + (item.pricing ? ('$' + item.pricing.input_per_1m_usd + ' / $' + item.pricing.output_per_1m_usd + ' ' + t('perMillion')) : t('officialPriceUnavailable'))
+            (item.pricing_model && item.pricing_model !== item.display_model ? localeText('按 ' + escapeHTML(item.pricing_model) + ' 计价 · ', 'priced as ' + escapeHTML(item.pricing_model) + ' · ') : '') + (item.pricing ? ('$' + escapeHTML(item.pricing.input_per_1m_usd) + ' / $' + escapeHTML(item.pricing.output_per_1m_usd) + ' ' + t('perMillion')) : t('officialPriceUnavailable'))
           ),
           promptUsageCell(item.usage),
           cacheRateCell(item.usage),
