@@ -1928,19 +1928,11 @@ func buildChatCompletionsFromAnthropic(body []byte, model string) (map[string]an
 	}
 
 	if rawMessages, ok := payload["messages"].([]any); ok {
-		for _, item := range rawMessages {
-			msg, extraSystem := normalizeAnthropicMessage(item)
-			if extraSystem != "" {
-				messages = append(messages, map[string]any{
-					"role":    "system",
-					"content": extraSystem,
-				})
-				continue
-			}
-			if msg != nil {
-				messages = append(messages, msg)
-			}
+		normalized, err := normalizeAnthropicMessagesForChat(rawMessages)
+		if err != nil {
+			return nil, stream, err
 		}
+		messages = append(messages, normalized...)
 	}
 	if len(messages) == 0 {
 		return nil, stream, fmt.Errorf("anthropic messages are empty")
@@ -1953,6 +1945,16 @@ func buildChatCompletionsFromAnthropic(body []byte, model string) (map[string]an
 	copyIfPresent(payload, chat, "max_tokens", "temperature", "top_p")
 	if stopSequences, ok := payload["stop_sequences"]; ok {
 		chat["stop"] = stopSequences
+	}
+	if rawTools, ok := payload["tools"]; ok {
+		if tools := anthropicToolsToChat(rawTools); len(tools) > 0 {
+			chat["tools"] = tools
+		}
+	}
+	if rawToolChoice, ok := payload["tool_choice"]; ok {
+		if toolChoice := anthropicToolChoiceToChat(rawToolChoice); toolChoice != nil {
+			chat["tool_choice"] = toolChoice
+		}
 	}
 	if stream {
 		chat["stream"] = true
@@ -2093,6 +2095,234 @@ func forceAnthropicNonStream(body []byte) ([]byte, error) {
 	}
 	payload["stream"] = false
 	return json.Marshal(payload)
+}
+
+func normalizeAnthropicMessagesForChat(items []any) ([]map[string]any, error) {
+	messages := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		msg, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := msg["role"].(string)
+		role = strings.TrimSpace(role)
+		if role == "" {
+			role = "user"
+		}
+
+		switch role {
+		case "assistant":
+			if assistant := anthropicAssistantMessageToChat(msg["content"]); assistant != nil {
+				messages = append(messages, assistant)
+			}
+		case "user", "tool":
+			userMessages := anthropicUserMessageToChat(msg["content"])
+			messages = append(messages, userMessages...)
+		case "system":
+			if text := extractTextFromContent(msg["content"]); text != "" {
+				messages = append(messages, map[string]any{"role": "system", "content": text})
+			}
+		default:
+			userMessages := anthropicUserMessageToChat(msg["content"])
+			messages = append(messages, userMessages...)
+		}
+	}
+	return messages, nil
+}
+
+func anthropicAssistantMessageToChat(content any) map[string]any {
+	blocks, ok := content.([]any)
+	if !ok {
+		text := extractTextFromContent(content)
+		if text == "" {
+			return nil
+		}
+		return map[string]any{
+			"role":    "assistant",
+			"content": text,
+		}
+	}
+
+	var textParts []string
+	var toolCalls []map[string]any
+	for _, item := range blocks {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		blockType, _ := block["type"].(string)
+		switch strings.TrimSpace(blockType) {
+		case "text":
+			if text := extractTextFromContent(block); text != "" {
+				textParts = append(textParts, text)
+			}
+		case "tool_use":
+			toolID, _ := block["id"].(string)
+			if strings.TrimSpace(toolID) == "" {
+				toolID = fmt.Sprintf("call_%d", time.Now().UnixNano())
+			}
+			name, _ := block["name"].(string)
+			input := block["input"]
+			args, err := json.Marshal(input)
+			if err != nil {
+				args = []byte("{}")
+			}
+			toolCalls = append(toolCalls, map[string]any{
+				"id":   toolID,
+				"type": "function",
+				"function": map[string]any{
+					"name":      strings.TrimSpace(name),
+					"arguments": string(args),
+				},
+			})
+		}
+	}
+
+	if len(textParts) == 0 && len(toolCalls) == 0 {
+		return nil
+	}
+
+	message := map[string]any{
+		"role": "assistant",
+	}
+	if len(textParts) > 0 {
+		message["content"] = strings.TrimSpace(strings.Join(textParts, "\n\n"))
+	} else {
+		message["content"] = ""
+	}
+	if len(toolCalls) > 0 {
+		message["tool_calls"] = toolCalls
+	}
+	return message
+}
+
+func anthropicUserMessageToChat(content any) []map[string]any {
+	blocks, ok := content.([]any)
+	if !ok {
+		text := extractTextFromContent(content)
+		if text == "" {
+			return nil
+		}
+		return []map[string]any{{"role": "user", "content": text}}
+	}
+
+	var result []map[string]any
+	var textParts []string
+	for _, item := range blocks {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		blockType, _ := block["type"].(string)
+		switch strings.TrimSpace(blockType) {
+		case "text":
+			if text := extractTextFromContent(block); text != "" {
+				textParts = append(textParts, text)
+			}
+		case "tool_result":
+			if len(textParts) > 0 {
+				result = append(result, map[string]any{
+					"role":    "user",
+					"content": strings.TrimSpace(strings.Join(textParts, "\n\n")),
+				})
+				textParts = nil
+			}
+			toolCallID, _ := block["tool_use_id"].(string)
+			toolContent := extractAnthropicToolResultContent(block["content"])
+			result = append(result, map[string]any{
+				"role":         "tool",
+				"tool_call_id": strings.TrimSpace(toolCallID),
+				"content":      toolContent,
+			})
+		default:
+			if text := extractTextFromContent(block); text != "" {
+				textParts = append(textParts, text)
+			}
+		}
+	}
+	if len(textParts) > 0 {
+		result = append(result, map[string]any{
+			"role":    "user",
+			"content": strings.TrimSpace(strings.Join(textParts, "\n\n")),
+		})
+	}
+	return result
+}
+
+func extractAnthropicToolResultContent(content any) string {
+	if text := extractTextFromContent(content); text != "" {
+		return text
+	}
+	if data, err := json.Marshal(content); err == nil {
+		return string(data)
+	}
+	return ""
+}
+
+func anthropicToolsToChat(raw any) []map[string]any {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	tools := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		tool, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := tool["name"].(string)
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		function := map[string]any{"name": name}
+		if description, ok := tool["description"].(string); ok && strings.TrimSpace(description) != "" {
+			function["description"] = strings.TrimSpace(description)
+		}
+		if schema, ok := tool["input_schema"]; ok && schema != nil {
+			function["parameters"] = schema
+		}
+		tools = append(tools, map[string]any{
+			"type":     "function",
+			"function": function,
+		})
+	}
+	return tools
+}
+
+func anthropicToolChoiceToChat(raw any) any {
+	switch value := raw.(type) {
+	case string:
+		switch strings.TrimSpace(value) {
+		case "auto", "none", "required":
+			return strings.TrimSpace(value)
+		default:
+			return nil
+		}
+	case map[string]any:
+		choiceType, _ := value["type"].(string)
+		switch strings.TrimSpace(choiceType) {
+		case "auto":
+			return "auto"
+		case "any":
+			return "required"
+		case "tool":
+			name, _ := value["name"].(string)
+			name = strings.TrimSpace(name)
+			if name == "" {
+				return "required"
+			}
+			return map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name": name,
+				},
+			}
+		case "none":
+			return "none"
+		}
+	}
+	return nil
 }
 
 func normalizeAnthropicMessage(item any) (map[string]any, string) {
@@ -2352,41 +2582,47 @@ func buildChatFromAnthropic(body []byte, model string) (map[string]any, error) {
 }
 
 func buildAnthropicMessageFromChat(body []byte, model string) (map[string]any, error) {
-	var payload struct {
-		ID      string `json:"id"`
-		Created int64  `json:"created"`
-		Model   string `json:"model"`
-		Choices []struct {
-			Message struct {
-				Role    string      `json:"role"`
-				Content interface{} `json:"content"`
-			} `json:"message"`
-			FinishReason string `json:"finish_reason"`
-		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-		} `json:"usage"`
-	}
+	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("parse chat completion for anthropic compat: %w", err)
 	}
 	if model == "" {
-		model = payload.Model
+		model, _ = payload["model"].(string)
 	}
 
-	messageID := strings.TrimSpace(payload.ID)
+	messageID, _ := payload["id"].(string)
+	messageID = strings.TrimSpace(messageID)
 	if messageID == "" {
 		messageID = fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	} else if !strings.HasPrefix(messageID, "msg_") {
 		messageID = "msg_" + strings.TrimPrefix(messageID, "chatcmpl-")
 	}
 
-	text := ""
+	content := make([]any, 0, 2)
 	stopReason := "end_turn"
-	if len(payload.Choices) > 0 {
-		text = flattenChatContent(payload.Choices[0].Message.Content)
-		stopReason = anthropicStopReasonFromChat(payload.Choices[0].FinishReason)
+	if choices, ok := payload["choices"].([]any); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]any); ok {
+			if finishReason, ok := choice["finish_reason"].(string); ok {
+				stopReason = anthropicStopReasonFromChat(finishReason)
+			}
+			if message, ok := choice["message"].(map[string]any); ok {
+				if text := flattenChatContent(message["content"]); text != "" {
+					content = append(content, map[string]any{"type": "text", "text": text})
+				}
+				if toolCalls, ok := message["tool_calls"].([]any); ok {
+					content = append(content, chatToolCallsToAnthropicContent(toolCalls)...)
+				}
+			}
+		}
+	}
+	if len(content) == 0 {
+		content = append(content, map[string]any{"type": "text", "text": ""})
+	}
+
+	inputTokens, outputTokens := 0, 0
+	if usage, ok := payload["usage"].(map[string]any); ok {
+		inputTokens = intValue(usage["prompt_tokens"])
+		outputTokens = intValue(usage["completion_tokens"])
 	}
 
 	return map[string]any{
@@ -2394,14 +2630,57 @@ func buildAnthropicMessageFromChat(body []byte, model string) (map[string]any, e
 		"type":          "message",
 		"role":          "assistant",
 		"model":         model,
-		"content":       []any{map[string]any{"type": "text", "text": text}},
+		"content":       content,
 		"stop_reason":   stopReason,
 		"stop_sequence": nil,
 		"usage": map[string]any{
-			"input_tokens":  payload.Usage.PromptTokens,
-			"output_tokens": payload.Usage.CompletionTokens,
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
 		},
 	}, nil
+}
+
+func chatToolCallsToAnthropicContent(toolCalls []any) []any {
+	content := make([]any, 0, len(toolCalls))
+	for _, item := range toolCalls {
+		toolCall, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		callID, _ := toolCall["id"].(string)
+		function, _ := toolCall["function"].(map[string]any)
+		name, _ := function["name"].(string)
+		arguments, _ := function["arguments"].(string)
+		var input any = map[string]any{}
+		if strings.TrimSpace(arguments) != "" {
+			var parsed any
+			if err := json.Unmarshal([]byte(arguments), &parsed); err == nil {
+				input = parsed
+			} else {
+				input = map[string]any{"raw": arguments}
+			}
+		}
+		content = append(content, map[string]any{
+			"type":  "tool_use",
+			"id":    strings.TrimSpace(callID),
+			"name":  strings.TrimSpace(name),
+			"input": input,
+		})
+	}
+	return content
+}
+
+func intValue(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
 }
 
 func anthropicStopReasonFromChat(finishReason string) string {
@@ -2587,21 +2866,50 @@ func marshalAnthropicMessageCompatStream(message map[string]any) []byte {
 			"usage":         usage,
 		},
 	}
-	contentStartPayload := map[string]any{
-		"type":          "content_block_start",
-		"index":         0,
-		"content_block": map[string]any{"type": "text", "text": ""},
+
+	var builder strings.Builder
+	writeAnthropicCompatEvent(&builder, "message_start", startPayload)
+
+	blocks, ok := message["content"].([]any)
+	if !ok || len(blocks) == 0 {
+		blocks = []any{map[string]any{"type": "text", "text": ""}}
 	}
-	contentDeltaPayload := map[string]any{
-		"type":  "content_block_delta",
-		"index": 0,
-		"delta": map[string]any{"type": "text_delta", "text": extractTextFromContent(message["content"])},
+	for index, item := range blocks {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		blockType, _ := block["type"].(string)
+		switch strings.TrimSpace(blockType) {
+		case "tool_use":
+			writeAnthropicCompatEvent(&builder, "content_block_start", map[string]any{
+				"type":          "content_block_start",
+				"index":         index,
+				"content_block": block,
+			})
+			writeAnthropicCompatEvent(&builder, "content_block_stop", map[string]any{
+				"type":  "content_block_stop",
+				"index": index,
+			})
+		default:
+			writeAnthropicCompatEvent(&builder, "content_block_start", map[string]any{
+				"type":          "content_block_start",
+				"index":         index,
+				"content_block": map[string]any{"type": "text", "text": ""},
+			})
+			writeAnthropicCompatEvent(&builder, "content_block_delta", map[string]any{
+				"type":  "content_block_delta",
+				"index": index,
+				"delta": map[string]any{"type": "text_delta", "text": extractTextFromContent(block)},
+			})
+			writeAnthropicCompatEvent(&builder, "content_block_stop", map[string]any{
+				"type":  "content_block_stop",
+				"index": index,
+			})
+		}
 	}
-	contentStopPayload := map[string]any{
-		"type":  "content_block_stop",
-		"index": 0,
-	}
-	messageDeltaPayload := map[string]any{
+
+	writeAnthropicCompatEvent(&builder, "message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
 			"stop_reason":   message["stop_reason"],
@@ -2610,30 +2918,22 @@ func marshalAnthropicMessageCompatStream(message map[string]any) []byte {
 		"usage": map[string]any{
 			"output_tokens": outputTokens,
 		},
-	}
-	messageStopPayload := map[string]any{"type": "message_stop"}
-
-	var builder strings.Builder
-	for _, event := range []struct {
-		name    string
-		payload map[string]any
-	}{
-		{name: "message_start", payload: startPayload},
-		{name: "content_block_start", payload: contentStartPayload},
-		{name: "content_block_delta", payload: contentDeltaPayload},
-		{name: "content_block_stop", payload: contentStopPayload},
-		{name: "message_delta", payload: messageDeltaPayload},
-		{name: "message_stop", payload: messageStopPayload},
-	} {
-		body, _ := json.Marshal(event.payload)
-		builder.WriteString("event: ")
-		builder.WriteString(event.name)
-		builder.WriteString("\n")
-		builder.WriteString("data: ")
-		builder.Write(body)
-		builder.WriteString("\n\n")
-	}
+	})
+	writeAnthropicCompatEvent(&builder, "message_stop", map[string]any{"type": "message_stop"})
 	return []byte(builder.String())
+}
+
+func writeAnthropicCompatEvent(builder *strings.Builder, name string, payload map[string]any) {
+	if builder == nil {
+		return
+	}
+	body, _ := json.Marshal(payload)
+	builder.WriteString("event: ")
+	builder.WriteString(name)
+	builder.WriteString("\n")
+	builder.WriteString("data: ")
+	builder.Write(body)
+	builder.WriteString("\n\n")
 }
 
 func copyIfPresent(src map[string]any, dst map[string]any, keys ...string) {

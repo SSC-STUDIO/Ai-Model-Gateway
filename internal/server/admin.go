@@ -525,7 +525,25 @@ const adminHTMLTemplate = `<!doctype html>
     .mono { font-variant-numeric: tabular-nums; }
     .is-hidden { display: none; }
     .page-settings #overviewShell { display: none; }
-    .page-settings #runtimeConfig { display: block; }
+    .page-settings #runtimeConfig {
+      display: block;
+      padding: 0;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+      overflow: visible;
+    }
+    .page-settings #runtimeConfig:hover {
+      border-color: transparent;
+      box-shadow: none;
+      transform: none;
+    }
+    .page-settings #runtimeConfig > .section-head {
+      margin: 0 2px 14px;
+      padding-bottom: 4px;
+      align-items: flex-end;
+    }
     .page-settings .hero {
       grid-template-columns: 1fr;
     }
@@ -535,6 +553,9 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .page-settings .hero-side {
       display: none;
+    }
+    .page-settings .config-panel {
+      gap: 18px;
     }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -716,6 +737,9 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 14px;
       align-items: start;
     }
+    .page-settings .settings-shell {
+      gap: 16px;
+    }
     .settings-nav,
     .settings-main,
     .settings-rail {
@@ -734,6 +758,10 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .settings-nav-panel {
       padding: 10px;
+    }
+    .page-settings .settings-nav-panel,
+    .page-settings .settings-rail-panel {
+      padding: 12px;
     }
     .settings-nav-title {
       font-size: 11px;
@@ -763,6 +791,13 @@ const adminHTMLTemplate = `<!doctype html>
       min-width: 0;
       overflow: hidden;
       transition: border-color 140ms ease, color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    }
+    .page-settings .settings-jumpbar a {
+      min-height: 44px;
+      padding: 9px 12px;
+      border-radius: 16px;
+      background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
     }
     .settings-jumpbar a:hover {
       color: var(--ink);
@@ -974,6 +1009,21 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       gap: 8px;
     }
+    .page-settings .config-card {
+      border: 1px solid rgba(255, 244, 230, 0.16);
+      border-radius: 20px;
+      padding: 14px;
+      gap: 10px;
+      background: linear-gradient(160deg, rgba(26, 24, 21, 0.92), rgba(14, 13, 12, 0.85));
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: blur(18px) saturate(120%);
+      transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+    .page-settings .config-card:hover {
+      border-color: rgba(126, 231, 214, 0.22);
+      box-shadow: var(--shadow), var(--glow), inset 0 1px 0 rgba(255,255,255,0.05);
+      transform: translateY(-1px);
+    }
     .config-section {
       position: relative;
       overflow: clip;
@@ -1000,13 +1050,11 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 6px;
     }
     .page-settings .config-card-head {
-      position: sticky;
-      top: 86px;
-      z-index: 2;
-      margin: -2px -2px 8px;
-      padding: 2px 2px 8px;
+      position: static;
+      margin: 0 0 10px;
+      padding: 0;
       flex-wrap: wrap;
-      background: linear-gradient(180deg, rgba(14, 13, 12, 0.98), rgba(14, 13, 12, 0.9) 82%, rgba(14, 13, 12, 0));
+      background: none;
     }
     .config-card-title {
       font-size: 14px;
@@ -1149,6 +1197,11 @@ const adminHTMLTemplate = `<!doctype html>
         radial-gradient(circle at 0% 0%, rgba(241, 184, 102, 0.12), transparent 42%),
         linear-gradient(160deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
     }
+    .page-settings .settings-rail-panel.command-panel {
+      background:
+        radial-gradient(circle at 0% 0%, rgba(241, 184, 102, 0.10), transparent 42%),
+        linear-gradient(160deg, rgba(26, 24, 21, 0.92), rgba(14, 13, 12, 0.85));
+    }
     .settings-rail-actions {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1173,6 +1226,11 @@ const adminHTMLTemplate = `<!doctype html>
       background: rgba(0,0,0,0.18);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
       font-size: 11px;
+    }
+    .page-settings .probe-status,
+    .page-settings .provider-summary-strip {
+      background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
     }
     .probe-status.ok {
       border-color: rgba(121, 230, 215, 0.35);

@@ -1486,6 +1486,94 @@ func TestHandlerBridgedAnthropicMessagesCompatToChatCompletionsStream(t *testing
 	}
 }
 
+func TestHandlerBridgedAnthropicMessagesCompatPreservesTools(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/messages":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"error":{"message":"This group does not allow /v1/messages dispatch"}}`)
+		case "/v1/chat/completions":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("decode compat request: %v", err)
+			}
+			tools, ok := payload["tools"].([]any)
+			if !ok || len(tools) != 1 {
+				t.Fatalf("expected one forwarded tool, got %#v", payload["tools"])
+			}
+			messages, ok := payload["messages"].([]any)
+			if !ok || len(messages) < 1 {
+				t.Fatalf("expected forwarded messages, got %#v", payload["messages"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{
+				"id":"chatcmpl-tool",
+				"object":"chat.completion",
+				"model":"gpt-5.4",
+				"choices":[
+					{
+						"index":0,
+						"message":{
+							"role":"assistant",
+							"content":"I'll inspect that.",
+							"tool_calls":[
+								{"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"pwd\"}"}}
+							]
+						},
+						"finish_reason":"tool_calls"
+					}
+				],
+				"usage":{"prompt_tokens":11,"completion_tokens":4,"total_tokens":15}
+			}`)
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	cfg := config.Config{
+		Bridge: config.ModelBridgeConfig{
+			Enabled: true,
+			Rules: []config.ModelBridgeRule{
+				{From: "claude-opus-4-6", To: "gpt-5.4"},
+			},
+		},
+		Router: config.RouterConfig{Strategy: "round_robin", MaxRetries: 1},
+		Upstreams: []config.Upstream{
+			{Name: "bridge", BaseURL: upstream.URL, APIKey: "sk-gpt", Models: []string{"gpt-5.4"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{
+		"model":"claude-opus-4-6",
+		"max_tokens":64,
+		"tools":[{"name":"bash","description":"Run shell","input_schema":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}],
+		"tool_choice":{"type":"tool","name":"bash"},
+		"messages":[{"role":"user","content":"check cwd"}]
+	}`))
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-bridge-tool"))
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.Messages(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, `"type":"tool_use"`) || !strings.Contains(text, `"name":"bash"`) {
+		t.Fatalf("expected anthropic tool_use response, got %q", text)
+	}
+}
+
 func TestHandlerFallsBackToRequestedModelWhenBridgeUpstreamFails(t *testing.T) {
 	var bridgeCalls atomic.Int32
 	bridgeUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2287,6 +2375,115 @@ func TestBuildChatFromAnthropicFlattensTextContentAndUsage(t *testing.T) {
 	}
 	if usage["prompt_tokens"] != 11 || usage["completion_tokens"] != 5 || usage["total_tokens"] != 16 {
 		t.Fatalf("expected anthropic usage to map into chat usage, got %#v", usage)
+	}
+}
+
+func TestBuildChatCompletionsFromAnthropicPreservesToolsAndToolResults(t *testing.T) {
+	chat, stream, err := buildChatCompletionsFromAnthropic([]byte(`{
+		"model":"gpt-5.4",
+		"system":"You are an agent.",
+		"stream":true,
+		"tools":[{"name":"bash","description":"Run shell","input_schema":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}],
+		"tool_choice":{"type":"tool","name":"bash"},
+		"messages":[
+			{"role":"assistant","content":[{"type":"text","text":"checking"},{"type":"tool_use","id":"toolu_1","name":"bash","input":{"cmd":"pwd"}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"C:/repo"},{"type":"text","text":"continue"}]}
+		]
+	}`), "")
+	if err != nil {
+		t.Fatalf("build chat completions from anthropic: %v", err)
+	}
+	if !stream {
+		t.Fatalf("expected stream=true")
+	}
+	if chat["model"] != "gpt-5.4" {
+		t.Fatalf("expected model gpt-5.4, got %#v", chat["model"])
+	}
+	tools, ok := chat["tools"].([]map[string]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("expected one converted tool, got %#v", chat["tools"])
+	}
+	function, ok := tools[0]["function"].(map[string]any)
+	if !ok || function["name"] != "bash" {
+		t.Fatalf("expected bash function tool, got %#v", tools[0])
+	}
+	toolChoice, ok := chat["tool_choice"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected specific tool choice, got %#v", chat["tool_choice"])
+	}
+	choiceFunction, ok := toolChoice["function"].(map[string]any)
+	if !ok || choiceFunction["name"] != "bash" {
+		t.Fatalf("expected tool choice bash, got %#v", toolChoice)
+	}
+	messages, ok := chat["messages"].([]map[string]any)
+	if !ok || len(messages) != 4 {
+		t.Fatalf("expected system + assistant + tool + user messages, got %#v", chat["messages"])
+	}
+	assistant := messages[1]
+	if assistant["role"] != "assistant" {
+		t.Fatalf("expected assistant role, got %#v", assistant)
+	}
+	if assistant["content"] != "checking" {
+		t.Fatalf("expected assistant text preserved, got %#v", assistant["content"])
+	}
+	toolCalls, ok := assistant["tool_calls"].([]map[string]any)
+	if !ok || len(toolCalls) != 1 {
+		t.Fatalf("expected tool call preserved, got %#v", assistant["tool_calls"])
+	}
+	toolMessage := messages[2]
+	if toolMessage["role"] != "tool" || toolMessage["tool_call_id"] != "toolu_1" {
+		t.Fatalf("expected tool result message, got %#v", toolMessage)
+	}
+	userMessage := messages[3]
+	if userMessage["role"] != "user" || userMessage["content"] != "continue" {
+		t.Fatalf("expected trailing user text message, got %#v", userMessage)
+	}
+}
+
+func TestBuildAnthropicMessageFromChatIncludesToolUseBlocks(t *testing.T) {
+	message, err := buildAnthropicMessageFromChat([]byte(`{
+		"id":"chatcmpl_1",
+		"model":"gpt-5.4",
+		"choices":[
+			{
+				"index":0,
+				"message":{
+					"role":"assistant",
+					"content":"working",
+					"tool_calls":[
+						{"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\"cmd\":\"pwd\"}"}}
+					]
+				},
+				"finish_reason":"tool_calls"
+			}
+		],
+		"usage":{"prompt_tokens":7,"completion_tokens":3}
+	}`), "claude-opus-4-6")
+	if err != nil {
+		t.Fatalf("build anthropic message from chat: %v", err)
+	}
+	if message["model"] != "claude-opus-4-6" {
+		t.Fatalf("expected overridden model, got %#v", message["model"])
+	}
+	if message["stop_reason"] != "tool_use" {
+		t.Fatalf("expected tool_use stop reason, got %#v", message["stop_reason"])
+	}
+	content, ok := message["content"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("expected text + tool_use blocks, got %#v", message["content"])
+	}
+	second, ok := content[1].(map[string]any)
+	if !ok || second["type"] != "tool_use" || second["name"] != "bash" {
+		t.Fatalf("expected tool_use block, got %#v", content[1])
+	}
+	input, ok := second["input"].(map[string]any)
+	if !ok || input["cmd"] != "pwd" {
+		t.Fatalf("expected parsed tool input, got %#v", second["input"])
+	}
+
+	stream := string(marshalAnthropicMessageCompatStream(message))
+	if !strings.Contains(stream, `"type":"tool_use"`) || !strings.Contains(stream, "event: message_stop") {
+		t.Fatalf("expected tool_use in anthropic stream, got %q", stream)
 	}
 }
 
