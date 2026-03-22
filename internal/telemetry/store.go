@@ -862,9 +862,16 @@ func (s *Store) flushWriter() {
 		return
 	}
 	ack := make(chan struct{})
-	s.writerCh <- telemetryWriterMessage{flush: ack}
-	s.writeMu.RUnlock()
-	<-ack
+	select {
+	case s.writerCh <- telemetryWriterMessage{flush: ack}:
+		s.writeMu.RUnlock()
+		<-ack
+		return
+	case <-time.After(5 * time.Second):
+		s.writeMu.RUnlock()
+		close(ack)
+		return
+	}
 }
 
 func (s *Store) runWriter(writerCh <-chan telemetryWriterMessage, done chan<- struct{}) {

@@ -149,26 +149,27 @@ func (m *Manager) PickSticky(model string, stickyKey string, excluded map[string
 		return upstream, true
 	}
 
+	return m.pickFromPools(cfg, model, excluded, now)
+}
+
+func (m *Manager) pickFromPools(cfg config.Config, model string, excluded map[string]struct{}, now time.Time) (config.Upstream, bool) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	healthyPools, fallbackPools := m.buildPoolsLocked(cfg.Upstreams, cfg.Router.Strategy, model, excluded, now)
 	for _, class := range prioritizedUpstreamClasses() {
 		healthyPool := healthyPools[class]
 		if len(healthyPool) > 0 {
-			upstream := m.pickFromPoolLocked(cfg.Router.Strategy, model, class, healthyPool)
-			m.mu.Unlock()
-			return upstream, true
+			return m.pickFromPoolLocked(cfg.Router.Strategy, model, class, healthyPool), true
 		}
 	}
 
 	for _, class := range prioritizedUpstreamClasses() {
 		fallbackPool := fallbackPools[class]
 		if len(fallbackPool) > 0 {
-			upstream := m.pickFromPoolLocked(cfg.Router.Strategy, model, class, fallbackPool)
-			m.mu.Unlock()
-			return upstream, true
+			return m.pickFromPoolLocked(cfg.Router.Strategy, model, class, fallbackPool), true
 		}
 	}
-	m.mu.Unlock()
 	return config.Upstream{}, false
 }
 

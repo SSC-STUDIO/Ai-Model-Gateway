@@ -81,7 +81,7 @@ type requestDebugSummary struct {
 	Stream              bool     `json:"stream,omitempty"`
 }
 
-const upstreamDisablePollInterval = 100 * time.Millisecond
+const upstreamDisablePollInterval = 1 * time.Second
 
 func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
 	transport := &http.Transport{
