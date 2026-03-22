@@ -746,11 +746,20 @@ const adminHTMLTemplate = `<!doctype html>
       align-items: start;
     }
     .settings-nav,
-    .settings-main,
+    .settings-main {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
     .settings-rail {
       display: grid;
       gap: 10px;
       min-width: 0;
+      align-self: start;
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(126, 231, 214, 0.22) transparent;
     }
     .settings-sticky {
       position: sticky;
