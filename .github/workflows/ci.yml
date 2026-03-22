@@ -37,6 +37,28 @@ jobs:
           fi
           git diff --exit-code
 
+      - name: Reject TODO and FIXME markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='(^|[[:space:]])(//|#|/\*+|\*|<!--)[[:space:]]*(FIXME|TODO)\b'
+          if git grep -n -I -E "$pattern" -- \
+            '*.go' \
+            '*.md' \
+            '*.yml' \
+            '*.yaml' \
+            '*.ps1' \
+            '*.sh' \
+            '*.js' \
+            '*.ts' \
+            '*.tsx' \
+            '*.jsx' \
+            '*.css' \
+            '*.html'; then
+            echo "Remove TODO/FIXME markers before merging."
+            exit 1
+          fi
+
       - name: Run tests
         run: go test ./...
 
