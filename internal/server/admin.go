@@ -254,9 +254,6 @@ const adminHTMLTemplate = `<!doctype html>
       gap: 8px;
       margin-top: 12px;
     }
-    .hero-side {
-      display: none;
-    }
     .hero-priority-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -345,22 +342,13 @@ const adminHTMLTemplate = `<!doctype html>
       flex-wrap: wrap;
       margin-bottom: 12px;
     }
-    .compact-card .section-head {
-      margin-bottom: 12px;
-    }
     .title {
       font-size: 17px;
       font-weight: 800;
       letter-spacing: -0.03em;
     }
-    .compact-card .title {
-      font-size: 17px;
-    }
     .caption {
       color: var(--muted);
-      font-size: 12px;
-    }
-    .compact-card .caption {
       font-size: 12px;
     }
     .section-meta-strip {
@@ -743,7 +731,7 @@ const adminHTMLTemplate = `<!doctype html>
       display: grid;
       grid-template-columns: minmax(0, 1fr) 292px;
       gap: 12px;
-      align-items: start;
+      align-items: stretch;
     }
     .settings-nav,
     .settings-main {
@@ -2007,9 +1995,6 @@ const adminHTMLTemplate = `<!doctype html>
             {{HERO_META_SECONDARY}}
             {{HERO_META_TERTIARY}}
           </div>
-        </div>
-        <div class="hero-side">
-          {{HERO_ASIDE}}
         </div>
       </div>
     </div>
@@ -3591,6 +3576,7 @@ const adminHTMLTemplate = `<!doctype html>
       }).join('') + '</div>';
     };
     const byId = (id) => document.getElementById(id);
+    const setHTML = (id, html) => { const el = document.getElementById(id); if (el && el.innerHTML !== html) el.innerHTML = html; };
     const setText = (selector, key) => {
       const el = document.querySelector(selector);
       if (el) el.textContent = t(key);
@@ -5194,21 +5180,21 @@ const adminHTMLTemplate = `<!doctype html>
       if (!buckets || buckets.length < 3) return;
       const metricEls = document.querySelectorAll('#metrics .metric');
       if (metricEls.length < 8) return;
-      const ensureSpark = (el) => {
+      const ensureSpark = (el, idx) => {
         let s = el.querySelector('.metric-spark');
         if (!s) { s = document.createElement('div'); s.className = 'metric-spark'; el.appendChild(s); }
-        s.id = 'sp-' + Math.random().toString(36).slice(2, 8);
+        s.id = 'sp-m-' + idx;
         return s.id;
       };
       const rpm = buckets.map(b => b.requests / Math.max(1, bucketMin / 60));
       const lat = buckets.map(b => b.avg_latency_ms);
       const tok = buckets.map(b => b.total_tokens);
-      drawSparkline(ensureSpark(metricEls[0]), rpm, CHART_COLORS[0]);
-      drawSparkline(ensureSpark(metricEls[1]), lat, CHART_COLORS[3]);
-      drawSparkline(ensureSpark(metricEls[2]), rpm, CHART_COLORS[0]);
-      drawSparkline(ensureSpark(metricEls[3]), lat, CHART_COLORS[3]);
-      drawSparkline(ensureSpark(metricEls[6]), tok.map(v => v / 1000), CHART_COLORS[4]);
-      drawSparkline(ensureSpark(metricEls[7]), tok, CHART_COLORS[1]);
+      drawSparkline(ensureSpark(metricEls[0], 0), rpm, CHART_COLORS[0]);
+      drawSparkline(ensureSpark(metricEls[1], 1), lat, CHART_COLORS[3]);
+      drawSparkline(ensureSpark(metricEls[2], 2), rpm, CHART_COLORS[0]);
+      drawSparkline(ensureSpark(metricEls[3], 3), lat, CHART_COLORS[3]);
+      drawSparkline(ensureSpark(metricEls[6], 6), tok.map(v => v / 1000), CHART_COLORS[4]);
+      drawSparkline(ensureSpark(metricEls[7], 7), tok, CHART_COLORS[1]);
     };
 
     /* Load and render charts */
@@ -5304,15 +5290,15 @@ const adminHTMLTemplate = `<!doctype html>
       const runtimeStrategy = String(runtime.router_strategy || data.router_strategy || 'health_weighted_rr');
 
       document.getElementById('generatedAt').textContent = localeText('更新于 ', 'Updated ') + new Date(data.generated_at).toLocaleString(localeCode(currentLocale));
-      document.getElementById('pricingSource').innerHTML = pricing.source_url
+      setHTML('pricingSource', pricing.source_url
         ? localeText('官方价格：', 'Official pricing: ') + '<a href="' + escapeHTML(pricing.source_url) + '" target="_blank" rel="noreferrer">OpenAI</a>' + (pricing.updated_at ? ' · ' + relativeTime(pricing.updated_at) : '')
-        : t('officialPriceUnavailable');
+        : t('officialPriceUnavailable'));
       const overallCacheRate = cacheHitRate(summary);
       const dayCacheRate = cacheHitRate(dayWindow);
       const avgCostPerRequest = (summary.total_requests || 0) > 0 ? (pricingSummary.total_usd || 0) / summary.total_requests : 0;
       const degradedUpstreams = Object.values(upstreamStatuses).filter((status) => status && !status.healthy).length;
       const recent503 = recentRequests.filter((item) => Number(item.status_code || 0) === 503).length;
-      document.getElementById('runtimeTopline').innerHTML = [
+      setHTML('runtimeTopline', [
         surfaceCard(
           localeText('恢复模式', 'Recovery Mode'),
           recoveryMode,
@@ -5327,19 +5313,19 @@ const adminHTMLTemplate = `<!doctype html>
           runtime.health_enabled ? runtimeHealthPath : localeText('当前未启用主动探活。', 'No active health polling'),
           runtime.health_enabled ? 'tone-good' : 'tone-warn'
         ),
-      ].join('');
-      document.getElementById('runtimeMetrics').innerHTML = [
+      ].join(''));
+      setHTML('runtimeMetrics', [
         [localeText('路由策略', 'Router Strategy'), routerStrategyLabel(runtimeStrategy), fmt.format(runtime.max_retries || 0) + localeText(' 次最大重试', ' max retries configured')],
         [localeText('恢复上限', 'Recovery Ceiling'), runtime.retry_infinite_on_error ? localeText('由客户端取消', 'client cancel') : (fmt.format(runtime.max_retries || 0) + localeText(' 次重试', ' retries')), runtime.retry_infinite_on_error ? localeText('无限模式会忽略最大重试上限。', 'Infinite mode ignores the max retry ceiling.') : localeText('当前为有界故障转移窗口。', 'Bounded failover window.')],
         [localeText('服务商', 'Providers'), fmt.format(enabledRuntimeUpstreams) + ' ' + localeText('已启用', 'enabled'), fmt.format(Math.max(totalRuntimeUpstreams - enabledRuntimeUpstreams, 0)) + ' ' + localeText('已停用', 'disabled') + ' · ' + (runtime.bridge_enabled ? localeText('桥接开启', 'bridge on') : localeText('桥接关闭', 'bridge off'))],
-      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
-      document.getElementById('performanceMeta').innerHTML = [
+      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join(''));
+      setHTML('performanceMeta', [
         miniChip('1m RPM', fmtRate(oneMinute.rpm), 'accent'),
         miniChip(localeText('1 分钟成功率', '1m Success'), fmtPct(oneMinute.success_rate || 0), (oneMinute.success_rate || 0) < 95 ? 'warn' : 'accent'),
         miniChip(localeText('1 分钟延迟', '1m Latency'), fmtMs(oneMinute.avg_latency_ms || 0), oneMinute.avg_latency_ms > 4000 ? 'warn' : ''),
-      ].join('');
+      ].join(''));
 
-      document.getElementById('metrics').innerHTML = [
+      setHTML('metrics', [
         [localeText('1 分钟吞吐', '1m Throughput'), fmtRate(oneMinute.rpm) + ' RPM', fmtRate(oneMinute.tpm) + ' TPM'],
         [localeText('1 分钟成功率', '1m Success'), fmtPct(oneMinute.success_rate), fmtMs(oneMinute.avg_latency_ms)],
         [localeText('5 分钟吞吐', '5m Throughput'), fmtRate(fiveMinute.rpm) + ' RPM', fmtRate(fiveMinute.tpm) + ' TPM'],
@@ -5348,32 +5334,33 @@ const adminHTMLTemplate = `<!doctype html>
         [localeText('5 分钟请求数', '5m Requests'), fmt.format(fiveMinute.requests || 0), fmt.format(fiveMinute.failures || 0) + localeText(' 次失败', ' failures')],
         [localeText('总请求数', 'Total Requests'), fmt.format(summary.total_requests || 0), fmt.format(summary.successes || 0) + localeText(' 成功 / ', ' success / ') + fmt.format(summary.failures || 0) + localeText(' 失败', ' fail')],
         [localeText('总 Token', 'Total Tokens'), fmt.format(summary.total_tokens || 0), fmt.format(summary.prompt_tokens || 0) + localeText(' 提示词 / ', ' prompt / ') + fmt.format(summary.completion_tokens || 0) + localeText(' 补全', ' completion')],
-      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
-      { const m = document.getElementById('metrics'); if (m) { m.classList.remove('value-refresh'); void m.offsetWidth; m.classList.add('value-refresh'); } }
+      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join(''));
       if (latestBuckets.length >= 3) renderMetricSparklines(latestBuckets, chartState.bucket);
 
-      document.getElementById('costMetrics').innerHTML = [
+      setHTML('costMetrics', [
         [localeText('估算成本', 'Estimated Cost'), fmtMoney(pricingSummary.total_usd || 0), fmtMoney(pricingSummary.prompt_usd || 0) + localeText(' 输入 / ', ' input / ') + fmtMoney(pricingSummary.completion_usd || 0) + localeText(' 输出', ' output')],
         [localeText('已定价模型', 'Priced Models'), fmt.format(pricingSummary.priced_models || 0), fmt.format(pricingSummary.unpriced_models || 0) + localeText(' 个未定价', ' unpriced')],
         [localeText('缓存提示词', 'Cached Prompt'), fmt.format(pricingSummary.cached_prompt_tokens || 0), fmtMoney(pricingSummary.cache_savings_usd || 0) + localeText(' 已节省', ' saved')],
         [localeText('缓存命中', 'Cache Hit'), overallCacheRate === null ? localeText('无', 'n/a') : fmtPct(overallCacheRate), fmt.format(summary.cached_prompt_tokens || 0) + ' / ' + fmt.format(summary.prompt_tokens || 0) + localeText(' 提示词 token', ' prompt tokens')],
         [localeText('1 小时缓存命中', '1h Cache Hit'), cacheHitRate(oneHour) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(oneHour)), cacheTrendDetail(oneHour)],
         [localeText('24 小时缓存命中', '24h Cache Hit'), cacheHitRate(dayWindow) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(dayWindow)), cacheTrendDetail(dayWindow)],
-      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join('');
-      { const c = document.getElementById('costMetrics'); if (c) { c.classList.remove('value-refresh'); void c.offsetWidth; c.classList.add('value-refresh'); } }
-      document.getElementById('costMeta').innerHTML = [
+      ].map(([k, v, small]) => '<div class="metric"><div class="k">' + k + '</div><div class="v mono">' + v + '</div><div class="small">' + small + '</div></div>').join(''));
+      requestAnimationFrame(() => { requestAnimationFrame(() => {
+        ['metrics', 'costMetrics'].forEach(id => { const el = document.getElementById(id); if (el) { el.classList.remove('value-refresh'); el.classList.add('value-refresh'); } });
+      }); });
+      setHTML('costMeta', [
         miniChip(localeText('总额', 'Total'), compactUsd(pricingSummary.total_usd || 0), 'accent'),
         miniChip(localeText('已节省', 'Saved'), compactUsd(pricingSummary.cache_savings_usd || 0), pricingSummary.cache_savings_usd > 0 ? 'accent' : ''),
         miniChip('Avg / 1k', compactUsd(avgCostPerRequest * 1000)),
-      ].join('');
+      ].join(''));
 
       const topEconomics = pricingModels.slice().sort((a, b) => (b.cost?.total_usd || 0) - (a.cost?.total_usd || 0)).slice(0, 3);
       const topCostModel = topEconomics[0];
-      document.getElementById('economicsMeta').innerHTML = [
+      setHTML('economicsMeta', [
         miniChip(localeText('已定价', 'Priced'), fmt.format(pricingSummary.priced_models || 0), 'accent'),
         miniChip(localeText('未定价', 'Unpriced'), fmt.format(pricingSummary.unpriced_models || 0), pricingSummary.unpriced_models ? 'warn' : ''),
         miniChip(localeText('最高花费', 'Top Spend'), topCostModel ? ((topCostModel.display_model || '-') + ' · ' + compactUsd(topCostModel.cost?.total_usd || 0)) : localeText('无', 'n/a')),
-      ].join('');
+      ].join(''));
 
       const unhealthyCount = degradedUpstreams;
       const healthEntries = Object.entries(upstreamStatuses);
@@ -5383,18 +5370,18 @@ const adminHTMLTemplate = `<!doctype html>
       const slowestUpstream = healthEntries
         .slice()
         .sort((a, b) => ((b[1] && b[1].last_latency) || 0) - ((a[1] && a[1].last_latency) || 0))[0];
-      document.getElementById('upstreamMeta').innerHTML = [
+      setHTML('upstreamMeta', [
         miniChip(localeText('总数', 'Total'), fmt.format(Object.keys(upstreamStatuses).length), 'accent'),
         miniChip(localeText('退化', 'Degraded'), fmt.format(unhealthyCount), unhealthyCount ? 'danger' : ''),
         miniChip(localeText('窗口', 'Window'), localeText('探活快照', 'health snapshot')),
-      ].join('');
-      document.getElementById('upstreamTopline').innerHTML = [
+      ].join(''));
+      setHTML('upstreamTopline', [
         surfaceCard(localeText('退化路由', 'Degraded Routes'), fmt.format(unhealthyCount), fmt.format(healthEntries.length - unhealthyCount) + localeText(' 条健康', ' healthy')),
         surfaceCard(localeText('失败最多', 'Highest Failures'), mostFailedUpstream ? mostFailedUpstream[0] : localeText('无', 'n/a'), mostFailedUpstream ? (fmt.format(mostFailedUpstream[1].consecutive_retryable_failures || 0) + localeText(' 次可重试失败', ' retryable fails')) : localeText('暂无上游探活数据。', 'No upstream telemetry')),
         surfaceCard(localeText('最慢探活', 'Slowest Probe'), slowestUpstream ? slowestUpstream[0] : localeText('无', 'n/a'), slowestUpstream && slowestUpstream[1].last_latency ? fmtMs((slowestUpstream[1].last_latency || 0) / 1000000) : localeText('暂无延迟样本。', 'No latency sample')),
-      ].join('');
+      ].join(''));
 
-      document.getElementById('upstreams').innerHTML = renderUpstreamHealth(healthEntries);
+      setHTML('upstreams', renderUpstreamHealth(healthEntries));
 
       const modelRows = pricingModels
         .map((item) => [
@@ -5409,13 +5396,13 @@ const adminHTMLTemplate = `<!doctype html>
           fmtMoney(item.cost.total_usd || 0),
         ]);
       drawHorizontalBar('modelDistribution', pricingModels.slice(0, 8).map((item, idx) => ({ label: item.display_model || '-', value: (item.usage && item.usage.total_tokens) || 0, display: fmt.format((item.usage && item.usage.total_tokens) || 0), color: CHART_COLORS[idx % CHART_COLORS.length] })));
-      document.getElementById('byModel').innerHTML = table([localeText('模型', 'Model'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total'), 'USD'], modelRows, 'table-models');
+      setHTML('byModel', table([localeText('模型', 'Model'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total'), 'USD'], modelRows, 'table-models'));
 
       const topUsageUpstream = upstreamUsageEntries.slice().sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))[0];
-      document.getElementById('usageMeta').innerHTML = [
+      setHTML('usageMeta', [
         miniChip(localeText('上游', 'Upstreams'), fmt.format(upstreamUsageEntries.length), 'accent'),
         miniChip(localeText('最高吞吐', 'Top Volume'), topUsageUpstream ? (topUsageUpstream[0] + ' · ' + fmt.format(topUsageUpstream[1].total_tokens || 0)) : localeText('无', 'n/a')),
-      ].join('');
+      ].join(''));
       const topUsageEntries = upstreamUsageEntries
         .slice()
         .sort((a, b) => ((b[1] && b[1].total_tokens) || 0) - ((a[1] && a[1].total_tokens) || 0))
@@ -5432,24 +5419,24 @@ const adminHTMLTemplate = `<!doctype html>
           totalUsageCell(usage),
         ]);
       drawHorizontalBar('upstreamDistribution', upstreamUsageEntries.slice(0, 6).map(([name, usage], idx) => ({ label: name, value: (usage && usage.total_tokens) || 0, display: fmt.format((usage && usage.total_tokens) || 0), color: CHART_COLORS[idx % CHART_COLORS.length] })));
-      document.getElementById('byUpstream').innerHTML = table([localeText('上游', 'Upstream'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total')], upstreamUsageRows, 'table-usage');
+      setHTML('byUpstream', table([localeText('上游', 'Upstream'), localeText('提示词', 'Prompt'), localeText('缓存命中', 'Cache Hit'), localeText('补全', 'Completion'), localeText('总量', 'Total')], upstreamUsageRows, 'table-usage'));
 
       const cacheRanking = telemetry.cache_hit_ranking || [];
       const topErrorUpstream = aggregateBy(recentErrors, (item) => item.upstream || '-')[0];
       const topErrorStatus = aggregateBy(recentErrors, (item) => item.status_code || '-')[0];
       const topErrorModel = aggregateBy(recentErrors, (item) => item.model || '-')[0];
-      document.getElementById('cacheMeta').innerHTML = [
+      setHTML('cacheMeta', [
         miniChip(localeText('24 小时命中', '24h Hit'), dayCacheRate === null ? localeText('无', 'n/a') : fmtPct(dayCacheRate), dayCacheRate !== null && dayCacheRate >= 50 ? 'accent' : ''),
         miniChip(localeText('已节省', 'Saved'), compactUsd(pricingSummary.cache_savings_usd || 0), 'accent'),
         miniChip(localeText('领先者', 'Leaders'), fmt.format(cacheRanking.length)),
-      ].join('');
-      document.getElementById('cacheTopline').innerHTML = cacheRanking.slice(0, 3).map((item, idx) => surfaceCard(
+      ].join(''));
+      setHTML('cacheTopline', cacheRanking.slice(0, 3).map((item, idx) => surfaceCard(
         localeText('缓存领先 ', 'Cache Leader ') + (idx + 1),
         item.upstream || '-',
         (cacheHitRate(item.usage) === null ? localeText('无', 'n/a') : fmtPct(cacheHitRate(item.usage))) + localeText(' 命中 · ', ' hit · ') + fmt.format(item.requests || 0) + localeText(' 次请求', ' req')
       )).join('') || surfaceCard(localeText('缓存领先 1', 'Cache Leader 1'), localeText('无', 'n/a'), localeText('还没有缓存排行。', 'No cache ranking'))
         + surfaceCard(localeText('缓存领先 2', 'Cache Leader 2'), localeText('无', 'n/a'), localeText('还没有缓存排行。', 'No cache ranking'))
-        + surfaceCard(localeText('缓存领先 3', 'Cache Leader 3'), localeText('无', 'n/a'), localeText('还没有缓存排行。', 'No cache ranking'));
+        + surfaceCard(localeText('缓存领先 3', 'Cache Leader 3'), localeText('无', 'n/a'), localeText('还没有缓存排行。', 'No cache ranking')));
 
       const cacheRankingRows = cacheRanking.map((item, idx) => [
         stackCell('<strong>' + escapeHTML((idx + 1) + '. ' + (item.upstream || '-')) + '</strong>', fmt.format(item.requests || 0) + localeText(' 次请求', ' requests')),
@@ -5458,20 +5445,20 @@ const adminHTMLTemplate = `<!doctype html>
         stackCell(fmt.format((item.usage && item.usage.prompt_tokens) || 0), localeText('提示词总量', 'prompt total')),
         stackCell(fmt.format(item.requests || 0), localeText('排行窗口', 'ranking window')),
       ]);
-      document.getElementById('cacheRanking').innerHTML = table([localeText('上游', 'Upstream'), localeText('缓存命中', 'Cache Hit'), localeText('缓存量', 'Cached'), localeText('提示词', 'Prompt'), localeText('请求数', 'Requests')], cacheRankingRows, 'table-cache');
+      setHTML('cacheRanking', table([localeText('上游', 'Upstream'), localeText('缓存命中', 'Cache Hit'), localeText('缓存量', 'Cached'), localeText('提示词', 'Prompt'), localeText('请求数', 'Requests')], cacheRankingRows, 'table-cache'));
 
       const leadingError = recentErrors[0];
-      document.getElementById('errorsMeta').innerHTML = [
+      setHTML('errorsMeta', [
         miniChip(localeText('行数', 'Rows'), fmt.format(recentErrors.length), recentErrors.length ? 'danger' : 'accent'),
         miniChip(localeText('主要上游', 'Top Upstream'), leadingError?.upstream || localeText('无', 'n/a')),
         miniChip(localeText('最新', 'Latest'), leadingError?.status_code ? (localeText('状态 ', 'status ') + leadingError.status_code) : localeText('干净', 'clean'), leadingError ? 'warn' : 'accent'),
-      ].join('');
-      document.getElementById('errorsTopline').innerHTML = [
+      ].join(''));
+      setHTML('errorsTopline', [
         surfaceCard(localeText('主导上游', 'Dominant Upstream'), topErrorUpstream ? topErrorUpstream[0] : localeText('无', 'n/a'), topErrorUpstream ? (fmt.format(topErrorUpstream[1]) + localeText(' 条错误行', ' error rows')) : localeText('最近没有错误。', 'No recent errors')),
         surfaceCard(localeText('主导状态码', 'Dominant Status'), topErrorStatus ? String(topErrorStatus[0]) : localeText('无', 'n/a'), topErrorStatus ? (fmt.format(topErrorStatus[1]) + localeText(' 行样本', ' rows in sample')) : localeText('最近没有错误。', 'No recent errors')),
         surfaceCard(localeText('主导模型', 'Dominant Model'), topErrorModel ? topErrorModel[0] : localeText('无', 'n/a'), topErrorModel ? (fmt.format(topErrorModel[1]) + localeText(' 条错误行', ' error rows')) : localeText('最近没有错误。', 'No recent errors')),
-      ].join('');
-      document.getElementById('errors').innerHTML = errorFeed(recentErrors);
+      ].join(''));
+      setHTML('errors', errorFeed(recentErrors));
 
       const avgAttempts = recentRequests.length
         ? (recentRequests.reduce((sum, item) => sum + Number(item.attempts || 0), 0) / recentRequests.length)
@@ -5479,17 +5466,17 @@ const adminHTMLTemplate = `<!doctype html>
       const hottestPath = aggregateBy(recentRequests, (item) => item.path)[0];
       const busiestUpstream = aggregateBy(recentRequests, (item) => item.upstream || '-')[0];
       const hottestModel = aggregateBy(recentRequests, (item) => item.model || item.requested_model || '-')[0];
-      document.getElementById('requestsMeta').innerHTML = [
+      setHTML('requestsMeta', [
         miniChip(localeText('行数', 'Rows'), fmt.format(recentRequests.length), 'accent'),
         miniChip('503', fmt.format(recent503), recent503 ? 'danger' : ''),
         miniChip(localeText('平均尝试', 'Avg Attempts'), recentRequests.length ? avgAttempts.toFixed(1) : localeText('无', 'n/a')),
-      ].join('');
-      document.getElementById('requestsTopline').innerHTML = [
+      ].join(''));
+      setHTML('requestsTopline', [
         surfaceCard(localeText('最热路径', 'Hottest Path'), hottestPath ? hottestPath[0] : localeText('无', 'n/a'), hottestPath ? (fmt.format(hottestPath[1]) + localeText(' 行当前样本', ' rows in current sample')) : localeText('最近没有请求。', 'No recent requests')),
         surfaceCard(localeText('最忙上游', 'Busiest Upstream'), busiestUpstream ? busiestUpstream[0] : localeText('无', 'n/a'), busiestUpstream ? (fmt.format(busiestUpstream[1]) + localeText(' 次路由请求', ' routed requests')) : localeText('当前没有上游流量。', 'No upstream traffic')),
         surfaceCard(localeText('最热模型', 'Hottest Model'), hottestModel ? hottestModel[0] : localeText('无', 'n/a'), hottestModel ? (fmt.format(hottestModel[1]) + localeText(' 行当前样本', ' rows in current sample')) : localeText('当前没有模型流量。', 'No model traffic')),
-      ].join('');
-      document.getElementById('requests').innerHTML = table(
+      ].join(''));
+      setHTML('requests', table(
         [localeText('时间', 'Time'), localeText('路径与路由', 'Route + Path'), localeText('模型流向', 'Model Flow'), localeText('上游', 'Upstream'), localeText('状态 / 尝试', 'Status / Attempts'), localeText('延迟 / 缓存', 'Latency + Cache'), localeText('Token', 'Tokens'), 'USD'],
         recentRequests.map(item => [
           stackCell(escapeHTML(relativeTime(item.timestamp)), escapeHTML(item.request_id || '-')),
@@ -5507,7 +5494,7 @@ const adminHTMLTemplate = `<!doctype html>
         ]),
         'table-requests',
         recentRequests.map(item => { const c = Number(item.status_code || 0); return c >= 500 ? 'row-fail' : c >= 400 ? 'row-warn' : c >= 200 && c < 300 ? 'row-ok' : ''; })
-      );
+      ));
       } catch (err) {
         // silently ignore data load errors
       }
@@ -5516,11 +5503,14 @@ const adminHTMLTemplate = `<!doctype html>
     if (settingsView) {
       loadConfig();
     } else {
-      load();
-      loadCharts();
-      updateActiveTopnav();
-      setInterval(load, 5000);
-      setInterval(loadCharts, 15000);
+      let loadCycle = 0;
+      const poll = async () => {
+        await load();
+        loadCycle++;
+        if (loadCycle % 3 === 0) await loadCharts();
+      };
+      poll().then(() => { updateActiveTopnav(); });
+      setInterval(poll, 5000);
     }
   </script>
 </body>
@@ -5567,7 +5557,6 @@ func renderAdminHTML(settingsView bool, language string) string {
 	heroMetaPrimary := `<div class="pill" id="generatedAt">` + pick("加载中", "Loading") + `</div>`
 	heroMetaSecondary := `<div class="pill" id="pricingSource">` + pick("价格来源", "Pricing source") + `</div>`
 	heroMetaTertiary := ``
-	heroAside := ``
 	routerStrategyHealthWeightedRR := pick("健康加权轮询", "Health-Weighted Round Robin")
 	routerStrategyRoundRobin := pick("轮询", "Round Robin")
 	if settingsView {
@@ -5587,7 +5576,6 @@ func renderAdminHTML(settingsView bool, language string) string {
 		heroMetaPrimary = ``
 		heroMetaSecondary = ``
 		heroMetaTertiary = ``
-		heroAside = ``
 	}
 	pageTitle := "AI Gateway Admin"
 	if settingsView {
@@ -5611,7 +5599,6 @@ func renderAdminHTML(settingsView bool, language string) string {
 		"{{HERO_META_PRIMARY}}", heroMetaPrimary,
 		"{{HERO_META_SECONDARY}}", heroMetaSecondary,
 		"{{HERO_META_TERTIARY}}", heroMetaTertiary,
-		"{{HERO_ASIDE}}", heroAside,
 		"{{ROUTER_STRATEGY_HEALTH_WEIGHTED_RR}}", routerStrategyHealthWeightedRR,
 		"{{ROUTER_STRATEGY_ROUND_ROBIN}}", routerStrategyRoundRobin,
 	).Replace(adminHTMLTemplate)
