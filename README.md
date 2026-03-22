@@ -33,6 +33,10 @@
 
 ![Admin overview](docs/screenshots/admin-overview.png)
 
+### Admin settings
+
+![Admin settings](docs/assets/admin-settings.png)
+
 ## Repo metadata
 
 - License: [MIT](LICENSE)
