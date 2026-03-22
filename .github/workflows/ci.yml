@@ -42,19 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           pattern='(^|[[:space:]])(//|#|/\*+|\*|<!--)[[:space:]]*(FIXME|TODO)\b'
-          if git grep -n -I -E "$pattern" -- \
-            '*.go' \
-            '*.md' \
-            '*.yml' \
-            '*.yaml' \
-            '*.ps1' \
-            '*.sh' \
-            '*.js' \
-            '*.ts' \
-            '*.tsx' \
-            '*.jsx' \
-            '*.css' \
-            '*.html'; then
+          if git grep -n -I -i -E "$pattern"; then
             echo "Remove TODO/FIXME markers before merging."
             exit 1
           fi
