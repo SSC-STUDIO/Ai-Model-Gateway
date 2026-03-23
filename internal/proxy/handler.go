@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -82,6 +83,15 @@ type requestDebugSummary struct {
 }
 
 const upstreamDisablePollInterval = 1 * time.Second
+const maxProxyRequestBodyBytes int64 = 100 << 20
+
+type errRequestBodyTooLarge struct {
+	Limit int64
+}
+
+func (e errRequestBodyTooLarge) Error() string {
+	return fmt.Sprintf("request body exceeds %d bytes", e.Limit)
+}
 
 func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
 	transport := &http.Transport{
@@ -124,13 +134,11 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
 	requestID := observability.RequestIDFromContext(r.Context())
 	startedAt := time.Now()
-	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20)) // 100 MB limit
+	body, err := readProxyRequestBody(r, maxProxyRequestBodyBytes)
 	if err != nil {
-		w.Header().Set(observability.RequestIDHeader, requestID)
-		writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
+		writeProxyBodyReadError(w, requestID, err)
 		return
 	}
-	_ = r.Body.Close()
 
 	cfg := h.Manager.CurrentConfig()
 	resolved, err := resolveModel(body, r.Header.Get("Content-Type"), r.UserAgent(), cfg, forwardOptions{ModelRequired: true})
@@ -303,13 +311,11 @@ func (h *Handler) FileContent(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOptions) {
 	requestID := observability.RequestIDFromContext(r.Context())
 	startedAt := time.Now()
-	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20)) // 100 MB limit
+	body, err := readProxyRequestBody(r, maxProxyRequestBodyBytes)
 	if err != nil {
-		w.Header().Set(observability.RequestIDHeader, requestID)
-		writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
+		writeProxyBodyReadError(w, requestID, err)
 		return
 	}
-	_ = r.Body.Close()
 
 	cfg := h.Manager.CurrentConfig()
 	var originalBody []byte
@@ -3469,4 +3475,31 @@ func cloneMIMEHeader(src map[string][]string) map[string][]string {
 
 func joinURL(baseURL string, path string) string {
 	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(path, "/")
+}
+
+func readProxyRequestBody(r *http.Request, limit int64) ([]byte, error) {
+	if r.Body == nil {
+		return nil, nil
+	}
+	defer r.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, errRequestBodyTooLarge{Limit: limit}
+	}
+	return body, nil
+}
+
+func writeProxyBodyReadError(w http.ResponseWriter, requestID string, err error) {
+	w.Header().Set(observability.RequestIDHeader, requestID)
+
+	var tooLarge errRequestBodyTooLarge
+	if errors.As(err, &tooLarge) {
+		writeProxyError(w, http.StatusRequestEntityTooLarge, tooLarge.Error(), "request_too_large")
+		return
+	}
+	writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
 }

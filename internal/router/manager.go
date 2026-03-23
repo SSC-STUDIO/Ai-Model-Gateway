@@ -83,6 +83,16 @@ func (m *Manager) ConfigStore() *state.ConfigStore {
 	return m.store
 }
 
+func (m *Manager) SetConfig(cfg config.Config) {
+	if m == nil || m.store == nil {
+		return
+	}
+
+	previous := m.store.Get()
+	m.store.Set(cfg)
+	m.reconcileConfig(previous, cfg)
+}
+
 func (m *Manager) IsUpstreamEnabled(name string) bool {
 	if m == nil || m.store == nil {
 		return false
@@ -338,6 +348,7 @@ func (m *Manager) reportSuccess(name string, latency time.Duration, statusCode i
 	defer m.mu.Unlock()
 
 	status := m.statusLocked(name)
+	clearQuotaBlockStatus(&status)
 	status.Healthy = true
 	status.LastError = ""
 	status.LastFailureKind = ""
@@ -349,6 +360,81 @@ func (m *Manager) reportSuccess(name string, latency time.Duration, statusCode i
 	status.RetryableFailureSince = time.Time{}
 	status.CooldownUntil = time.Time{}
 	m.statuses[name] = status
+}
+
+func (m *Manager) reconcileConfig(previous config.Config, current config.Config) {
+	previousUpstreams := make(map[string]config.Upstream, len(previous.Upstreams))
+	for _, upstream := range previous.Upstreams {
+		previousUpstreams[upstream.Name] = upstream
+	}
+
+	currentUpstreams := make(map[string]config.Upstream, len(current.Upstreams))
+	for _, upstream := range current.Upstreams {
+		currentUpstreams[upstream.Name] = upstream
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for name := range m.statuses {
+		if _, ok := currentUpstreams[name]; !ok {
+			delete(m.statuses, name)
+		}
+	}
+
+	for name, assignment := range m.sticky {
+		if _, ok := currentUpstreams[assignment.Upstream]; !ok {
+			delete(m.sticky, name)
+		}
+	}
+
+	for name, upstream := range currentUpstreams {
+		status, ok := m.statuses[name]
+		if !ok {
+			continue
+		}
+
+		if shouldClearQuotaBlockOnConfigChange(previousUpstreams[name], upstream) {
+			clearQuotaBlockStatus(&status)
+			m.statuses[name] = status
+		}
+	}
+}
+
+func shouldClearQuotaBlockOnConfigChange(previous config.Upstream, current config.Upstream) bool {
+	if current.ProviderClassNormalized() != config.UpstreamClassQuotaLimited {
+		return true
+	}
+	if previous.Name == "" {
+		return false
+	}
+	if previous.ProviderClassNormalized() != current.ProviderClassNormalized() {
+		return true
+	}
+	if previous.BaseURL != current.BaseURL {
+		return true
+	}
+	if previous.APIKey != current.APIKey {
+		return true
+	}
+	return false
+}
+
+func clearQuotaBlockStatus(status *UpstreamStatus) {
+	if status == nil || !status.QuotaBlocked {
+		return
+	}
+
+	status.QuotaBlocked = false
+	status.QuotaBlockedAt = time.Time{}
+	status.Healthy = true
+	status.LastError = ""
+	status.LastFailureKind = ""
+	status.ConsecutiveFailures = 0
+	status.ConsecutiveRetryableFailure = 0
+	status.ConsecutiveSuccess = 0
+	status.RetryableFailureSince = time.Time{}
+	status.CooldownUntil = time.Time{}
 }
 
 func (m *Manager) reportFailure(name string, latency time.Duration, statusCode int, err error, retryable bool, kind string) {

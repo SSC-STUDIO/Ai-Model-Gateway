@@ -6,6 +6,11 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+### Fixed
+
+- Proxy request body reads now distinguish oversized payloads, returning HTTP 413 with `request_too_large` instead of a generic invalid request error.
+- Router config updates now reconcile in-memory upstream state, clearing stale quota blocks after successful recovery or provider reconfiguration and pruning removed upstream state.
+
 ## [0.2.1] — 2026-03-22
 
 ### Added

@@ -158,6 +158,83 @@ func TestManagerPickPrefersFreeClassBeforeQuotaLimited(t *testing.T) {
 	}
 }
 
+func TestManagerReportSuccessClearsQuotaBlock(t *testing.T) {
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin"},
+		Upstreams: []config.Upstream{
+			{Name: "quota", BaseURL: "https://quota.example.com", ProviderClass: config.UpstreamClassQuotaLimited, Models: []string{"gpt-5.2-codex"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	manager := NewManager(state.NewConfigStore(cfg))
+	manager.BlockUpstreamQuota("quota", "insufficient_quota")
+
+	if _, ok := manager.Pick("gpt-5.2-codex", map[string]struct{}{}); ok {
+		t.Fatalf("expected blocked upstream to be skipped")
+	}
+
+	manager.ReportRequestSuccess("quota", time.Millisecond, http.StatusOK)
+
+	status := manager.Snapshot()["quota"]
+	if status.QuotaBlocked {
+		t.Fatalf("expected quota block to be cleared after success")
+	}
+	if !status.Healthy {
+		t.Fatalf("expected upstream to be healthy after success")
+	}
+	if status.LastError != "" {
+		t.Fatalf("expected cleared last error, got %q", status.LastError)
+	}
+
+	upstream, ok := manager.Pick("gpt-5.2-codex", map[string]struct{}{})
+	if !ok {
+		t.Fatalf("expected upstream to become selectable again")
+	}
+	if upstream.Name != "quota" {
+		t.Fatalf("expected quota upstream after unblock, got %s", upstream.Name)
+	}
+}
+
+func TestManagerSetConfigClearsQuotaBlockWhenProviderBecomesFree(t *testing.T) {
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin"},
+		Upstreams: []config.Upstream{
+			{Name: "provider-a", BaseURL: "https://quota.example.com", ProviderClass: config.UpstreamClassQuotaLimited, Models: []string{"gpt-5.2-codex"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	manager := NewManager(state.NewConfigStore(cfg))
+	manager.BlockUpstreamQuota("provider-a", "quota exceeded")
+
+	updated := cfg
+	updated.Upstreams = []config.Upstream{
+		{Name: "provider-a", BaseURL: "https://quota.example.com", ProviderClass: config.UpstreamClassFree, Models: []string{"gpt-5.2-codex"}, Weight: 1},
+	}
+	updated.Normalize()
+	manager.SetConfig(updated)
+
+	status := manager.Snapshot()["provider-a"]
+	if status.QuotaBlocked {
+		t.Fatalf("expected quota block to be cleared after config change")
+	}
+	if !status.Healthy {
+		t.Fatalf("expected provider to be re-armed after config change")
+	}
+
+	upstream, ok := manager.Pick("gpt-5.2-codex", map[string]struct{}{})
+	if !ok {
+		t.Fatalf("expected upstream to be selectable after config change")
+	}
+	if upstream.Name != "provider-a" {
+		t.Fatalf("expected provider-a after config change, got %s", upstream.Name)
+	}
+	if upstream.ProviderClassNormalized() != config.UpstreamClassFree {
+		t.Fatalf("expected free provider class, got %q", upstream.ProviderClassNormalized())
+	}
+}
+
 func TestManagerRememberStickyPrunesExpiredAssignments(t *testing.T) {
 	cfg := config.Config{
 		Router: config.RouterConfig{

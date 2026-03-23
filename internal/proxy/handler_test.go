@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -30,6 +31,113 @@ func newTestStore(t *testing.T) *telemetry.Store {
 		_ = store.Close()
 	})
 	return store
+}
+
+type zeroReadCloser struct {
+	remaining int64
+}
+
+func (r *zeroReadCloser) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	n := len(p)
+	if int64(n) > r.remaining {
+		n = int(r.remaining)
+	}
+	clear(p[:n])
+	r.remaining -= int64(n)
+	return n, nil
+}
+
+func (r *zeroReadCloser) Close() error {
+	return nil
+}
+
+type errReadCloser struct {
+	err error
+}
+
+func (r *errReadCloser) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
+func (r *errReadCloser) Close() error {
+	return nil
+}
+
+func TestHandlerRejectsRequestBodyOverProxyLimit(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-too-large"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Body = &zeroReadCloser{remaining: maxProxyRequestBodyBytes + 1}
+
+	recorder := httptest.NewRecorder()
+	handler.ChatCompletions(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.RequestIDHeader); got != "req-too-large" {
+		t.Fatalf("expected request id header, got %q", got)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	errorMap, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected error payload, got %#v", payload["error"])
+	}
+	if errorMap["type"] != "request_too_large" {
+		t.Fatalf("expected request_too_large, got %#v", errorMap["type"])
+	}
+	if errorMap["message"] != "request body exceeds 104857600 bytes" {
+		t.Fatalf("unexpected error message %#v", errorMap["message"])
+	}
+}
+
+func TestHandlerPreservesInvalidRequestErrorForOrdinaryBodyReadFailure(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Normalize()
+
+	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(observability.WithRequestID(req.Context(), "req-body-read-error"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Body = &errReadCloser{err: errors.New("boom")}
+
+	recorder := httptest.NewRecorder()
+	handler.ChatCompletions(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get(observability.RequestIDHeader); got != "req-body-read-error" {
+		t.Fatalf("expected request id header, got %q", got)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	errorMap, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected error payload, got %#v", payload["error"])
+	}
+	if errorMap["type"] != "invalid_request_error" {
+		t.Fatalf("expected invalid_request_error, got %#v", errorMap["type"])
+	}
+	if errorMap["message"] != "read request body: boom" {
+		t.Fatalf("unexpected error message %#v", errorMap["message"])
+	}
 }
 
 func TestHandlerRetriesAndAddsObservabilityHeaders(t *testing.T) {

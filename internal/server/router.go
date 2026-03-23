@@ -362,7 +362,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			store.Set(cfg)
+			manager.SetConfig(cfg)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -383,7 +383,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		store.Set(cfg)
+		manager.SetConfig(cfg)
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(renderConfigView(cfg))
