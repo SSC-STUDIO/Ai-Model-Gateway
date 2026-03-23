@@ -6,10 +6,19 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+### Added
+
+- Config and telemetry regression coverage for atomic config saves and pricing catalog hot-reload cache updates.
+
+### Changed
+
+- Anthropic/OpenAI compatibility bridges now preserve tool calls, tool results, multimodal image content, and stream model rewrites across chat, messages, and responses flows.
+
 ### Fixed
 
-- Proxy request body reads now distinguish oversized payloads, returning HTTP 413 with `request_too_large` instead of a generic invalid request error.
-- Router config updates now reconcile in-memory upstream state, clearing stale quota blocks after successful recovery or provider reconfiguration and pruning removed upstream state.
+- Pricing catalog config reloads now refresh the in-memory pricing cache immediately after config watcher updates.
+- Router strategy normalization and validation now reject unsupported strategy values while still defaulting empty values consistently.
+- Config saves now write atomically via temp-file rename to avoid partial writes during updates.
 
 ## [0.2.1] — 2026-03-22
 

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -420,6 +421,31 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 
 		if shouldPassthroughStreaming(resp, r.URL.Path, infiniteRetry) {
 			setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt+1)
+			if shouldRewriteAnthropicMessagesModel(r.URL.Path, requestedModel, model) {
+				captured, streamErr := copyResponseAndCaptureAnthropicModelRewrite(w, resp, requestedModel)
+				reason := ""
+				success := streamErr == nil && captured != nil && hasCompletedEventStream(captured.Body, r.URL.Path)
+				if !success {
+					if streamErr != nil {
+						reason = fmt.Sprintf("stream disconnected before completion: %v", streamErr)
+					} else {
+						reason = fmt.Sprintf("stream disconnected before completion: stream closed before %s", expectedStreamCompletionMarker(r.URL.Path))
+					}
+					h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf("%s", reason), true, "stream_passthrough")
+					logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, fmt.Errorf("%s", reason))
+				} else {
+					h.Manager.ReportRequestSuccess(upstream.Name, latency, resp.StatusCode)
+					logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, nil)
+				}
+
+				var usage telemetry.Usage
+				if captured != nil {
+					usage = extractUsage(captured.Body)
+					rememberStickyRouting(h.Manager, r.URL.Path, stickyKey, upstream.Name, captured)
+				}
+				h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, resp.StatusCode, attempt+1, success, reason, usage)
+				return
+			}
 			captured, streamErr := copyResponseAndCapture(w, resp)
 			reason := ""
 			success := streamErr == nil && captured != nil && hasCompletedEventStream(captured.Body, r.URL.Path)
@@ -544,6 +570,10 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 		h.Manager.ReportRequestSuccess(upstream.Name, latency, resp.StatusCode)
 		logProxyAttempt(requestID, model, upstream.Name, attempt+1, resp.StatusCode, latency, nil)
 		setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt+1)
+		if shouldRewriteAnthropicMessagesModel(r.URL.Path, requestedModel, model) {
+			rewriteCapturedAnthropicMessagesModel(captured, requestedModel)
+			replaceHTTPResponseBody(resp, captured)
+		}
 		var usage telemetry.Usage
 		if captured != nil {
 			usage = extractUsage(captured.Body)
@@ -2008,14 +2038,11 @@ func buildAnthropicMessagesFromChat(body []byte, model string) ([]byte, bool, er
 	var messages []map[string]any
 	if rawMessages, ok := payload["messages"].([]any); ok {
 		for _, item := range rawMessages {
-			msg, systemText := normalizeAnthropicMessage(item)
+			normalized, systemText := normalizeChatMessageToAnthropic(item)
 			if systemText != "" {
 				systemParts = append(systemParts, systemText)
-				continue
 			}
-			if msg != nil {
-				messages = append(messages, msg)
-			}
+			messages = append(messages, normalized...)
 		}
 	}
 	if len(messages) == 0 {
@@ -2043,6 +2070,86 @@ func buildAnthropicMessagesFromChat(body []byte, model string) ([]byte, bool, er
 		return nil, stream, err
 	}
 	return data, stream, nil
+}
+
+func normalizeChatMessageToAnthropic(item any) ([]map[string]any, string) {
+	msg, ok := item.(map[string]any)
+	if !ok {
+		return nil, ""
+	}
+
+	role, _ := msg["role"].(string)
+	role = strings.TrimSpace(role)
+	if role == "" {
+		role = "user"
+	}
+
+	if role == "system" {
+		return nil, extractTextFromContent(msg["content"])
+	}
+
+	if role == "tool" {
+		toolCallID, _ := msg["tool_call_id"].(string)
+		toolCallID = strings.TrimSpace(toolCallID)
+		if toolCallID == "" {
+			return nil, ""
+		}
+		content := stringifyStructuredContent(msg["content"])
+		return []map[string]any{
+			{
+				"role": "user",
+				"content": []any{
+					map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": toolCallID,
+						"content":     content,
+					},
+				},
+			},
+		}, ""
+	}
+
+	contentBlocks := chatContentToAnthropicBlocks(msg["content"])
+	var toolCalls []any
+	if role == "assistant" {
+		toolCalls = chatToolCallsToAnthropicContent(chatToolCallsRaw(msg["tool_calls"]))
+	}
+
+	content := anthropicContentFromBlocks(contentBlocks, toolCalls)
+	if content == nil {
+		return nil, ""
+	}
+
+	if role != "assistant" {
+		role = "user"
+	}
+	return []map[string]any{
+		{
+			"role":    role,
+			"content": content,
+		},
+	}, ""
+}
+
+func anthropicContentFromBlocks(contentBlocks []any, toolCalls []any) any {
+	if len(contentBlocks) == 0 && len(toolCalls) == 0 {
+		return nil
+	}
+	if len(toolCalls) == 0 && len(contentBlocks) == 1 {
+		if block, ok := contentBlocks[0].(map[string]any); ok {
+			blockType, _ := block["type"].(string)
+			if strings.TrimSpace(blockType) == "text" {
+				if text, ok := block["text"].(string); ok && strings.TrimSpace(text) != "" {
+					return text
+				}
+			}
+		}
+	}
+
+	content := make([]any, 0, len(contentBlocks)+len(toolCalls))
+	content = append(content, contentBlocks...)
+	content = append(content, toolCalls...)
+	return content
 }
 
 func buildAnthropicCountTokensProbeBody(body []byte) ([]byte, error) {
@@ -2184,11 +2291,15 @@ func anthropicAssistantMessageToChat(content any) map[string]any {
 				textParts = append(textParts, text)
 			}
 		case "tool_use":
+			name, _ := block["name"].(string)
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
 			toolID, _ := block["id"].(string)
 			if strings.TrimSpace(toolID) == "" {
 				toolID = fmt.Sprintf("call_%d", time.Now().UnixNano())
 			}
-			name, _ := block["name"].(string)
 			input := block["input"]
 			args, err := json.Marshal(input)
 			if err != nil {
@@ -2198,7 +2309,7 @@ func anthropicAssistantMessageToChat(content any) map[string]any {
 				"id":   toolID,
 				"type": "function",
 				"function": map[string]any{
-					"name":      strings.TrimSpace(name),
+					"name":      name,
 					"arguments": string(args),
 				},
 			})
@@ -2234,7 +2345,17 @@ func anthropicUserMessageToChat(content any) []map[string]any {
 	}
 
 	var result []map[string]any
-	var textParts []string
+	var userParts []any
+	flushUser := func() {
+		if len(userParts) == 0 {
+			return
+		}
+		result = append(result, map[string]any{
+			"role":    "user",
+			"content": chatContentFromParts(userParts),
+		})
+		userParts = nil
+	}
 	for _, item := range blocks {
 		block, ok := item.(map[string]any)
 		if !ok {
@@ -2244,16 +2365,14 @@ func anthropicUserMessageToChat(content any) []map[string]any {
 		switch strings.TrimSpace(blockType) {
 		case "text":
 			if text := extractTextFromContent(block); text != "" {
-				textParts = append(textParts, text)
+				userParts = append(userParts, map[string]any{"type": "text", "text": text})
+			}
+		case "image":
+			if image := anthropicImageBlockToChatPart(block); image != nil {
+				userParts = append(userParts, image)
 			}
 		case "tool_result":
-			if len(textParts) > 0 {
-				result = append(result, map[string]any{
-					"role":    "user",
-					"content": strings.TrimSpace(strings.Join(textParts, "\n\n")),
-				})
-				textParts = nil
-			}
+			flushUser()
 			toolCallID, _ := block["tool_use_id"].(string)
 			toolContent := extractAnthropicToolResultContent(block["content"])
 			result = append(result, map[string]any{
@@ -2263,16 +2382,11 @@ func anthropicUserMessageToChat(content any) []map[string]any {
 			})
 		default:
 			if text := extractTextFromContent(block); text != "" {
-				textParts = append(textParts, text)
+				userParts = append(userParts, map[string]any{"type": "text", "text": text})
 			}
 		}
 	}
-	if len(textParts) > 0 {
-		result = append(result, map[string]any{
-			"role":    "user",
-			"content": strings.TrimSpace(strings.Join(textParts, "\n\n")),
-		})
-	}
+	flushUser()
 	return result
 }
 
@@ -2284,6 +2398,59 @@ func extractAnthropicToolResultContent(content any) string {
 		return string(data)
 	}
 	return ""
+}
+
+func anthropicImageBlockToChatPart(block map[string]any) map[string]any {
+	source, _ := block["source"].(map[string]any)
+	sourceType, _ := source["type"].(string)
+	switch strings.TrimSpace(sourceType) {
+	case "url":
+		url, _ := source["url"].(string)
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return nil
+		}
+		return map[string]any{
+			"type": "image_url",
+			"image_url": map[string]any{
+				"url": url,
+			},
+		}
+	case "base64":
+		mediaType, _ := source["media_type"].(string)
+		data, _ := source["data"].(string)
+		mediaType = strings.TrimSpace(mediaType)
+		data = strings.TrimSpace(data)
+		if mediaType == "" || data == "" {
+			return nil
+		}
+		return map[string]any{
+			"type": "image_url",
+			"image_url": map[string]any{
+				"url": fmt.Sprintf("data:%s;base64,%s", mediaType, data),
+			},
+		}
+	default:
+		return nil
+	}
+}
+
+func chatContentFromParts(parts []any) any {
+	if len(parts) == 0 {
+		return ""
+	}
+	if len(parts) == 1 {
+		part, ok := parts[0].(map[string]any)
+		if ok {
+			partType, _ := part["type"].(string)
+			if strings.TrimSpace(partType) == "text" {
+				if text, ok := part["text"].(string); ok {
+					return text
+				}
+			}
+		}
+	}
+	return parts
 }
 
 func anthropicToolsToChat(raw any) []map[string]any {
@@ -2352,32 +2519,6 @@ func anthropicToolChoiceToChat(raw any) any {
 	return nil
 }
 
-func normalizeAnthropicMessage(item any) (map[string]any, string) {
-	msg, ok := item.(map[string]any)
-	if !ok {
-		return nil, ""
-	}
-	role, _ := msg["role"].(string)
-	role = strings.TrimSpace(role)
-	if role == "" {
-		role = "user"
-	}
-	text := extractTextFromContent(msg["content"])
-	if text == "" {
-		return nil, ""
-	}
-	if role == "system" {
-		return nil, text
-	}
-	if role != "assistant" {
-		role = "user"
-	}
-	return map[string]any{
-		"role":    role,
-		"content": text,
-	}, ""
-}
-
 func extractResponsesMessages(input any) []map[string]any {
 	switch value := input.(type) {
 	case string:
@@ -2408,23 +2549,151 @@ func normalizeResponseInputItem(item any) []map[string]any {
 		}
 		return []map[string]any{{"role": "user", "content": text}}
 	case map[string]any:
+		itemType, _ := value["type"].(string)
+		switch strings.TrimSpace(itemType) {
+		case "input_image":
+			image := responseInputImageToChatPart(value)
+			if image == nil {
+				return nil
+			}
+			return []map[string]any{{
+				"role":    "user",
+				"content": []any{image},
+			}}
+		case "function_call":
+			toolCall := responseFunctionCallToChatTool(value)
+			if toolCall == nil {
+				return nil
+			}
+			return []map[string]any{{
+				"role":       "assistant",
+				"content":    "",
+				"tool_calls": []any{toolCall},
+			}}
+		case "function_call_output":
+			toolCallID, _ := value["call_id"].(string)
+			toolCallID = strings.TrimSpace(toolCallID)
+			if toolCallID == "" {
+				return nil
+			}
+			content := stringifyStructuredContent(value["output"])
+			if content == "" {
+				content = stringifyStructuredContent(value["content"])
+			}
+			return []map[string]any{{
+				"role":         "tool",
+				"tool_call_id": toolCallID,
+				"content":      content,
+			}}
+		}
+
 		role, _ := value["role"].(string)
 		role = strings.TrimSpace(role)
 		if role == "" {
 			role = "user"
 		}
-		content := extractTextFromContent(value["content"])
-		if content == "" {
+		content := responseContentToChatContent(value["content"])
+		if content == nil {
 			if text, ok := value["text"].(string); ok {
-				content = strings.TrimSpace(text)
+				text = strings.TrimSpace(text)
+				if text != "" {
+					content = text
+				}
 			}
 		}
-		if content == "" {
+		if content == nil {
 			return nil
 		}
 		return []map[string]any{{"role": role, "content": content}}
 	default:
 		return nil
+	}
+}
+
+func responseFunctionCallToChatTool(item map[string]any) map[string]any {
+	callID, _ := item["call_id"].(string)
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		callID, _ = item["id"].(string)
+		callID = strings.TrimSpace(callID)
+	}
+	if callID == "" {
+		callID = fmt.Sprintf("call_%d", time.Now().UnixNano())
+	}
+
+	name, _ := item["name"].(string)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+
+	arguments := stringifyJSONValue(item["arguments"])
+	return map[string]any{
+		"id":   callID,
+		"type": "function",
+		"function": map[string]any{
+			"name":      name,
+			"arguments": arguments,
+		},
+	}
+}
+
+func responseContentToChatContent(content any) any {
+	switch value := content.(type) {
+	case string:
+		text := strings.TrimSpace(value)
+		if text == "" {
+			return nil
+		}
+		return text
+	case []any:
+		var parts []any
+		for _, item := range value {
+			part, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			itemType, _ := part["type"].(string)
+			switch strings.TrimSpace(itemType) {
+			case "", "text", "input_text", "output_text":
+				if text := extractTextFromContent(part); text != "" {
+					parts = append(parts, map[string]any{"type": "text", "text": text})
+				}
+			case "input_image":
+				if image := responseInputImageToChatPart(part); image != nil {
+					parts = append(parts, image)
+				}
+			}
+		}
+		return chatContentFromParts(parts)
+	case map[string]any:
+		if image := responseInputImageToChatPart(value); image != nil {
+			return []any{image}
+		}
+		if text := extractTextFromContent(value); text != "" {
+			return text
+		}
+	}
+	return nil
+}
+
+func responseInputImageToChatPart(item map[string]any) map[string]any {
+	imageURL, _ := item["image_url"].(string)
+	imageURL = strings.TrimSpace(imageURL)
+	if imageURL == "" {
+		if image, ok := item["image_url"].(map[string]any); ok {
+			imageURL, _ = image["url"].(string)
+			imageURL = strings.TrimSpace(imageURL)
+		}
+	}
+	if imageURL == "" {
+		return nil
+	}
+	return map[string]any{
+		"type": "image_url",
+		"image_url": map[string]any{
+			"url": imageURL,
+		},
 	}
 }
 
@@ -2443,6 +2712,10 @@ func extractTextFromContent(content any) string {
 					builder.WriteString(text)
 					continue
 				}
+				if text, ok := part["output_text"].(string); ok {
+					builder.WriteString(text)
+					continue
+				}
 				if text, ok := part["content"].(string); ok {
 					builder.WriteString(text)
 					continue
@@ -2458,6 +2731,9 @@ func extractTextFromContent(content any) string {
 		if text, ok := value["text"].(string); ok {
 			return strings.TrimSpace(text)
 		}
+		if text, ok := value["output_text"].(string); ok {
+			return strings.TrimSpace(text)
+		}
 		if text, ok := value["content"].(string); ok {
 			return strings.TrimSpace(text)
 		}
@@ -2465,144 +2741,165 @@ func extractTextFromContent(content any) string {
 	return ""
 }
 
-func buildResponsesFromChat(chatBody []byte, model string) (map[string]any, string, error) {
-	var payload struct {
-		ID      string `json:"id"`
-		Object  string `json:"object"`
-		Created int64  `json:"created"`
-		Model   string `json:"model"`
-		Choices []struct {
-			Message struct {
-				Role    string      `json:"role"`
-				Content interface{} `json:"content"`
-			} `json:"message"`
-			FinishReason string `json:"finish_reason"`
-			Index        int    `json:"index"`
-		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-			TotalTokens      int `json:"total_tokens"`
-		} `json:"usage"`
+func stringifyStructuredContent(content any) string {
+	if text := extractTextFromContent(content); text != "" {
+		return text
 	}
+	if content == nil {
+		return ""
+	}
+	data, err := json.Marshal(content)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func stringifyJSONValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case nil:
+		return "{}"
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			return "{}"
+		}
+		return string(data)
+	}
+}
+
+func buildResponsesFromChat(chatBody []byte, model string) (map[string]any, string, error) {
+	var payload map[string]any
 	if err := json.Unmarshal(chatBody, &payload); err != nil {
 		return nil, "", fmt.Errorf("parse chat completion: %w", err)
 	}
 
 	if model == "" {
-		model = payload.Model
+		model, _ = payload["model"].(string)
 	}
-	if payload.Created == 0 {
-		payload.Created = time.Now().Unix()
+	created := int64Value(payload["created"])
+	if created == 0 {
+		created = time.Now().Unix()
 	}
 
+	var output []any
 	var texts []string
-	for _, choice := range payload.Choices {
-		text := flattenChatContent(choice.Message.Content)
-		if text != "" {
-			texts = append(texts, text)
+	if choices, ok := payload["choices"].([]any); ok {
+		for _, item := range choices {
+			choice, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			message, _ := choice["message"].(map[string]any)
+			text := flattenChatContent(message["content"])
+			if text != "" {
+				texts = append(texts, text)
+				output = append(output, map[string]any{
+					"id":   fmt.Sprintf("msg_%d", time.Now().UnixNano()),
+					"type": "message",
+					"role": "assistant",
+					"content": []any{
+						map[string]any{
+							"type": "output_text",
+							"text": text,
+						},
+					},
+				})
+			}
+			for _, toolCall := range chatToolCallsRaw(message["tool_calls"]) {
+				if functionCall := responseFunctionCallFromChatTool(toolCall); functionCall != nil {
+					output = append(output, functionCall)
+				}
+			}
 		}
 	}
 	outputText := strings.TrimSpace(strings.Join(texts, "\n\n"))
-	if outputText == "" {
-		outputText = ""
+	if len(output) == 0 {
+		output = append(output, map[string]any{
+			"id":   fmt.Sprintf("msg_%d", time.Now().UnixNano()),
+			"type": "message",
+			"role": "assistant",
+			"content": []any{
+				map[string]any{
+					"type": "output_text",
+					"text": outputText,
+				},
+			},
+		})
 	}
 
-	responseID := strings.TrimSpace(payload.ID)
+	responseID, _ := payload["id"].(string)
+	responseID = strings.TrimSpace(responseID)
 	if responseID == "" {
 		responseID = fmt.Sprintf("resp_%d", time.Now().UnixNano())
 	}
 	if !strings.HasPrefix(responseID, "resp_") {
 		responseID = "resp_" + responseID
 	}
-	messageID := "msg_" + strings.TrimPrefix(responseID, "resp_")
 
+	usageTotals := responseUsageFromChatPayload(payload["usage"])
 	usage := map[string]any{
-		"input_tokens":      payload.Usage.PromptTokens,
-		"output_tokens":     payload.Usage.CompletionTokens,
-		"total_tokens":      payload.Usage.TotalTokens,
-		"prompt_tokens":     payload.Usage.PromptTokens,
-		"completion_tokens": payload.Usage.CompletionTokens,
+		"input_tokens":      usageTotals.PromptTokens,
+		"output_tokens":     usageTotals.CompletionTokens,
+		"total_tokens":      usageTotals.TotalTokens,
+		"prompt_tokens":     usageTotals.PromptTokens,
+		"completion_tokens": usageTotals.CompletionTokens,
 	}
-	if payload.Usage.TotalTokens == 0 {
-		usage["total_tokens"] = payload.Usage.PromptTokens + payload.Usage.CompletionTokens
+	if usageTotals.TotalTokens == 0 {
+		usage["total_tokens"] = usageTotals.PromptTokens + usageTotals.CompletionTokens
 	}
 
 	response := map[string]any{
 		"id":          responseID,
 		"object":      "response",
-		"created":     payload.Created,
+		"created":     created,
 		"model":       model,
 		"status":      "completed",
 		"output_text": outputText,
-		"output": []any{
-			map[string]any{
-				"id":   messageID,
-				"type": "message",
-				"role": "assistant",
-				"content": []any{
-					map[string]any{
-						"type": "output_text",
-						"text": outputText,
-					},
-				},
-			},
-		},
-		"usage": usage,
+		"output":      output,
+		"usage":       usage,
 	}
 	return response, responseID, nil
 }
 
 func buildChatFromAnthropic(body []byte, model string) (map[string]any, error) {
-	var payload struct {
-		ID      string `json:"id"`
-		Type    string `json:"type"`
-		Role    string `json:"role"`
-		Model   string `json:"model"`
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
-		Usage struct {
-			InputTokens  int `json:"input_tokens"`
-			OutputTokens int `json:"output_tokens"`
-		} `json:"usage"`
-	}
+	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("parse anthropic message: %w", err)
 	}
 	if model == "" {
-		model = payload.Model
+		model, _ = payload["model"].(string)
 	}
-	var builder strings.Builder
-	for _, part := range payload.Content {
-		if part.Type == "text" && strings.TrimSpace(part.Text) != "" {
-			if builder.Len() > 0 {
-				builder.WriteString("\n\n")
-			}
-			builder.WriteString(strings.TrimSpace(part.Text))
+	message := anthropicAssistantMessageToChat(payload["content"])
+	if message == nil {
+		message = map[string]any{
+			"role":    "assistant",
+			"content": "",
 		}
 	}
-	text := strings.TrimSpace(builder.String())
-	totalTokens := payload.Usage.InputTokens + payload.Usage.OutputTokens
+
+	stopReason, _ := payload["stop_reason"].(string)
+	usageMap, _ := payload["usage"].(map[string]any)
+	promptTokens := intValue(usageMap["input_tokens"])
+	completionTokens := intValue(usageMap["output_tokens"])
+	totalTokens := promptTokens + completionTokens
 	return map[string]any{
-		"id":      payload.ID,
+		"id":      payload["id"],
 		"object":  "chat.completion",
 		"created": time.Now().Unix(),
 		"model":   model,
 		"choices": []any{
 			map[string]any{
-				"index": 0,
-				"message": map[string]any{
-					"role":    "assistant",
-					"content": text,
-				},
-				"finish_reason": "stop",
+				"index":         0,
+				"message":       message,
+				"finish_reason": anthropicStopReasonToChat(stopReason, message),
 			},
 		},
 		"usage": map[string]any{
-			"prompt_tokens":     payload.Usage.InputTokens,
-			"completion_tokens": payload.Usage.OutputTokens,
+			"prompt_tokens":     promptTokens,
+			"completion_tokens": completionTokens,
 			"total_tokens":      totalTokens,
 		},
 	}, nil
@@ -2697,6 +2994,21 @@ func chatToolCallsToAnthropicContent(toolCalls []any) []any {
 	return content
 }
 
+func chatToolCallsRaw(value any) []any {
+	switch typed := value.(type) {
+	case []any:
+		return typed
+	case []map[string]any:
+		result := make([]any, 0, len(typed))
+		for _, item := range typed {
+			result = append(result, item)
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
 func intValue(value any) int {
 	switch typed := value.(type) {
 	case int:
@@ -2705,6 +3017,19 @@ func intValue(value any) int {
 		return int(typed)
 	case float64:
 		return int(typed)
+	default:
+		return 0
+	}
+}
+
+func int64Value(value any) int64 {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	case float64:
+		return int64(typed)
 	default:
 		return 0
 	}
@@ -2720,6 +3045,67 @@ func anthropicStopReasonFromChat(finishReason string) string {
 		return "stop_sequence"
 	default:
 		return "end_turn"
+	}
+}
+
+func anthropicStopReasonToChat(stopReason string, message map[string]any) string {
+	switch strings.TrimSpace(stopReason) {
+	case "max_tokens":
+		return "length"
+	case "tool_use":
+		return "tool_calls"
+	case "stop_sequence":
+		return "stop"
+	default:
+		if len(chatToolCallsRaw(message["tool_calls"])) > 0 {
+			return "tool_calls"
+		}
+		return "stop"
+	}
+}
+
+func responseUsageFromChatPayload(raw any) telemetry.Usage {
+	usage, _ := raw.(map[string]any)
+	promptTokens := intValue(usage["prompt_tokens"])
+	completionTokens := intValue(usage["completion_tokens"])
+	totalTokens := intValue(usage["total_tokens"])
+	if totalTokens == 0 {
+		totalTokens = promptTokens + completionTokens
+	}
+	return telemetry.Usage{
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		TotalTokens:      totalTokens,
+	}
+}
+
+func responseFunctionCallFromChatTool(toolCall any) map[string]any {
+	value, ok := toolCall.(map[string]any)
+	if !ok {
+		return nil
+	}
+	callID, _ := value["id"].(string)
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		callID = fmt.Sprintf("call_%d", time.Now().UnixNano())
+	}
+	function, _ := value["function"].(map[string]any)
+	name, _ := function["name"].(string)
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	arguments, _ := function["arguments"].(string)
+	if strings.TrimSpace(arguments) == "" {
+		arguments = "{}"
+	}
+	return map[string]any{
+		"id":        "fc_" + strings.TrimPrefix(callID, "call_"),
+		"type":      "function_call",
+		"call_id":   callID,
+		"name":      name,
+		"arguments": arguments,
+		"status":    "completed",
 	}
 }
 
@@ -2743,6 +3129,145 @@ func flattenChatContent(content interface{}) string {
 	default:
 		return ""
 	}
+}
+
+func chatContentToAnthropicBlocks(content any) []any {
+	switch value := content.(type) {
+	case string:
+		text := strings.TrimSpace(value)
+		if text == "" {
+			return nil
+		}
+		return []any{map[string]any{"type": "text", "text": text}}
+	case []any:
+		var blocks []any
+		for _, item := range value {
+			switch part := item.(type) {
+			case string:
+				text := strings.TrimSpace(part)
+				if text != "" {
+					blocks = append(blocks, map[string]any{"type": "text", "text": text})
+				}
+			case map[string]any:
+				partType, _ := part["type"].(string)
+				switch strings.TrimSpace(partType) {
+				case "", "text", "input_text", "output_text":
+					if text := extractChatTextPart(part); strings.TrimSpace(text) != "" {
+						blocks = appendAnthropicTextBlock(blocks, text)
+					}
+				case "image_url", "input_image":
+					if image := chatImagePartToAnthropicBlock(part); image != nil {
+						blocks = append(blocks, image)
+					}
+				default:
+					if text := extractTextFromContent(part); text != "" {
+						blocks = appendAnthropicTextBlock(blocks, text)
+					}
+				}
+			}
+		}
+		return blocks
+	case map[string]any:
+		if image := chatImagePartToAnthropicBlock(value); image != nil {
+			return []any{image}
+		}
+		if text := extractTextFromContent(value); text != "" {
+			return []any{map[string]any{"type": "text", "text": text}}
+		}
+	}
+	return nil
+}
+
+func appendAnthropicTextBlock(blocks []any, text string) []any {
+	if strings.TrimSpace(text) == "" {
+		return blocks
+	}
+	if len(blocks) > 0 {
+		if last, ok := blocks[len(blocks)-1].(map[string]any); ok {
+			lastType, _ := last["type"].(string)
+			if strings.TrimSpace(lastType) == "text" {
+				if current, ok := last["text"].(string); ok && strings.TrimSpace(current) != "" {
+					last["text"] = current + text
+					blocks[len(blocks)-1] = last
+					return blocks
+				}
+			}
+		}
+	}
+	return append(blocks, map[string]any{"type": "text", "text": strings.TrimSpace(text)})
+}
+
+func extractChatTextPart(part map[string]any) string {
+	if text, ok := part["text"].(string); ok {
+		return text
+	}
+	if text, ok := part["input_text"].(string); ok {
+		return text
+	}
+	if text, ok := part["output_text"].(string); ok {
+		return text
+	}
+	return extractTextFromContent(part)
+}
+
+func chatImagePartToAnthropicBlock(part map[string]any) map[string]any {
+	var rawURL string
+	switch value := part["image_url"].(type) {
+	case string:
+		rawURL = strings.TrimSpace(value)
+	case map[string]any:
+		rawURL, _ = value["url"].(string)
+		rawURL = strings.TrimSpace(rawURL)
+	}
+	if rawURL == "" {
+		rawURL, _ = part["image"].(string)
+		rawURL = strings.TrimSpace(rawURL)
+	}
+	if rawURL == "" {
+		return nil
+	}
+
+	if mediaType, data, ok := parseDataURLImage(rawURL); ok {
+		return map[string]any{
+			"type": "image",
+			"source": map[string]any{
+				"type":       "base64",
+				"media_type": mediaType,
+				"data":       data,
+			},
+		}
+	}
+
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		return map[string]any{
+			"type": "image",
+			"source": map[string]any{
+				"type": "url",
+				"url":  rawURL,
+			},
+		}
+	}
+	return nil
+}
+
+func parseDataURLImage(value string) (string, string, bool) {
+	if !strings.HasPrefix(value, "data:") {
+		return "", "", false
+	}
+	meta, data, ok := strings.Cut(strings.TrimPrefix(value, "data:"), ",")
+	if !ok {
+		return "", "", false
+	}
+	mediaType, _, ok := strings.Cut(meta, ";")
+	if !ok || !strings.Contains(meta, ";base64") {
+		return "", "", false
+	}
+	mediaType = strings.TrimSpace(mediaType)
+	data = strings.TrimSpace(data)
+	if mediaType == "" || data == "" {
+		return "", "", false
+	}
+	return mediaType, data, true
 }
 
 func writeResponsesCompatStream(w http.ResponseWriter, response map[string]any) {
@@ -2810,6 +3335,7 @@ func marshalChatCompletionsCompatStream(chat map[string]any) []byte {
 	}
 
 	content := ""
+	var toolCalls []any
 	finishReason := "stop"
 	if choices, ok := chat["choices"].([]any); ok && len(choices) > 0 {
 		if choice, ok := choices[0].(map[string]any); ok {
@@ -2818,8 +3344,19 @@ func marshalChatCompletionsCompatStream(chat map[string]any) []byte {
 			}
 			if message, ok := choice["message"].(map[string]any); ok {
 				content = extractTextFromContent(message["content"])
+				toolCalls = chatToolCallsRaw(message["tool_calls"])
 			}
 		}
+	}
+
+	delta := map[string]any{
+		"role": "assistant",
+	}
+	if content != "" {
+		delta["content"] = content
+	}
+	if len(toolCalls) > 0 {
+		delta["tool_calls"] = toolCalls
 	}
 
 	firstChunk := map[string]any{
@@ -2829,11 +3366,8 @@ func marshalChatCompletionsCompatStream(chat map[string]any) []byte {
 		"model":   model,
 		"choices": []map[string]any{
 			{
-				"index": 0,
-				"delta": map[string]any{
-					"role":    "assistant",
-					"content": content,
-				},
+				"index":         0,
+				"delta":         delta,
 				"finish_reason": nil,
 			},
 		},
@@ -3063,6 +3597,12 @@ func isAnthropicMessagesPath(path string) bool {
 	return path == "/v1/messages" || path == "/v1/messages/count_tokens"
 }
 
+func shouldRewriteAnthropicMessagesModel(path string, requestedModel string, effectiveModel string) bool {
+	requestedModel = strings.TrimSpace(requestedModel)
+	effectiveModel = strings.TrimSpace(effectiveModel)
+	return path == "/v1/messages" && requestedModel != "" && requestedModel != effectiveModel
+}
+
 func copyResponseAndCapture(w http.ResponseWriter, resp *http.Response) (*capturedResponse, error) {
 	defer resp.Body.Close()
 
@@ -3091,6 +3631,216 @@ func copyResponseAndCapture(w http.ResponseWriter, resp *http.Response) (*captur
 		Header:     header,
 		Body:       buffer.Bytes(),
 	}, err
+}
+
+func copyResponseAndCaptureAnthropicModelRewrite(w http.ResponseWriter, resp *http.Response, requestedModel string) (*capturedResponse, error) {
+	defer resp.Body.Close()
+
+	header := resp.Header.Clone()
+	for key, values := range header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+
+	flusher, _ := w.(http.Flusher)
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	var buffer bytes.Buffer
+	writer := io.Writer(io.MultiWriter(w, &buffer))
+	if flusher != nil {
+		writer = flushWriter{writer: writer, flusher: flusher}
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	var eventBlock bytes.Buffer
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			eventBlock.Write(line)
+			if isSSEBlockBoundary(line) {
+				block := rewriteAnthropicMessagesEventBlockModel(eventBlock.Bytes(), requestedModel)
+				if _, writeErr := writer.Write(block); writeErr != nil {
+					return &capturedResponse{StatusCode: resp.StatusCode, Header: header, Body: buffer.Bytes()}, writeErr
+				}
+				eventBlock.Reset()
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			if eventBlock.Len() > 0 {
+				block := rewriteAnthropicMessagesEventBlockModel(eventBlock.Bytes(), requestedModel)
+				if _, writeErr := writer.Write(block); writeErr != nil {
+					return &capturedResponse{StatusCode: resp.StatusCode, Header: header, Body: buffer.Bytes()}, writeErr
+				}
+			}
+			return &capturedResponse{StatusCode: resp.StatusCode, Header: header, Body: buffer.Bytes()}, nil
+		}
+		if err != nil {
+			return &capturedResponse{StatusCode: resp.StatusCode, Header: header, Body: buffer.Bytes()}, err
+		}
+	}
+}
+
+func rewriteCapturedAnthropicMessagesModel(captured *capturedResponse, requestedModel string) {
+	if captured == nil {
+		return
+	}
+	rewritten, changed := rewriteAnthropicMessagesBodyModel(captured.Body, captured.Header.Get("Content-Type"), requestedModel)
+	if !changed {
+		return
+	}
+	captured.Body = rewritten
+	if captured.Header == nil {
+		captured.Header = make(http.Header)
+	}
+	captured.Header.Set("Content-Length", strconv.Itoa(len(rewritten)))
+}
+
+func replaceHTTPResponseBody(resp *http.Response, captured *capturedResponse) {
+	if resp == nil || captured == nil {
+		return
+	}
+	resp.Header = captured.Header.Clone()
+	resp.Body = io.NopCloser(bytes.NewReader(captured.Body))
+	resp.ContentLength = int64(len(captured.Body))
+}
+
+func rewriteAnthropicMessagesBodyModel(body []byte, contentType string, requestedModel string) ([]byte, bool) {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" || len(body) == 0 {
+		return body, false
+	}
+
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	switch mediaType {
+	case "application/json", "":
+		return rewriteAnthropicMessageJSONModel(body, requestedModel)
+	case "text/event-stream":
+		return rewriteAnthropicMessagesEventStreamModel(body, requestedModel)
+	default:
+		return body, false
+	}
+}
+
+func rewriteAnthropicMessageJSONModel(body []byte, requestedModel string) ([]byte, bool) {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body, false
+	}
+	if _, ok := payload["model"]; !ok {
+		return body, false
+	}
+	payload["model"] = requestedModel
+	rewritten, err := json.Marshal(payload)
+	if err != nil {
+		return body, false
+	}
+	return rewritten, true
+}
+
+func rewriteAnthropicMessagesEventStreamModel(body []byte, requestedModel string) ([]byte, bool) {
+	var output bytes.Buffer
+	reader := bufio.NewReader(bytes.NewReader(body))
+	changed := false
+	var eventBlock bytes.Buffer
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			eventBlock.Write(line)
+			if isSSEBlockBoundary(line) {
+				rewritten := rewriteAnthropicMessagesEventBlockModel(eventBlock.Bytes(), requestedModel)
+				if !bytes.Equal(rewritten, eventBlock.Bytes()) {
+					changed = true
+				}
+				output.Write(rewritten)
+				eventBlock.Reset()
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			if eventBlock.Len() > 0 {
+				rewritten := rewriteAnthropicMessagesEventBlockModel(eventBlock.Bytes(), requestedModel)
+				if !bytes.Equal(rewritten, eventBlock.Bytes()) {
+					changed = true
+				}
+				output.Write(rewritten)
+			}
+			if !changed {
+				return body, false
+			}
+			return output.Bytes(), true
+		}
+		if err != nil {
+			return body, false
+		}
+	}
+}
+
+func rewriteAnthropicMessagesEventBlockModel(block []byte, requestedModel string) []byte {
+	lines := splitSSEBlockLines(block)
+	eventName := ""
+	dataLines := make([]string, 0, len(lines))
+	prefixLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimRight(line, "\r\n")
+		switch {
+		case strings.HasPrefix(trimmed, "event:"):
+			eventName = strings.TrimSpace(strings.TrimPrefix(trimmed, "event:"))
+			prefixLines = append(prefixLines, "event: "+eventName)
+		case strings.HasPrefix(trimmed, "data:"):
+			dataLines = append(dataLines, strings.TrimSpace(strings.TrimPrefix(trimmed, "data:")))
+		case trimmed == "":
+		default:
+			prefixLines = append(prefixLines, trimmed)
+		}
+	}
+	if eventName != "message_start" || len(dataLines) == 0 {
+		return block
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(strings.Join(dataLines, "\n")), &payload); err != nil {
+		return block
+	}
+	message, ok := payload["message"].(map[string]any)
+	if !ok {
+		return block
+	}
+	if _, ok := message["model"]; !ok {
+		return block
+	}
+	message["model"] = requestedModel
+	rewrittenData, err := json.Marshal(payload)
+	if err != nil {
+		return block
+	}
+
+	var builder strings.Builder
+	for _, line := range prefixLines {
+		if line == "" {
+			continue
+		}
+		builder.WriteString(line)
+		builder.WriteByte('\n')
+	}
+	builder.WriteString("data: ")
+	builder.Write(rewrittenData)
+	builder.WriteString("\n\n")
+	return []byte(builder.String())
+}
+
+func splitSSEBlockLines(block []byte) []string {
+	text := strings.ReplaceAll(string(block), "\r\n", "\n")
+	return strings.SplitAfter(text, "\n")
+}
+
+func isSSEBlockBoundary(line []byte) bool {
+	return bytes.Equal(line, []byte("\n")) || bytes.Equal(line, []byte("\r\n"))
 }
 
 type flushWriter struct {

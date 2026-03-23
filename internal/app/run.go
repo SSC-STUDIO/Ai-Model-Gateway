@@ -47,6 +47,7 @@ func Run(ctx context.Context, configPath string) error {
 				return
 			}
 			manager.SetConfig(newCfg)
+			pricing.UpdateConfig(newCfg.Pricing)
 			log.Printf("config reloaded")
 		}); err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("watch config failed: %v", err)

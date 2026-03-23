@@ -109,15 +109,17 @@ type Upstream struct {
 }
 
 const (
-	UpstreamClassFree         = "free"
-	UpstreamClassQuotaLimited = "quota_limited"
-	AdminLanguageChinese      = "zh"
-	AdminLanguageEnglish      = "en"
-	AdminLanguageJapanese     = "ja"
-	AdminLanguageKorean       = "ko"
-	AdminLanguageSpanish      = "es"
-	AdminLanguageFrench       = "fr"
-	AdminLanguageGerman       = "de"
+	RouterStrategyHealthWeightedRR = "health_weighted_rr"
+	RouterStrategyRoundRobin       = "round_robin"
+	UpstreamClassFree              = "free"
+	UpstreamClassQuotaLimited      = "quota_limited"
+	AdminLanguageChinese           = "zh"
+	AdminLanguageEnglish           = "en"
+	AdminLanguageJapanese          = "ja"
+	AdminLanguageKorean            = "ko"
+	AdminLanguageSpanish           = "es"
+	AdminLanguageFrench            = "fr"
+	AdminLanguageGerman            = "de"
 )
 
 func (c *Config) Normalize() {
@@ -127,9 +129,7 @@ func (c *Config) Normalize() {
 	if c.Reload.DebounceMs == 0 {
 		c.Reload.DebounceMs = 200
 	}
-	if c.Router.Strategy == "" {
-		c.Router.Strategy = "health_weighted_rr"
-	}
+	c.Router.Strategy = NormalizeRouterStrategy(c.Router.Strategy)
 	if c.Router.MaxRetries == 0 {
 		c.Router.MaxRetries = 2
 	}
@@ -212,6 +212,17 @@ func NormalizeAdminLanguage(language string) string {
 		return AdminLanguageGerman
 	default:
 		return AdminLanguageChinese
+	}
+}
+
+func NormalizeRouterStrategy(strategy string) string {
+	switch strings.ToLower(strings.TrimSpace(strategy)) {
+	case "", RouterStrategyHealthWeightedRR:
+		return RouterStrategyHealthWeightedRR
+	case RouterStrategyRoundRobin:
+		return RouterStrategyRoundRobin
+	default:
+		return strings.TrimSpace(strategy)
 	}
 }
 

@@ -21,6 +21,24 @@ func TestNormalizeDefaults(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnknownRouterStrategy(t *testing.T) {
+	cfg := Config{
+		Router: RouterConfig{Strategy: "weighted_random"},
+		Upstreams: []Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid router strategy to fail validation")
+	}
+	if got := err.Error(); got != "router.strategy must be health_weighted_rr or round_robin" {
+		t.Fatalf("unexpected validation error %q", got)
+	}
+}
+
 func TestNormalizeAdminLanguage(t *testing.T) {
 	tests := []struct{ input, expected string }{
 		{"zh", "zh"},

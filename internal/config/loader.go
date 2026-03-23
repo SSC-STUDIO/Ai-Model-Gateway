@@ -36,6 +36,11 @@ func (c *Config) Validate() error {
 	if c.Listen == "" {
 		return errors.New("listen is required")
 	}
+	switch NormalizeRouterStrategy(c.Router.Strategy) {
+	case RouterStrategyHealthWeightedRR, RouterStrategyRoundRobin:
+	default:
+		return fmt.Errorf("router.strategy must be %s or %s", RouterStrategyHealthWeightedRR, RouterStrategyRoundRobin)
+	}
 	if c.Router.MaxRetries < 0 {
 		return errors.New("router.max_retries must be >= 0")
 	}
