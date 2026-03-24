@@ -43,7 +43,13 @@ gofmt -w .\cmd\gateway\main.go .\internal\**\*.go
 go test ./...
 ```
 
-3. Verify that no local-only files are staged:
+3. Verify that no `TODO`/`FIXME` comment markers remain in tracked files:
+
+```powershell
+.\scripts\check-no-todo.ps1
+```
+
+4. Verify that no local-only files are staged:
 
 ```powershell
 git status --short --ignored

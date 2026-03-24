@@ -38,14 +38,8 @@ jobs:
           git diff --exit-code
 
       - name: Reject TODO and FIXME markers
-        shell: bash
-        run: |
-          set -euo pipefail
-          pattern="(^|[[:space:]])(//|#|/\\*+|\\*|<!--|--|'|;|REM)[[:space:]]*(FIXME|TODO)\\b"
-          if git grep -n -I -i -E "$pattern"; then
-            echo "Remove TODO/FIXME markers before merging."
-            exit 1
-          fi
+        shell: pwsh
+        run: .\scripts\check-no-todo.ps1
 
       - name: Run tests
         run: go test ./...
