@@ -82,18 +82,6 @@ func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Ha
 				return
 			}
 
-			if token := strings.TrimSpace(r.URL.Query().Get("token")); subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
-				http.SetCookie(w, &http.Cookie{
-					Name:     adminAuthCookie,
-					Value:    token,
-					Path:     "/",
-					HttpOnly: true,
-					SameSite: http.SameSiteLaxMode,
-				})
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 || subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
 				next.ServeHTTP(w, r)
 				return

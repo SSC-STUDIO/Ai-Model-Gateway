@@ -152,16 +152,18 @@ http://127.0.0.1:18080
 
 ### 3. Open admin pages
 
+先用 Bearer token 请求 admin 接口，或在浏览器里带上已建立的 `aigw_admin_token` cookie 访问页面。
+
 概览页：
 
 ```text
-http://127.0.0.1:18080/admin?token=YOUR_ADMIN_TOKEN
+http://127.0.0.1:18080/admin
 ```
 
 设置页：
 
 ```text
-http://127.0.0.1:18080/admin/settings?token=YOUR_ADMIN_TOKEN
+http://127.0.0.1:18080/admin/settings
 ```
 
 ## Configuration guide

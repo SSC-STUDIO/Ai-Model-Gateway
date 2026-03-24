@@ -417,8 +417,46 @@ func TestAdminRequiresAuth(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("WWW-Authenticate"); got != `Bearer realm="aigw-admin"` {
+		t.Fatalf("expected bearer challenge, got %q", got)
+	}
+}
+
+func TestAdminRejectsQueryToken(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/admin?token=secret", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
 	if recorder.Result().StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", recorder.Result().StatusCode)
+		t.Fatalf("expected query token to be rejected with 401, got %d", recorder.Result().StatusCode)
+	}
+}
+
+func TestAdminAcceptsCookieToken(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageEnglish},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected cookie auth 200, got %d: %s", recorder.Result().StatusCode, string(body))
 	}
 }
 
@@ -669,6 +707,9 @@ func TestAdminUpstreamProbe(t *testing.T) {
 	if !strings.Contains(payload.BodyPreview, `"object":"list"`) {
 		t.Fatalf("unexpected body preview %q", payload.BodyPreview)
 	}
+	if strings.Contains(payload.BodyPreview, "sk-demo") {
+		t.Fatalf("expected body preview to redact secrets, got %q", payload.BodyPreview)
+	}
 }
 
 func TestAdminConfigUpdatesUpstreams(t *testing.T) {
@@ -845,6 +886,51 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	}
 }
 
+func TestAdminConfigReturnsRedactedSecrets(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Upstreams: []config.Upstream{
+			{
+				Name:    "alpha",
+				BaseURL: "https://alpha.example.com",
+				APIKey:  "sk-visible",
+				Models:  []string{"gpt-5.2"},
+				Weight:  1,
+				Headers: map[string]string{
+					"Authorization":     "Bearer sk-header",
+					"Proxy-Authorization": "Bearer sk-proxy",
+					"X-API-Key":         "sk-x-api",
+					"X-Org":             "demo",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/-/admin/config", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected 200, got %d: %s", recorder.Result().StatusCode, string(body))
+	}
+
+	data, err := io.ReadAll(recorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read config body: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "sk-visible") || strings.Contains(text, "sk-header") || strings.Contains(text, "sk-proxy") || strings.Contains(text, "sk-x-api") {
+		t.Fatalf("expected config view to redact secrets, got %q", text)
+	}
+	if !strings.Contains(text, "[REDACTED]") || !strings.Contains(text, `"X-Org":"demo"`) {
+		t.Fatalf("expected config view to keep non-sensitive fields and redact secrets, got %q", text)
+	}
+}
+
 func TestAdminConfigExportReturnsYAML(t *testing.T) {
 	configPath := t.TempDir() + "/config.yaml"
 	cfg := config.Config{
@@ -890,8 +976,14 @@ func TestAdminConfigExportReturnsYAML(t *testing.T) {
 		t.Fatalf("read export body: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "bridge:") || !strings.Contains(text, "upstreams:") || !strings.Contains(text, "sk-export") {
+	if !strings.Contains(text, "bridge:") || !strings.Contains(text, "upstreams:") {
 		t.Fatalf("expected export yaml body, got %q", text)
+	}
+	if strings.Contains(text, "sk-export") || strings.Contains(text, "auth_token: secret") {
+		t.Fatalf("expected export yaml to redact secrets, got %q", text)
+	}
+	if !strings.Contains(text, "[REDACTED]") {
+		t.Fatalf("expected export yaml to contain redaction marker, got %q", text)
 	}
 }
 
@@ -1000,6 +1092,17 @@ func TestAdminConfigRollbackRestoresPreviousVersion(t *testing.T) {
 	}
 	if restored.Upstreams[0].APIKey != "sk-old" {
 		t.Fatalf("expected api key to roll back, got %q", restored.Upstreams[0].APIKey)
+	}
+	responseData, err := io.ReadAll(rollbackRecorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read rollback response: %v", err)
+	}
+	responseText := string(responseData)
+	if strings.Contains(responseText, "sk-old") || strings.Contains(responseText, "secret") {
+		t.Fatalf("expected rollback response body to redact secrets, got %q", responseText)
+	}
+	if !strings.Contains(responseText, "[REDACTED]") {
+		t.Fatalf("expected rollback response body to include redaction marker, got %q", responseText)
 	}
 	if restored.Health.Path != "/v1/models" {
 		t.Fatalf("expected health path to roll back, got %q", restored.Health.Path)
@@ -1126,6 +1229,15 @@ func TestAdminConfigHistoryListsSavedVersions(t *testing.T) {
 	if payload.Versions[0].ID == "" || payload.Versions[0].Filename == "" {
 		t.Fatalf("expected non-empty history metadata, got %#v", payload.Versions[0])
 	}
+
+	data, err := io.ReadAll(recorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read history payload: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "sk-provider-a") || strings.Contains(text, "sk-provider-b") {
+		t.Fatalf("expected history metadata response without secrets, got %q", text)
+	}
 }
 
 func TestAdminConfigHistoryDiffReturnsLineChanges(t *testing.T) {
@@ -1247,6 +1359,9 @@ func TestAdminConfigHistoryDiffReturnsLineChanges(t *testing.T) {
 
 	var foundAdded, foundRemoved bool
 	for _, line := range diff.Lines {
+		if strings.Contains(line.Text, "sk-") {
+			t.Fatalf("expected diff lines to redact secrets, got %#v", diff.Lines)
+		}
 		if line.Kind == "add" && strings.Contains(line.Text, "provider-a") {
 			foundAdded = true
 		}

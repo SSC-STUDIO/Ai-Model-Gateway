@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -396,6 +395,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		}
 
 		result := probeUpstream(payload.Upstream, manager.CurrentConfig().Health)
+		result = redactProbeResponse(result)
 		status := http.StatusOK
 		if !result.OK && result.StatusCode == 0 {
 			status = http.StatusBadGateway
@@ -449,7 +449,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 }
 
 func renderConfigView(cfg config.Config) AdminConfigView {
-	return AdminConfigView{
+	return redactAdminConfigView(AdminConfigView{
 		Admin: configViewAdmin{
 			Language: cfg.Admin.Language,
 		},
@@ -483,7 +483,7 @@ func renderConfigView(cfg config.Config) AdminConfigView {
 			Intercepts: renderIntercepts(cfg.Proxy.Intercepts),
 		},
 		Upstreams: renderUpstreams(cfg.Upstreams),
-	}
+	})
 }
 
 func applyAdminConfig(current config.AdminConfig, incoming configViewAdmin) config.AdminConfig {
@@ -633,6 +633,123 @@ func cloneStringMap(src map[string]string) map[string]string {
 	return dst
 }
 
+func redactAdminConfigView(view AdminConfigView) AdminConfigView {
+	view.Upstreams = redactConfigViewUpstreams(view.Upstreams)
+	return view
+}
+
+func redactConfigViewUpstreams(upstreams []configViewUpstream) []configViewUpstream {
+	if len(upstreams) == 0 {
+		return nil
+	}
+	items := make([]configViewUpstream, 0, len(upstreams))
+	for _, upstream := range upstreams {
+		upstream.APIKey = redactSecretValue(upstream.APIKey)
+		upstream.Headers = redactSensitiveHeaders(upstream.Headers)
+		items = append(items, upstream)
+	}
+	return items
+}
+
+func redactConfigForExport(cfg config.Config) config.Config {
+	redacted := cfg
+	redacted.Admin.AuthToken = redactSecretValue(redacted.Admin.AuthToken)
+	redacted.Upstreams = make([]config.Upstream, 0, len(cfg.Upstreams))
+	for _, upstream := range cfg.Upstreams {
+		cloned := upstream
+		cloned.APIKey = redactSecretValue(cloned.APIKey)
+		cloned.Headers = redactSensitiveHeaders(cloned.Headers)
+		redacted.Upstreams = append(redacted.Upstreams, cloned)
+	}
+	return redacted
+}
+
+func redactSensitiveHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return map[string]string{}
+	}
+	redacted := cloneStringMap(headers)
+	for key, value := range redacted {
+		if isSensitiveHeaderKey(key) {
+			redacted[key] = redactSecretValue(value)
+		}
+	}
+	return redacted
+}
+
+func isSensitiveHeaderKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "authorization", "proxy-authorization", "x-api-key":
+		return true
+	default:
+		return false
+	}
+}
+
+func redactSecretValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return value
+	}
+	return "[REDACTED]"
+}
+
+func redactDiffLines(lines []configDiffLine) []configDiffLine {
+	if len(lines) == 0 {
+		return nil
+	}
+	redacted := make([]configDiffLine, 0, len(lines))
+	for _, line := range lines {
+		line.Text = redactDiffLine(line.Text)
+		redacted = append(redacted, line)
+	}
+	return redacted
+}
+
+func redactDiffLine(line string) string {
+	trimmed := strings.TrimSpace(line)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "auth_token:") || strings.HasPrefix(lower, "api_key:") {
+		prefix, _, _ := strings.Cut(line, ":")
+		return prefix + ": " + redactSecretValue("secret")
+	}
+	for _, headerKey := range []string{"authorization", "proxy-authorization", "x-api-key"} {
+		marker := headerKey + ":"
+		idx := strings.Index(lower, marker)
+		if idx >= 0 {
+			return line[:idx+len(marker)] + " " + redactSecretValue("secret")
+		}
+	}
+	return line
+}
+
+func redactProbeResponse(resp upstreamProbeResponse) upstreamProbeResponse {
+	resp.BodyPreview = redactSecretText(resp.BodyPreview)
+	resp.Error = redactSecretText(resp.Error)
+	return resp
+}
+
+func redactSecretText(text string) string {
+	redacted := text
+	for _, marker := range []string{"sk-", "Bearer ", "bearer "} {
+		for {
+			idx := strings.Index(redacted, marker)
+			if idx < 0 {
+				break
+			}
+			end := idx + len(marker)
+			for end < len(redacted) {
+				ch := redacted[end]
+				if ch == '"' || ch == '\'' || ch == '\n' || ch == '\r' || ch == ' ' || ch == '\t' || ch == ',' || ch == '}' || ch == ']' {
+					break
+				}
+				end++
+			}
+			redacted = redacted[:idx] + marker + "[REDACTED]" + redacted[end:]
+		}
+	}
+	return redacted
+}
+
 func probeUpstream(view configViewUpstream, healthCfg config.HealthConfig) upstreamProbeResponse {
 	items := applyUpstreamConfig([]configViewUpstream{view})
 	if len(items) == 0 {
@@ -756,17 +873,7 @@ func rollbackConfigVersion(store interface {
 }
 
 func exportConfigPayload(store interface{ Path() string }, cfg config.Config) ([]byte, error) {
-	if store != nil && store.Path() != "" {
-		data, err := os.ReadFile(store.Path())
-		if err == nil {
-			return data, nil
-		}
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-	}
-
-	exportCfg := cfg
+	exportCfg := redactConfigForExport(cfg)
 	if store != nil && store.Path() != "" {
 		config.RelativizePaths(&exportCfg, store.Path())
 	}
@@ -794,7 +901,7 @@ func buildConfigHistoryDiff(store interface {
 	if err != nil {
 		return configHistoryDiffResponse{}, err
 	}
-	lines := buildConfigDiffLines(currentData, versionData)
+	lines := redactDiffLines(buildConfigDiffLines(currentData, versionData))
 	return configHistoryDiffResponse{
 		Version: renderConfigHistoryItem(version),
 		Summary: summarizeConfigDiff(lines),
