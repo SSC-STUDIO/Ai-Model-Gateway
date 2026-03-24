@@ -152,7 +152,7 @@ http://127.0.0.1:18080
 
 ### 3. Open admin pages
 
-先用 Bearer token 请求 admin 接口，或在浏览器里带上已建立的 `aigw_admin_token` cookie 访问页面。
+浏览器访问管理页时，先建立同源的 `aigw_admin_token` cookie 会话，再访问页面；脚本或 CLI 直接调用 admin API 时，推荐使用 Bearer token。
 
 概览页：
 
@@ -165,6 +165,12 @@ http://127.0.0.1:18080/admin
 ```text
 http://127.0.0.1:18080/admin/settings
 ```
+
+### Admin auth modes and browser boundary
+
+- 浏览器：admin 页面会携带 `credentials: 'same-origin'`，cookie-auth 的写请求仅允许同源 `Origin`，缺失时仅接受同源 `Referer` 后备。
+- 自动化：脚本、CLI、curl 调用 `/-/admin/config`、`/-/admin/config/rollback`、`/-/admin/upstreams/test` 时，推荐使用 `Authorization: Bearer <token>`，不会被 `Origin` / `Referer` 限制误伤。
+- 暴露面：不要把 admin URL、Bearer token 或已登录的 admin cookie 会话暴露给不受信任来源；管理页应只在受信任浏览器上下文中打开。
 
 ## Configuration guide
 

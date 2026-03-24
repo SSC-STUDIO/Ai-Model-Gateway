@@ -28,10 +28,17 @@ Include:
 Security-sensitive areas in this repository include:
 
 - admin auth and config endpoints
+- admin browser same-origin write boundary for cookie-auth sessions
 - upstream request forwarding and header propagation
 - secret handling in config and logs
 - file and multipart proxy routes
 - pricing / telemetry persistence if it can expose sensitive request data
+
+## Admin browser threat model
+
+- 浏览器中的 admin cookie 会话仅面向同源上下文；对 `PUT /-/admin/config`、`POST /-/admin/config/rollback`、`POST /-/admin/upstreams/test` 的 cookie-auth 写请求必须通过同源 `Origin`，缺失时仅接受同源 `Referer`。
+- Bearer token 面向脚本、CLI 与自动化调用，不依赖浏览器来源头。
+- 如需报告 admin 相关问题，请说明是否涉及同源校验绕过、cookie 跨站写入，或 Bearer / cookie 模式边界混淆。
 
 ## Expectations
 

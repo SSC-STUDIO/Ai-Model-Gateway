@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -22,6 +23,14 @@ import (
 var requestCounter atomic.Uint64
 
 const adminAuthCookie = "aigw_admin_token"
+
+type adminAuthKind int
+
+const (
+	adminAuthNone adminAuthKind = iota
+	adminAuthBearer
+	adminAuthCookieOnly
+)
 
 type responseRecorder struct {
 	http.ResponseWriter
@@ -65,7 +74,7 @@ func accessLog(next http.Handler) http.Handler {
 func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !strings.HasPrefix(r.URL.Path, "/admin") && !strings.HasPrefix(r.URL.Path, "/-/admin/") {
+			if !isAdminRoute(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -82,13 +91,18 @@ func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Ha
 				return
 			}
 
-			if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 || subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
-				next.ServeHTTP(w, r)
+			authMode := adminAuthMode(r, expected)
+			if authMode == adminAuthNone {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="aigw-admin"`)
+				http.Error(w, "admin authentication required", http.StatusUnauthorized)
+				return
+			}
+			if authMode == adminAuthCookieOnly && isAdminMutation(r) && !sameOriginAdminRequest(r) {
+				http.Error(w, "admin same-origin write required", http.StatusForbidden)
 				return
 			}
 
-			w.Header().Set("WWW-Authenticate", `Bearer realm="aigw-admin"`)
-			http.Error(w, "admin authentication required", http.StatusUnauthorized)
+			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -143,6 +157,60 @@ func generateRequestID() string {
 		return hex.EncodeToString(buf[:])
 	}
 	return strconv.FormatUint(requestCounter.Add(1), 10)
+}
+
+func isAdminRoute(path string) bool {
+	return strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/-/admin/")
+}
+
+func isAdminMutation(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.Method == http.MethodPut && r.URL.Path == "/-/admin/config" {
+		return true
+	}
+	if r.Method == http.MethodPost && (r.URL.Path == "/-/admin/config/rollback" || r.URL.Path == "/-/admin/upstreams/test") {
+		return true
+	}
+	return false
+}
+
+func adminAuthMode(r *http.Request, expected string) adminAuthKind {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return adminAuthNone
+	}
+	if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 {
+		return adminAuthBearer
+	}
+	if subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
+		return adminAuthCookieOnly
+	}
+	return adminAuthNone
+}
+
+func sameOriginAdminRequest(r *http.Request) bool {
+	if sameOriginRequestURL(r.Host, r.Header.Get("Origin")) {
+		return true
+	}
+	return sameOriginRequestURL(r.Host, r.Header.Get("Referer"))
+}
+
+func sameOriginRequestURL(host, raw string) bool {
+	host = strings.TrimSpace(host)
+	raw = strings.TrimSpace(raw)
+	if host == "" || raw == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return false
+	}
+	if !strings.EqualFold(parsed.Host, host) {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func bearerToken(r *http.Request) string {
