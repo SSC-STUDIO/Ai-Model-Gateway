@@ -170,6 +170,7 @@ type adminRuntimeView struct {
 
 func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *telemetry.PricingCatalog) http.Handler {
 	r := chi.NewRouter()
+	r.Use(securityHeaders)
 	r.Use(withRequestID)
 	r.Use(accessLog)
 	r.Use(requireAdminAuth(manager.CurrentConfig))
