@@ -59,8 +59,12 @@ func Run(ctx context.Context, configPath string) error {
 	}
 
 	srv := &http.Server{
-		Addr:    cfg.Listen,
-		Handler: server.NewRouter(manager, stats, pricing),
+		Addr:           cfg.Listen,
+		Handler:        server.NewRouter(manager, stats, pricing),
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   60 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
 	errCh := make(chan error, 1)
