@@ -60,6 +60,41 @@ func TestNormalizeAdminLanguage(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnknownAdminLanguage(t *testing.T) {
+	cfg := Config{
+		Listen: ":8080",
+		Admin:  AdminConfig{Language: "invalid"},
+		Upstreams: []Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Weight: 1},
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid admin language to fail validation")
+	}
+	if got := err.Error(); got != "admin.language must be one of zh, en, ja, ko, es, fr, de (supported: Chinese/zh, English/en, Japanese/ja, Korean/ko, Spanish/es, French/fr, German/de)" {
+		t.Fatalf("unexpected validation error %q", got)
+	}
+}
+
+func TestValidateAdminLanguageAllowsSupportedSet(t *testing.T) {
+	for _, language := range []string{
+		AdminLanguageChinese,
+		AdminLanguageEnglish,
+		AdminLanguageJapanese,
+		AdminLanguageKorean,
+		AdminLanguageSpanish,
+		AdminLanguageFrench,
+		AdminLanguageGerman,
+		"",
+	} {
+		if err := ValidateAdminLanguage(language); err != nil {
+			t.Fatalf("ValidateAdminLanguage(%q) returned error: %v", language, err)
+		}
+	}
+}
+
 func TestRewriteModel(t *testing.T) {
 	cfg := Config{
 		Bridge: ModelBridgeConfig{

@@ -320,7 +320,8 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 
 	cfg := h.Manager.CurrentConfig()
 	var originalBody []byte
-	if cfg.Bridge.Enabled && len(cfg.Bridge.Rules) > 0 {
+	// Save original body for bridge or fallback
+	if (cfg.Bridge.Enabled && len(cfg.Bridge.Rules) > 0) || cfg.Fallback.Enabled {
 		originalBody = append([]byte(nil), body...)
 	}
 	originalContentType := r.Header.Get("Content-Type")
@@ -486,7 +487,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 			return
 		}
 
-		if shouldAttemptResponsesCompat(r.URL.Path, model, assessment, captured) {
+		if shouldAttemptResponsesCompat(r.URL.Path, requestedModel, model, assessment, captured) {
 			if h.tryResponsesCompat(w, r, startedAt, requestID, upstream, requestedModel, model, attempt+1, stickyKey, body) {
 				return
 			}
@@ -496,7 +497,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				return
 			}
 		}
-		if shouldAttemptAnthropicMessagesCompat(r.URL.Path, model, assessment, captured) {
+		if shouldAttemptAnthropicMessagesCompat(r.URL.Path, upstream, requestedModel, model, assessment, captured) {
 			if strings.HasPrefix(r.URL.Path, "/v1/responses") {
 				if h.tryResponsesAnthropicCompat(w, r, startedAt, requestID, upstream, requestedModel, model, attempt+1, stickyKey, body) {
 					return
@@ -564,6 +565,29 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardOp
 				h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, routeMode, upstream.Name, captured.StatusCode, attempt+1, false, reason, extractUsage(captured.Body))
 				writeCapturedResponse(w, captured)
 				return
+			}
+		}
+
+		// Check if we need to fallback due to repetition or quality issues
+		if captured != nil && !bridgeFallbackActivated {
+			if fallbackModel, shouldDoFallback := shouldFallback(cfg, requestedModel, model, captured.Body, r.URL.Path, responseAssessment{}); shouldDoFallback {
+				log.Printf("[fallback] Detected quality issue with model %s, falling back to %s", model, fallbackModel)
+				// Prepare fallback model
+				fallbackResolved, err := resolveModel(originalBody, originalContentType, r.UserAgent(), cfg, forwardOptions{
+					ModelRequired:    opts.ModelRequired,
+					SkipModelRewrite: true,
+				})
+				if err == nil && fallbackResolved.Effective != "" {
+					// Update model to fallback
+					model = fallbackModel
+					body = fallbackResolved.Body
+					contentType = fallbackResolved.ContentType
+					// Mark upstream as failed to exclude it
+					h.Manager.ReportRequestFailure(upstream.Name, latency, resp.StatusCode, fmt.Errorf("fallback triggered: quality issue detected"), true, "fallback")
+					excluded[upstream.Name] = struct{}{}
+					// Continue to next iteration with fallback model
+					continue
+				}
 			}
 		}
 
@@ -670,7 +694,12 @@ func (h *Handler) doAnthropicMessages(src *http.Request, body []byte, upstream c
 		cancel = combineCancel(cancel, timeoutCancel)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(upstream.BaseURL, "/v1/messages"), bytes.NewReader(body))
+	baseURL := strings.TrimSpace(upstream.AnthropicBaseURL)
+	if baseURL == "" {
+		baseURL = upstream.BaseURL
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(baseURL, "/v1/messages"), bytes.NewReader(body))
 	if err != nil {
 		cancel()
 		return nil, 0, err
@@ -1536,14 +1565,15 @@ func extractUsageFromSSE(body []byte) (telemetry.Usage, bool) {
 	}, true
 }
 
-func shouldAttemptResponsesCompat(path string, model string, assessment responseAssessment, captured *capturedResponse) bool {
+func shouldAttemptResponsesCompat(path string, requestedModel string, model string, assessment responseAssessment, captured *capturedResponse) bool {
 	if path != "/v1/responses" {
 		return false
 	}
 	if captured == nil {
 		return false
 	}
-	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-") {
+	bridged := strings.TrimSpace(requestedModel) != "" && strings.TrimSpace(model) != "" && strings.TrimSpace(requestedModel) != strings.TrimSpace(model)
+	if !bridged && !isClaudeCompatModel(requestedModel, model) {
 		return false
 	}
 	if captured.StatusCode == http.StatusNotImplemented || captured.StatusCode == http.StatusNotFound || captured.StatusCode == http.StatusMethodNotAllowed {
@@ -1555,14 +1585,25 @@ func shouldAttemptResponsesCompat(path string, model string, assessment response
 		strings.Contains(message, "unsupported")
 }
 
-func shouldAttemptAnthropicMessagesCompat(path string, model string, assessment responseAssessment, captured *capturedResponse) bool {
+func isClaudeCompatModel(models ...string) bool {
+	for _, model := range models {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-") {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldAttemptAnthropicMessagesCompat(path string, upstream config.Upstream, requestedModel string, model string, assessment responseAssessment, captured *capturedResponse) bool {
 	if captured == nil {
 		return false
 	}
 	if path != "/v1/chat/completions" && path != "/v1/responses" {
 		return false
 	}
-	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "claude-") {
+	claudeCompat := isClaudeCompatModel(requestedModel, model)
+	explicitAnthropicCompat := strings.TrimSpace(upstream.AnthropicBaseURL) != ""
+	if !claudeCompat && !explicitAnthropicCompat {
 		return false
 	}
 	if captured.StatusCode == http.StatusNotImplemented ||
@@ -1571,9 +1612,13 @@ func shouldAttemptAnthropicMessagesCompat(path string, model string, assessment 
 		captured.StatusCode == http.StatusServiceUnavailable {
 		return true
 	}
+	if explicitAnthropicCompat && path == "/v1/chat/completions" && captured.StatusCode == http.StatusForbidden {
+		return true
+	}
 	message := strings.ToLower(strings.TrimSpace(assessment.Message + " " + string(captured.Body)))
 	return strings.Contains(message, "anthropic") ||
 		strings.Contains(message, "messages api") ||
+		(explicitAnthropicCompat && path == "/v1/chat/completions" && strings.Contains(message, "forbidden")) ||
 		strings.Contains(message, "service temporarily unavailable") ||
 		strings.Contains(message, "unsupported")
 }
@@ -1658,8 +1703,10 @@ func (h *Handler) tryResponsesCompat(
 	setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt)
 
 	contentType := "application/json"
+	compatResponseBody := responseBody
 	if streamRequested {
 		contentType = "text/event-stream"
+		compatResponseBody = marshalResponsesCompatStream(responsePayload)
 		writeResponsesCompatStream(w, responsePayload)
 	} else {
 		w.Header().Set("Content-Type", contentType)
@@ -1671,7 +1718,7 @@ func (h *Handler) tryResponsesCompat(
 	compatCaptured := &capturedResponse{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{contentType}},
-		Body:       responseBody,
+		Body:       compatResponseBody,
 	}
 	rememberStickyRouting(h.Manager, r.URL.Path, stickyKey, upstream.Name, compatCaptured)
 	h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, "responses_compat", upstream.Name, http.StatusOK, attempt, true, "", usage)
@@ -1817,17 +1864,31 @@ func (h *Handler) tryResponsesAnthropicCompat(
 	h.Manager.ReportRequestSuccess(upstream.Name, latency, captured.StatusCode)
 	logProxyAttempt(requestID, model, upstream.Name, attempt, captured.StatusCode, latency, nil)
 	setProxyHeaders(w.Header(), requestID, upstream.Name, model, requestedModel, attempt)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(responseBody)
+
+	contentType := "application/json"
+	compatBody := responseBody
+	if streamRequested {
+		contentType = "text/event-stream"
+		compatBody = marshalResponsesCompatStream(responsePayload)
+		writeResponsesCompatStream(w, responsePayload)
+	} else {
+		w.Header().Set("Content-Type", contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(responseBody)
+	}
 
 	compatCaptured := &capturedResponse{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       responseBody,
+		Header:     http.Header{"Content-Type": []string{contentType}},
+		Body:       compatBody,
 	}
 	rememberStickyRouting(h.Manager, r.URL.Path, stickyKey, upstream.Name, compatCaptured)
 	h.recordRequest(startedAt, requestID, r.URL.Path, requestedModel, model, "anthropic_messages_compat", upstream.Name, http.StatusOK, attempt, true, "", extractUsage(chatCompatBody))
+	if streamRequested {
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}
 	return true
 }
 
@@ -3274,9 +3335,29 @@ func writeResponsesCompatStream(w http.ResponseWriter, response map[string]any) 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	_, _ = w.Write(marshalResponsesCompatStream(response))
+}
+
+func marshalResponsesCompatStream(response map[string]any) []byte {
+	var buf bytes.Buffer
+	sequence := 1
+
+	writeEvent := func(name string, payload map[string]any) {
+		payload["type"] = name
+		payload["sequence_number"] = sequence
+		sequence++
+		data, _ := json.Marshal(payload)
+		buf.WriteString("event: ")
+		buf.WriteString(name)
+		buf.WriteString("\n")
+		buf.WriteString("data: ")
+		buf.Write(data)
+		buf.WriteString("\n\n")
+	}
 
 	createdPayload := map[string]any{
-		"type": "response.created",
 		"response": map[string]any{
 			"id":     response["id"],
 			"object": "response",
@@ -3284,22 +3365,56 @@ func writeResponsesCompatStream(w http.ResponseWriter, response map[string]any) 
 			"model":  response["model"],
 		},
 	}
-	completedPayload := map[string]any{
-		"type":     "response.completed",
-		"response": response,
+	writeEvent("response.created", createdPayload)
+
+	if output, ok := response["output"].([]any); ok {
+		for outputIndex, rawItem := range output {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			writeEvent("response.output_item.added", map[string]any{
+				"output_index": outputIndex,
+				"item":         item,
+			})
+
+			itemType, _ := item["type"].(string)
+			if itemType != "message" {
+				continue
+			}
+			itemID, _ := item["id"].(string)
+			contentItems, ok := item["content"].([]any)
+			if !ok {
+				continue
+			}
+			for contentIndex, rawContent := range contentItems {
+				content, ok := rawContent.(map[string]any)
+				if !ok {
+					continue
+				}
+				contentType, _ := content["type"].(string)
+				if contentType != "output_text" {
+					continue
+				}
+				text, _ := content["text"].(string)
+				if strings.TrimSpace(text) == "" {
+					continue
+				}
+				writeEvent("response.output_text.delta", map[string]any{
+					"content_index": contentIndex,
+					"delta":         text,
+					"item_id":       itemID,
+					"logprobs":      []any{},
+					"output_index":  outputIndex,
+				})
+			}
+		}
 	}
-	createdBytes, _ := json.Marshal(createdPayload)
-	completedBytes, _ := json.Marshal(completedPayload)
 
-	_, _ = w.Write([]byte("event: response.created\n"))
-	_, _ = w.Write([]byte("data: "))
-	_, _ = w.Write(createdBytes)
-	_, _ = w.Write([]byte("\n\n"))
-
-	_, _ = w.Write([]byte("event: response.completed\n"))
-	_, _ = w.Write([]byte("data: "))
-	_, _ = w.Write(completedBytes)
-	_, _ = w.Write([]byte("\n\n"))
+	writeEvent("response.completed", map[string]any{
+		"response": response,
+	})
+	return buf.Bytes()
 }
 
 func writeChatCompletionsCompatStream(w http.ResponseWriter, body []byte) {
@@ -4252,4 +4367,191 @@ func writeProxyBodyReadError(w http.ResponseWriter, requestID string, err error)
 		return
 	}
 	writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
+}
+
+
+// detectRepetition detects if the response content has repetitive patterns
+func detectRepetition(body []byte, path string) bool {
+	content := extractContentFromResponse(body, path)
+	if len(content) < 100 {
+		return false
+	}
+
+	// Check for exact repetition of substrings
+	substrLen := 20
+	if len(content) < substrLen*3 {
+		substrLen = len(content) / 3
+	}
+	if substrLen < 10 {
+		return false
+	}
+
+	repetitions := 0
+	for i := 0; i <= len(content)-substrLen*2; i++ {
+		substr := content[i : i+substrLen]
+		nextIdx := i + substrLen
+		if nextIdx+substrLen <= len(content) && content[nextIdx:nextIdx+substrLen] == substr {
+			repetitions++
+			if repetitions >= 3 {
+				return true
+			}
+		}
+	}
+
+	// Check for high ratio of repeated lines
+	lines := strings.Split(content, "\n")
+	if len(lines) >= 5 {
+		uniqueLines := make(map[string]int)
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if len(trimmed) > 10 {
+				uniqueLines[trimmed]++
+			}
+		}
+		repeatCount := 0
+		for _, count := range uniqueLines {
+			if count > 1 {
+				repeatCount += count - 1
+			}
+		}
+		if float64(repeatCount)/float64(len(lines)) > 0.5 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func extractContentFromResponse(body []byte, path string) string {
+	// Handle SSE format
+	if strings.HasPrefix(path, "/v1/chat/completions") || strings.HasPrefix(path, "/v1/responses") {
+		return extractContentFromSSE(body)
+	}
+
+	// Handle JSON format
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+
+	// Try choices[0].message.content
+	if choices, ok := payload["choices"].([]interface{}); ok && len(choices) > 0 {
+		if choice, ok := choices[0].(map[string]interface{}); ok {
+			if message, ok := choice["message"].(map[string]interface{}); ok {
+				if content, ok := message["content"].(string); ok {
+					return content
+				}
+			}
+		}
+	}
+
+	// Try response.output
+	if response, ok := payload["response"].(map[string]interface{}); ok {
+		if output, ok := response["output"].([]interface{}); ok {
+			var contents []string
+			for _, item := range output {
+				if outputItem, ok := item.(map[string]interface{}); ok {
+					if content, ok := outputItem["content"].([]interface{}); ok {
+						for _, c := range content {
+							if contentMap, ok := c.(map[string]interface{}); ok {
+								if text, ok := contentMap["text"].(string); ok {
+									contents = append(contents, text)
+								}
+							}
+						}
+					}
+				}
+			}
+			return strings.Join(contents, "")
+		}
+	}
+
+	return ""
+}
+
+func extractContentFromSSE(body []byte) string {
+	var contents []string
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(data), &payload); err != nil {
+			continue
+		}
+
+		// Try delta.content
+		if choices, ok := payload["choices"].([]interface{}); ok && len(choices) > 0 {
+			if choice, ok := choices[0].(map[string]interface{}); ok {
+				if delta, ok := choice["delta"].(map[string]interface{}); ok {
+					if content, ok := delta["content"].(string); ok {
+						contents = append(contents, content)
+					}
+				}
+			}
+		}
+
+		// Try output items
+		if output, ok := payload["output"].([]interface{}); ok {
+			for _, item := range output {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					if content, ok := itemMap["content"].([]interface{}); ok {
+						for _, c := range content {
+							if contentMap, ok := c.(map[string]interface{}); ok {
+								if text, ok := contentMap["text"].(string); ok {
+									contents = append(contents, text)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return strings.Join(contents, "")
+}
+
+// shouldFallback checks if we should fallback to another model
+func shouldFallback(cfg config.Config, requestedModel string, effectiveModel string, body []byte, path string, assessment responseAssessment) (string, bool) {
+	if !cfg.Fallback.Enabled {
+		return "", false
+	}
+
+	// Check if current model has a fallback configured
+	fallbackModel := cfg.GetFallbackModel(requestedModel)
+	if fallbackModel == "" {
+		fallbackModel = cfg.GetFallbackModel(effectiveModel)
+	}
+	if fallbackModel == "" {
+		return "", false
+	}
+
+	// Don't fallback to the same model
+	if fallbackModel == effectiveModel || fallbackModel == requestedModel {
+		return "", false
+	}
+
+	// Check for repetition
+	if cfg.Fallback.DetectRepetition && detectRepetition(body, path) {
+		return fallbackModel, true
+	}
+
+	// Check for specific error patterns that indicate model issues
+	if assessment.ErrorBody && assessment.Retryable {
+		message := strings.ToLower(assessment.Message)
+		if strings.Contains(message, "repetition") ||
+			strings.Contains(message, "repeat") ||
+			strings.Contains(message, "loop") ||
+			strings.Contains(message, "tool") && strings.Contains(message, "error") {
+			return fallbackModel, true
+		}
+	}
+
+	return "", false
 }

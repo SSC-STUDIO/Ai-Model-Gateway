@@ -25,7 +25,7 @@
 - 定价系统：本地缓存 OpenAI 官方价格页，桥接请求也能按请求模型计价
 - 持久化 telemetry：请求、错误、token、缓存命中、成本都落 SQLite
 - 管理页：图表、表格、成本、缓存趋势、配置编辑、配置历史、diff 预览
-- Claude 兼容：当 Claude 上游不支持 `Responses API` 时，自动回退到 `chat/completions` 并封装回 `response` 对象
+- 协议兼容：当上游只支持 `chat/completions` 或 `messages` 时，自动回退并封装回 OpenAI 风格响应
 
 ## Screenshot
 
@@ -138,6 +138,13 @@ Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 - `telemetry.sqlite_path`
 - `pricing.cache_path`
 
+如果你要接 `Kimi Code` 上游，推荐使用：
+
+- `base_url: https://api.kimi.com/coding`
+- `anthropic_base_url: https://api.kimi.com/coding`
+- `api_key: sk-your-kimi-code-key`
+- `models: [kimi-for-coding]`
+
 ### 2. Run the gateway
 
 ```powershell
@@ -191,6 +198,13 @@ http://127.0.0.1:18080/admin/settings
 
 这样可以把不同模型或不同供应商拆成多个路由条目。
 
+Kimi 相关有两种常见接法：
+
+- `Kimi Code`
+  使用 `base_url: https://api.kimi.com/coding`，并同时设置 `anthropic_base_url: https://api.kimi.com/coding`；模型通常是 `kimi-for-coding`
+- `Moonshot Open Platform`
+  使用 `api.moonshot.cn` 或 `api.moonshot.ai` 的 Open Platform key，并按该平台返回的模型 ID 配置 `models`
+
 `provider_class` 目前支持两类：
 
 - `free`
@@ -243,6 +257,37 @@ bridge:
 - `exclude_user_agents` 支持通配
 - 命中 bridge 后，定价仍优先按原始 `requested_model` 归因
 - 对 Codex / IDE 内部请求，建议按 UA 做排除，避免误改写系统请求
+
+### Kimi upstream example
+
+```yaml
+upstreams:
+  - name: kimi-official
+    base_url: https://api.kimi.com/coding
+    anthropic_base_url: https://api.kimi.com/coding
+    api_key: sk-your-kimi-code-key
+    provider_class: quota_limited
+    models:
+      - kimi-for-coding
+    weight: 1
+    timeout_ms: 180000
+    same_upstream_retries: 1
+    enabled: true
+    headers: {}
+```
+
+验证步骤：
+
+- `GET /v1/models` 中应出现 `kimi-for-coding`
+- `POST /v1/responses` 并指定 `model: "kimi-for-coding"` 应返回成功响应
+- 如果客户端直接调用 `POST /v1/chat/completions` 且指定 `model: "kimi-for-coding"`，也应返回成功响应
+
+说明：
+
+- `Kimi Code` 实测可用的是 Anthropic `messages` 接口；网关会把外部的 OpenAI `responses` / `chat/completions` 请求自动兼容到 `messages`
+- 因此推荐显式配置 `anthropic_base_url`，避免把这种能力隐含在特定上游实现里
+
+如果你希望 `kimi-cli` 也通过本地网关访问这个上游，可以把它配置为 `openai_responses` provider，并将 `base_url` 指向 `http://127.0.0.1:18080/v1`。
 
 ### Retry and intercept
 
@@ -303,18 +348,18 @@ bridge:
 - 现在的钱到底花在哪个模型上
 - 成本高是因为 token 真的多，还是因为缓存命中被路由打散了
 
-## Claude compatibility
+## Compatibility
 
-一些 Claude 上游只支持 `chat/completions` 或 `messages`，不支持 OpenAI `Responses API`。
+一些上游只支持 `chat/completions` 或 `messages`，不支持 OpenAI `Responses API`。典型例子包括部分 Claude 上游，以及当前的 `Kimi Code` upstream。
 
 网关内置了一层兼容逻辑：
 
 - 客户端仍然可以打 `/v1/responses`
-- 当 Claude 上游返回 `not implemented` / `unsupported` 时
-- 网关自动回退到 `chat/completions`
-- 再把结果包装回 `response` 对象或简化的 SSE 事件
+- 当上游返回 `not implemented` / `unsupported` / `not found` 等不兼容信号时
+- 网关会按上游能力自动回退到 `chat/completions` 或 `messages`
+- 再把结果包装回 OpenAI 风格的 `response` 对象、`chat.completion` 或简化 SSE 事件
 
-这让使用 OpenAI 风格 SDK 的客户端也能接 Claude。
+这让使用 OpenAI 风格 SDK 的客户端也能继续接 Claude 或 Kimi 这类非原生 OpenAI 上游。
 
 ## Persistence
 

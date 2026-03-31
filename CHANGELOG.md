@@ -19,6 +19,7 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 - Pricing catalog config reloads now refresh the in-memory pricing cache immediately after config watcher updates.
 - Router strategy normalization and validation now reject unsupported strategy values while still defaulting empty values consistently.
 - Config saves now write atomically via temp-file rename to avoid partial writes during updates.
+- Admin config view/apply now round-trips `admin.enabled`, and admin language validation errors now list the full supported set (`zh`, `en`, `ja`, `ko`, `es`, `fr`, `de`), with targeted regression coverage for both behaviors.
 
 ## [0.2.1] — 2026-03-22
 

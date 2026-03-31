@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"path"
 	"strings"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	Telemetry TelemetryConfig   `yaml:"telemetry"`
 	Pricing   PricingConfig     `yaml:"pricing"`
 	Bridge    ModelBridgeConfig `yaml:"bridge"`
+	Fallback  ModelFallbackConfig `yaml:"fallback"`
 	Proxy     ProxyPolicyConfig `yaml:"proxy"`
 	Upstreams []Upstream        `yaml:"upstreams"`
 }
@@ -73,6 +75,17 @@ type ModelBridgeRule struct {
 	To   string `yaml:"to"`
 }
 
+type ModelFallbackConfig struct {
+	Enabled          bool                `yaml:"enabled"`
+	DetectRepetition bool                `yaml:"detect_repetition"`
+	Models           map[string]string   `yaml:"models"`
+}
+
+type ModelFallbackRule struct {
+	From string `yaml:"from"`
+	To   string `yaml:"to"`
+}
+
 type ProxyPolicyConfig struct {
 	Retry      RetryPolicyConfig       `yaml:"retry"`
 	Intercepts []ResponseInterceptRule `yaml:"intercepts"`
@@ -98,6 +111,7 @@ type ResponseInterceptRule struct {
 type Upstream struct {
 	Name                string            `yaml:"name"`
 	BaseURL             string            `yaml:"base_url"`
+	AnthropicBaseURL    string            `yaml:"anthropic_base_url"`
 	APIKey              string            `yaml:"api_key"`
 	ProviderClass       string            `yaml:"provider_class"`
 	Models              []string          `yaml:"models"`
@@ -120,6 +134,7 @@ const (
 	AdminLanguageSpanish           = "es"
 	AdminLanguageFrench            = "fr"
 	AdminLanguageGerman            = "de"
+	adminLanguageValidationMessage = "admin.language must be one of zh, en, ja, ko, es, fr, de (supported: Chinese/zh, English/en, Japanese/ja, Korean/ko, Spanish/es, French/fr, German/de)"
 )
 
 func (c *Config) Normalize() {
@@ -174,6 +189,7 @@ func (c *Config) Normalize() {
 		c.Pricing.RequestTimeoutMs = 15000
 	}
 	applyDefaultProxyPolicy(&c.Proxy)
+	c.Fallback.normalize()
 	for i := range c.Upstreams {
 		c.Upstreams[i].ProviderClass = NormalizeUpstreamClass(c.Upstreams[i].ProviderClass)
 		if c.Upstreams[i].Weight == 0 {
@@ -182,6 +198,12 @@ func (c *Config) Normalize() {
 		if c.Upstreams[i].TimeoutMs == 0 {
 			c.Upstreams[i].TimeoutMs = 30000
 		}
+	}
+}
+
+func (f *ModelFallbackConfig) normalize() {
+	if f.Models == nil {
+		f.Models = make(map[string]string)
 	}
 }
 
@@ -215,6 +237,20 @@ func NormalizeAdminLanguage(language string) string {
 	}
 }
 
+func ValidateAdminLanguage(language string) error {
+	if strings.TrimSpace(language) == "" {
+		return nil
+	}
+	if NormalizeAdminLanguage(language) != strings.ToLower(strings.TrimSpace(language)) {
+		return errors.New(adminLanguageValidationMessage)
+	}
+	return nil
+}
+
+func AdminLanguageValidationMessage() string {
+	return adminLanguageValidationMessage
+}
+
 func NormalizeRouterStrategy(strategy string) string {
 	switch strings.ToLower(strings.TrimSpace(strategy)) {
 	case "", RouterStrategyHealthWeightedRR:
@@ -228,6 +264,16 @@ func NormalizeRouterStrategy(strategy string) string {
 
 func (c Config) RewriteModel(model string) string {
 	return c.RewriteModelForRequest(model, "")
+}
+
+func (c Config) GetFallbackModel(model string) string {
+	if !c.Fallback.Enabled {
+		return ""
+	}
+	if fallback, ok := c.Fallback.Models[model]; ok && fallback != "" {
+		return fallback
+	}
+	return ""
 }
 
 func (c Config) RewriteModelForRequest(model string, userAgent string) string {

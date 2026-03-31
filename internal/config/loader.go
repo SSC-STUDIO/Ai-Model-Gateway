@@ -62,8 +62,8 @@ func (c *Config) Validate() error {
 	if c.Admin.Enabled && c.Admin.AuthToken == "" {
 		return errors.New("admin.auth_token is required when admin is enabled")
 	}
-	if normalized := NormalizeAdminLanguage(c.Admin.Language); c.Admin.Language != "" && c.Admin.Language != normalized {
-		return errors.New("admin.language must be zh or en")
+	if err := ValidateAdminLanguage(c.Admin.Language); err != nil {
+		return err
 	}
 	if c.Pricing.RefreshIntervalHours < 0 {
 		return errors.New("pricing.refresh_interval_hours must be >= 0")
@@ -125,6 +125,11 @@ func (c *Config) Validate() error {
 		}
 		if _, err := url.ParseRequestURI(u.BaseURL); err != nil {
 			return fmt.Errorf("upstreams[%d].base_url invalid: %w", i, err)
+		}
+		if strings.TrimSpace(u.AnthropicBaseURL) != "" {
+			if _, err := url.ParseRequestURI(u.AnthropicBaseURL); err != nil {
+				return fmt.Errorf("upstreams[%d].anthropic_base_url invalid: %w", i, err)
+			}
 		}
 		if raw := strings.TrimSpace(u.ProviderClass); raw != "" {
 			normalized := NormalizeUpstreamClass(raw)

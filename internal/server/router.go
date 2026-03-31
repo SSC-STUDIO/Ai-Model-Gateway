@@ -23,7 +23,10 @@ import (
 )
 
 type ModelItem struct {
-	ID string `json:"id"`
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
 }
 
 type ModelsResponse struct {
@@ -41,7 +44,8 @@ type AdminConfigView struct {
 }
 
 type configViewAdmin struct {
-	Language string `json:"language"`
+	Enabled  *bool  `json:"enabled,omitempty"`
+	Language string `json:"language,omitempty"`
 }
 
 type configViewHealth struct {
@@ -343,6 +347,10 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		}
 
 		cfg := manager.CurrentConfig()
+		if err := config.ValidateAdminLanguage(payload.Admin.Language); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		cfg.Admin = applyAdminConfig(cfg.Admin, payload.Admin)
 		cfg.Health = applyHealthConfig(cfg.Health, payload.Health)
 		cfg.Bridge = applyBridgeConfig(cfg.Bridge, payload.Bridge)
@@ -412,8 +420,14 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	r.Get("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		models := manager.Models()
 		data := make([]ModelItem, 0, len(models))
+		createdAt := time.Now().Unix()
 		for _, model := range models {
-			data = append(data, ModelItem{ID: model})
+			data = append(data, ModelItem{
+				ID:      model,
+				Object:  "model",
+				Created: createdAt,
+				OwnedBy: "ai-model-gateway",
+			})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -449,8 +463,10 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 }
 
 func renderConfigView(cfg config.Config) AdminConfigView {
+	enabled := cfg.Admin.Enabled
 	return redactAdminConfigView(AdminConfigView{
 		Admin: configViewAdmin{
+			Enabled:  &enabled,
 			Language: cfg.Admin.Language,
 		},
 		Health: configViewHealth{
@@ -487,7 +503,10 @@ func renderConfigView(cfg config.Config) AdminConfigView {
 }
 
 func applyAdminConfig(current config.AdminConfig, incoming configViewAdmin) config.AdminConfig {
-	if strings.TrimSpace(incoming.Language) != "" {
+	if incoming.Enabled != nil {
+		current.Enabled = *incoming.Enabled
+	}
+	if incoming.Language != "" {
 		current.Language = config.NormalizeAdminLanguage(incoming.Language)
 	}
 	return current
