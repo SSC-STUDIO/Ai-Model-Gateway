@@ -157,3 +157,20 @@ gateway config -reload
 ## Environment Variables
 
 - `GATEWAY_VERSION` - Version string displayed by `gateway version`
+
+## Migration from Scripts
+
+If you were using the old PowerShell scripts, here's how to migrate:
+
+| Old Script | New CLI Command |
+|------------|-----------------|
+| `install-service.ps1` | `gateway install` |
+| `uninstall-service.ps1` | `gateway uninstall` |
+| `start-gateway.ps1` | `gateway start` |
+| `quick-verify.ps1` | `gateway validate` |
+| `restart-gateway.ps1` | `gateway service-stop && gateway service-start` |
+
+Scripts that are still useful and kept:
+- `rebuild-and-restart.ps1` - Rebuilds and restarts (needs `go build`)
+- `check-no-todo.ps1` - Code quality check
+- `invoke-responses-burst.ps1` - Load testing tool
