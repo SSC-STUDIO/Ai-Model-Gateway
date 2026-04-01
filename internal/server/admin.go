@@ -21,35 +21,109 @@ const adminHTMLTemplate = `<!doctype html>
   <link rel="shortcut icon" href="/favicon.ico">
   <style>
     :root {
+      /* ═══ Design Tokens - Modern Glassmorphism System ═══ */
+      
+      /* Background Colors - Deep Space Theme */
       --bg: #070706;
       --bg-2: #0b0b09;
+      --bg-tertiary: #0f0f0d;
+      --bg-elevated: rgba(18, 17, 15, 0.85);
+      --bg-overlay: rgba(10, 10, 9, 0.95);
+      
+      /* Text Colors - Enhanced Contrast */
       --ink: #f7f3ee;
-      --muted: #b4a99a;
-      --panel: rgba(18, 17, 15, 0.82);
-      --panel-strong: rgba(24, 22, 19, 0.96);
-      --line: rgba(255, 244, 230, 0.14);
+      --text-secondary: #c9c4bb;
+      --muted: #a0998d;
+      --text-disabled: #6b655e;
+      
+      /* Accent Colors - Vibrant & Accessible */
       --accent: #7ee7d6;
       --accent-strong: #9af2e5;
+      --accent-dim: rgba(126, 231, 214, 0.15);
+      --accent-glow: rgba(126, 231, 214, 0.4);
+      
       --amber: #f1b866;
-      --danger: #ff7f6e;
-      --ok-bg: rgba(126, 231, 214, 0.16);
-      --danger-bg: rgba(255, 127, 110, 0.18);
-      --shadow: 0 28px 62px rgba(0, 0, 0, 0.5);
+      --amber-dim: rgba(241, 184, 102, 0.15);
+      
+      /* Status Colors - WCAG AA Compliant */
+      --status-success: #22c55e;
+      --ok-bg: rgba(34, 197, 94, 0.12);
+      --success-border: rgba(34, 197, 94, 0.35);
+      
+      --status-warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.12);
+      --warning-border: rgba(245, 158, 11, 0.35);
+      
+      --status-error: #ef4444;
+      --danger: #ef4444;
+      --danger-bg: rgba(239, 68, 68, 0.12);
+      --error-border: rgba(239, 68, 68, 0.35);
+      
+      --status-info: #3b82f6;
+      --info-bg: rgba(59, 130, 246, 0.12);
+      
+      /* Glassmorphism */
+      --glass-bg: rgba(26, 24, 21, 0.72);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-highlight: rgba(255, 255, 255, 0.03);
+      --glass-blur: blur(20px) saturate(180%);
+      
+      /* Enhanced Shadows - Layered Depth */
+      --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.35), 0 2px 4px rgba(0, 0, 0, 0.25);
+      --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+      --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.35);
       --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.32);
-      --glow: 0 0 0 1px rgba(126, 231, 214, 0.1), 0 12px 40px rgba(126, 231, 214, 0.14);
-      --page-gutter: clamp(14px, 1.8vw, 36px);
+      --shadow: 0 28px 62px rgba(0, 0, 0, 0.5);
+      --shadow-glow: 0 0 20px var(--accent-glow);
+      
+      /* Spacing Scale */
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      
+      /* Border Radius */
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-2xl: 24px;
+      --radius-full: 9999px;
+      
+      /* Transitions */
+      --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-spring: 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      
+      /* Legacy Compatibility */
+      --panel: var(--glass-bg);
+      --panel-strong: var(--bg-overlay);
+      --line: var(--glass-border);
+      --glow: 0 0 0 1px var(--accent-dim), 0 8px 32px var(--accent-dim);
+      --page-gutter: clamp(12px, 2vw, 32px);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
       overflow-x: hidden;
-      font-family: "Aptos", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
       color: var(--ink);
-      background: radial-gradient(1200px 700px at 15% -10%, rgba(126, 231, 214, 0.1), transparent 62%),
-        radial-gradient(900px 700px at 95% 5%, rgba(241, 184, 102, 0.12), transparent 58%),
-        linear-gradient(160deg, var(--bg), var(--bg-2) 40%, #050504 100%);
+      background: 
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(126, 231, 214, 0.08), transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 0%, rgba(241, 184, 102, 0.06), transparent 50%),
+        radial-gradient(ellipse 50% 30% at 50% 100%, rgba(196, 168, 255, 0.04), transparent 40%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 50%, var(--bg-tertiary) 100%);
       background-color: var(--bg);
+      background-attachment: fixed;
       position: relative;
     }
     body::before {
@@ -58,11 +132,17 @@ const adminHTMLTemplate = `<!doctype html>
       inset: 0;
       pointer-events: none;
       background-image:
-        radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.04), transparent 45%),
-        radial-gradient(circle at 80% 0%, rgba(255, 255, 255, 0.03), transparent 40%),
-        linear-gradient(120deg, rgba(255, 255, 255, 0.02), transparent 50%);
-      opacity: 0.9;
+        radial-gradient(circle at 25% 25%, rgba(126, 231, 214, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 75% 75%, rgba(241, 184, 102, 0.03) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(196, 168, 255, 0.02) 0%, transparent 60%);
+      animation: meshFloat 20s ease-in-out infinite;
       z-index: 0;
+    }
+    
+    @keyframes meshFloat {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      33% { transform: translate(20px, -20px) rotate(1deg); }
+      66% { transform: translate(-10px, 10px) rotate(-1deg); }
     }
     body::after {
       content: "";
@@ -70,16 +150,17 @@ const adminHTMLTemplate = `<!doctype html>
       inset: 0;
       pointer-events: none;
       background-image:
-        linear-gradient(0deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-      background-size: 56px 56px;
-      opacity: 0.18;
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 70%);
       z-index: 0;
     }
     .wrap {
       width: 100%;
-      margin: clamp(14px, 1.8vw, 24px) auto clamp(20px, 4vw, 56px);
-      padding-inline: var(--page-gutter);
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: var(--space-4) var(--page-gutter) var(--space-8);
       position: relative;
       z-index: 1;
     }
@@ -87,17 +168,24 @@ const adminHTMLTemplate = `<!doctype html>
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 12px;
-      padding: 10px 14px;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-4);
+      margin-bottom: var(--space-6);
       position: sticky;
-      top: 10px;
-      z-index: 20;
-      border: 1px solid rgba(255, 244, 230, 0.12);
-      border-radius: 18px;
-      background: rgba(10, 10, 9, 0.72);
-      box-shadow: var(--shadow-soft);
-      backdrop-filter: blur(16px) saturate(120%);
+      top: var(--space-3);
+      z-index: 100;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-xl);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-highlight);
+      transition: all var(--transition-base);
+    }
+    
+    .topbar:hover {
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: var(--shadow-xl), 0 0 40px rgba(126, 231, 214, 0.08), inset 0 1px 0 var(--glass-highlight);
     }
     .brand {
       display: inline-flex;
@@ -106,28 +194,38 @@ const adminHTMLTemplate = `<!doctype html>
       min-width: 0;
     }
     .brand-mark {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-lg);
       display: grid;
       place-items: center;
-      background: linear-gradient(145deg, rgba(126, 231, 214, 0.18), rgba(241, 184, 102, 0.16));
-      border: 1px solid rgba(255, 244, 230, 0.12);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+      background: linear-gradient(135deg, rgba(126, 231, 214, 0.2) 0%, rgba(241, 184, 102, 0.15) 100%);
+      border: 1px solid var(--glass-border);
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.3);
       flex: 0 0 auto;
+      transition: transform var(--transition-spring);
+    }
+    
+    .brand:hover .brand-mark {
+      transform: scale(1.05) rotate(-3deg);
     }
     .brand-mark svg {
-      width: 26px;
-      height: 26px;
+      width: 28px;
+      height: 28px;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
     }
     .brand-copy {
       min-width: 0;
     }
     .brand-title {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 800;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
+      background: linear-gradient(135deg, var(--ink) 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
     .brand-subtitle {
       margin-top: 2px;
@@ -140,33 +238,52 @@ const adminHTMLTemplate = `<!doctype html>
     .topnav {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-2);
       flex-wrap: wrap;
       justify-content: flex-end;
     }
     .topnav a {
       display: inline-flex;
       align-items: center;
-      padding: 8px 12px;
-      min-height: 32px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.04);
-      color: var(--muted);
-      font-size: 11px;
+      padding: var(--space-2) var(--space-3);
+      min-height: 36px;
+      border-radius: var(--radius-full);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
       text-decoration: none;
-      transition: border-color 140ms ease, color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+      transition: all var(--transition-fast);
+      position: relative;
+      overflow: hidden;
+    }
+    .topnav a::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, var(--accent-dim), transparent);
+      opacity: 0;
+      transition: opacity var(--transition-fast);
     }
     .topnav a:hover {
       color: var(--ink);
-      border-color: rgba(126, 231, 214, 0.4);
+      border-color: var(--accent-dim);
+      transform: translateY(-1px);
       text-decoration: none;
+    }
+    .topnav a:hover::before {
+      opacity: 1;
     }
     .topnav a.active {
       color: var(--ink);
-      border-color: rgba(126, 231, 214, 0.48);
-      background: linear-gradient(120deg, rgba(126, 231, 214, 0.16), rgba(126, 231, 214, 0.05));
-      box-shadow: inset 0 0 0 1px rgba(126, 231, 214, 0.12);
+      background: linear-gradient(135deg, var(--accent-dim), rgba(126, 231, 214, 0.05));
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-dim), 0 4px 12px rgba(126, 231, 214, 0.15);
+    }
+    .topnav a span {
+      position: relative;
+      z-index: 1;
     }
     .hero {
       display: grid;
@@ -174,27 +291,72 @@ const adminHTMLTemplate = `<!doctype html>
       gap: clamp(10px, 1.1vw, 14px);
       margin-bottom: clamp(10px, 1.1vw, 14px);
     }
-    .hero-main, .card {
-      background: linear-gradient(160deg, rgba(26, 24, 21, 0.92), rgba(14, 13, 12, 0.85));
-      border: 1px solid rgba(255, 244, 230, 0.16);
-      border-radius: 20px;
-      box-shadow: var(--shadow-soft);
-      backdrop-filter: blur(18px) saturate(120%);
-      min-width: 0;
-      transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease;
+    .card {
+      grid-column: span 12;
+      padding: var(--space-4);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(165deg, rgba(30, 28, 25, 0.85) 0%, rgba(20, 19, 17, 0.8) 100%);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-md), inset 0 1px 0 var(--glass-highlight);
+      backdrop-filter: var(--glass-blur);
+      transition: all var(--transition-base);
+      position: relative;
     }
-    .hero-main:hover, .card:hover {
-      border-color: rgba(126, 231, 214, 0.22);
-      box-shadow: var(--shadow), var(--glow), inset 0 1px 0 rgba(255,255,255,0.05);
-      transform: translateY(-1px);
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1) 20%, rgba(255, 255, 255, 0.1) 80%, transparent);
+      opacity: 0;
+      transition: opacity var(--transition-base);
+    }
+    .card:hover {
+      border-color: rgba(126, 231, 214, 0.2);
+      box-shadow: var(--shadow-lg), 0 0 40px rgba(126, 231, 214, 0.06), inset 0 1px 0 var(--glass-highlight);
+      transform: translateY(-2px);
+    }
+    .card:hover::before {
+      opacity: 1;
     }
     .hero-main {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 14px;
-      padding: 16px 14px;
+      gap: var(--space-4);
+      padding: var(--space-6);
       overflow: hidden;
       position: relative;
+      background: linear-gradient(165deg, rgba(30, 28, 25, 0.9) 0%, rgba(18, 17, 15, 0.85) 50%, rgba(12, 11, 10, 0.9) 100%);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-2xl);
+      box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-highlight);
+      backdrop-filter: var(--glass-blur);
+      transition: all var(--transition-base);
+    }
+    .hero-main::before {
+      content: "";
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(126, 231, 214, 0.12), transparent 60%);
+      pointer-events: none;
+      animation: heroGlow 8s ease-in-out infinite alternate;
+    }
+    .hero-main:hover {
+      border-color: rgba(126, 231, 214, 0.2);
+      box-shadow: var(--shadow-xl), 0 0 60px rgba(126, 231, 214, 0.08), inset 0 1px 0 var(--glass-highlight);
+      transform: translateY(-2px);
+    }
+    @keyframes heroGlow {
+      0% { transform: translate(0, 0) scale(1); opacity: 0.5; }
+      100% { transform: translate(-20px, 20px) scale(1.1); opacity: 0.8; }
     }
     .hero-copy {
       min-width: 0;
@@ -219,27 +381,38 @@ const adminHTMLTemplate = `<!doctype html>
     }
     .eyebrow {
       display: inline-flex;
-      padding: 7px 12px;
-      border-radius: 999px;
-      background: rgba(126,231,214,0.16);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-full);
+      background: linear-gradient(135deg, var(--accent-dim), rgba(126, 231, 214, 0.08));
       color: var(--accent-strong);
-      border: 1px solid rgba(126, 231, 214, 0.26);
+      border: 1px solid rgba(126, 231, 214, 0.25);
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.12em;
       text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(126, 231, 214, 0.1);
+      animation: eyebrowPulse 3s ease-in-out infinite;
+    }
+    @keyframes eyebrowPulse {
+      0%, 100% { box-shadow: 0 2px 8px rgba(126, 231, 214, 0.1); }
+      50% { box-shadow: 0 2px 16px rgba(126, 231, 214, 0.2); }
     }
     h1 {
-      margin: 8px 0 0;
-      font-size: clamp(26px, 4vw, 44px);
-      line-height: 0.96;
-      letter-spacing: -0.05em;
-      background: linear-gradient(120deg, var(--ink) 30%, var(--accent) 50%, var(--ink) 70%);
-      background-size: 200% auto;
+      margin: var(--space-3) 0 0;
+      font-size: clamp(28px, 5vw, 52px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, var(--ink) 0%, var(--text-secondary) 40%, var(--accent) 70%, var(--amber) 100%);
+      background-size: 200% 200%;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      animation: shimmer 6s linear infinite;
+      animation: gradientShift 8s ease infinite;
+    }
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
     }
     .sub {
       color: var(--muted);
@@ -3823,10 +3996,15 @@ const adminHTMLTemplate = `<!doctype html>
       return Array.from(merged.values());
     };
     const apiText = async (url, options = {}) => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      const headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
       const res = await fetch(url, {
         credentials: 'same-origin',
         cache: 'no-store',
-        ...options
+        ...options,
+        headers: { ...headers, ...(options.headers || {}) }
       });
       const text = await res.text();
       if (!res.ok) {
@@ -5200,9 +5378,7 @@ const adminHTMLTemplate = `<!doctype html>
     /* Load and render charts */
     const loadCharts = async () => {
       try {
-        const res = await fetch('/-/admin/timeseries?hours=' + chartState.hours + '&bucket=' + chartState.bucket, { cache: 'no-store' });
-        if (!res.ok) return;
-        const ts = await res.json();
+        const ts = await apiJSON('/-/admin/timeseries?hours=' + chartState.hours + '&bucket=' + chartState.bucket, { cache: 'no-store' });
         const buckets = ts.buckets || [];
         latestBuckets = buckets;
         const byUp = ts.by_upstream || [];
@@ -5265,8 +5441,7 @@ const adminHTMLTemplate = `<!doctype html>
 
     async function load() {
       try {
-      const res = await fetch('/-/admin/data', { cache: 'no-store' });
-      const data = await res.json();
+      const data = await apiJSON('/-/admin/data', { cache: 'no-store' });
       const telemetry = data.telemetry || {};
       const summary = telemetry.summary || {};
       const perf = telemetry.performance || {};
@@ -5534,7 +5709,7 @@ func adminHTMLLang(language string) string {
 	return "zh-CN"
 }
 
-func renderAdminHTML(settingsView bool, language string) string {
+func renderAdminHTML(settingsView bool, language string, queryToken string) string {
 	language = config.NormalizeAdminLanguage(language)
 	useChinese := language == config.AdminLanguageChinese
 	pick := func(zh, en string) string {
@@ -5543,13 +5718,19 @@ func renderAdminHTML(settingsView bool, language string) string {
 		}
 		return en
 	}
+	ifNotEmpty := func(s, suffix string) string {
+		if s == "" {
+			return ""
+		}
+		return suffix
+	}
 	bodyClass := ""
 	topnavLinks := strings.Join([]string{
 		`<a href="#performance" data-topnav-target="performance">` + pick("性能", "Performance") + `</a>`,
 		`<a href="#economics" data-topnav-target="economics">` + pick("成本", "Economics") + `</a>`,
 		`<a href="#upstreams-card" data-topnav-target="upstreams-card">` + pick("上游", "Upstreams") + `</a>`,
 		`<a href="#requests-card" data-topnav-target="requests-card">` + pick("请求", "Requests") + `</a>`,
-		`<a href="/admin/settings">` + pick("设置", "Settings") + `</a>`,
+		`<a href="/admin/settings` + (ifNotEmpty(queryToken, "?token=" + queryToken)) + `">` + pick("设置", "Settings") + `</a>`,
 	}, "")
 	heroEyebrow := pick("AI 模型网关管理台", "AI Gateway Admin")
 	heroTitle := pick("运维、成本、吞吐。", "Ops, Cost, Throughput.")
@@ -5562,7 +5743,7 @@ func renderAdminHTML(settingsView bool, language string) string {
 	if settingsView {
 		bodyClass = "page-settings"
 		topnavLinks = strings.Join([]string{
-			`<a href="/admin">` + pick("总览", "Overview") + `</a>`,
+			`<a href="/admin` + (ifNotEmpty(queryToken, "?token=" + queryToken)) + `">` + pick("总览", "Overview") + `</a>`,
 			`<a href="#cfg-health" data-topnav-target="cfg-health">` + pick("探活", "Health") + `</a>`,
 			`<a href="#cfg-bridge" data-topnav-target="cfg-bridge">` + pick("桥接", "Bridge") + `</a>`,
 			`<a href="#cfg-router" data-topnav-target="cfg-router">` + pick("路由", "Router") + `</a>`,
@@ -5611,7 +5792,8 @@ func adminPage(settingsView bool, manager *router.Manager) http.HandlerFunc {
 		if manager != nil {
 			language = manager.CurrentConfig().Admin.Language
 		}
-		_, _ = w.Write([]byte(renderAdminHTML(settingsView, language)))
+		queryToken := strings.TrimSpace(r.URL.Query().Get("token"))
+		_, _ = w.Write([]byte(renderAdminHTML(settingsView, language, queryToken)))
 	}
 }
 

@@ -67,13 +67,14 @@ type configViewBridgeRule struct {
 }
 
 type configViewRouter struct {
-	Strategy                   string `json:"strategy"`
-	MaxRetries                 int    `json:"max_retries"`
-	RetryBackoffMs             int    `json:"retry_backoff_ms"`
-	RetryBackoffMaxMs          int    `json:"retry_backoff_max_ms"`
-	FailureThreshold           int    `json:"failure_threshold"`
-	CooldownSec                int    `json:"cooldown_sec"`
-	FailurePassthroughAfterSec int    `json:"failure_passthrough_after_sec"`
+	Strategy                          string `json:"strategy"`
+	MaxRetries                        int    `json:"max_retries"`
+	RetryBackoffMs                    int    `json:"retry_backoff_ms"`
+	RetryBackoffMaxMs                 int    `json:"retry_backoff_max_ms"`
+	FailureThreshold                  int    `json:"failure_threshold"`
+	CooldownSec                       int    `json:"cooldown_sec"`
+	FailurePassthroughAfterSec        int    `json:"failure_passthrough_after_sec"`
+	QuotaBlockRecoveryIntervalMinutes int    `json:"quota_block_recovery_interval_minutes"`
 }
 
 type configViewProxy struct {
@@ -481,13 +482,14 @@ func renderConfigView(cfg config.Config) AdminConfigView {
 			Rules:             renderBridgeRules(cfg.Bridge.Rules),
 		},
 		Router: configViewRouter{
-			Strategy:                   cfg.Router.Strategy,
-			MaxRetries:                 cfg.Router.MaxRetries,
-			RetryBackoffMs:             cfg.Router.RetryBackoffMs,
-			RetryBackoffMaxMs:          cfg.Router.RetryBackoffMaxMs,
-			FailureThreshold:           cfg.Router.FailureThreshold,
-			CooldownSec:                cfg.Router.CooldownSec,
-			FailurePassthroughAfterSec: cfg.Router.FailurePassthroughAfterSec,
+			Strategy:                          cfg.Router.Strategy,
+			MaxRetries:                        cfg.Router.MaxRetries,
+			RetryBackoffMs:                    cfg.Router.RetryBackoffMs,
+			RetryBackoffMaxMs:                 cfg.Router.RetryBackoffMaxMs,
+			FailureThreshold:                  cfg.Router.FailureThreshold,
+			CooldownSec:                       cfg.Router.CooldownSec,
+			FailurePassthroughAfterSec:        cfg.Router.FailurePassthroughAfterSec,
+			QuotaBlockRecoveryIntervalMinutes: cfg.Router.QuotaBlockRecoveryIntervalMinutes,
 		},
 		Proxy: configViewProxy{
 			Retry: configViewRetry{
@@ -576,6 +578,7 @@ func applyRouterConfig(current config.RouterConfig, incoming configViewRouter) c
 	current.FailureThreshold = incoming.FailureThreshold
 	current.CooldownSec = incoming.CooldownSec
 	current.FailurePassthroughAfterSec = incoming.FailurePassthroughAfterSec
+	current.QuotaBlockRecoveryIntervalMinutes = incoming.QuotaBlockRecoveryIntervalMinutes
 	return current
 }
 

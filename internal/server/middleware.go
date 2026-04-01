@@ -187,6 +187,9 @@ func adminAuthMode(r *http.Request, expected string) adminAuthKind {
 	if subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
 		return adminAuthCookieOnly
 	}
+	if subtle.ConstantTimeCompare([]byte(queryToken(r)), []byte(expected)) == 1 {
+		return adminAuthBearer
+	}
 	return adminAuthNone
 }
 
@@ -215,10 +218,14 @@ func sameOriginRequestURL(host, raw string) bool {
 
 func bearerToken(r *http.Request) string {
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+	const prefix = "bearer "
+	if len(auth) < len(prefix) {
 		return ""
 	}
-	return strings.TrimSpace(auth[len("Bearer "):])
+	if !strings.EqualFold(auth[:len(prefix)], prefix) {
+		return ""
+	}
+	return strings.TrimSpace(auth[len(prefix):])
 }
 
 func cookieToken(r *http.Request) string {
@@ -227,4 +234,8 @@ func cookieToken(r *http.Request) string {
 		return ""
 	}
 	return strings.TrimSpace(cookie.Value)
+}
+
+func queryToken(r *http.Request) string {
+	return strings.TrimSpace(r.URL.Query().Get("token"))
 }

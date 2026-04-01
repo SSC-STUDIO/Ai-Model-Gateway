@@ -24,46 +24,54 @@ import (
 	"ai-model-gateway/internal/telemetry"
 )
 
+// Handler handles HTTP proxy requests to upstream AI model providers.
 type Handler struct {
 	Manager *router.Manager
 	Stats   *telemetry.Store
 	Client  *http.Client
 }
 
+// forwardOptions configures how a request should be forwarded.
 type forwardOptions struct {
-	ModelRequired    bool
-	SkipModelRewrite bool
+	ModelRequired    bool // Whether a model is required in the request
+	SkipModelRewrite bool // Whether to skip model name rewriting
 }
 
+// modelRequest represents a request containing a model field.
 type modelRequest struct {
 	Model string `json:"model"`
 }
 
+// stickyRoutingRequest represents a request with sticky routing info.
 type stickyRoutingRequest struct {
 	PreviousResponseID string `json:"previous_response_id"`
 	ResponseID         string `json:"response_id"`
 }
 
+// resolvedModel holds the result of model resolution from a request.
 type resolvedModel struct {
-	Requested   string
-	Effective   string
-	Body        []byte
-	ContentType string
+	Requested   string // Original model requested by client
+	Effective   string // Actual model to use (after rewriting)
+	Body        []byte // Potentially modified request body
+	ContentType string // Content type of the modified body
 }
 
+// responseAssessment contains the analysis result of an upstream response.
 type responseAssessment struct {
-	ErrorBody bool
-	Retryable bool
-	Kind      string
-	Message   string
+	ErrorBody bool   // Whether the response body indicates an error
+	Retryable bool   // Whether the error is retryable
+	Kind      string // Category of error (e.g., "status", "body_error")
+	Message   string // Human-readable error message
 }
 
+// capturedResponse stores a captured response for inspection and retry.
 type capturedResponse struct {
 	StatusCode int
 	Header     http.Header
 	Body       []byte
 }
 
+// requestDebugSummary contains debug information about a request.
 type requestDebugSummary struct {
 	Path                string   `json:"path"`
 	ContentType         string   `json:"content_type,omitempty"`
@@ -83,9 +91,12 @@ type requestDebugSummary struct {
 	Stream              bool     `json:"stream,omitempty"`
 }
 
-const upstreamDisablePollInterval = 1 * time.Second
-const maxProxyRequestBodyBytes int64 = 100 << 20
+const (
+	upstreamDisablePollInterval = 1 * time.Second
+	maxProxyRequestBodyBytes    = 100 << 20 // 100MB
+)
 
+// errRequestBodyTooLarge is returned when a request body exceeds the size limit.
 type errRequestBodyTooLarge struct {
 	Limit int64
 }
@@ -94,6 +105,11 @@ func (e errRequestBodyTooLarge) Error() string {
 	return fmt.Sprintf("request body exceeds %d bytes", e.Limit)
 }
 
+// Error implements the error interface for errRequestBodyTooLarge.
+// It allows errors.Is/As to work with this type.
+
+// NewHandler creates a new proxy handler with the given manager and stats store.
+// It configures an HTTP client with optimized connection pooling.
 func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -112,29 +128,37 @@ func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
 	}
 }
 
+// ChatCompletions handles /v1/chat/completions requests.
 func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// Completions handles /v1/completions requests.
 func (h *Handler) Completions(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// Embeddings handles /v1/embeddings requests.
 func (h *Handler) Embeddings(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// Responses handles /v1/responses requests.
 func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// Messages handles /v1/messages requests.
 func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// MessageCountTokens handles /v1/messages/count_tokens requests.
+// It proxies the request to an upstream with count tokens capability.
 func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
 	requestID := observability.RequestIDFromContext(r.Context())
 	startedAt := time.Now()
+
 	body, err := readProxyRequestBody(r, maxProxyRequestBodyBytes)
 	if err != nil {
 		writeProxyBodyReadError(w, requestID, err)
@@ -152,6 +176,7 @@ func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
 	requestedModel := resolved.Requested
 	model := resolved.Effective
 	body = resolved.Body
+
 	probeBody, err := buildAnthropicCountTokensProbeBody(body)
 	if err != nil {
 		w.Header().Set(observability.RequestIDHeader, requestID)
@@ -165,7 +190,7 @@ func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
 	}
 
 	excluded := make(map[string]struct{})
-	sameUpstreamRetriesUsed := make(map[string]int)
+	sameUpstreamRetriesUsed := make(map[string]int, 4) // Pre-allocate with small capacity
 	routeMode := requestRouteMode(requestedModel, model, false)
 	var lastErr error
 	var lastUpstream string
@@ -261,50 +286,62 @@ func (h *Handler) MessageCountTokens(w http.ResponseWriter, r *http.Request) {
 	writeProxyError(w, http.StatusServiceUnavailable, "no upstream available", "service_unavailable")
 }
 
+// ResponsesCompact handles /v1/responses/compact requests.
 func (h *Handler) ResponsesCompact(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true, SkipModelRewrite: true})
 }
 
+// ResponseResource handles /v1/responses/{response_id} GET/DELETE requests.
 func (h *Handler) ResponseResource(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
 
+// Moderations handles /v1/moderations requests.
 func (h *Handler) Moderations(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
 
+// ImageGenerations handles /v1/images/generations requests.
 func (h *Handler) ImageGenerations(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
 
+// AudioSpeech handles /v1/audio/speech requests.
 func (h *Handler) AudioSpeech(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// AudioTranscriptions handles /v1/audio/transcriptions requests.
 func (h *Handler) AudioTranscriptions(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// AudioTranslations handles /v1/audio/translations requests.
 func (h *Handler) AudioTranslations(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: true})
 }
 
+// ImageEdits handles /v1/images/edits requests.
 func (h *Handler) ImageEdits(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
 
+// ImageVariations handles /v1/images/variations requests.
 func (h *Handler) ImageVariations(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
 
+// Files handles /v1/files GET/POST requests.
 func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
 
+// FileResource handles /v1/files/{file_id} GET/DELETE requests.
 func (h *Handler) FileResource(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
 
+// FileContent handles /v1/files/{file_id}/content requests.
 func (h *Handler) FileContent(w http.ResponseWriter, r *http.Request) {
 	h.forward(w, r, forwardOptions{ModelRequired: false})
 }
@@ -4368,7 +4405,6 @@ func writeProxyBodyReadError(w http.ResponseWriter, requestID string, err error)
 	}
 	writeProxyError(w, http.StatusBadRequest, fmt.Sprintf("read request body: %v", err), "invalid_request_error")
 }
-
 
 // detectRepetition detects if the response content has repetitive patterns
 func detectRepetition(body []byte, path string) bool {

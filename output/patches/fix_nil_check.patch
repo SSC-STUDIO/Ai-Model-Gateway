@@ -1,0 +1,23 @@
+diff --git a/internal/proxy/handler.go b/internal/proxy/handler.go
+--- a/internal/proxy/handler.go
++++ b/internal/proxy/handler.go
+@@ -624,6 +624,9 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, opts forwardO
+ }
+ 
+ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstream config.Upstream, requestID string) (*http.Response, time.Duration, error) {
++	if h == nil {
++		return nil, 0, errors.New("handler is nil")
++	}
+ 	timeout := time.Duration(upstream.TimeoutMs) * time.Millisecond
+ 	if timeout <= 0 {
+ 		timeout = 30 * time.Second
+@@ -684,6 +687,10 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
+ }
+ 
+ func (h *Handler) doAnthropicMessages(src *http.Request, body []byte, upstream config.Upstream, requestID string) (*http.Response, time.Duration, error) {
++	if h == nil {
++		return nil, 0, errors.New("handler is nil")
++	}
+ 	timeout := time.Duration(upstream.TimeoutMs) * time.Millisecond
+ 	if timeout <= 0 {
+ 		timeout = 30 * time.Second

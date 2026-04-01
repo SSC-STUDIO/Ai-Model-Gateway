@@ -471,7 +471,7 @@ func TestAdminRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestAdminRejectsQueryToken(t *testing.T) {
+func TestAdminAcceptsQueryToken(t *testing.T) {
 	cfg := config.Config{
 		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
 	}
@@ -482,8 +482,8 @@ func TestAdminRejectsQueryToken(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 
-	if recorder.Result().StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected query token to be rejected with 401, got %d", recorder.Result().StatusCode)
+	if recorder.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected query token to be accepted with 200, got %d", recorder.Result().StatusCode)
 	}
 }
 

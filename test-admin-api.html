@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin API Test</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Admin API Test</h1>
+    <p>Token from URL: <span id="token-display"></span></p>
+    <button onclick="testApi()">Test API</button>
+    <pre id="result"></pre>
+    
+    <script>
+        // 从 URL 获取 token
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        document.getElementById('token-display').textContent = token || '(none)';
+        
+        async function testApi() {
+            const result = document.getElementById('result');
+            result.textContent = 'Testing...\n';
+            
+            try {
+                const headers = {};
+                if (token) {
+                    headers['Authorization'] = 'Bearer ' + token;
+                    result.textContent += 'Using Authorization header\n';
+                } else {
+                    result.textContent += 'WARNING: No token found!\n';
+                }
+                
+                result.textContent += 'Fetching /-/admin/config...\n';
+                const res = await fetch('/-/admin/config', {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: headers
+                });
+                
+                result.textContent += 'Status: ' + res.status + '\n';
+                
+                const text = await res.text();
+                if (res.ok) {
+                    const data = JSON.parse(text);
+                    result.textContent += 'SUCCESS! Config loaded:\n';
+                    result.textContent += JSON.stringify(data, null, 2).substring(0, 500) + '...';
+                } else {
+                    result.textContent += 'ERROR: ' + text;
+                }
+            } catch (err) {
+                result.textContent += 'EXCEPTION: ' + err.message;
+            }
+        }
+        
+        // 自动测试
+        if (token) {
+            testApi();
+        }
+    </script>
+</body>
+</html>
