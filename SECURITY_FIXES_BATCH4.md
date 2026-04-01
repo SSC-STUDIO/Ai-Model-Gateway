@@ -53,6 +53,38 @@ This document details the critical security vulnerabilities fixed in this batch.
 **Verification**: Confirmed `X-Frame-Options: DENY` is set.
 **Status**: Already implemented correctly.
 
+### 11. Missing Security Headers (CWE-693)
+**File**: `internal/server/middleware.go`
+**Issue**: Some security headers were missing or incomplete.
+**Fix**: Enhanced security headers with additional protections:
+- Added `Strict-Transport-Security` (HSTS)
+- Added `Cross-Origin-Embedder-Policy`
+- Added `Cross-Origin-Opener-Policy`
+- Added `Cross-Origin-Resource-Policy`
+- Added `Permissions-Policy`
+- Set `SameSite=Strict` for auth cookies
+- Set `Secure` flag for auth cookies
+
+### 12. Information Disclosure (CWE-209)
+**File**: `internal/server/error.go`, `internal/server/safe_log.go`
+**Status**: Already implemented.
+**Verification**: Confirmed error sanitization and safe logging are in place.
+
+### 13. Path Traversal (CWE-22)
+**File**: `internal/state/store.go`
+**Status**: Already implemented.
+**Verification**: Confirmed versionID validation prevents path traversal attacks.
+
+### 14. SQL Injection (CWE-89)
+**File**: `internal/telemetry/store.go`
+**Status**: Already implemented.
+**Verification**: Confirmed use of parameterized queries and column name validation.
+
+### 15. Log Injection (CWE-117)
+**File**: `internal/server/safe_log.go`
+**Status**: Already implemented.
+**Verification**: Confirmed CRLF and control character filtering in log values.
+
 ## Commits
 
 1. `Security: Fix SSRF vulnerability in proxy handler (CWE-918)`
