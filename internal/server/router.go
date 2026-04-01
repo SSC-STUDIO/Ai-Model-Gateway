@@ -23,6 +23,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ssrfChecker is a package-level SSRF checker for validating URLs
+var ssrfChecker = proxy.NewSSRFChecker()
+
 type ModelItem struct {
 	ID string `json:"id"`
 }
@@ -677,6 +680,19 @@ func probeUpstream(view configViewUpstream, healthCfg config.HealthConfig) upstr
 		path = "/v1/models"
 	}
 	targetURL := strings.TrimRight(upstream.BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
+
+	// Validate URL to prevent SSRF attacks
+	if ssrfChecker != nil {
+		if err := ssrfChecker.ValidateURL(targetURL); err != nil {
+			return upstreamProbeResponse{
+				OK:        false,
+				TargetURL: targetURL,
+				Error:     fmt.Sprintf("SSRF validation failed: %v", err),
+				CheckedAt: time.Now().Format(time.RFC3339),
+			}
+		}
+	}
+
 	timeoutMs := upstream.TimeoutMs
 	if timeoutMs <= 0 {
 		timeoutMs = healthCfg.TimeoutMs
