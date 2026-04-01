@@ -178,6 +178,10 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	rateLimiter := NewRateLimiter(DefaultRateLimitConfig())
 	r.Use(RateLimitMiddleware(rateLimiter))
 
+	// 初始化会话管理器
+	sessionManager := NewSessionManager(DefaultSessionConfig())
+	r.Use(SessionMiddleware(sessionManager))
+
 	// CORS 中间件
 	r.Use(corsMiddleware(DefaultCORSConfig()))
 
@@ -231,6 +235,11 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 			"upstreams":        manager.Snapshot(),
 		})
 	})
+
+	// 会话管理端点
+	r.Post("/-/auth/logout", LogoutHandler(sessionManager))
+	r.Post("/-/auth/refresh", RefreshSessionHandler(sessionManager))
+
 	r.Get("/-/admin/data", func(w http.ResponseWriter, r *http.Request) {
 		adminDataCache.mu.Lock()
 		deadline := time.Now().Add(3 * time.Second)
