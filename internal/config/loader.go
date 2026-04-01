@@ -57,6 +57,10 @@ func (c *Config) Validate() error {
 	if c.Admin.Enabled && c.Admin.AuthToken == "" {
 		return errors.New("admin.auth_token is required when admin is enabled")
 	}
+	// Ensure auth token has sufficient entropy (at least 32 bytes when decoded, or 32 chars)
+	if c.Admin.Enabled && len(c.Admin.AuthToken) < 32 {
+		return errors.New("admin.auth_token must be at least 32 characters long")
+	}
 	if normalized := NormalizeAdminLanguage(c.Admin.Language); c.Admin.Language != "" && c.Admin.Language != normalized {
 		return errors.New("admin.language must be zh or en")
 	}
