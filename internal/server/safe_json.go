@@ -116,12 +116,12 @@ func (lr *LimitedReader) Read(p []byte) (n int, err error) {
 	if lr.n >= lr.limit {
 		return 0, fmt.Errorf("read limit of %d bytes exceeded", lr.limit)
 	}
-	
+
 	remaining := lr.limit - lr.n
 	if int64(len(p)) > remaining {
 		p = p[:remaining]
 	}
-	
+
 	n, err = lr.r.Read(p)
 	lr.n += int64(n)
 	return n, err
@@ -131,11 +131,11 @@ func (lr *LimitedReader) Read(p []byte) (n int, err error) {
 func ReadJSONBody(r io.Reader, v interface{}) error {
 	// 使用限制大小的 reader
 	limitedReader := NewLimitedReader(r, MaxJSONBodySize)
-	
+
 	// 读取数据
 	data := make([]byte, 0, 4096)
 	buf := make([]byte, 4096)
-	
+
 	for {
 		n, err := limitedReader.Read(buf)
 		if n > 0 {
@@ -155,7 +155,7 @@ func ReadJSONBody(r io.Reader, v interface{}) error {
 			return err
 		}
 	}
-	
+
 	// 验证并解析 JSON
 	return SafeUnmarshal(data, v)
 }

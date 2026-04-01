@@ -1,45 +1,53 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"strings"
 )
 
+// Config holds the complete gateway configuration.
 type Config struct {
-	Listen    string            `yaml:"listen"`
-	Reload    ReloadConfig      `yaml:"reload"`
-	Router    RouterConfig      `yaml:"router"`
-	Health    HealthConfig      `yaml:"health"`
-	Admin     AdminConfig       `yaml:"admin"`
-	Telemetry TelemetryConfig   `yaml:"telemetry"`
-	Pricing   PricingConfig     `yaml:"pricing"`
-	Bridge    ModelBridgeConfig `yaml:"bridge"`
-	Proxy     ProxyPolicyConfig `yaml:"proxy"`
-	Upstreams []Upstream        `yaml:"upstreams"`
+	Listen    string              `yaml:"listen"`
+	Reload    ReloadConfig        `yaml:"reload"`
+	Router    RouterConfig        `yaml:"router"`
+	Health    HealthConfig        `yaml:"health"`
+	Admin     AdminConfig         `yaml:"admin"`
+	Telemetry TelemetryConfig     `yaml:"telemetry"`
+	Pricing   PricingConfig       `yaml:"pricing"`
+	Bridge    ModelBridgeConfig   `yaml:"bridge"`
+	Fallback  ModelFallbackConfig `yaml:"fallback"`
+	Proxy     ProxyPolicyConfig   `yaml:"proxy"`
+	Upstreams []Upstream          `yaml:"upstreams"`
 }
 
+// ReloadConfig controls configuration file reloading behavior.
 type ReloadConfig struct {
 	Enabled    bool `yaml:"enabled"`
 	DebounceMs int  `yaml:"debounce_ms"`
 }
 
+// RouterConfig controls request routing and retry behavior.
 type RouterConfig struct {
-	Strategy                   string              `yaml:"strategy"`
-	MaxRetries                 int                 `yaml:"max_retries"`
-	RetryBackoffMs             int                 `yaml:"retry_backoff_ms"`
-	RetryBackoffMaxMs          int                 `yaml:"retry_backoff_max_ms"`
-	FailureThreshold           int                 `yaml:"failure_threshold"`
-	CooldownSec                int                 `yaml:"cooldown_sec"`
-	FailurePassthroughAfterSec int                 `yaml:"failure_passthrough_after_sec"`
-	StickySessions             StickySessionConfig `yaml:"sticky_sessions"`
+	Strategy                          string              `yaml:"strategy"`
+	MaxRetries                        int                 `yaml:"max_retries"`
+	RetryBackoffMs                    int                 `yaml:"retry_backoff_ms"`
+	RetryBackoffMaxMs                 int                 `yaml:"retry_backoff_max_ms"`
+	FailureThreshold                  int                 `yaml:"failure_threshold"`
+	CooldownSec                       int                 `yaml:"cooldown_sec"`
+	FailurePassthroughAfterSec        int                 `yaml:"failure_passthrough_after_sec"`
+	QuotaBlockRecoveryIntervalMinutes int                 `yaml:"quota_block_recovery_interval_minutes"`
+	StickySessions                    StickySessionConfig `yaml:"sticky_sessions"`
 }
 
+// StickySessionConfig controls sticky session behavior.
 type StickySessionConfig struct {
 	Enabled bool `yaml:"enabled"`
 	TTLSec  int  `yaml:"ttl_sec"`
 }
 
+// HealthConfig controls health checking behavior.
 type HealthConfig struct {
 	Enabled     bool   `yaml:"enabled"`
 	IntervalSec int    `yaml:"interval_sec"`
@@ -47,38 +55,58 @@ type HealthConfig struct {
 	Path        string `yaml:"path"`
 }
 
+// AdminConfig controls the admin API and UI.
 type AdminConfig struct {
 	Enabled   bool   `yaml:"enabled"`
 	AuthToken string `yaml:"auth_token"`
 	Language  string `yaml:"language"`
 }
 
+// TelemetryConfig controls telemetry storage.
 type TelemetryConfig struct {
 	SQLitePath string `yaml:"sqlite_path"`
 }
 
+// PricingConfig controls pricing data fetching.
 type PricingConfig struct {
 	CachePath            string `yaml:"cache_path"`
 	RefreshIntervalHours int    `yaml:"refresh_interval_hours"`
 	RequestTimeoutMs     int    `yaml:"request_timeout_ms"`
 }
 
+// ModelBridgeConfig controls model name rewriting for compatibility.
 type ModelBridgeConfig struct {
 	Enabled           bool              `yaml:"enabled"`
 	Rules             []ModelBridgeRule `yaml:"rules"`
 	ExcludeUserAgents []string          `yaml:"exclude_user_agents"`
 }
 
+// ModelBridgeRule defines a model name rewrite rule.
 type ModelBridgeRule struct {
 	From string `yaml:"from"`
 	To   string `yaml:"to"`
 }
 
+// ModelFallbackConfig controls automatic fallback to alternative models.
+type ModelFallbackConfig struct {
+	Enabled          bool              `yaml:"enabled"`
+	DetectRepetition bool              `yaml:"detect_repetition"`
+	Models           map[string]string `yaml:"models"`
+}
+
+// ModelFallbackRule defines a fallback model mapping.
+type ModelFallbackRule struct {
+	From string `yaml:"from"`
+	To   string `yaml:"to"`
+}
+
+// ProxyPolicyConfig controls proxy retry and response interception.
 type ProxyPolicyConfig struct {
 	Retry      RetryPolicyConfig       `yaml:"retry"`
 	Intercepts []ResponseInterceptRule `yaml:"intercepts"`
 }
 
+// RetryPolicyConfig defines when requests should be retried.
 type RetryPolicyConfig struct {
 	InfiniteOnError bool     `yaml:"infinite_on_error"`
 	StatusCodes     []int    `yaml:"status_codes"`
@@ -86,6 +114,7 @@ type RetryPolicyConfig struct {
 	MessageKeywords []string `yaml:"message_keywords"`
 }
 
+// ResponseInterceptRule defines a rule for intercepting and handling specific responses.
 type ResponseInterceptRule struct {
 	Name            string   `yaml:"name"`
 	Enabled         *bool    `yaml:"enabled"`
@@ -96,9 +125,11 @@ type ResponseInterceptRule struct {
 	Action          string   `yaml:"action"`
 }
 
+// Upstream defines an upstream AI model provider.
 type Upstream struct {
 	Name                string            `yaml:"name"`
 	BaseURL             string            `yaml:"base_url"`
+	AnthropicBaseURL    string            `yaml:"anthropic_base_url"`
 	APIKey              string            `yaml:"api_key"`
 	ProviderClass       string            `yaml:"provider_class"`
 	Models              []string          `yaml:"models"`
@@ -110,17 +141,21 @@ type Upstream struct {
 }
 
 const (
-	UpstreamClassFree         = "free"
-	UpstreamClassQuotaLimited = "quota_limited"
-	AdminLanguageChinese      = "zh"
-	AdminLanguageEnglish      = "en"
-	AdminLanguageJapanese     = "ja"
-	AdminLanguageKorean       = "ko"
-	AdminLanguageSpanish      = "es"
-	AdminLanguageFrench       = "fr"
-	AdminLanguageGerman       = "de"
+	RouterStrategyHealthWeightedRR = "health_weighted_rr"
+	RouterStrategyRoundRobin       = "round_robin"
+	UpstreamClassFree              = "free"
+	UpstreamClassQuotaLimited      = "quota_limited"
+	AdminLanguageChinese           = "zh"
+	AdminLanguageEnglish           = "en"
+	AdminLanguageJapanese          = "ja"
+	AdminLanguageKorean            = "ko"
+	AdminLanguageSpanish           = "es"
+	AdminLanguageFrench            = "fr"
+	AdminLanguageGerman            = "de"
+	adminLanguageValidationMessage = "admin.language must be one of zh, en, ja, ko, es, fr, de (supported: Chinese/zh, English/en, Japanese/ja, Korean/ko, Spanish/es, French/fr, German/de)"
 )
 
+// Normalize applies default values to configuration fields.
 func (c *Config) Normalize() {
 	if c.Listen == "" {
 		c.Listen = ":8080"
@@ -128,9 +163,7 @@ func (c *Config) Normalize() {
 	if c.Reload.DebounceMs == 0 {
 		c.Reload.DebounceMs = 200
 	}
-	if c.Router.Strategy == "" {
-		c.Router.Strategy = "health_weighted_rr"
-	}
+	c.Router.Strategy = NormalizeRouterStrategy(c.Router.Strategy)
 	if c.Router.MaxRetries == 0 {
 		c.Router.MaxRetries = 2
 	}
@@ -175,6 +208,7 @@ func (c *Config) Normalize() {
 		c.Pricing.RequestTimeoutMs = 15000
 	}
 	applyDefaultProxyPolicy(&c.Proxy)
+	c.Fallback.normalize()
 	for i := range c.Upstreams {
 		c.Upstreams[i].ProviderClass = NormalizeUpstreamClass(c.Upstreams[i].ProviderClass)
 		if c.Upstreams[i].Weight == 0 {
@@ -186,6 +220,14 @@ func (c *Config) Normalize() {
 	}
 }
 
+// normalize applies defaults to fallback configuration.
+func (f *ModelFallbackConfig) normalize() {
+	if f.Models == nil {
+		f.Models = make(map[string]string)
+	}
+}
+
+// IsEnabled returns whether the upstream is enabled (defaults to true).
 func (u Upstream) IsEnabled() bool {
 	if u.Enabled == nil {
 		return true
@@ -193,10 +235,12 @@ func (u Upstream) IsEnabled() bool {
 	return *u.Enabled
 }
 
+// ProviderClassNormalized returns the normalized provider class.
 func (u Upstream) ProviderClassNormalized() string {
 	return NormalizeUpstreamClass(u.ProviderClass)
 }
 
+// NormalizeAdminLanguage normalizes and validates an admin language code.
 func NormalizeAdminLanguage(language string) string {
 	switch strings.ToLower(strings.TrimSpace(language)) {
 	case AdminLanguageEnglish:
@@ -216,10 +260,51 @@ func NormalizeAdminLanguage(language string) string {
 	}
 }
 
+// ValidateAdminLanguage validates an admin language code.
+func ValidateAdminLanguage(language string) error {
+	if strings.TrimSpace(language) == "" {
+		return nil
+	}
+	if NormalizeAdminLanguage(language) != strings.ToLower(strings.TrimSpace(language)) {
+		return errors.New(adminLanguageValidationMessage)
+	}
+	return nil
+}
+
+// AdminLanguageValidationMessage returns the validation error message for languages.
+func AdminLanguageValidationMessage() string {
+	return adminLanguageValidationMessage
+}
+
+// NormalizeRouterStrategy normalizes a router strategy name.
+func NormalizeRouterStrategy(strategy string) string {
+	switch strings.ToLower(strings.TrimSpace(strategy)) {
+	case "", RouterStrategyHealthWeightedRR:
+		return RouterStrategyHealthWeightedRR
+	case RouterStrategyRoundRobin:
+		return RouterStrategyRoundRobin
+	default:
+		return strings.TrimSpace(strategy)
+	}
+}
+
+// RewriteModel rewrites a model name using bridge rules.
 func (c Config) RewriteModel(model string) string {
 	return c.RewriteModelForRequest(model, "")
 }
 
+// GetFallbackModel returns the fallback model for a given model, if configured.
+func (c Config) GetFallbackModel(model string) string {
+	if !c.Fallback.Enabled {
+		return ""
+	}
+	if fallback, ok := c.Fallback.Models[model]; ok && fallback != "" {
+		return fallback
+	}
+	return ""
+}
+
+// RewriteModelForRequest rewrites a model name based on bridge rules and user agent.
 func (c Config) RewriteModelForRequest(model string, userAgent string) string {
 	model = strings.TrimSpace(model)
 	if model == "" || !c.Bridge.Enabled || c.Bridge.shouldSkipUserAgent(userAgent) {
@@ -234,10 +319,12 @@ func (c Config) RewriteModelForRequest(model string, userAgent string) string {
 	return model
 }
 
+// matches checks if the rule matches the given model.
 func (r ModelBridgeRule) matches(model string) bool {
 	return matchesPattern(r.From, model)
 }
 
+// shouldSkipUserAgent checks if the user agent should be excluded from bridging.
 func (b ModelBridgeConfig) shouldSkipUserAgent(userAgent string) bool {
 	userAgent = strings.TrimSpace(userAgent)
 	if userAgent == "" {
@@ -251,6 +338,7 @@ func (b ModelBridgeConfig) shouldSkipUserAgent(userAgent string) bool {
 	return false
 }
 
+// IsEnabled returns whether the intercept rule is enabled (defaults to true).
 func (r ResponseInterceptRule) IsEnabled() bool {
 	if r.Enabled == nil {
 		return true
@@ -258,6 +346,7 @@ func (r ResponseInterceptRule) IsEnabled() bool {
 	return *r.Enabled
 }
 
+// matchesPattern checks if a value matches a glob pattern.
 func matchesPattern(pattern string, value string) bool {
 	pattern = strings.TrimSpace(pattern)
 	value = strings.TrimSpace(value)
@@ -275,16 +364,19 @@ func matchesPattern(pattern string, value string) bool {
 	return strings.EqualFold(pattern, value)
 }
 
+// sanitizeGlobValue sanitizes a value for glob matching by replacing path separators.
 func sanitizeGlobValue(value string) string {
 	value = strings.ReplaceAll(value, "/", "\x00")
 	value = strings.ReplaceAll(value, "\\", "\x01")
 	return value
 }
 
+// MatchesPattern checks if a value matches a glob pattern (exported version).
 func MatchesPattern(pattern string, value string) bool {
 	return matchesPattern(pattern, value)
 }
 
+// NormalizeUpstreamClass normalizes a provider class string.
 func NormalizeUpstreamClass(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", "quota", "quota_limited", "quota-limited", "limited", "metered", "paid":
@@ -296,6 +388,7 @@ func NormalizeUpstreamClass(value string) string {
 	}
 }
 
+// applyDefaultProxyPolicy applies default values to proxy policy configuration.
 func applyDefaultProxyPolicy(policy *ProxyPolicyConfig) {
 	if policy == nil {
 		return
@@ -317,6 +410,7 @@ func applyDefaultProxyPolicy(policy *ProxyPolicyConfig) {
 	}
 }
 
+// defaultRetryableKeywords returns the default list of retryable error keywords.
 func defaultRetryableKeywords() []string {
 	return []string{
 		"429",

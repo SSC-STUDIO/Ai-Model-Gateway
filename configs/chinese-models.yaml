@@ -1,0 +1,170 @@
+# 国产大模型API一键接入配置模板
+# 复制以下内容到 configs/config.yaml 的 upstreams 部分
+
+upstreams:
+  # ===== 百度文心一言 (ERNIE) =====
+  # 千帆平台 - OpenAI兼容格式
+  # 文档: https://qianfan.baidu.com/
+  - name: baidu-ernie
+    base_url: https://qianfan.baidubce.com/v2
+    api_key: your-baidu-api-key
+    provider_class: quota_limited
+    models:
+      - ERNIE-4.0-8K
+      - ERNIE-4.0-8K-Latest
+      - ERNIE-3.5-8K
+      - ERNIE-Speed-8K
+      - ERNIE-Lite-8K
+      - ERNIE-Tiny-8K
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+
+  # ===== 字节跳动豆包 (Doubao) =====
+  # 火山方舟 - OpenAI兼容格式
+  # 文档: https://console.volcengine.com/ark/
+  # 注意: model字段需要填写推理接入点ID (ep-xxxxxx)
+  - name: doubao
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    api_key: your-doubao-api-key
+    provider_class: quota_limited
+    models:
+      - ep-xxxxxx-doubao-pro  # 替换为你的推理接入点ID
+      - ep-xxxxxx-doubao-lite
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+
+  # ===== 智谱AI (ChatGLM) =====
+  # OpenAI兼容格式
+  # 文档: https://open.bigmodel.cn/
+  - name: zhipu-glm
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: your-zhipu-api-key
+    provider_class: quota_limited
+    models:
+      - glm-4
+      - glm-4-plus
+      - glm-4-flash
+      - glm-4v
+      - glm-3-turbo
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+
+  # ===== 讯飞星火 (Spark) =====
+  # 讯飞开放平台 - 部分兼容OpenAI格式
+  # 文档: https://xinghuo.xfyun.cn/
+  # 注意: 讯飞API需要额外鉴权处理，建议使用代理适配
+  - name: iflytek-spark
+    base_url: https://spark-api-open.xf-yun.com/v1
+    api_key: your-spark-api-key
+    provider_class: quota_limited
+    models:
+      - spark-pro
+      - spark-pro-128k
+      - spark-max
+      - spark-lite
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+
+  # ===== MiniMax =====
+  # OpenAI兼容格式
+  # 文档: https://platform.minimaxi.com/
+  # 注意: 需要在headers中配置group_id
+  - name: minimax
+    base_url: https://api.minimaxi.chat/v1
+    api_key: your-minimax-api-key
+    provider_class: quota_limited
+    models:
+      - abab6.5-chat
+      - abab6.5s-chat
+      - abab6-chat
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+      Authorization: Bearer your-minimax-api-key
+
+  # ===== 月之暗面 (Moonshot/Kimi) =====
+  # OpenAI兼容格式 - 已内置支持
+  - name: kimi-official
+    base_url: https://api.moonshot.cn/v1
+    api_key: your-kimi-api-key
+    provider_class: quota_limited
+    models:
+      - moonshot-v1-8k
+      - moonshot-v1-32k
+      - moonshot-v1-128k
+    weight: 1
+    timeout_ms: 180000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+
+  # ===== 深度求索 (DeepSeek) =====
+  # OpenAI兼容格式 - 也可通过OpenRouter访问
+  - name: deepseek-official
+    base_url: https://api.deepseek.com/v1
+    api_key: your-deepseek-api-key
+    provider_class: quota_limited
+    models:
+      - deepseek-chat
+      - deepseek-reasoner
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+
+  # ===== 阶跃星辰 (StepFun) =====
+  # OpenAI兼容格式
+  - name: stepfun
+    base_url: https://api.stepfun.com/v1
+    api_key: your-stepfun-api-key
+    provider_class: quota_limited
+    models:
+      - step-1-8k
+      - step-1-32k
+      - step-1-128k
+      - step-1v-8k
+      - step-2-16k
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json
+
+  # ===== 商汤日日新 (SenseChat) =====
+  # OpenAI兼容格式
+  - name: sensetime
+    base_url: https://api.sensenova.cn/v1
+    api_key: your-sensetime-api-key
+    provider_class: quota_limited
+    models:
+      - SenseChat-5
+      - SenseChat-Turbo
+    weight: 1
+    timeout_ms: 60000
+    same_upstream_retries: 1
+    enabled: true
+    headers:
+      Content-Type: application/json

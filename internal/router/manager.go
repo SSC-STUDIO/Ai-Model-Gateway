@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -15,6 +14,7 @@ import (
 	"ai-model-gateway/internal/state"
 )
 
+// UpstreamStatus tracks the health and performance of an upstream.
 type UpstreamStatus struct {
 	Healthy                     bool          `json:"healthy"`
 	LastError                   string        `json:"last_error,omitempty"`
@@ -30,6 +30,7 @@ type UpstreamStatus struct {
 	CooldownUntil               time.Time     `json:"cooldown_until,omitempty"`
 }
 
+// Manager manages upstream selection, health checking, and routing decisions.
 type Manager struct {
 	store           *state.ConfigStore
 	mu              sync.Mutex
@@ -38,51 +39,113 @@ type Manager struct {
 	sticky          map[string]stickyAssignment
 	healthClient    *http.Client
 	nextStickyPrune time.Time
+
+	// New interfaces for testability and extensibility
+	strategyRegistry *StrategyRegistry
+	healthChecker    HealthChecker
+	metricsCollector MetricsCollector
 }
 
+// ManagerOption configures a Manager.
+type ManagerOption func(*Manager)
+
+// WithStrategyRegistry sets the strategy registry.
+func WithStrategyRegistry(sr *StrategyRegistry) ManagerOption {
+	return func(m *Manager) {
+		m.strategyRegistry = sr
+	}
+}
+
+// WithHealthChecker sets the health checker.
+func WithHealthChecker(hc HealthChecker) ManagerOption {
+	return func(m *Manager) {
+		m.healthChecker = hc
+	}
+}
+
+// WithMetricsCollector sets the metrics collector.
+func WithMetricsCollector(mc MetricsCollector) ManagerOption {
+	return func(m *Manager) {
+		m.metricsCollector = mc
+	}
+}
+
+// stickyAssignment tracks a sticky routing assignment with expiration.
 type stickyAssignment struct {
 	Upstream  string
 	ExpiresAt time.Time
 }
 
+// weightedUpstream represents an upstream with its selection weight.
 type weightedUpstream struct {
 	upstream config.Upstream
 	weight   int
 }
 
 const (
-	stickyPruneInterval = time.Minute
-	stickyMaxEntries    = 16384
+	stickyPruneInterval  = time.Minute
+	stickyMaxEntries     = 16384
+	defaultHealthTimeout = 2 * time.Second
+	defaultProbeTimeout  = 10 * time.Second
 )
 
-func NewManager(store *state.ConfigStore) *Manager {
+// NewManager creates a new routing manager with the given config store.
+// It initializes the health check client with optimized connection pooling.
+func NewManager(store *state.ConfigStore, opts ...ManagerOption) *Manager {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:           (&net.Dialer{Timeout: defaultProbeTimeout, KeepAlive: 30 * time.Second}).DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          64,
 		MaxIdleConnsPerHost:   16,
 		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
+		TLSHandshakeTimeout:   defaultProbeTimeout,
 		ExpectContinueTimeout: time.Second,
 	}
-	return &Manager{
-		store:        store,
-		rr:           make(map[string]int),
-		statuses:     make(map[string]UpstreamStatus),
-		sticky:       make(map[string]stickyAssignment),
-		healthClient: &http.Client{Transport: transport},
+
+	httpClient := &http.Client{Transport: transport}
+
+	m := &Manager{
+		store:            store,
+		rr:               make(map[string]int, 64),
+		statuses:         make(map[string]UpstreamStatus, 16),
+		sticky:           make(map[string]stickyAssignment, 256),
+		healthClient:     httpClient,
+		strategyRegistry: NewStrategyRegistry(),
+		healthChecker:    NewHTTPHealthChecker(httpClient),
+		metricsCollector: &NoopMetricsCollector{},
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(m)
+	}
+
+	return m
 }
 
+// CurrentConfig returns the current configuration.
 func (m *Manager) CurrentConfig() config.Config {
 	return m.store.Get()
 }
 
+// ConfigStore returns the underlying config store.
 func (m *Manager) ConfigStore() *state.ConfigStore {
 	return m.store
 }
 
+// SetConfig updates the current configuration and reconciles internal state.
+func (m *Manager) SetConfig(cfg config.Config) {
+	if m == nil || m.store == nil {
+		return
+	}
+
+	previous := m.store.Get()
+	m.store.Set(cfg)
+	m.reconcileConfig(previous, cfg)
+}
+
+// IsUpstreamEnabled checks if an upstream with the given name is enabled.
 func (m *Manager) IsUpstreamEnabled(name string) bool {
 	if m == nil || m.store == nil {
 		return false
@@ -102,9 +165,10 @@ func (m *Manager) IsUpstreamEnabled(name string) bool {
 	return false
 }
 
+// Models returns a sorted list of unique models from all enabled upstreams.
 func (m *Manager) Models() []string {
 	cfg := m.store.Get()
-	uniq := make(map[string]struct{})
+	uniq := make(map[string]struct{}, len(cfg.Upstreams)*4) // Estimate capacity
 	for _, upstream := range cfg.Upstreams {
 		if !upstream.IsEnabled() {
 			continue
@@ -124,6 +188,7 @@ func (m *Manager) Models() []string {
 	return models
 }
 
+// Snapshot returns a copy of the current status for all upstreams.
 func (m *Manager) Snapshot() map[string]UpstreamStatus {
 	cfg := m.store.Get()
 
@@ -137,42 +202,55 @@ func (m *Manager) Snapshot() map[string]UpstreamStatus {
 	return snapshot
 }
 
+// Pick selects an upstream for the given model, excluding the specified upstreams.
 func (m *Manager) Pick(model string, excluded map[string]struct{}) (config.Upstream, bool) {
 	return m.PickSticky(model, "", excluded)
 }
 
+// PickSticky selects an upstream for the given model, preferring sticky assignments.
+// The excluded set contains upstream names that should not be selected.
 func (m *Manager) PickSticky(model string, stickyKey string, excluded map[string]struct{}) (config.Upstream, bool) {
 	cfg := m.store.Get()
 	now := time.Now()
 
 	if upstream, ok := m.pickStickyAssignment(cfg.Upstreams, model, stickyKey, excluded, true, now); ok {
+		m.metricsCollector.RecordRouting(upstream.Name, model, true)
 		return upstream, true
 	}
 
-	return m.pickFromPools(cfg, model, excluded, now)
+	upstream, ok := m.pickFromPools(cfg, model, excluded, now)
+	if ok {
+		m.metricsCollector.RecordRouting(upstream.Name, model, true)
+	}
+	return upstream, ok
 }
 
+// pickFromPools selects an upstream from the healthy or fallback pools.
 func (m *Manager) pickFromPools(cfg config.Config, model string, excluded map[string]struct{}, now time.Time) (config.Upstream, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	healthyPools, fallbackPools := m.buildPoolsLocked(cfg.Upstreams, cfg.Router.Strategy, model, excluded, now)
-	for _, class := range prioritizedUpstreamClasses() {
-		healthyPool := healthyPools[class]
-		if len(healthyPool) > 0 {
-			return m.pickFromPoolLocked(cfg.Router.Strategy, model, class, healthyPool), true
+	strategy := m.strategyRegistry.Get(cfg.Router.Strategy)
+	healthyPools, fallbackPools := m.buildPoolsLocked(cfg.Upstreams, strategy, model, excluded, now)
+	classes := prioritizedUpstreamClasses()
+
+	// Try healthy pools first
+	for _, class := range classes {
+		if healthyPool := healthyPools[class]; len(healthyPool) > 0 {
+			return m.pickFromPoolLocked(strategy, model, class, healthyPool), true
 		}
 	}
 
-	for _, class := range prioritizedUpstreamClasses() {
-		fallbackPool := fallbackPools[class]
-		if len(fallbackPool) > 0 {
-			return m.pickFromPoolLocked(cfg.Router.Strategy, model, class, fallbackPool), true
+	// Fall back to unhealthy but available pools
+	for _, class := range classes {
+		if fallbackPool := fallbackPools[class]; len(fallbackPool) > 0 {
+			return m.pickFromPoolLocked(strategy, model, class, fallbackPool), true
 		}
 	}
 	return config.Upstream{}, false
 }
 
+// RememberSticky records a sticky routing assignment.
 func (m *Manager) RememberSticky(key string, upstream string) {
 	key = strings.TrimSpace(key)
 	upstream = strings.TrimSpace(upstream)
@@ -202,6 +280,7 @@ func (m *Manager) RememberSticky(key string, upstream string) {
 	}
 }
 
+// ReportProbe reports the result of a health probe.
 func (m *Manager) ReportProbe(name string, latency time.Duration, err error) {
 	if err == nil {
 		m.reportSuccess(name, latency, http.StatusOK)
@@ -210,14 +289,17 @@ func (m *Manager) ReportProbe(name string, latency time.Duration, err error) {
 	m.reportFailure(name, latency, http.StatusServiceUnavailable, err, true, "probe")
 }
 
+// ReportRequestSuccess reports a successful request to an upstream.
 func (m *Manager) ReportRequestSuccess(name string, latency time.Duration, statusCode int) {
 	m.reportSuccess(name, latency, statusCode)
 }
 
+// ReportRequestFailure reports a failed request to an upstream.
 func (m *Manager) ReportRequestFailure(name string, latency time.Duration, statusCode int, err error, retryable bool, kind string) {
 	m.reportFailure(name, latency, statusCode, err, retryable, kind)
 }
 
+// BlockUpstreamQuota marks an upstream as quota-blocked.
 func (m *Manager) BlockUpstreamQuota(name string, reason string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -235,6 +317,7 @@ func (m *Manager) BlockUpstreamQuota(name string, reason string) {
 	m.statuses[name] = status
 }
 
+// ShouldPassthroughFailure checks if failures should be passed through after prolonged issues.
 func (m *Manager) ShouldPassthroughFailure(name string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -251,6 +334,7 @@ func (m *Manager) ShouldPassthroughFailure(name string) bool {
 	return time.Since(status.RetryableFailureSince) >= window
 }
 
+// StartHealthChecks runs periodic health checks until the context is cancelled.
 func (m *Manager) StartHealthChecks(ctx context.Context) {
 	for {
 		cfg := m.store.Get()
@@ -276,6 +360,7 @@ func (m *Manager) StartHealthChecks(ctx context.Context) {
 	}
 }
 
+// runHealthChecksOnce runs a single round of health checks for all enabled upstreams.
 func (m *Manager) runHealthChecksOnce(ctx context.Context) {
 	cfg := m.store.Get()
 	if !cfg.Health.Enabled {
@@ -283,61 +368,41 @@ func (m *Manager) runHealthChecksOnce(ctx context.Context) {
 	}
 
 	var wg sync.WaitGroup
+	enabledUpstreams := make([]config.Upstream, 0, len(cfg.Upstreams))
 	for _, upstream := range cfg.Upstreams {
-		if !upstream.IsEnabled() {
-			continue
+		if upstream.IsEnabled() {
+			enabledUpstreams = append(enabledUpstreams, upstream)
 		}
+	}
 
+	for _, upstream := range enabledUpstreams {
 		wg.Add(1)
 		go func(upstream config.Upstream) {
 			defer wg.Done()
-
-			timeout := time.Duration(cfg.Health.TimeoutMs) * time.Millisecond
-			if timeout <= 0 {
-				timeout = 2 * time.Second
-			}
-
-			reqCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-
-			req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, joinURL(upstream.BaseURL, cfg.Health.Path), nil)
-			if err != nil {
-				m.ReportProbe(upstream.Name, 0, err)
-				return
-			}
-
-			if upstream.APIKey != "" {
-				req.Header.Set("Authorization", "Bearer "+upstream.APIKey)
-			}
-			for key, value := range upstream.Headers {
-				req.Header.Set(key, value)
-			}
-
-			start := time.Now()
-			resp, err := m.healthClient.Do(req)
-			latency := time.Since(start)
-			if err != nil {
-				m.ReportProbe(upstream.Name, latency, err)
-				return
-			}
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
-
-			if resp.StatusCode >= http.StatusBadRequest {
-				m.ReportProbe(upstream.Name, latency, fmt.Errorf("probe status %d", resp.StatusCode))
-				return
-			}
-			m.ReportProbe(upstream.Name, latency, nil)
+			m.probeUpstream(ctx, upstream, cfg)
 		}(upstream)
 	}
 	wg.Wait()
 }
 
+// probeUpstream probes a single upstream and reports the result.
+func (m *Manager) probeUpstream(ctx context.Context, upstream config.Upstream, cfg config.Config) {
+	result := m.healthChecker.Check(ctx, upstream, cfg.Health)
+
+	if result.Error != nil {
+		m.ReportProbe(upstream.Name, result.Latency, result.Error)
+	} else {
+		m.ReportProbe(upstream.Name, result.Latency, nil)
+	}
+}
+
+// reportSuccess updates the status after a successful request.
 func (m *Manager) reportSuccess(name string, latency time.Duration, statusCode int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	status := m.statusLocked(name)
+	clearQuotaBlockStatus(&status)
 	status.Healthy = true
 	status.LastError = ""
 	status.LastFailureKind = ""
@@ -349,8 +414,94 @@ func (m *Manager) reportSuccess(name string, latency time.Duration, statusCode i
 	status.RetryableFailureSince = time.Time{}
 	status.CooldownUntil = time.Time{}
 	m.statuses[name] = status
+
+	m.metricsCollector.RecordHealthStatus(name, true)
+	m.metricsCollector.RecordLatency(name, latency)
 }
 
+// reconcileConfig updates internal state when configuration changes.
+func (m *Manager) reconcileConfig(previous config.Config, current config.Config) {
+	previousUpstreams := make(map[string]config.Upstream, len(previous.Upstreams))
+	for _, upstream := range previous.Upstreams {
+		previousUpstreams[upstream.Name] = upstream
+	}
+
+	currentUpstreams := make(map[string]config.Upstream, len(current.Upstreams))
+	for _, upstream := range current.Upstreams {
+		currentUpstreams[upstream.Name] = upstream
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Remove status entries for deleted upstreams
+	for name := range m.statuses {
+		if _, ok := currentUpstreams[name]; !ok {
+			delete(m.statuses, name)
+		}
+	}
+
+	// Remove sticky assignments for deleted upstreams
+	for name, assignment := range m.sticky {
+		if _, ok := currentUpstreams[assignment.Upstream]; !ok {
+			delete(m.sticky, name)
+		}
+	}
+
+	// Clear quota blocks for upstreams that changed provider class
+	for name, upstream := range currentUpstreams {
+		status, ok := m.statuses[name]
+		if !ok {
+			continue
+		}
+
+		if shouldClearQuotaBlockOnConfigChange(previousUpstreams[name], upstream) {
+			clearQuotaBlockStatus(&status)
+			m.statuses[name] = status
+		}
+	}
+}
+
+// shouldClearQuotaBlockOnConfigChange determines if quota block should be cleared
+// when upstream configuration changes.
+func shouldClearQuotaBlockOnConfigChange(previous config.Upstream, current config.Upstream) bool {
+	if current.ProviderClassNormalized() != config.UpstreamClassQuotaLimited {
+		return true
+	}
+	if previous.Name == "" {
+		return false
+	}
+	if previous.ProviderClassNormalized() != current.ProviderClassNormalized() {
+		return true
+	}
+	if previous.BaseURL != current.BaseURL {
+		return true
+	}
+	if previous.APIKey != current.APIKey {
+		return true
+	}
+	return false
+}
+
+// clearQuotaBlockStatus clears the quota block state from a status.
+func clearQuotaBlockStatus(status *UpstreamStatus) {
+	if status == nil || !status.QuotaBlocked {
+		return
+	}
+
+	status.QuotaBlocked = false
+	status.QuotaBlockedAt = time.Time{}
+	status.Healthy = true
+	status.LastError = ""
+	status.LastFailureKind = ""
+	status.ConsecutiveFailures = 0
+	status.ConsecutiveRetryableFailure = 0
+	status.ConsecutiveSuccess = 0
+	status.RetryableFailureSince = time.Time{}
+	status.CooldownUntil = time.Time{}
+}
+
+// reportFailure updates the status after a failed request.
 func (m *Manager) reportFailure(name string, latency time.Duration, statusCode int, err error, retryable bool, kind string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -388,8 +539,12 @@ func (m *Manager) reportFailure(name string, latency time.Duration, statusCode i
 	}
 
 	m.statuses[name] = status
+	m.metricsCollector.RecordHealthStatus(name, false)
+	m.metricsCollector.RecordLatency(name, latency)
 }
 
+// statusLocked returns the status for an upstream, defaulting to healthy if not found.
+// Caller must hold m.mu.
 func (m *Manager) statusLocked(name string) UpstreamStatus {
 	status, ok := m.statuses[name]
 	if !ok {
@@ -398,9 +553,13 @@ func (m *Manager) statusLocked(name string) UpstreamStatus {
 	return status
 }
 
-func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy string, model string, excluded map[string]struct{}, now time.Time) (map[string][]weightedUpstream, map[string][]weightedUpstream) {
-	healthyPools := make(map[string][]weightedUpstream, len(prioritizedUpstreamClasses()))
-	fallbackPools := make(map[string][]weightedUpstream, len(prioritizedUpstreamClasses()))
+// buildPoolsLocked builds healthy and fallback pools for upstream selection.
+// Caller must hold m.mu.
+func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy Strategy, model string, excluded map[string]struct{}, now time.Time) (map[string][]weightedUpstream, map[string][]weightedUpstream) {
+	classes := prioritizedUpstreamClasses()
+	healthyPools := make(map[string][]weightedUpstream, len(classes))
+	fallbackPools := make(map[string][]weightedUpstream, len(classes))
+
 	for _, upstream := range upstreams {
 		if _, skip := excluded[upstream.Name]; skip {
 			continue
@@ -415,31 +574,27 @@ func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy string,
 		providerClass := upstream.ProviderClassNormalized()
 		status := m.statusLocked(upstream.Name)
 		if status.QuotaBlocked {
-			continue
+			// Check if quota block should be auto-recovered
+			cfg := m.store.Get()
+			recoveryMinutes := cfg.Router.QuotaBlockRecoveryIntervalMinutes
+			if recoveryMinutes <= 0 {
+				recoveryMinutes = 60 // Default 60 minutes
+			}
+			if recoveryMinutes < 5 {
+				recoveryMinutes = 5 // Minimum 5 minutes
+			}
+			if !status.QuotaBlockedAt.IsZero() && now.Sub(status.QuotaBlockedAt) >= time.Duration(recoveryMinutes)*time.Minute {
+				clearQuotaBlockStatus(&status)
+				m.statuses[upstream.Name] = status
+			} else {
+				continue
+			}
 		}
 		if status.CooldownUntil.After(now) {
 			continue
 		}
 
-		effectiveWeight := upstream.Weight
-		switch strategy {
-		case "round_robin":
-			effectiveWeight = 1
-		case "health_weighted_rr":
-			if status.ConsecutiveFailures > 0 {
-				effectiveWeight -= status.ConsecutiveFailures
-			}
-			if status.ConsecutiveSuccess >= 3 {
-				effectiveWeight++
-			}
-			if effectiveWeight < 1 {
-				effectiveWeight = 1
-			}
-		default:
-			if effectiveWeight < 1 {
-				effectiveWeight = 1
-			}
-		}
+		effectiveWeight := strategy.CalculateWeight(upstream.Weight, status)
 
 		candidate := weightedUpstream{upstream: upstream, weight: effectiveWeight}
 		fallbackPools[providerClass] = append(fallbackPools[providerClass], candidate)
@@ -450,35 +605,17 @@ func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy string,
 	return healthyPools, fallbackPools
 }
 
-func (m *Manager) pickFromPoolLocked(strategy string, model string, class string, pool []weightedUpstream) config.Upstream {
-	key := strategy + ":" + class + ":" + model
-	totalWeight := 0
-	for _, candidate := range pool {
-		if candidate.weight < 1 {
-			totalWeight++
-			continue
-		}
-		totalWeight += candidate.weight
-	}
-	if totalWeight <= 0 {
-		return pool[0].upstream
-	}
-
-	cursor := m.rr[key] % totalWeight
-	m.rr[key] = (cursor + 1) % totalWeight
-	for _, candidate := range pool {
-		weight := candidate.weight
-		if weight < 1 {
-			weight = 1
-		}
-		if cursor < weight {
-			return candidate.upstream
-		}
-		cursor -= weight
-	}
-	return pool[len(pool)-1].upstream
+// pickFromPoolLocked selects an upstream from a pool using weighted round-robin.
+// Caller must hold m.mu.
+func (m *Manager) pickFromPoolLocked(strategy Strategy, model string, class string, pool []weightedUpstream) config.Upstream {
+	key := strategy.Name() + ":" + class + ":" + model
+	cursor := m.rr[key]
+	upstream, nextCursor := strategy.Select(pool, cursor)
+	m.rr[key] = nextCursor
+	return upstream
 }
 
+// pickStickyAssignment tries to select a sticky-assigned upstream.
 func (m *Manager) pickStickyAssignment(upstreams []config.Upstream, model string, stickyKey string, excluded map[string]struct{}, healthyOnly bool, now time.Time) (config.Upstream, bool) {
 	stickyKey = strings.TrimSpace(stickyKey)
 	if stickyKey == "" {
@@ -509,10 +646,16 @@ func (m *Manager) pickStickyAssignment(upstreams []config.Upstream, model string
 
 		m.mu.Lock()
 		status := m.statusLocked(upstream.Name)
-		m.mu.Unlock()
-		if status.QuotaBlocked {
+		if status.QuotaBlocked && !shouldRecoverQuotaBlock(status, now, m.store.Get()) {
+			m.mu.Unlock()
 			return config.Upstream{}, false
 		}
+		if status.QuotaBlocked {
+			// Quota block was recovered
+			clearQuotaBlockStatus(&status)
+			m.statuses[upstream.Name] = status
+		}
+		m.mu.Unlock()
 		if status.CooldownUntil.After(now) {
 			return config.Upstream{}, false
 		}
@@ -525,6 +668,20 @@ func (m *Manager) pickStickyAssignment(upstreams []config.Upstream, model string
 	return config.Upstream{}, false
 }
 
+// shouldRecoverQuotaBlock checks if a quota block should be auto-recovered.
+func shouldRecoverQuotaBlock(status UpstreamStatus, now time.Time, cfg config.Config) bool {
+	recoveryMinutes := cfg.Router.QuotaBlockRecoveryIntervalMinutes
+	if recoveryMinutes <= 0 {
+		recoveryMinutes = 60 // Default 60 minutes
+	}
+	if recoveryMinutes < 5 {
+		recoveryMinutes = 5 // Minimum 5 minutes
+	}
+	return !status.QuotaBlockedAt.IsZero() && now.Sub(status.QuotaBlockedAt) >= time.Duration(recoveryMinutes)*time.Minute
+}
+
+// pruneStickyLocked removes expired and excess sticky entries.
+// Caller must hold m.mu.
 func (m *Manager) pruneStickyLocked(now time.Time) {
 	if now.IsZero() {
 		now = time.Now()
@@ -576,6 +733,7 @@ func (m *Manager) pruneStickyLocked(now time.Time) {
 	}
 }
 
+// prioritizedUpstreamClasses returns the provider class priority order.
 func prioritizedUpstreamClasses() []string {
 	return []string{
 		config.UpstreamClassFree,
@@ -583,6 +741,7 @@ func prioritizedUpstreamClasses() []string {
 	}
 }
 
+// joinURL joins a base URL and path, handling slashes correctly.
 func joinURL(baseURL string, path string) string {
 	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(path, "/")
 }

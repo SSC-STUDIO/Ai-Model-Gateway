@@ -1,0 +1,18 @@
+diff --git a/internal/proxy/handler.go b/internal/proxy/handler.go
+--- a/internal/proxy/handler.go
++++ b/internal/proxy/handler.go
+@@ -86,6 +86,14 @@ type errRequestBodyTooLarge struct {
+ 	Limit int64
+ }
+ 
++// 标准错误定义
++var (
++	ErrHandlerNil          = errors.New("handler is nil")
++	ErrManagerNil          = errors.New("manager is nil")
++	ErrUpstreamNotFound    = errors.New("no upstream available for model")
++	ErrRequestBodyTooLarge = errors.New("request body exceeds limit")
++)
++
+ func (e errRequestBodyTooLarge) Error() string {
+ 	return fmt.Sprintf("request body exceeds %d bytes", e.Limit)
+ }

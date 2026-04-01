@@ -11,6 +11,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// parseConfig parses configuration from YAML bytes.
+func parseConfig(data []byte) (Config, error) {
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("parse config: %w", err)
+	}
+	return cfg, nil
+}
+
 func LoadFromFile(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -36,6 +45,11 @@ func (c *Config) Validate() error {
 	if c.Listen == "" {
 		return errors.New("listen is required")
 	}
+	switch NormalizeRouterStrategy(c.Router.Strategy) {
+	case RouterStrategyHealthWeightedRR, RouterStrategyRoundRobin:
+	default:
+		return fmt.Errorf("router.strategy must be %s or %s", RouterStrategyHealthWeightedRR, RouterStrategyRoundRobin)
+	}
 	if c.Router.MaxRetries < 0 {
 		return errors.New("router.max_retries must be >= 0")
 	}
@@ -57,12 +71,8 @@ func (c *Config) Validate() error {
 	if c.Admin.Enabled && c.Admin.AuthToken == "" {
 		return errors.New("admin.auth_token is required when admin is enabled")
 	}
-	// Ensure auth token has sufficient entropy (at least 32 bytes when decoded, or 32 chars)
-	if c.Admin.Enabled && len(c.Admin.AuthToken) < 32 {
-		return errors.New("admin.auth_token must be at least 32 characters long")
-	}
-	if normalized := NormalizeAdminLanguage(c.Admin.Language); c.Admin.Language != "" && c.Admin.Language != normalized {
-		return errors.New("admin.language must be zh or en")
+	if err := ValidateAdminLanguage(c.Admin.Language); err != nil {
+		return err
 	}
 	if c.Pricing.RefreshIntervalHours < 0 {
 		return errors.New("pricing.refresh_interval_hours must be >= 0")
@@ -124,6 +134,11 @@ func (c *Config) Validate() error {
 		}
 		if _, err := url.ParseRequestURI(u.BaseURL); err != nil {
 			return fmt.Errorf("upstreams[%d].base_url invalid: %w", i, err)
+		}
+		if strings.TrimSpace(u.AnthropicBaseURL) != "" {
+			if _, err := url.ParseRequestURI(u.AnthropicBaseURL); err != nil {
+				return fmt.Errorf("upstreams[%d].anthropic_base_url invalid: %w", i, err)
+			}
 		}
 		if raw := strings.TrimSpace(u.ProviderClass); raw != "" {
 			normalized := NormalizeUpstreamClass(raw)

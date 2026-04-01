@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -22,6 +23,14 @@ import (
 var requestCounter atomic.Uint64
 
 const adminAuthCookie = "aigw_admin_token"
+
+type adminAuthKind int
+
+const (
+	adminAuthNone adminAuthKind = iota
+	adminAuthBearer
+	adminAuthCookieOnly
+)
 
 type responseRecorder struct {
 	http.ResponseWriter
@@ -65,7 +74,7 @@ func accessLog(next http.Handler) http.Handler {
 func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !strings.HasPrefix(r.URL.Path, "/admin") && !strings.HasPrefix(r.URL.Path, "/-/admin/") {
+			if !isAdminRoute(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -82,41 +91,18 @@ func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Ha
 				return
 			}
 
-			// Audit logging for admin operations
-			requestID := observability.RequestIDFromContext(r.Context())
-			logAdminAccess(r, requestID, false, "")
-
-			if token := strings.TrimSpace(r.URL.Query().Get("token")); subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
-				http.SetCookie(w, &http.Cookie{
-					Name:     adminAuthCookie,
-					Value:    token,
-					Path:     "/",
-					HttpOnly: true,
-					SameSite: http.SameSiteStrictMode,
-					Secure:   true,
-					MaxAge:   86400,
-				})
-				logAdminAccess(r, requestID, true, "query_token")
-				next.ServeHTTP(w, r)
+			authMode := adminAuthMode(r, expected)
+			if authMode == adminAuthNone {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="aigw-admin"`)
+				http.Error(w, "admin authentication required", http.StatusUnauthorized)
+				return
+			}
+			if authMode == adminAuthCookieOnly && isAdminMutation(r) && !sameOriginAdminRequest(r) {
+				http.Error(w, "admin same-origin write required", http.StatusForbidden)
 				return
 			}
 
-			if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 {
-				logAdminAccess(r, requestID, true, "bearer_token")
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			if subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
-				logAdminAccess(r, requestID, true, "cookie_token")
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Failed authentication attempt - audit log
-			logAdminAccess(r, requestID, false, "failed")
-			w.Header().Set("WWW-Authenticate", `Bearer realm="aigw-admin"`)
-			http.Error(w, "admin authentication required", http.StatusUnauthorized)
+			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -127,7 +113,7 @@ func logAdminAccess(r *http.Request, requestID string, success bool, authMethod 
 	method := r.Method
 	path := r.URL.Path
 	userAgent := r.UserAgent()
-	
+
 	status := "denied"
 	if success {
 		status = "granted"
@@ -197,42 +183,73 @@ func generateRequestID() string {
 	return strconv.FormatUint(requestCounter.Add(1), 10)
 }
 
-// extractClientIP extracts the client IP address from the request
-func extractClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		ips := strings.Split(xff, ",")
-		if len(ips) > 0 {
-			ip := strings.TrimSpace(ips[0])
-			if net.ParseIP(ip) != nil {
-				return ip
-			}
-		}
-	}
+func isAdminRoute(path string) bool {
+	return strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/-/admin/")
+}
 
-	// Check X-Real-IP header
-	xri := r.Header.Get("X-Real-IP")
-	if xri != "" {
-		if net.ParseIP(xri) != nil {
-			return xri
-		}
+func isAdminMutation(r *http.Request) bool {
+	if r == nil {
+		return false
 	}
+	if r.Method == http.MethodPut && r.URL.Path == "/-/admin/config" {
+		return true
+	}
+	if r.Method == http.MethodPost && (r.URL.Path == "/-/admin/config/rollback" || r.URL.Path == "/-/admin/upstreams/test") {
+		return true
+	}
+	return false
+}
 
-	// Use RemoteAddr
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+func adminAuthMode(r *http.Request, expected string) adminAuthKind {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return adminAuthNone
 	}
-	return host
+	if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 {
+		return adminAuthBearer
+	}
+	if subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
+		return adminAuthCookieOnly
+	}
+	if subtle.ConstantTimeCompare([]byte(queryToken(r)), []byte(expected)) == 1 {
+		return adminAuthBearer
+	}
+	return adminAuthNone
+}
+
+func sameOriginAdminRequest(r *http.Request) bool {
+	if sameOriginRequestURL(r.Host, r.Header.Get("Origin")) {
+		return true
+	}
+	return sameOriginRequestURL(r.Host, r.Header.Get("Referer"))
+}
+
+func sameOriginRequestURL(host, raw string) bool {
+	host = strings.TrimSpace(host)
+	raw = strings.TrimSpace(raw)
+	if host == "" || raw == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return false
+	}
+	if !strings.EqualFold(parsed.Host, host) {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func bearerToken(r *http.Request) string {
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+	const prefix = "bearer "
+	if len(auth) < len(prefix) {
 		return ""
 	}
-	return strings.TrimSpace(auth[len("Bearer "):])
+	if !strings.EqualFold(auth[:len(prefix)], prefix) {
+		return ""
+	}
+	return strings.TrimSpace(auth[len(prefix):])
 }
 
 func cookieToken(r *http.Request) string {
@@ -243,75 +260,63 @@ func cookieToken(r *http.Request) string {
 	return strings.TrimSpace(cookie.Value)
 }
 
+func queryToken(r *http.Request) string {
+	return strings.TrimSpace(r.URL.Query().Get("token"))
+}
+
 // CORSConfig 存储 CORS 配置
 type CORSConfig struct {
-	AllowedOrigins   []string
-	AllowedMethods   []string
-	AllowedHeaders   []string
-	ExposedHeaders   []string
+	AllowOrigins     []string
+	AllowMethods     []string
+	AllowHeaders     []string
 	AllowCredentials bool
 	MaxAge           int
 }
 
-// DefaultCORSConfig 返回默认的 CORS 配置
+// DefaultCORSConfig 返回默认 CORS 配置
 func DefaultCORSConfig() CORSConfig {
 	return CORSConfig{
-		AllowedOrigins:   []string{},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "X-Request-ID"},
-		ExposedHeaders:   []string{"Content-Length", "Content-Type", "X-Request-ID"},
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           86400,
 	}
 }
 
-// corsMiddleware 处理 CORS 请求
+// corsMiddleware 返回 CORS 中间件
 func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
-	// 预处理允许的 Origin（支持通配符）
-	allowedOrigins := make([]string, 0, len(config.AllowedOrigins))
-	for _, origin := range config.AllowedOrigins {
-		origin = strings.TrimSpace(origin)
-		if origin != "" && origin != "*" {
-			allowedOrigins = append(allowedOrigins, origin)
-		}
-	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
+			if origin == "" {
+				origin = "*"
+			}
 
-			// 检查 Origin 是否允许
-			isAllowed := false
-			if len(allowedOrigins) == 0 {
-				// 如果没有配置允许的来源，则只允许同源请求
-				isAllowed = origin == ""
-			} else {
-				for _, allowed := range allowedOrigins {
-					if matchOrigin(origin, allowed) {
-						isAllowed = true
+			// 检查是否允许该来源
+			allowOrigin := "*"
+			if len(config.AllowOrigins) > 0 && config.AllowOrigins[0] != "*" {
+				for _, o := range config.AllowOrigins {
+					if o == origin {
+						allowOrigin = origin
 						break
 					}
 				}
+			} else {
+				allowOrigin = origin
 			}
 
-			// 设置 CORS 头
-			if isAllowed && origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-			}
+			w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+			w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowMethods, ", "))
+			w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowHeaders, ", "))
+			w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
+
 			if config.AllowCredentials {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
-			}
-			if len(config.ExposedHeaders) > 0 {
-				w.Header().Set("Access-Control-Expose-Headers", strings.Join(config.ExposedHeaders, ", "))
 			}
 
 			// 处理预检请求
 			if r.Method == http.MethodOptions {
-				w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowedMethods, ", "))
-				w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowedHeaders, ", "))
-				if config.MaxAge > 0 {
-					w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
-				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
@@ -321,61 +326,13 @@ func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 	}
 }
 
-// matchOrigin 检查 origin 是否匹配允许的模式
-func matchOrigin(origin, pattern string) bool {
-	origin = strings.ToLower(strings.TrimSpace(origin))
-	pattern = strings.ToLower(strings.TrimSpace(pattern))
-
-	if pattern == origin {
-		return true
-	}
-
-	// 支持通配符匹配，例如 https://*.example.com
-	if strings.Contains(pattern, "*") {
-		parts := strings.Split(pattern, "*")
-		if len(parts) == 2 {
-			return strings.HasPrefix(origin, parts[0]) && strings.HasSuffix(origin, parts[1])
-		}
-	}
-
-	return false
-}
-
-// securityHeaders adds security-related HTTP headers to all responses
+// securityHeaders 添加安全响应头
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Security headers to prevent common attacks
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
-
-		// Content Security Policy - prevents XSS and data injection attacks
-		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; "+
-				"script-src 'self' 'unsafe-inline'; "+
-				"style-src 'self' 'unsafe-inline'; "+
-				"img-src 'self' data:; "+
-				"font-src 'self'; "+
-				"connect-src 'self'; "+
-				"media-src 'self'; "+
-				"object-src 'none'; "+
-				"frame-ancestors 'none'; "+
-				"base-uri 'self'; "+
-				"form-action 'self';")
-
-		// HTTP Strict Transport Security - forces HTTPS
-		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
-
-		// Prevent browsers from MIME-type sniffing
-		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
-
-		// Cross-Origin policies
-		w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
-		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-
 		next.ServeHTTP(w, r)
 	})
 }

@@ -101,9 +101,9 @@ func (s *SSRFChecker) ValidateURL(rawURL string) error {
 
 	// Check for dangerous URL patterns
 	dangerousPatterns := []string{
-		"@",          // User info in URL (could be used for trickery)
-		"..",         // Path traversal
-		"0x",         // Hex encoded IP
+		"@",  // User info in URL (could be used for trickery)
+		"..", // Path traversal
+		"0x", // Hex encoded IP
 	}
 	urlLower := strings.ToLower(rawURL)
 	for _, pattern := range dangerousPatterns {

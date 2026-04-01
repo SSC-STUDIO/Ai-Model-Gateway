@@ -63,6 +63,51 @@ func TestHealthIncludesRequestID(t *testing.T) {
 	}
 }
 
+func TestModelsEndpointReturnsOpenAICompatibleModelObjects(t *testing.T) {
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin"},
+		Upstreams: []config.Upstream{
+			{Name: "kimi", BaseURL: "https://api.moonshot.cn", Models: []string{"kimi-k2.5"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var payload ModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if payload.Object != "list" {
+		t.Fatalf("expected list object, got %q", payload.Object)
+	}
+	if len(payload.Data) != 1 {
+		t.Fatalf("expected one model, got %d", len(payload.Data))
+	}
+	model := payload.Data[0]
+	if model.ID != "kimi-k2.5" {
+		t.Fatalf("expected kimi-k2.5 model id, got %q", model.ID)
+	}
+	if model.Object != "model" {
+		t.Fatalf("expected model object type, got %q", model.Object)
+	}
+	if model.Created <= 0 {
+		t.Fatalf("expected created timestamp, got %d", model.Created)
+	}
+	if model.OwnedBy != "ai-model-gateway" {
+		t.Fatalf("expected owned_by ai-model-gateway, got %q", model.OwnedBy)
+	}
+}
+
 func TestResponsesResourceRouteProxiesWithoutBody(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -417,8 +462,108 @@ func TestAdminRequiresAuth(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 
-	if recorder.Result().StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", recorder.Result().StatusCode)
+	resp := recorder.Result()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("WWW-Authenticate"); got != `Bearer realm="aigw-admin"` {
+		t.Fatalf("expected bearer challenge, got %q", got)
+	}
+}
+
+func TestAdminAcceptsQueryToken(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/admin?token=secret", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected query token to be accepted with 200, got %d", recorder.Result().StatusCode)
+	}
+}
+
+func TestAdminConfigViewRoundTripsEnabledFlag(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: false, AuthToken: "secret", Language: config.AdminLanguageEnglish},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	view := renderConfigView(cfg)
+	if view.Admin.Enabled != nil && *view.Admin.Enabled {
+		t.Fatal("expected rendered admin.enabled to stay false")
+	}
+
+	updated := cfg
+	updated.Admin = applyAdminConfig(cfg.Admin, view.Admin)
+	if updated.Admin.Enabled {
+		t.Fatal("expected applied admin.enabled to stay false")
+	}
+}
+
+func TestAdminAcceptsCookieToken(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageEnglish},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected cookie auth 200, got %d: %s", recorder.Result().StatusCode, string(body))
+	}
+}
+
+func TestAdminCookieSettingsRouteSucceedsSameOrigin(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageEnglish},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
+	req.Host = "127.0.0.1:18080"
+	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected cookie settings 200, got %d: %s", recorder.Result().StatusCode, string(body))
+	}
+}
+
+func TestAdminCookieDataRouteSucceeds(t *testing.T) {
+	cfg := config.Config{
+		Router: config.RouterConfig{Strategy: "round_robin"},
+		Admin:  config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Models: []string{"gpt-5.2"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/-/admin/data", nil)
+	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected cookie data 200, got %d: %s", recorder.Result().StatusCode, string(body))
 	}
 }
 
@@ -669,6 +814,236 @@ func TestAdminUpstreamProbe(t *testing.T) {
 	if !strings.Contains(payload.BodyPreview, `"object":"list"`) {
 		t.Fatalf("unexpected body preview %q", payload.BodyPreview)
 	}
+	if strings.Contains(payload.BodyPreview, "sk-demo") {
+		t.Fatalf("expected body preview to redact secrets, got %q", payload.BodyPreview)
+	}
+}
+
+func TestAdminCookieMutationRequiresSameOrigin(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Health: config.HealthConfig{
+			Enabled:     true,
+			IntervalSec: 10,
+			TimeoutMs:   2000,
+			Path:        "/v1/models",
+		},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", APIKey: "sk-old", Models: []string{"gpt-5.2"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+	if err := config.SaveToFile(configPath, cfg); err != nil {
+		t.Fatalf("save initial config: %v", err)
+	}
+
+	store := state.NewConfigStoreWithPath(cfg, configPath)
+	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	cookie := &http.Cookie{Name: adminAuthCookie, Value: "secret"}
+
+	t.Run("save same origin with origin succeeds", func(t *testing.T) {
+		payload := `{"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":1,"retry_backoff_ms":1000,"retry_backoff_max_ms":5000,"failure_threshold":3,"cooldown_sec":30,"failure_passthrough_after_sec":300},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429],"status_code_min":500,"message_keywords":[]},"intercepts":[]},"upstreams":[{"name":"cookie-provider","base_url":"https://cookie.example.com","api_key":"sk-cookie","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"enabled":true,"headers":{}}]}`
+		req := httptest.NewRequest(http.MethodPut, "/-/admin/config", bytes.NewBufferString(payload))
+		req.Host = "127.0.0.1:18080"
+		req.Header.Set("Origin", "http://127.0.0.1:18080")
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(cookie)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Result().StatusCode != http.StatusOK {
+			data, _ := io.ReadAll(recorder.Result().Body)
+			t.Fatalf("expected save 200, got %d: %s", recorder.Result().StatusCode, string(data))
+		}
+	})
+
+	t.Run("save cross origin denied", func(t *testing.T) {
+		payload := `{"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":1,"retry_backoff_ms":1000,"retry_backoff_max_ms":5000,"failure_threshold":3,"cooldown_sec":30,"failure_passthrough_after_sec":300},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429],"status_code_min":500,"message_keywords":[]},"intercepts":[]},"upstreams":[{"name":"cookie-provider","base_url":"https://cookie.example.com","api_key":"sk-cookie","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"enabled":true,"headers":{}}]}`
+		req := httptest.NewRequest(http.MethodPut, "/-/admin/config", bytes.NewBufferString(payload))
+		req.Host = "127.0.0.1:18080"
+		req.Header.Set("Origin", "https://evil.example")
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(cookie)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Result().StatusCode != http.StatusForbidden {
+			data, _ := io.ReadAll(recorder.Result().Body)
+			t.Fatalf("expected save 403, got %d: %s", recorder.Result().StatusCode, string(data))
+		}
+	})
+
+	t.Run("rollback same origin referer succeeds", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/-/admin/config/rollback", nil)
+		req.Host = "127.0.0.1:18080"
+		req.Header.Set("Referer", "http://127.0.0.1:18080/admin/settings")
+		req.AddCookie(cookie)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Result().StatusCode != http.StatusOK {
+			data, _ := io.ReadAll(recorder.Result().Body)
+			t.Fatalf("expected rollback 200, got %d: %s", recorder.Result().StatusCode, string(data))
+		}
+	})
+
+	t.Run("rollback without origin and referer denied", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/-/admin/config/rollback", nil)
+		req.Host = "127.0.0.1:18080"
+		req.AddCookie(cookie)
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Result().StatusCode != http.StatusForbidden {
+			data, _ := io.ReadAll(recorder.Result().Body)
+			t.Fatalf("expected rollback 403, got %d: %s", recorder.Result().StatusCode, string(data))
+		}
+	})
+}
+
+func TestAdminBearerMutationIgnoresOriginChecks(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"object":"list","data":[{"id":"gpt-5.4"}]}`)
+	}))
+	defer upstream.Close()
+
+	configPath := t.TempDir() + "/config.yaml"
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Health: config.HealthConfig{
+			Enabled:     true,
+			IntervalSec: 10,
+			TimeoutMs:   2000,
+			Path:        "/v1/models",
+		},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", APIKey: "sk-old", Models: []string{"gpt-5.2"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+	if err := config.SaveToFile(configPath, cfg); err != nil {
+		t.Fatalf("save initial config: %v", err)
+	}
+
+	store := state.NewConfigStoreWithPath(cfg, configPath)
+	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+
+	t.Run("save without origin succeeds", func(t *testing.T) {
+		payload := `{"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":1,"retry_backoff_ms":1000,"retry_backoff_max_ms":5000,"failure_threshold":3,"cooldown_sec":30,"failure_passthrough_after_sec":300},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429],"status_code_min":500,"message_keywords":[]},"intercepts":[]},"upstreams":[{"name":"bearer-provider","base_url":"https://bearer.example.com","api_key":"sk-bearer","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"enabled":true,"headers":{}}]}`
+		req := httptest.NewRequest(http.MethodPut, "/-/admin/config", bytes.NewBufferString(payload))
+		req.Header.Set("Authorization", "Bearer secret")
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Result().StatusCode != http.StatusOK {
+			data, _ := io.ReadAll(recorder.Result().Body)
+			t.Fatalf("expected save 200, got %d: %s", recorder.Result().StatusCode, string(data))
+		}
+	})
+
+	t.Run("rollback cross origin still succeeds", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/-/admin/config/rollback", nil)
+		req.Header.Set("Authorization", "Bearer secret")
+		req.Header.Set("Origin", "https://evil.example")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Result().StatusCode != http.StatusOK {
+			data, _ := io.ReadAll(recorder.Result().Body)
+			t.Fatalf("expected rollback 200, got %d: %s", recorder.Result().StatusCode, string(data))
+		}
+	})
+
+	t.Run("probe cross origin still succeeds", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"upstream":{"name":"probe","base_url":"` + upstream.URL + `","api_key":"sk-demo","timeout_ms":2000,"enabled":true}}`)
+		req := httptest.NewRequest(http.MethodPost, "/-/admin/upstreams/test", body)
+		req.Header.Set("Authorization", "Bearer secret")
+		req.Header.Set("Origin", "https://evil.example")
+		req.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Result().StatusCode != http.StatusOK {
+			data, _ := io.ReadAll(recorder.Result().Body)
+			t.Fatalf("expected probe 200, got %d: %s", recorder.Result().StatusCode, string(data))
+		}
+	})
+}
+
+func TestAdminConfigPutRoundTripsEnabledFlag(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	cfg := config.Config{
+		Listen: ":8080",
+		Router: config.RouterConfig{Strategy: config.RouterStrategyRoundRobin},
+		Admin:  config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageEnglish},
+		Health: config.HealthConfig{Enabled: true, IntervalSec: 10, TimeoutMs: 2000, Path: "/v1/models"},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Models: []string{"gpt-5.2"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+	if err := config.SaveToFile(configPath, cfg); err != nil {
+		t.Fatalf("save initial config: %v", err)
+	}
+
+	store := state.NewConfigStoreWithPath(cfg, configPath)
+	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodPut, "/-/admin/config", strings.NewReader(`{"admin":{"enabled":false,"language":"en"},"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":2,"retry_backoff_ms":250,"retry_backoff_max_ms":2000,"failure_threshold":2,"cooldown_sec":15,"failure_passthrough_after_sec":0},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429,500,502,503,504],"message_keywords":["timeout","temporarily unavailable"]},"intercepts":[]},"upstreams":[{"name":"alpha","base_url":"https://alpha.example.com","api_key":"","provider_class":"quota_limited","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"same_upstream_retries":0,"enabled":true,"headers":{}}]}`))
+	req.Host = "127.0.0.1:18080"
+	req.Header.Set("Origin", "http://127.0.0.1:18080")
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+	if recorder.Result().StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected config PUT 200, got %d: %s", recorder.Result().StatusCode, string(body))
+	}
+
+	var body AdminConfigView
+	if err := json.NewDecoder(recorder.Result().Body).Decode(&body); err != nil {
+		t.Fatalf("decode config response: %v", err)
+	}
+	if body.Admin.Enabled != nil && *body.Admin.Enabled {
+		t.Fatal("expected admin.enabled to remain false after PUT")
+	}
+	if store.Get().Admin.Enabled {
+		t.Fatal("expected stored admin.enabled to remain false after PUT")
+	}
+}
+
+func TestAdminConfigPutRejectsUnknownLanguageWithFullSupportedSet(t *testing.T) {
+	configPath := t.TempDir() + "/config.yaml"
+	cfg := config.Config{
+		Listen: ":8080",
+		Router: config.RouterConfig{Strategy: config.RouterStrategyRoundRobin},
+		Admin:  config.AdminConfig{Enabled: true, AuthToken: "secret", Language: config.AdminLanguageEnglish},
+		Health: config.HealthConfig{Enabled: true, IntervalSec: 10, TimeoutMs: 2000, Path: "/v1/models"},
+		Upstreams: []config.Upstream{
+			{Name: "alpha", BaseURL: "https://alpha.example.com", Models: []string{"gpt-5.2"}, Weight: 1},
+		},
+	}
+	cfg.Normalize()
+	if err := config.SaveToFile(configPath, cfg); err != nil {
+		t.Fatalf("save initial config: %v", err)
+	}
+
+	store := state.NewConfigStoreWithPath(cfg, configPath)
+	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodPut, "/-/admin/config", strings.NewReader(`{"admin":{"enabled":true,"language":"it"},"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":2,"retry_backoff_ms":250,"retry_backoff_max_ms":2000,"failure_threshold":2,"cooldown_sec":15,"failure_passthrough_after_sec":0},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429,500,502,503,504],"message_keywords":["timeout","temporarily unavailable"]},"intercepts":[]},"upstreams":[{"name":"alpha","base_url":"https://alpha.example.com","api_key":"","provider_class":"quota_limited","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"same_upstream_retries":0,"enabled":true,"headers":{}}]}`))
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+	if recorder.Result().StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected config PUT 400, got %d: %s", recorder.Result().StatusCode, string(body))
+	}
+	body, err := io.ReadAll(recorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read error body: %v", err)
+	}
+	if got := strings.TrimSpace(string(body)); got != config.AdminLanguageValidationMessage() {
+		t.Fatalf("unexpected validation error %q", got)
+	}
 }
 
 func TestAdminConfigUpdatesUpstreams(t *testing.T) {
@@ -702,6 +1077,7 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 
 	payload := map[string]any{
 		"admin": map[string]any{
+			"enabled":  true,
 			"language": "en",
 		},
 		"health": map[string]any{
@@ -798,6 +1174,9 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	if updated.Upstreams[0].SameUpstreamRetries != 2 {
 		t.Fatalf("expected same upstream retries 2, got %d", updated.Upstreams[0].SameUpstreamRetries)
 	}
+	if !updated.Admin.Enabled {
+		t.Fatalf("expected admin to remain enabled")
+	}
 	if updated.Admin.Language != config.AdminLanguageEnglish {
 		t.Fatalf("expected admin language en, got %q", updated.Admin.Language)
 	}
@@ -837,11 +1216,62 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	if !strings.Contains(text, "language: en") {
 		t.Fatalf("expected saved config to persist admin language, got %q", text)
 	}
+	if !strings.Contains(text, "enabled: true") {
+		t.Fatalf("expected saved config to persist admin enabled state, got %q", text)
+	}
 	if !strings.Contains(text, "/healthz") || !strings.Contains(text, "gpt-5.2-codex") {
 		t.Fatalf("expected saved config to contain updated health/bridge settings, got %q", text)
 	}
 	if _, err := os.Stat(configPath + ".bak"); err != nil {
 		t.Fatalf("expected backup config to be created: %v", err)
+	}
+}
+
+func TestAdminConfigReturnsRedactedSecrets(t *testing.T) {
+	cfg := config.Config{
+		Admin: config.AdminConfig{Enabled: true, AuthToken: "secret"},
+		Upstreams: []config.Upstream{
+			{
+				Name:    "alpha",
+				BaseURL: "https://alpha.example.com",
+				APIKey:  "sk-visible",
+				Models:  []string{"gpt-5.2"},
+				Weight:  1,
+				Headers: map[string]string{
+					"Authorization":       "Bearer sk-header",
+					"Proxy-Authorization": "Bearer sk-proxy",
+					"X-API-Key":           "sk-x-api",
+					"X-Org":               "demo",
+				},
+			},
+		},
+	}
+	cfg.Normalize()
+
+	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	req := httptest.NewRequest(http.MethodGet, "/-/admin/config", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Result().StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(recorder.Result().Body)
+		t.Fatalf("expected 200, got %d: %s", recorder.Result().StatusCode, string(body))
+	}
+
+	data, err := io.ReadAll(recorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read config body: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "sk-visible") || strings.Contains(text, "sk-header") || strings.Contains(text, "sk-proxy") || strings.Contains(text, "sk-x-api") {
+		t.Fatalf("expected config view to redact secrets, got %q", text)
+	}
+	if !strings.Contains(text, "\"enabled\":true") {
+		t.Fatalf("expected config view to include admin enabled state, got %q", text)
+	}
+	if !strings.Contains(text, "[REDACTED]") || !strings.Contains(text, `"X-Org":"demo"`) {
+		t.Fatalf("expected config view to keep non-sensitive fields and redact secrets, got %q", text)
 	}
 }
 
@@ -890,8 +1320,14 @@ func TestAdminConfigExportReturnsYAML(t *testing.T) {
 		t.Fatalf("read export body: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, "bridge:") || !strings.Contains(text, "upstreams:") || !strings.Contains(text, "sk-export") {
+	if !strings.Contains(text, "bridge:") || !strings.Contains(text, "upstreams:") {
 		t.Fatalf("expected export yaml body, got %q", text)
+	}
+	if strings.Contains(text, "sk-export") || strings.Contains(text, "auth_token: secret") {
+		t.Fatalf("expected export yaml to redact secrets, got %q", text)
+	}
+	if !strings.Contains(text, "[REDACTED]") {
+		t.Fatalf("expected export yaml to contain redaction marker, got %q", text)
 	}
 }
 
@@ -1000,6 +1436,17 @@ func TestAdminConfigRollbackRestoresPreviousVersion(t *testing.T) {
 	}
 	if restored.Upstreams[0].APIKey != "sk-old" {
 		t.Fatalf("expected api key to roll back, got %q", restored.Upstreams[0].APIKey)
+	}
+	responseData, err := io.ReadAll(rollbackRecorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read rollback response: %v", err)
+	}
+	responseText := string(responseData)
+	if strings.Contains(responseText, "sk-old") || strings.Contains(responseText, "secret") {
+		t.Fatalf("expected rollback response body to redact secrets, got %q", responseText)
+	}
+	if !strings.Contains(responseText, "[REDACTED]") {
+		t.Fatalf("expected rollback response body to include redaction marker, got %q", responseText)
 	}
 	if restored.Health.Path != "/v1/models" {
 		t.Fatalf("expected health path to roll back, got %q", restored.Health.Path)
@@ -1126,6 +1573,15 @@ func TestAdminConfigHistoryListsSavedVersions(t *testing.T) {
 	if payload.Versions[0].ID == "" || payload.Versions[0].Filename == "" {
 		t.Fatalf("expected non-empty history metadata, got %#v", payload.Versions[0])
 	}
+
+	data, err := io.ReadAll(recorder.Result().Body)
+	if err != nil {
+		t.Fatalf("read history payload: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "sk-provider-a") || strings.Contains(text, "sk-provider-b") {
+		t.Fatalf("expected history metadata response without secrets, got %q", text)
+	}
 }
 
 func TestAdminConfigHistoryDiffReturnsLineChanges(t *testing.T) {
@@ -1247,6 +1703,9 @@ func TestAdminConfigHistoryDiffReturnsLineChanges(t *testing.T) {
 
 	var foundAdded, foundRemoved bool
 	for _, line := range diff.Lines {
+		if strings.Contains(line.Text, "sk-") {
+			t.Fatalf("expected diff lines to redact secrets, got %#v", diff.Lines)
+		}
 		if line.Kind == "add" && strings.Contains(line.Text, "provider-a") {
 			foundAdded = true
 		}

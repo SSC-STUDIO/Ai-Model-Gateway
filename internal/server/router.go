@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,7 +28,10 @@ import (
 var ssrfChecker = proxy.NewSSRFChecker()
 
 type ModelItem struct {
-	ID string `json:"id"`
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
 }
 
 type ModelsResponse struct {
@@ -47,7 +49,8 @@ type AdminConfigView struct {
 }
 
 type configViewAdmin struct {
-	Language string `json:"language"`
+	Enabled  *bool  `json:"enabled,omitempty"`
+	Language string `json:"language,omitempty"`
 }
 
 type configViewHealth struct {
@@ -69,13 +72,14 @@ type configViewBridgeRule struct {
 }
 
 type configViewRouter struct {
-	Strategy                   string `json:"strategy"`
-	MaxRetries                 int    `json:"max_retries"`
-	RetryBackoffMs             int    `json:"retry_backoff_ms"`
-	RetryBackoffMaxMs          int    `json:"retry_backoff_max_ms"`
-	FailureThreshold           int    `json:"failure_threshold"`
-	CooldownSec                int    `json:"cooldown_sec"`
-	FailurePassthroughAfterSec int    `json:"failure_passthrough_after_sec"`
+	Strategy                          string `json:"strategy"`
+	MaxRetries                        int    `json:"max_retries"`
+	RetryBackoffMs                    int    `json:"retry_backoff_ms"`
+	RetryBackoffMaxMs                 int    `json:"retry_backoff_max_ms"`
+	FailureThreshold                  int    `json:"failure_threshold"`
+	CooldownSec                       int    `json:"cooldown_sec"`
+	FailurePassthroughAfterSec        int    `json:"failure_passthrough_after_sec"`
+	QuotaBlockRecoveryIntervalMinutes int    `json:"quota_block_recovery_interval_minutes"`
 }
 
 type configViewProxy struct {
@@ -382,6 +386,10 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		}
 
 		cfg := manager.CurrentConfig()
+		if err := config.ValidateAdminLanguage(payload.Admin.Language); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		cfg.Admin = applyAdminConfig(cfg.Admin, payload.Admin)
 		cfg.Health = applyHealthConfig(cfg.Health, payload.Health)
 		cfg.Bridge = applyBridgeConfig(cfg.Bridge, payload.Bridge)
@@ -400,7 +408,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			store.Set(cfg)
+			manager.SetConfig(cfg)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -421,7 +429,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		store.Set(cfg)
+		manager.SetConfig(cfg)
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(renderConfigView(cfg))
@@ -434,6 +442,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 		}
 
 		result := probeUpstream(payload.Upstream, manager.CurrentConfig().Health)
+		result = redactProbeResponse(result)
 		status := http.StatusOK
 		if !result.OK && result.StatusCode == 0 {
 			status = http.StatusBadGateway
@@ -450,8 +459,14 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	r.Get("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		models := manager.Models()
 		data := make([]ModelItem, 0, len(models))
+		createdAt := time.Now().Unix()
 		for _, model := range models {
-			data = append(data, ModelItem{ID: model})
+			data = append(data, ModelItem{
+				ID:      model,
+				Object:  "model",
+				Created: createdAt,
+				OwnedBy: "ai-model-gateway",
+			})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -487,8 +502,10 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 }
 
 func renderConfigView(cfg config.Config) AdminConfigView {
-	return AdminConfigView{
+	enabled := cfg.Admin.Enabled
+	return redactAdminConfigView(AdminConfigView{
 		Admin: configViewAdmin{
+			Enabled:  &enabled,
 			Language: cfg.Admin.Language,
 		},
 		Health: configViewHealth{
@@ -503,13 +520,14 @@ func renderConfigView(cfg config.Config) AdminConfigView {
 			Rules:             renderBridgeRules(cfg.Bridge.Rules),
 		},
 		Router: configViewRouter{
-			Strategy:                   cfg.Router.Strategy,
-			MaxRetries:                 cfg.Router.MaxRetries,
-			RetryBackoffMs:             cfg.Router.RetryBackoffMs,
-			RetryBackoffMaxMs:          cfg.Router.RetryBackoffMaxMs,
-			FailureThreshold:           cfg.Router.FailureThreshold,
-			CooldownSec:                cfg.Router.CooldownSec,
-			FailurePassthroughAfterSec: cfg.Router.FailurePassthroughAfterSec,
+			Strategy:                          cfg.Router.Strategy,
+			MaxRetries:                        cfg.Router.MaxRetries,
+			RetryBackoffMs:                    cfg.Router.RetryBackoffMs,
+			RetryBackoffMaxMs:                 cfg.Router.RetryBackoffMaxMs,
+			FailureThreshold:                  cfg.Router.FailureThreshold,
+			CooldownSec:                       cfg.Router.CooldownSec,
+			FailurePassthroughAfterSec:        cfg.Router.FailurePassthroughAfterSec,
+			QuotaBlockRecoveryIntervalMinutes: cfg.Router.QuotaBlockRecoveryIntervalMinutes,
 		},
 		Proxy: configViewProxy{
 			Retry: configViewRetry{
@@ -521,11 +539,14 @@ func renderConfigView(cfg config.Config) AdminConfigView {
 			Intercepts: renderIntercepts(cfg.Proxy.Intercepts),
 		},
 		Upstreams: renderUpstreams(cfg.Upstreams),
-	}
+	})
 }
 
 func applyAdminConfig(current config.AdminConfig, incoming configViewAdmin) config.AdminConfig {
-	if strings.TrimSpace(incoming.Language) != "" {
+	if incoming.Enabled != nil {
+		current.Enabled = *incoming.Enabled
+	}
+	if incoming.Language != "" {
 		current.Language = config.NormalizeAdminLanguage(incoming.Language)
 	}
 	return current
@@ -595,6 +616,7 @@ func applyRouterConfig(current config.RouterConfig, incoming configViewRouter) c
 	current.FailureThreshold = incoming.FailureThreshold
 	current.CooldownSec = incoming.CooldownSec
 	current.FailurePassthroughAfterSec = incoming.FailurePassthroughAfterSec
+	current.QuotaBlockRecoveryIntervalMinutes = incoming.QuotaBlockRecoveryIntervalMinutes
 	return current
 }
 
@@ -669,6 +691,123 @@ func cloneStringMap(src map[string]string) map[string]string {
 		dst[key] = value
 	}
 	return dst
+}
+
+func redactAdminConfigView(view AdminConfigView) AdminConfigView {
+	view.Upstreams = redactConfigViewUpstreams(view.Upstreams)
+	return view
+}
+
+func redactConfigViewUpstreams(upstreams []configViewUpstream) []configViewUpstream {
+	if len(upstreams) == 0 {
+		return nil
+	}
+	items := make([]configViewUpstream, 0, len(upstreams))
+	for _, upstream := range upstreams {
+		upstream.APIKey = redactSecretValue(upstream.APIKey)
+		upstream.Headers = redactSensitiveHeaders(upstream.Headers)
+		items = append(items, upstream)
+	}
+	return items
+}
+
+func redactConfigForExport(cfg config.Config) config.Config {
+	redacted := cfg
+	redacted.Admin.AuthToken = redactSecretValue(redacted.Admin.AuthToken)
+	redacted.Upstreams = make([]config.Upstream, 0, len(cfg.Upstreams))
+	for _, upstream := range cfg.Upstreams {
+		cloned := upstream
+		cloned.APIKey = redactSecretValue(cloned.APIKey)
+		cloned.Headers = redactSensitiveHeaders(cloned.Headers)
+		redacted.Upstreams = append(redacted.Upstreams, cloned)
+	}
+	return redacted
+}
+
+func redactSensitiveHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return map[string]string{}
+	}
+	redacted := cloneStringMap(headers)
+	for key, value := range redacted {
+		if isSensitiveHeaderKey(key) {
+			redacted[key] = redactSecretValue(value)
+		}
+	}
+	return redacted
+}
+
+func isSensitiveHeaderKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "authorization", "proxy-authorization", "x-api-key":
+		return true
+	default:
+		return false
+	}
+}
+
+func redactSecretValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return value
+	}
+	return "[REDACTED]"
+}
+
+func redactDiffLines(lines []configDiffLine) []configDiffLine {
+	if len(lines) == 0 {
+		return nil
+	}
+	redacted := make([]configDiffLine, 0, len(lines))
+	for _, line := range lines {
+		line.Text = redactDiffLine(line.Text)
+		redacted = append(redacted, line)
+	}
+	return redacted
+}
+
+func redactDiffLine(line string) string {
+	trimmed := strings.TrimSpace(line)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "auth_token:") || strings.HasPrefix(lower, "api_key:") {
+		prefix, _, _ := strings.Cut(line, ":")
+		return prefix + ": " + redactSecretValue("secret")
+	}
+	for _, headerKey := range []string{"authorization", "proxy-authorization", "x-api-key"} {
+		marker := headerKey + ":"
+		idx := strings.Index(lower, marker)
+		if idx >= 0 {
+			return line[:idx+len(marker)] + " " + redactSecretValue("secret")
+		}
+	}
+	return line
+}
+
+func redactProbeResponse(resp upstreamProbeResponse) upstreamProbeResponse {
+	resp.BodyPreview = redactSecretText(resp.BodyPreview)
+	resp.Error = redactSecretText(resp.Error)
+	return resp
+}
+
+func redactSecretText(text string) string {
+	redacted := text
+	for _, marker := range []string{"sk-", "Bearer ", "bearer "} {
+		for {
+			idx := strings.Index(redacted, marker)
+			if idx < 0 {
+				break
+			}
+			end := idx + len(marker)
+			for end < len(redacted) {
+				ch := redacted[end]
+				if ch == '"' || ch == '\'' || ch == '\n' || ch == '\r' || ch == ' ' || ch == '\t' || ch == ',' || ch == '}' || ch == ']' {
+					break
+				}
+				end++
+			}
+			redacted = redacted[:idx] + marker + "[REDACTED]" + redacted[end:]
+		}
+	}
+	return redacted
 }
 
 func probeUpstream(view configViewUpstream, healthCfg config.HealthConfig) upstreamProbeResponse {
@@ -801,7 +940,7 @@ func rollbackConfigVersion(store interface {
 	RollbackVersion(string) (config.Config, error)
 }, versionID string) (config.Config, error) {
 	// 验证 versionID 不包含路径遍历字符
-	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|` ) {
+	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|`) {
 		return config.Config{}, errors.New("invalid version ID")
 	}
 	if strings.TrimSpace(versionID) == "" {
@@ -811,17 +950,7 @@ func rollbackConfigVersion(store interface {
 }
 
 func exportConfigPayload(store interface{ Path() string }, cfg config.Config) ([]byte, error) {
-	if store != nil && store.Path() != "" {
-		data, err := os.ReadFile(store.Path())
-		if err == nil {
-			return data, nil
-		}
-		if !os.IsNotExist(err) {
-			return nil, err
-		}
-	}
-
-	exportCfg := cfg
+	exportCfg := redactConfigForExport(cfg)
 	if store != nil && store.Path() != "" {
 		config.RelativizePaths(&exportCfg, store.Path())
 	}
@@ -849,7 +978,7 @@ func buildConfigHistoryDiff(store interface {
 	if err != nil {
 		return configHistoryDiffResponse{}, err
 	}
-	lines := buildConfigDiffLines(currentData, versionData)
+	lines := redactDiffLines(buildConfigDiffLines(currentData, versionData))
 	return configHistoryDiffResponse{
 		Version: renderConfigHistoryItem(version),
 		Summary: summarizeConfigDiff(lines),

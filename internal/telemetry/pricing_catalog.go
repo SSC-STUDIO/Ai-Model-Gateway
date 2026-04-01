@@ -19,7 +19,7 @@ import (
 )
 
 type PricingCatalog struct {
-	cfg   config.PricingConfig
+	cfg   atomic.Value
 	state atomic.Value
 }
 
@@ -37,7 +37,8 @@ var (
 )
 
 func NewPricingCatalog(cfg config.PricingConfig) *PricingCatalog {
-	catalog := &PricingCatalog{cfg: cfg}
+	catalog := &PricingCatalog{}
+	catalog.cfg.Store(cfg)
 	state := BootstrapPricingSnapshot()
 	if cached, err := loadPricingCatalogCache(cfg.CachePath); err == nil {
 		state = mergePricingSnapshots(state, cached)
@@ -54,22 +55,20 @@ func (c *PricingCatalog) Start(ctx context.Context) {
 	}
 
 	go func() {
-		_ = c.refresh(ctx)
-
-		interval := time.Duration(c.cfg.RefreshIntervalHours) * time.Hour
-		if interval <= 0 {
-			interval = 12 * time.Hour
-		}
-
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
 		for {
+			_ = c.refresh(ctx)
+
+			interval := time.Duration(c.currentConfig().RefreshIntervalHours) * time.Hour
+			if interval <= 0 {
+				interval = 12 * time.Hour
+			}
+
+			timer := time.NewTimer(interval)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return
-			case <-ticker.C:
-				_ = c.refresh(ctx)
+			case <-timer.C:
 			}
 		}
 	}()
@@ -84,12 +83,41 @@ func (c *PricingCatalog) Snapshot() PricingCatalogSnapshot {
 	return current
 }
 
+func (c *PricingCatalog) UpdateConfig(cfg config.PricingConfig) {
+	if c == nil {
+		return
+	}
+
+	previous := c.currentConfig()
+	c.cfg.Store(cfg)
+
+	if strings.TrimSpace(previous.CachePath) == strings.TrimSpace(cfg.CachePath) {
+		return
+	}
+
+	current := c.Snapshot()
+	switch {
+	case strings.TrimSpace(cfg.CachePath) == "":
+		current.LastError = ""
+	case true:
+		cached, err := loadPricingCatalogCache(cfg.CachePath)
+		if err != nil {
+			current.LastError = err.Error()
+			break
+		}
+		current = mergePricingSnapshots(current, cached)
+		current.LastError = ""
+	}
+	c.state.Store(current)
+}
+
 func (c *PricingCatalog) refresh(parent context.Context) error {
 	if c == nil {
 		return nil
 	}
 
-	timeout := time.Duration(c.cfg.RequestTimeoutMs) * time.Millisecond
+	cfg := c.currentConfig()
+	timeout := time.Duration(cfg.RequestTimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
@@ -115,7 +143,7 @@ func (c *PricingCatalog) refresh(parent context.Context) error {
 	fetched.Catalog = mergePricingCatalogs(BootstrapPricingCatalog(), fetched.Catalog)
 	c.state.Store(fetched)
 
-	if err := savePricingCatalogCache(c.cfg.CachePath, fetched); err != nil {
+	if err := savePricingCatalogCache(cfg.CachePath, fetched); err != nil {
 		current = fetched
 		current.LastError = fmt.Sprintf("save pricing cache: %v", err)
 		c.state.Store(current)
@@ -123,6 +151,17 @@ func (c *PricingCatalog) refresh(parent context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *PricingCatalog) currentConfig() config.PricingConfig {
+	if c == nil {
+		return config.PricingConfig{}
+	}
+	value := c.cfg.Load()
+	if value == nil {
+		return config.PricingConfig{}
+	}
+	return value.(config.PricingConfig)
 }
 
 func fetchOfficialPricingCatalog(ctx context.Context) (PricingCatalogSnapshot, error) {

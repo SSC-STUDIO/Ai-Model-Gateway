@@ -110,3 +110,15 @@ upstreams:
   timeout_ms: 180000
   same_upstream_retries: 1
   enabled: true
+- name: kimi-official
+  base_url: https://api.kimi.com/coding
+  anthropic_base_url: https://api.kimi.com/coding
+  api_key: sk-your-kimi-code-key
+  provider_class: quota_limited
+  models:
+  - kimi-for-coding
+  weight: 1
+  timeout_ms: 180000
+  same_upstream_retries: 1
+  enabled: true
+  headers: {}

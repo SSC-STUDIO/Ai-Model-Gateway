@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](VERSION)
+[![Test Coverage](https://img.shields.io/badge/coverage-80%25+-brightgreen.svg)](#development)
 
 ![AI Model Gateway icon](docs/assets/icon.svg)
 
@@ -18,6 +20,7 @@
 
 ## Highlights
 
+- **CLI 管理**: 支持命令行启动、验证配置、健康检查、Windows 服务管理
 - OpenAI 兼容接口：`chat/completions`、`responses`、`embeddings`、`files`、`audio`、`images`、`models` 等
 - 多上游容灾：按健康状态、权重和失败窗口自动切换
 - 热加载：修改 YAML 后自动生效
@@ -25,7 +28,7 @@
 - 定价系统：本地缓存 OpenAI 官方价格页，桥接请求也能按请求模型计价
 - 持久化 telemetry：请求、错误、token、缓存命中、成本都落 SQLite
 - 管理页：图表、表格、成本、缓存趋势、配置编辑、配置历史、diff 预览
-- Claude 兼容：当 Claude 上游不支持 `Responses API` 时，自动回退到 `chat/completions` 并封装回 `response` 对象
+- 协议兼容：当上游只支持 `chat/completions` 或 `messages` 时，自动回退并封装回 OpenAI 风格响应
 
 ## Screenshot
 
@@ -41,6 +44,8 @@
 
 - License: [MIT](LICENSE)
 - Change log: [CHANGELOG.md](CHANGELOG.md)
+- CLI Documentation: [docs/cli.md](docs/cli.md)
+- Installation Guide: [docs/installation.md](docs/installation.md)
 - CI: [GitHub Actions workflow](.github/workflows/ci.yml)
 - Release workflow: [GitHub Release workflow](.github/workflows/release.yml)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
@@ -62,6 +67,8 @@
 
 - `cmd/gateway`
   Gateway 入口。
+- `internal/cli`
+  命令行接口实现。
 - `internal/config`
   YAML 配置结构、默认值、校验、加载器。
 - `internal/router`
@@ -74,12 +81,14 @@
   SQLite telemetry、时间序列、pricing 聚合。
 - `internal/state`
   运行时配置原子存储。
+- `internal/service`
+  Windows 服务管理。
 - `configs`
   配置示例。
 - `scripts`
   常用启动、服务安装、压测脚本。
 - `docs`
-  图标与 README 截图素材。
+  图标与 README 截图素材、CLI 文档、安装指南。
 
 ## Supported endpoints
 
@@ -120,8 +129,28 @@
 
 ### Requirements
 
-- Go 1.26+
+- Go 1.26+ (for building from source)
 - Windows PowerShell（脚本示例默认按 PowerShell 写）
+
+### Installation
+
+#### Option 1: Download Binary (Recommended)
+
+从 [GitHub Releases](https://github.com/SSC-STUDIO/ai-model-gateway/releases) 下载对应平台的预编译二进制文件。
+
+#### Option 2: Build from Source
+
+```powershell
+go build -o gateway.exe ./cmd/gateway
+```
+
+#### Option 3: Install as Windows Service
+
+```powershell
+# Install and start as Windows service
+gateway.exe install
+gateway.exe service-start
+```
 
 ### 1. Prepare config
 
@@ -138,7 +167,29 @@ Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 - `telemetry.sqlite_path`
 - `pricing.cache_path`
 
+如果你要接 `Kimi Code` 上游，推荐使用：
+
+- `base_url: https://api.kimi.com/coding`
+- `anthropic_base_url: https://api.kimi.com/coding`
+- `api_key: sk-your-kimi-code-key`
+- `models: [kimi-for-coding]`
+
 ### 2. Run the gateway
+
+#### Using CLI (Recommended)
+
+```powershell
+# Start with default config
+gateway.exe start
+
+# Start with custom config
+gateway.exe -config .\configs\config.yaml start
+
+# Validate config before starting
+gateway.exe validate
+```
+
+#### Legacy Mode (Backward Compatible)
 
 ```powershell
 go run .\cmd\gateway -config .\configs\config.yaml
@@ -150,19 +201,55 @@ go run .\cmd\gateway -config .\configs\config.yaml
 http://127.0.0.1:18080
 ```
 
-### 3. Open admin pages
+### 3. Health Check
+
+```powershell
+# Check gateway health
+gateway.exe health
+
+# Or use curl
+curl.exe http://127.0.0.1:18080/-/health
+```
+
+### 4. Open admin pages
+
+浏览器访问管理页时，先建立同源的 `aigw_admin_token` cookie 会话，再访问页面；脚本或 CLI 直接调用 admin API 时，推荐使用 Bearer token。
 
 概览页：
 
 ```text
-http://127.0.0.1:18080/admin?token=YOUR_ADMIN_TOKEN
+http://127.0.0.1:18080/admin
 ```
 
 设置页：
 
 ```text
-http://127.0.0.1:18080/admin/settings?token=YOUR_ADMIN_TOKEN
+http://127.0.0.1:18080/admin/settings
 ```
+
+### Admin auth modes and browser boundary
+
+- 浏览器：admin 页面会携带 `credentials: 'same-origin'`，cookie-auth 的写请求仅允许同源 `Origin`，缺失时仅接受同源 `Referer` 后备。
+- 自动化：脚本、CLI、curl 调用 `/-/admin/config`、`/-/admin/config/rollback`、`/-/admin/upstreams/test` 时，推荐使用 `Authorization: Bearer <token>`，不会被 `Origin` / `Referer` 限制误伤。
+- 暴露面：不要把 admin URL、Bearer token 或已登录的 admin cookie 会话暴露给不受信任来源；管理页应只在受信任浏览器上下文中打开。
+
+## CLI Commands
+
+网关提供完整的命令行接口：
+
+| 命令 | 说明 |
+|------|------|
+| `gateway start` | 启动网关服务 |
+| `gateway validate` | 验证配置文件 |
+| `gateway health` | 检查服务健康状态 |
+| `gateway install` | 安装为 Windows 服务 |
+| `gateway uninstall` | 卸载 Windows 服务 |
+| `gateway service-start` | 启动 Windows 服务 |
+| `gateway service-stop` | 停止 Windows 服务 |
+| `gateway service-status` | 查看服务状态 |
+| `gateway version` | 显示版本信息 |
+
+更多 CLI 用法详见 [docs/cli.md](docs/cli.md)。
 
 ## Configuration guide
 
@@ -182,6 +269,13 @@ http://127.0.0.1:18080/admin/settings?token=YOUR_ADMIN_TOKEN
 - `headers`
 
 这样可以把不同模型或不同供应商拆成多个路由条目。
+
+Kimi 相关有两种常见接法：
+
+- `Kimi Code`
+  使用 `base_url: https://api.kimi.com/coding`，并同时设置 `anthropic_base_url: https://api.kimi.com/coding`；模型通常是 `kimi-for-coding`
+- `Moonshot Open Platform`
+  使用 `api.moonshot.cn` 或 `api.moonshot.ai` 的 Open Platform key，并按该平台返回的模型 ID 配置 `models`
 
 `provider_class` 目前支持两类：
 
@@ -235,6 +329,37 @@ bridge:
 - `exclude_user_agents` 支持通配
 - 命中 bridge 后，定价仍优先按原始 `requested_model` 归因
 - 对 Codex / IDE 内部请求，建议按 UA 做排除，避免误改写系统请求
+
+### Kimi upstream example
+
+```yaml
+upstreams:
+  - name: kimi-official
+    base_url: https://api.kimi.com/coding
+    anthropic_base_url: https://api.kimi.com/coding
+    api_key: sk-your-kimi-code-key
+    provider_class: quota_limited
+    models:
+      - kimi-for-coding
+    weight: 1
+    timeout_ms: 180000
+    same_upstream_retries: 1
+    enabled: true
+    headers: {}
+```
+
+验证步骤：
+
+- `GET /v1/models` 中应出现 `kimi-for-coding`
+- `POST /v1/responses` 并指定 `model: "kimi-for-coding"` 应返回成功响应
+- 如果客户端直接调用 `POST /v1/chat/completions` 且指定 `model: "kimi-for-coding"`，也应返回成功响应
+
+说明：
+
+- `Kimi Code` 实测可用的是 Anthropic `messages` 接口；网关会把外部的 OpenAI `responses` / `chat/completions` 请求自动兼容到 `messages`
+- 因此推荐显式配置 `anthropic_base_url`，避免把这种能力隐含在特定上游实现里
+
+如果你希望 `kimi-cli` 也通过本地网关访问这个上游，可以把它配置为 `openai_responses` provider，并将 `base_url` 指向 `http://127.0.0.1:18080/v1`。
 
 ### Retry and intercept
 
@@ -295,18 +420,18 @@ bridge:
 - 现在的钱到底花在哪个模型上
 - 成本高是因为 token 真的多，还是因为缓存命中被路由打散了
 
-## Claude compatibility
+## Compatibility
 
-一些 Claude 上游只支持 `chat/completions` 或 `messages`，不支持 OpenAI `Responses API`。
+一些上游只支持 `chat/completions` 或 `messages`，不支持 OpenAI `Responses API`。典型例子包括部分 Claude 上游，以及当前的 `Kimi Code` upstream。
 
 网关内置了一层兼容逻辑：
 
 - 客户端仍然可以打 `/v1/responses`
-- 当 Claude 上游返回 `not implemented` / `unsupported` 时
-- 网关自动回退到 `chat/completions`
-- 再把结果包装回 `response` 对象或简化的 SSE 事件
+- 当上游返回 `not implemented` / `unsupported` / `not found` 等不兼容信号时
+- 网关会按上游能力自动回退到 `chat/completions` 或 `messages`
+- 再把结果包装回 OpenAI 风格的 `response` 对象、`chat.completion` 或简化 SSE 事件
 
-这让使用 OpenAI 风格 SDK 的客户端也能接 Claude。
+这让使用 OpenAI 风格 SDK 的客户端也能继续接 Claude 或 Kimi 这类非原生 OpenAI 上游。
 
 ## Persistence
 
@@ -332,7 +457,20 @@ bridge:
 .\scripts\invoke-responses-burst.ps1 -Concurrency 20 -RequestsPerWorker 1 -LaunchIntervalMs 200
 ```
 
-如果你要把它装成 Windows 服务，请以管理员 PowerShell 运行安装/卸载脚本。
+如果你要把它装成 Windows 服务，推荐直接使用 CLI 命令：
+
+```powershell
+# 安装为 Windows 服务（需要管理员权限）
+gateway.exe install
+
+# 管理服务
+gateway.exe service-start
+gateway.exe service-stop
+gateway.exe service-status
+
+# 卸载服务
+gateway.exe uninstall
+```
 
 ## Development
 
@@ -343,12 +481,36 @@ gofmt -w .\cmd\gateway\main.go .\internal\**\*.go
 go test ./...
 ```
 
+### Test Coverage
+
+项目当前测试覆盖率：
+
+- `internal/cli`: 80%+ ✅
+- `internal/config`: 80%+ ✅
+- `internal/router`: 80%+ ✅
+
 ### Useful checks
 
 ```powershell
+# CLI health check
+gateway.exe health
+
+# Or curl
 curl.exe http://127.0.0.1:18080/-/health
 curl.exe http://127.0.0.1:18080/v1/models
 ```
+
+## Migration from PowerShell Scripts
+
+如果你之前使用 PowerShell 脚本，可以迁移到新的 CLI 命令：
+
+| 旧脚本 | 新 CLI 命令 |
+|--------|-------------|
+| `install-service.ps1` | `gateway install` |
+| `uninstall-service.ps1` | `gateway uninstall` |
+| `start-gateway.ps1` | `gateway start` |
+| `quick-verify.ps1` | `gateway validate` |
+| `restart-gateway.ps1` | `gateway service-stop && gateway service-start` |
 
 ## Public repo notes
 
@@ -365,4 +527,4 @@ curl.exe http://127.0.0.1:18080/v1/models
 
 ## License
 
-当前仓库未附带许可证；如果你要公开分发，建议补一个明确的 LICENSE 文件。
+[MIT](LICENSE)

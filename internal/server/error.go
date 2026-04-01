@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
-	"strings"
 )
 
 // IsProduction 检查是否在生产环境
@@ -16,8 +15,8 @@ func IsProduction() bool {
 
 // APIError 标准化的 API 错误响应
 type APIError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
 	RequestID string `json:"request_id,omitempty"`
 }
 
@@ -141,7 +140,7 @@ func SanitizeError(err error) string {
 }
 
 func containsCaseInsensitive(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || 
+	return len(s) >= len(substr) && (s == substr ||
 		len(s) > len(substr) && containsIgnoreCase(s, substr))
 }
 
