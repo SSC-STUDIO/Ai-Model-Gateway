@@ -1,13 +1,5 @@
 package server
 
-import (
-	"net/http"
-	"strings"
-
-	"ai-model-gateway/internal/config"
-	"ai-model-gateway/internal/router"
-)
-
 const adminIconSVG = `<svg width="256" height="256" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg"><rect width="96" height="96" rx="24" fill="#0B0C0C"/><path d="M24 68V28H38L48 52L58 28H72V68H62V46L54 66H42L34 46V68H24Z" fill="#7EE7D6"/><circle cx="73" cy="24" r="8" fill="#F1B866"/></svg>`
 
 const adminHTMLTemplate = `<!doctype html>
@@ -5200,9 +5192,7 @@ const adminHTMLTemplate = `<!doctype html>
     /* Load and render charts */
     const loadCharts = async () => {
       try {
-        const res = await fetch('/-/admin/timeseries?hours=' + chartState.hours + '&bucket=' + chartState.bucket, { cache: 'no-store' });
-        if (!res.ok) return;
-        const ts = await res.json();
+        const ts = await apiJSON('/-/admin/timeseries?hours=' + chartState.hours + '&bucket=' + chartState.bucket, { cache: 'no-store' });
         const buckets = ts.buckets || [];
         latestBuckets = buckets;
         const byUp = ts.by_upstream || [];
@@ -5265,8 +5255,7 @@ const adminHTMLTemplate = `<!doctype html>
 
     async function load() {
       try {
-      const res = await fetch('/-/admin/data', { cache: 'no-store' });
-      const data = await res.json();
+      const data = await apiJSON('/-/admin/data', { cache: 'no-store' });
       const telemetry = data.telemetry || {};
       const summary = telemetry.summary || {};
       const perf = telemetry.performance || {};

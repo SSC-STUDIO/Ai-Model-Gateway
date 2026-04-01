@@ -263,3 +263,76 @@ func cookieToken(r *http.Request) string {
 func queryToken(r *http.Request) string {
 	return strings.TrimSpace(r.URL.Query().Get("token"))
 }
+
+// CORSConfig 存储 CORS 配置
+type CORSConfig struct {
+	AllowOrigins     []string
+	AllowMethods     []string
+	AllowHeaders     []string
+	AllowCredentials bool
+	MaxAge           int
+}
+
+// DefaultCORSConfig 返回默认 CORS 配置
+func DefaultCORSConfig() CORSConfig {
+	return CORSConfig{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID"},
+		AllowCredentials: true,
+		MaxAge:           86400,
+	}
+}
+
+// corsMiddleware 返回 CORS 中间件
+func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				origin = "*"
+			}
+
+			// 检查是否允许该来源
+			allowOrigin := "*"
+			if len(config.AllowOrigins) > 0 && config.AllowOrigins[0] != "*" {
+				for _, o := range config.AllowOrigins {
+					if o == origin {
+						allowOrigin = origin
+						break
+					}
+				}
+			} else {
+				allowOrigin = origin
+			}
+
+			w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+			w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowMethods, ", "))
+			w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowHeaders, ", "))
+			w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
+
+			if config.AllowCredentials {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+
+			// 处理预检请求
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// securityHeaders 添加安全响应头
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
+}

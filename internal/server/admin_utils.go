@@ -25,8 +25,8 @@ func adminHTMLLang(language string) string {
 	return "zh-CN"
 }
 
-// renderAdminHTML renders the admin HTML page with the given settings view flag and language
-func renderAdminHTML(settingsView bool, language string) string {
+// renderAdminHTML renders the admin HTML page with the given settings view flag, language and token
+func renderAdminHTML(settingsView bool, language string, queryToken string) string {
 	language = config.NormalizeAdminLanguage(language)
 	useChinese := language == config.AdminLanguageChinese
 	pick := func(zh, en string) string {
@@ -36,12 +36,18 @@ func renderAdminHTML(settingsView bool, language string) string {
 		return en
 	}
 	bodyClass := ""
+	ifNotEmpty := func(s, suffix string) string {
+		if s == "" {
+			return ""
+		}
+		return suffix
+	}
 	topnavLinks := strings.Join([]string{
 		`<a href="#performance" data-topnav-target="performance">` + pick("性能", "Performance") + `</a>`,
 		`<a href="#economics" data-topnav-target="economics">` + pick("成本", "Economics") + `</a>`,
 		`<a href="#upstreams-card" data-topnav-target="upstreams-card">` + pick("上游", "Upstreams") + `</a>`,
 		`<a href="#requests-card" data-topnav-target="requests-card">` + pick("请求", "Requests") + `</a>`,
-		`<a href="/admin/settings">` + pick("设置", "Settings") + `</a>`,
+		`<a href="/admin/settings` + ifNotEmpty(queryToken, "?token="+queryToken) + `">` + pick("设置", "Settings") + `</a>`,
 	}, "")
 	heroEyebrow := pick("AI 模型网关管理台", "AI Gateway Admin")
 	heroTitle := pick("运维、成本、吞吐。", "Ops, Cost, Throughput.")
@@ -54,7 +60,7 @@ func renderAdminHTML(settingsView bool, language string) string {
 	if settingsView {
 		bodyClass = "page-settings"
 		topnavLinks = strings.Join([]string{
-			`<a href="/admin">` + pick("总览", "Overview") + `</a>`,
+			`<a href="/admin` + ifNotEmpty(queryToken, "?token="+queryToken) + `">` + pick("总览", "Overview") + `</a>`,
 			`<a href="#cfg-health" data-topnav-target="cfg-health">` + pick("探活", "Health") + `</a>`,
 			`<a href="#cfg-bridge" data-topnav-target="cfg-bridge">` + pick("桥接", "Bridge") + `</a>`,
 			`<a href="#cfg-router" data-topnav-target="cfg-router">` + pick("路由", "Router") + `</a>`,
