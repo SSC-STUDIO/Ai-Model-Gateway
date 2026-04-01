@@ -71,9 +71,10 @@ func HandleError(w http.ResponseWriter, r *http.Request, statusCode int, errCode
 		}
 	}
 
-	// 记录详细错误到日志
+	// 记录详细错误到日志（使用安全的日志记录）
 	if err != nil {
-		log.Printf("[ERROR] request_id=%s code=%s status=%d error=%q", requestID, errCode, statusCode, err.Error())
+		safeErr := SanitizeLogValue(err.Error(), 1024)
+		log.Printf("[ERROR] request_id=%s code=%s status=%d error=%q", requestID, errCode, statusCode, safeErr)
 	}
 
 	ErrorResponse(w, statusCode, errCode, message, requestID)

@@ -48,16 +48,16 @@ func accessLog(next http.Handler) http.Handler {
 
 		next.ServeHTTP(recorder, r)
 
-		log.Printf(
-			"request_id=%s method=%s path=%s status=%d bytes=%d duration_ms=%d remote_addr=%q user_agent=%q",
+		// 使用安全的日志记录
+		SafeAccessLog(
 			observability.RequestIDFromContext(r.Context()),
 			r.Method,
 			r.URL.Path,
+			r.RemoteAddr,
+			r.UserAgent(),
 			recorder.status,
 			recorder.bytes,
 			time.Since(start).Milliseconds(),
-			r.RemoteAddr,
-			r.UserAgent(),
 		)
 	})
 }
