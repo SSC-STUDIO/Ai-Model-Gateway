@@ -82,27 +82,67 @@ func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Ha
 				return
 			}
 
+			// Audit logging for admin operations
+			requestID := observability.RequestIDFromContext(r.Context())
+			logAdminAccess(r, requestID, false, "")
+
 			if token := strings.TrimSpace(r.URL.Query().Get("token")); subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
 				http.SetCookie(w, &http.Cookie{
 					Name:     adminAuthCookie,
 					Value:    token,
 					Path:     "/",
 					HttpOnly: true,
-					SameSite: http.SameSiteLaxMode,
+					SameSite: http.SameSiteStrictMode,
+					Secure:   true,
+					MaxAge:   86400,
 				})
+				logAdminAccess(r, requestID, true, "query_token")
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 || subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
+			if subtle.ConstantTimeCompare([]byte(bearerToken(r)), []byte(expected)) == 1 {
+				logAdminAccess(r, requestID, true, "bearer_token")
 				next.ServeHTTP(w, r)
 				return
 			}
 
+			if subtle.ConstantTimeCompare([]byte(cookieToken(r)), []byte(expected)) == 1 {
+				logAdminAccess(r, requestID, true, "cookie_token")
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Failed authentication attempt - audit log
+			logAdminAccess(r, requestID, false, "failed")
 			w.Header().Set("WWW-Authenticate", `Bearer realm="aigw-admin"`)
 			http.Error(w, "admin authentication required", http.StatusUnauthorized)
 		})
 	}
+}
+
+// logAdminAccess logs admin access attempts for audit purposes
+func logAdminAccess(r *http.Request, requestID string, success bool, authMethod string) {
+	clientIP := extractClientIP(r)
+	method := r.Method
+	path := r.URL.Path
+	userAgent := r.UserAgent()
+	
+	status := "denied"
+	if success {
+		status = "granted"
+	}
+
+	log.Printf(
+		"[AUDIT] admin_access %s method=%s path=%s client_ip=%s user_agent=%q auth_method=%s request_id=%s",
+		status,
+		method,
+		path,
+		clientIP,
+		userAgent,
+		authMethod,
+		requestID,
+	)
 }
 
 func (r *responseRecorder) WriteHeader(statusCode int) {
@@ -155,6 +195,36 @@ func generateRequestID() string {
 		return hex.EncodeToString(buf[:])
 	}
 	return strconv.FormatUint(requestCounter.Add(1), 10)
+}
+
+// extractClientIP extracts the client IP address from the request
+func extractClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff != "" {
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			ip := strings.TrimSpace(ips[0])
+			if net.ParseIP(ip) != nil {
+				return ip
+			}
+		}
+	}
+
+	// Check X-Real-IP header
+	xri := r.Header.Get("X-Real-IP")
+	if xri != "" {
+		if net.ParseIP(xri) != nil {
+			return xri
+		}
+	}
+
+	// Use RemoteAddr
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func bearerToken(r *http.Request) string {
