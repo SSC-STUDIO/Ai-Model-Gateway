@@ -203,3 +203,27 @@ func isAPIEndpoint(path string) bool {
 	}
 	return false
 }
+
+// adminRateLimitMiddleware 对 admin 端点应用更严格的速率限制
+func adminRateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 只对 admin 端点应用
+			if !strings.HasPrefix(r.URL.Path, "/admin") && !strings.HasPrefix(r.URL.Path, "/-/admin/") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			ip := extractClientIP(r)
+
+			// 对 admin 端点使用更严格的限制
+			if !rl.GetLimiter(ip).AllowN(time.Now(), 1) {
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, `{"error":"admin endpoint rate limit exceeded","code":"ADMIN_RATE_LIMITED"}`, http.StatusTooManyRequests)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}

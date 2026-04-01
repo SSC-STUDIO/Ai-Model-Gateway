@@ -183,6 +183,18 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	rateLimiter := NewRateLimiter(DefaultRateLimitConfig())
 	r.Use(RateLimitMiddleware(rateLimiter))
 
+	// 初始化 admin 端点专用的严格速率限制器
+	// 防止暴力破解 admin 认证
+	adminRateLimiter := NewRateLimiter(RateLimitConfig{
+		Enabled:      true,
+		Requests:     10,
+		Window:       time.Minute,
+		Burst:        5,
+		LoginLimit:   5,
+		APIPathLimit: 10,
+	})
+	r.Use(adminRateLimitMiddleware(adminRateLimiter))
+
 	// 初始化会话管理器
 	sessionManager := NewSessionManager(DefaultSessionConfig())
 	r.Use(SessionMiddleware(sessionManager))
