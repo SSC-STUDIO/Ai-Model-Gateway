@@ -79,6 +79,11 @@ func (s *ConfigStore) RollbackVersion(versionID string) (config.Config, error) {
 	if s.path == "" {
 		return config.Config{}, errors.New("config path is not set")
 	}
+	// 验证 versionID 不包含路径遍历字符
+	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|` ) {
+		return config.Config{}, errors.New("invalid version ID")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -139,6 +144,11 @@ func (s *ConfigStore) ReadVersionFile(versionID string) (ConfigVersion, []byte, 
 	if s.path == "" {
 		return ConfigVersion{}, nil, errors.New("config path is not set")
 	}
+	// 验证 versionID 不包含路径遍历字符
+	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|` ) {
+		return ConfigVersion{}, nil, errors.New("invalid version ID")
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

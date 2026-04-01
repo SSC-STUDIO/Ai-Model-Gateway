@@ -434,3 +434,16 @@ func defaultRetryableKeywords() []string {
 		"service unavailable",
 	}
 }
+
+// ValidateConfig validates the configuration for security issues
+func ValidateConfig(cfg *Config) error {
+	if cfg.Admin.Enabled {
+		if cfg.Admin.AuthToken == "" || cfg.Admin.AuthToken == "change-me-admin-token" {
+			return fmt.Errorf("admin auth_token must be set to a secure value (not default)")
+		}
+		if len(cfg.Admin.AuthToken) < 32 {
+			return fmt.Errorf("admin auth_token must be at least 32 characters")
+		}
+	}
+	return nil
+}

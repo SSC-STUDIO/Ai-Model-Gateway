@@ -57,16 +57,16 @@ func accessLog(next http.Handler) http.Handler {
 
 		next.ServeHTTP(recorder, r)
 
-		log.Printf(
-			"request_id=%s method=%s path=%s status=%d bytes=%d duration_ms=%d remote_addr=%q user_agent=%q",
+		// 使用安全的日志记录
+		SafeAccessLog(
 			observability.RequestIDFromContext(r.Context()),
 			r.Method,
 			r.URL.Path,
+			r.RemoteAddr,
+			r.UserAgent(),
 			recorder.status,
 			recorder.bytes,
 			time.Since(start).Milliseconds(),
-			r.RemoteAddr,
-			r.UserAgent(),
 		)
 	})
 }
@@ -105,6 +105,30 @@ func requireAdminAuth(getConfig func() config.Config) func(http.Handler) http.Ha
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// logAdminAccess logs admin access attempts for audit purposes
+func logAdminAccess(r *http.Request, requestID string, success bool, authMethod string) {
+	clientIP := extractClientIP(r)
+	method := r.Method
+	path := r.URL.Path
+	userAgent := r.UserAgent()
+	
+	status := "denied"
+	if success {
+		status = "granted"
+	}
+
+	log.Printf(
+		"[AUDIT] admin_access %s method=%s path=%s client_ip=%s user_agent=%q auth_method=%s request_id=%s",
+		status,
+		method,
+		path,
+		clientIP,
+		userAgent,
+		authMethod,
+		requestID,
+	)
 }
 
 func (r *responseRecorder) WriteHeader(statusCode int) {

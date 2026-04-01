@@ -19,8 +19,8 @@ health:
   timeout_ms: 2000
   path: /v1/models
 admin:
-  enabled: true
-  auth_token: change-me-admin-token
+  enabled: false  # 默认禁用
+  auth_token: ""  # 必填，无默认值 - 必须设置为至少32字符的安全值
   language: zh
 telemetry:
   sqlite_path: data/telemetry.db

@@ -16,6 +16,20 @@ import (
 	"ai-model-gateway/internal/telemetry"
 )
 
+// maxBodySizeKey 用于在上下文中存储最大请求体大小
+type maxBodySizeKey struct{}
+
+// withRequestBodyLimit 包装 handler 添加请求体大小限制
+func withRequestBodyLimit(h http.Handler, maxBytes int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 设置请求体的最大读取大小
+		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+		// 将限制添加到上下文
+		ctx := context.WithValue(r.Context(), maxBodySizeKey{}, maxBytes)
+		h.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func Run(ctx context.Context, configPath string) error {
 	cfg, err := config.LoadFromFile(configPath)
 	if err != nil {
@@ -67,6 +81,9 @@ func Run(ctx context.Context, configPath string) error {
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
+
+	// 包装 handler 添加请求体大小限制
+	srv.Handler = withRequestBodyLimit(srv.Handler, 100<<20) // 100 MB
 
 	errCh := make(chan error, 1)
 	go func() {

@@ -26,9 +26,10 @@ import (
 
 // Handler handles HTTP proxy requests to upstream AI model providers.
 type Handler struct {
-	Manager *router.Manager
-	Stats   *telemetry.Store
-	Client  *http.Client
+	Manager     *router.Manager
+	Stats       *telemetry.Store
+	Client      *http.Client
+	ssrfChecker *SSRFChecker
 }
 
 // forwardOptions configures how a request should be forwarded.
@@ -122,9 +123,10 @@ func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
 		ExpectContinueTimeout: time.Second,
 	}
 	return &Handler{
-		Manager: manager,
-		Stats:   stats,
-		Client:  &http.Client{Transport: transport},
+		Manager:     manager,
+		Stats:       stats,
+		Client:      &http.Client{Transport: transport},
+		ssrfChecker: NewSSRFChecker(),
 	}
 }
 
@@ -666,6 +668,14 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 		timeout = 30 * time.Second
 	}
 
+	// Validate upstream URL to prevent SSRF attacks
+	targetURL := joinURL(upstream.BaseURL, src.URL.Path)
+	if h.ssrfChecker != nil {
+		if err := h.ssrfChecker.ValidateURL(targetURL); err != nil {
+			return nil, 0, fmt.Errorf("SSRF validation failed: %w", err)
+		}
+	}
+
 	ctx, cancel := h.upstreamRequestContext(src.Context(), upstream.Name)
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var timeoutCancel context.CancelFunc
@@ -673,7 +683,7 @@ func (h *Handler) do(src *http.Request, body []byte, contentType string, upstrea
 		cancel = combineCancel(cancel, timeoutCancel)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, src.Method, joinURL(upstream.BaseURL, src.URL.Path), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, src.Method, targetURL, bytes.NewReader(body))
 	if err != nil {
 		cancel()
 		return nil, 0, err
@@ -722,6 +732,14 @@ func (h *Handler) doAnthropicMessages(src *http.Request, body []byte, upstream c
 	timeout := time.Duration(upstream.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 30 * time.Second
+	}
+
+	// Validate upstream URL to prevent SSRF attacks
+	targetURL := joinURL(upstream.BaseURL, "/v1/messages")
+	if h.ssrfChecker != nil {
+		if err := h.ssrfChecker.ValidateURL(targetURL); err != nil {
+			return nil, 0, fmt.Errorf("SSRF validation failed: %w", err)
+		}
 	}
 
 	ctx, cancel := h.upstreamRequestContext(src.Context(), upstream.Name)

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -21,6 +23,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"gopkg.in/yaml.v3"
 )
+
+// ssrfChecker is a package-level SSRF checker for validating URLs
+var ssrfChecker = proxy.NewSSRFChecker()
 
 type ModelItem struct {
 	ID      string `json:"id"`
@@ -174,6 +179,33 @@ type adminRuntimeView struct {
 
 func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *telemetry.PricingCatalog) http.Handler {
 	r := chi.NewRouter()
+
+	// 添加 panic 恢复中间件（最先添加，最后执行）
+	r.Use(RecoveryMiddleware)
+
+	// 初始化速率限制器
+	rateLimiter := NewRateLimiter(DefaultRateLimitConfig())
+	r.Use(RateLimitMiddleware(rateLimiter))
+
+	// 初始化 admin 端点专用的严格速率限制器
+	// 防止暴力破解 admin 认证
+	adminRateLimiter := NewRateLimiter(RateLimitConfig{
+		Enabled:      true,
+		Requests:     10,
+		Window:       time.Minute,
+		Burst:        5,
+		LoginLimit:   5,
+		APIPathLimit: 10,
+	})
+	r.Use(adminRateLimitMiddleware(adminRateLimiter))
+
+	// 初始化会话管理器
+	sessionManager := NewSessionManager(DefaultSessionConfig())
+	r.Use(SessionMiddleware(sessionManager))
+
+	// CORS 中间件
+	r.Use(corsMiddleware(DefaultCORSConfig()))
+
 	r.Use(securityHeaders)
 	r.Use(withRequestID)
 	r.Use(accessLog)
@@ -224,6 +256,11 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 			"upstreams":        manager.Snapshot(),
 		})
 	})
+
+	// 会话管理端点
+	r.Post("/-/auth/logout", LogoutHandler(sessionManager))
+	r.Post("/-/auth/refresh", RefreshSessionHandler(sessionManager))
+
 	r.Get("/-/admin/data", func(w http.ResponseWriter, r *http.Request) {
 		adminDataCache.mu.Lock()
 		deadline := time.Now().Add(3 * time.Second)
@@ -796,6 +833,19 @@ func probeUpstream(view configViewUpstream, healthCfg config.HealthConfig) upstr
 		path = "/v1/models"
 	}
 	targetURL := strings.TrimRight(upstream.BaseURL, "/") + "/" + strings.TrimLeft(path, "/")
+
+	// Validate URL to prevent SSRF attacks
+	if ssrfChecker != nil {
+		if err := ssrfChecker.ValidateURL(targetURL); err != nil {
+			return upstreamProbeResponse{
+				OK:        false,
+				TargetURL: targetURL,
+				Error:     fmt.Sprintf("SSRF validation failed: %v", err),
+				CheckedAt: time.Now().Format(time.RFC3339),
+			}
+		}
+	}
+
 	timeoutMs := upstream.TimeoutMs
 	if timeoutMs <= 0 {
 		timeoutMs = healthCfg.TimeoutMs
@@ -889,6 +939,10 @@ func rollbackConfigVersion(store interface {
 	Rollback() (config.Config, error)
 	RollbackVersion(string) (config.Config, error)
 }, versionID string) (config.Config, error) {
+	// 验证 versionID 不包含路径遍历字符
+	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|` ) {
+		return config.Config{}, errors.New("invalid version ID")
+	}
 	if strings.TrimSpace(versionID) == "" {
 		return store.Rollback()
 	}

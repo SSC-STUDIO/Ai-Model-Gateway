@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,31 @@ var sqlIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
 func validSQLIdentifier(name string) bool {
 	return sqlIdentifierRe.MatchString(name)
+}
+
+// validColumnType 验证 SQL 列类型是否在白名单中
+func validColumnType(columnType string) bool {
+	allowedTypes := []string{
+		"TEXT",
+		"INTEGER",
+		"REAL",
+		"BLOB",
+		"NUMERIC",
+		"TEXT NOT NULL",
+		"INTEGER NOT NULL",
+		"INTEGER NOT NULL DEFAULT 0",
+		"TEXT NOT NULL DEFAULT ''",
+	}
+
+	// 清理输入
+	columnType = strings.ToUpper(strings.TrimSpace(columnType))
+
+	for _, allowed := range allowedTypes {
+		if columnType == strings.ToUpper(allowed) {
+			return true
+		}
+	}
+	return false
 }
 
 type Usage struct {
@@ -808,12 +834,21 @@ func parseTime(value string) time.Time {
 }
 
 func (s *Store) ensureColumn(table string, column string, columnType string) error {
-	if !validSQLIdentifier(table) || !validSQLIdentifier(column) {
-		return nil
+	// 严格验证 SQL 标识符，防止 SQL 注入
+	if !validSQLIdentifier(table) {
+		return fmt.Errorf("invalid table name: %q", table)
 	}
-	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if !validSQLIdentifier(column) {
+		return fmt.Errorf("invalid column name: %q", column)
+	}
+	// 验证列类型（只允许白名单中的类型）
+	if !validColumnType(columnType) {
+		return fmt.Errorf("invalid column type: %q", columnType)
+	}
+
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info(%q)`, table))
 	if err != nil {
-		return fmt.Errorf("inspect telemetry table %s: %w", table, err)
+		return fmt.Errorf("inspect telemetry table %q: %w", table, err)
 	}
 	defer rows.Close()
 
@@ -827,18 +862,19 @@ func (s *Store) ensureColumn(table string, column string, columnType string) err
 			primaryKey int
 		)
 		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultVal, &primaryKey); err != nil {
-			return fmt.Errorf("scan telemetry table info %s: %w", table, err)
+			return fmt.Errorf("scan telemetry table info %q: %w", table, err)
 		}
 		if name == column {
 			return nil
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate telemetry table info %s: %w", table, err)
+		return fmt.Errorf("iterate telemetry table info %q: %w", table, err)
 	}
 
-	if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, columnType)); err != nil {
-		return fmt.Errorf("add telemetry column %s.%s: %w", table, column, err)
+	// 使用 %q 而不是 %s 来确保标识符被正确转义
+	if _, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE %q ADD COLUMN %q %s`, table, column, columnType)); err != nil {
+		return fmt.Errorf("add telemetry column %q.%q: %w", table, column, err)
 	}
 	return nil
 }
