@@ -787,6 +787,10 @@ func rollbackConfigVersion(store interface {
 	Rollback() (config.Config, error)
 	RollbackVersion(string) (config.Config, error)
 }, versionID string) (config.Config, error) {
+	// 验证 versionID 不包含路径遍历字符
+	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|` ) {
+		return config.Config{}, errors.New("invalid version ID")
+	}
 	if strings.TrimSpace(versionID) == "" {
 		return store.Rollback()
 	}
