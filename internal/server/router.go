@@ -171,6 +171,9 @@ type adminRuntimeView struct {
 func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *telemetry.PricingCatalog) http.Handler {
 	r := chi.NewRouter()
 
+	// 添加 panic 恢复中间件（最先添加，最后执行）
+	r.Use(RecoveryMiddleware)
+
 	// 初始化速率限制器
 	rateLimiter := NewRateLimiter(DefaultRateLimitConfig())
 	r.Use(RateLimitMiddleware(rateLimiter))
