@@ -10,10 +10,10 @@ import (
 var (
 	// 控制字符正则（除了 \t 和 \n）
 	controlCharsRe = regexp.MustCompile(`[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]`)
-	
+
 	// CRLF 字符
 	crlfRe = regexp.MustCompile(`[\r\n]`)
-	
+
 	// 日志注入尝试检测
 	logInjectionRe = regexp.MustCompile(`(?i)(?:password|secret|token|key|credential|api_key|apikey|auth_token|access_token|refresh_token|bearer\s+[a-z0-9])`)
 )
@@ -23,23 +23,23 @@ func SanitizeLogValue(value string, maxLength int) string {
 	if maxLength <= 0 {
 		maxLength = 1024
 	}
-	
+
 	// 截断过长的值
 	if len(value) > maxLength {
 		value = value[:maxLength] + "[truncated]"
 	}
-	
+
 	// 替换 CRLF 字符防止日志注入
 	value = crlfRe.ReplaceAllString(value, " ")
-	
+
 	// 移除控制字符
 	value = controlCharsRe.ReplaceAllString(value, "")
-	
+
 	// 检测并标记敏感信息
 	if logInjectionRe.MatchString(value) {
 		return "[REDACTED: potential sensitive data]"
 	}
-	
+
 	return value
 }
 
@@ -80,7 +80,7 @@ func SafeAccessLog(requestID, method, path, remoteAddr, userAgent string, status
 	safeRemoteAddr := SanitizeLogValue(remoteAddr, 256)
 	safeRequestID := SanitizeLogValue(requestID, 64)
 	safeMethod := SanitizeLogValue(method, 16)
-	
+
 	log.Printf(
 		"request_id=%q method=%q path=%q status=%d bytes=%d duration_ms=%d remote_addr=%q user_agent=%q",
 		safeRequestID,
@@ -104,7 +104,7 @@ func RedactSensitiveHeaders(headers map[string][]string) map[string]string {
 		"proxy-authorization",
 		"set-cookie",
 	}
-	
+
 	result := make(map[string]string)
 	for key, values := range headers {
 		lowerKey := strings.ToLower(key)
@@ -115,7 +115,7 @@ func RedactSensitiveHeaders(headers map[string][]string) map[string]string {
 				break
 			}
 		}
-		
+
 		if isSensitive {
 			result[key] = "[REDACTED]"
 		} else if len(values) > 0 {
@@ -135,7 +135,7 @@ func EscapeLogField(value string) string {
 		"\n": "\\n",
 		"\t": "\\t",
 	}
-	
+
 	for old, new := range replacements {
 		value = strings.ReplaceAll(value, old, new)
 	}

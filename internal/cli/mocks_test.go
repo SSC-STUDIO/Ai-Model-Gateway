@@ -40,8 +40,8 @@ func (m *MockServiceManager) Connect() (ServiceManagerConnection, error) {
 }
 
 type MockServiceManagerConnection struct {
-	DisconnectFunc   func() error
-	OpenServiceFunc  func(name string) (ServiceHandle, error)
+	DisconnectFunc    func() error
+	OpenServiceFunc   func(name string) (ServiceHandle, error)
 	CreateServiceFunc func(name, exepath string, config mgr.Config, args ...string) (ServiceHandle, error)
 }
 

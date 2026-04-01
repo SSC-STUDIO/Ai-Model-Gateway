@@ -339,7 +339,7 @@ func TestManagerPick_AllUpstreamsUnhealthy(t *testing.T) {
 	cfg.Normalize()
 
 	manager := NewManager(state.NewConfigStore(cfg))
-	
+
 	// Mark all upstreams as unhealthy
 	manager.ReportRequestFailure("alpha", time.Millisecond, 503, errors.New("down"), true, "status")
 	manager.ReportRequestFailure("beta", time.Millisecond, 503, errors.New("down"), true, "status")
@@ -719,14 +719,14 @@ func TestManagerStickyExpiration(t *testing.T) {
 
 	manager := NewManager(state.NewConfigStore(cfg))
 	manager.ReportRequestSuccess("alpha", time.Millisecond, 200)
-	
+
 	// First, verify sticky assignment works when not expired
 	manager.RememberSticky("key1", "alpha")
 	upstream, ok := manager.PickSticky("gpt-4", "key1", map[string]struct{}{})
 	if !ok || upstream.Name != "alpha" {
 		t.Error("expected sticky assignment to work before expiration")
 	}
-	
+
 	// Verify the assignment exists in the map
 	manager.mu.Lock()
 	_, exists := manager.sticky["key1"]
@@ -792,19 +792,19 @@ func TestManagerConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(3)
-		
+
 		// Concurrent picks
 		go func() {
 			defer wg.Done()
 			manager.Pick("gpt-4", map[string]struct{}{})
 		}()
-		
+
 		// Concurrent status reports
 		go func() {
 			defer wg.Done()
 			manager.ReportRequestSuccess("alpha", time.Millisecond, 200)
 		}()
-		
+
 		// Concurrent sticky operations
 		go func(i int) {
 			defer wg.Done()
@@ -829,7 +829,7 @@ func TestManagerWithMockHealthChecker(t *testing.T) {
 	cfg := config.Config{
 		Router: config.RouterConfig{Strategy: "round_robin"},
 		Health: config.HealthConfig{
-			Enabled:   true,
+			Enabled:     true,
 			IntervalSec: 1,
 		},
 		Upstreams: []config.Upstream{

@@ -17,7 +17,7 @@ import (
 // Test to cover more lines in service_windows.go
 func TestInstallServiceCreateError(t *testing.T) {
 	cli := New()
-	
+
 	// Create mock that returns nil on OpenService (not installed)
 	// but fails on CreateService
 	mockConn := &MockServiceManagerConnection{
@@ -28,17 +28,17 @@ func TestInstallServiceCreateError(t *testing.T) {
 			return nil, errors.New("create failed")
 		},
 	}
-	
+
 	mockManager := &MockServiceManager{
 		ConnectFunc: func() (ServiceManagerConnection, error) {
 			return mockConn, nil
 		},
 	}
-	
+
 	provider := NewServiceManagerProviderWithManager(mockManager)
-	
+
 	err := cli.installService(provider)
-	
+
 	if err == nil {
 		t.Error("expected error for create service failure")
 	}
@@ -50,7 +50,7 @@ func TestInstallServiceDisconnect(t *testing.T) {
 			return nil
 		},
 	}
-	
+
 	err := mockConn.Disconnect()
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -63,7 +63,7 @@ func TestServiceHandleClose(t *testing.T) {
 			return nil
 		},
 	}
-	
+
 	err := mockHandle.Close()
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -85,7 +85,7 @@ func TestServiceStateStringAllStates(t *testing.T) {
 		{svc.Paused, "Paused"},
 		{svc.State(12345), "Unknown(12345)"},
 	}
-	
+
 	for _, tc := range states {
 		got := serviceStateString(tc.state)
 		if got != tc.want {
@@ -117,14 +117,14 @@ func TestMockHTTPClientDo(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mock := &MockHTTPClient{DoFunc: tc.doFunc}
 			req, _ := http.NewRequest("GET", "http://localhost", nil)
-			
+
 			resp, err := mock.Do(req)
-			
+
 			if tc.wantErr {
 				if err == nil {
 					t.Error("expected error")
@@ -172,7 +172,7 @@ func TestHealthCheckerPartialData(t *testing.T) {
 			jsonData: `{}`,
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockClient := &MockHTTPClient{
@@ -184,10 +184,10 @@ func TestHealthCheckerPartialData(t *testing.T) {
 					}, nil
 				},
 			}
-			
+
 			hc := NewHealthCheckerWithClient(mockClient)
 			err := hc.Check([]string{})
-			
+
 			if err != nil {
 				t.Errorf("expected no error, got %v", err)
 			}
@@ -204,7 +204,7 @@ func TestHealthCheckerEmptyFields(t *testing.T) {
 		"available_models": [],
 		"upstreams": {}
 	}`
-	
+
 	mockClient := &MockHTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -214,10 +214,10 @@ func TestHealthCheckerEmptyFields(t *testing.T) {
 			}, nil
 		},
 	}
-	
+
 	hc := NewHealthCheckerWithClient(mockClient)
 	err := hc.Check([]string{})
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -246,11 +246,11 @@ func TestCLIDifferentConfigPaths(t *testing.T) {
 			configPath: "../config/config.yaml",
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cli := NewWithOptions(tc.configPath, func(int) {})
-			
+
 			if cli.GetConfigPath() != tc.configPath {
 				t.Errorf("expected config path '%s', got '%s'", tc.configPath, cli.GetConfigPath())
 			}
@@ -261,7 +261,7 @@ func TestCLIDifferentConfigPaths(t *testing.T) {
 // Test commands are properly initialized
 func TestCommandInitialization(t *testing.T) {
 	cli := New()
-	
+
 	commands := []struct {
 		name     string
 		hasFlags bool
@@ -276,22 +276,22 @@ func TestCommandInitialization(t *testing.T) {
 		{"service-stop", false},
 		{"service-status", false},
 	}
-	
+
 	for _, tc := range commands {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd, ok := cli.commands[tc.name]
 			if !ok {
 				t.Fatalf("command '%s' not found", tc.name)
 			}
-			
+
 			if cmd.Name != tc.name {
 				t.Errorf("expected name '%s', got '%s'", tc.name, cmd.Name)
 			}
-			
+
 			if tc.hasFlags && cmd.Flags == nil {
 				t.Error("expected flags to be set")
 			}
-			
+
 			if cmd.Run == nil {
 				t.Error("expected Run to be set")
 			}
@@ -306,18 +306,18 @@ func TestMockAppRunner(t *testing.T) {
 			return nil
 		},
 	}
-	
+
 	ctx := context.Background()
 	err := runner.Run(ctx, "/test/config.yaml")
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
-	
+
 	if !runner.Called {
 		t.Error("expected runner to be called")
 	}
-	
+
 	if runner.Path != "/test/config.yaml" {
 		t.Errorf("expected path '/test/config.yaml', got '%s'", runner.Path)
 	}
@@ -326,7 +326,7 @@ func TestMockAppRunner(t *testing.T) {
 // Test for error cases in flag parsing
 func TestCLIRunFlagParseError(t *testing.T) {
 	cli := New()
-	
+
 	// Create a command with invalid flag
 	cmd := &Command{
 		Name:        "badflag",
@@ -335,9 +335,9 @@ func TestCLIRunFlagParseError(t *testing.T) {
 		Run:         func(args []string) error { return nil },
 	}
 	cli.Register(cmd)
-	
+
 	err := cli.Run([]string{"badflag", "--invalid-flag"})
-	
+
 	// This will fail because the flag is not defined, but it should not panic
 	if err == nil {
 		t.Error("expected error for invalid flag")
@@ -347,10 +347,10 @@ func TestCLIRunFlagParseError(t *testing.T) {
 // Test to cover ContextWithTimeout
 func TestContextWithTimeoutCancellation(t *testing.T) {
 	ctx, cancel := ContextWithTimeout(1 * time.Second)
-	
+
 	// Test that cancel function works
 	cancel()
-	
+
 	select {
 	case <-ctx.Done():
 		// Expected - context should be cancelled
@@ -367,7 +367,7 @@ func TestHealthCheckerTimeouts(t *testing.T) {
 		"10s",
 		"1m",
 	}
-	
+
 	for _, timeout := range timeouts {
 		t.Run(timeout, func(t *testing.T) {
 			mockClient := &MockHTTPClient{
@@ -379,10 +379,10 @@ func TestHealthCheckerTimeouts(t *testing.T) {
 					}, nil
 				},
 			}
-			
+
 			hc := NewHealthCheckerWithClient(mockClient)
 			err := hc.Check([]string{"-timeout", timeout})
-			
+
 			if err != nil {
 				t.Errorf("expected no error, got %v", err)
 			}

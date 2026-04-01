@@ -46,7 +46,7 @@ func TestHTTPHealthChecker_Check_Success(t *testing.T) {
 
 func TestHTTPHealthChecker_Check_WithAPIKey(t *testing.T) {
 	expectedToken := "test-api-key"
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		expectedHeader := "Bearer " + expectedToken
@@ -196,7 +196,7 @@ func TestHTTPHealthChecker_DefaultTimeout(t *testing.T) {
 
 func TestMockHealthChecker(t *testing.T) {
 	checker := NewMockHealthChecker()
-	
+
 	// Set up results
 	checker.SetResult("healthy", HealthResult{
 		Healthy:    true,
@@ -240,10 +240,10 @@ func TestMockHealthChecker(t *testing.T) {
 
 func TestMockHealthChecker_DefaultResult(t *testing.T) {
 	checker := NewMockHealthChecker()
-	
+
 	upstream := config.Upstream{Name: "test"}
 	result := checker.Check(context.Background(), upstream, config.HealthConfig{})
-	
+
 	if !result.Healthy {
 		t.Error("expected default healthy result")
 	}

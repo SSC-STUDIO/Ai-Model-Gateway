@@ -9,7 +9,7 @@ import (
 func TestNoopMetricsCollector(t *testing.T) {
 	// NoopMetricsCollector should do nothing without error
 	collector := &NoopMetricsCollector{}
-	
+
 	// All methods should be callable without panic
 	collector.RecordRouting("upstream1", "model1", true)
 	collector.RecordLatency("upstream1", 100*time.Millisecond)
@@ -19,7 +19,7 @@ func TestNoopMetricsCollector(t *testing.T) {
 
 func TestInMemoryMetricsCollector_RecordRouting(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordRouting("upstream1", "gpt-4", true)
 	collector.RecordRouting("upstream2", "gpt-3.5", false)
 	collector.RecordRouting("upstream1", "gpt-4", true)
@@ -48,7 +48,7 @@ func TestInMemoryMetricsCollector_RecordRouting(t *testing.T) {
 
 func TestInMemoryMetricsCollector_RecordLatency(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordLatency("upstream1", 100*time.Millisecond)
 	collector.RecordLatency("upstream1", 200*time.Millisecond)
 	collector.RecordLatency("upstream2", 50*time.Millisecond)
@@ -74,7 +74,7 @@ func TestInMemoryMetricsCollector_RecordLatency(t *testing.T) {
 
 func TestInMemoryMetricsCollector_RecordHealthStatus(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordHealthStatus("upstream1", true)
 	collector.RecordHealthStatus("upstream1", false)
 	collector.RecordHealthStatus("upstream2", true)
@@ -94,7 +94,7 @@ func TestInMemoryMetricsCollector_RecordHealthStatus(t *testing.T) {
 
 func TestInMemoryMetricsCollector_RecordRetry(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordRetry("upstream1", "timeout")
 	collector.RecordRetry("upstream1", "rate_limit")
 
@@ -113,7 +113,7 @@ func TestInMemoryMetricsCollector_RecordRetry(t *testing.T) {
 
 func TestInMemoryMetricsCollector_Reset(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordRouting("upstream1", "model1", true)
 	collector.RecordLatency("upstream1", 100*time.Millisecond)
 	collector.RecordHealthStatus("upstream1", true)
@@ -137,7 +137,7 @@ func TestInMemoryMetricsCollector_Reset(t *testing.T) {
 
 func TestInMemoryMetricsCollector_RoutingCount(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordRouting("upstream1", "model1", true)
 	collector.RecordRouting("upstream1", "model2", true)
 	collector.RecordRouting("upstream2", "model1", false)
@@ -155,7 +155,7 @@ func TestInMemoryMetricsCollector_RoutingCount(t *testing.T) {
 
 func TestInMemoryMetricsCollector_AverageLatency(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordLatency("upstream1", 100*time.Millisecond)
 	collector.RecordLatency("upstream1", 200*time.Millisecond)
 	collector.RecordLatency("upstream1", 300*time.Millisecond)
@@ -174,7 +174,7 @@ func TestInMemoryMetricsCollector_AverageLatency(t *testing.T) {
 
 func TestInMemoryMetricsCollector_Concurrency(t *testing.T) {
 	collector := NewInMemoryMetricsCollector()
-	
+
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
@@ -206,14 +206,14 @@ func TestInMemoryMetricsCollector_Concurrency(t *testing.T) {
 func TestInMemoryMetricsCollector_Timestamps(t *testing.T) {
 	before := time.Now()
 	collector := NewInMemoryMetricsCollector()
-	
+
 	collector.RecordRouting("upstream1", "model1", true)
-	
+
 	events := collector.GetRoutingEvents()
 	if len(events) != 1 {
 		t.Fatal("expected 1 event")
 	}
-	
+
 	after := time.Now()
 	if events[0].Timestamp.Before(before) {
 		t.Error("timestamp should not be before test start")

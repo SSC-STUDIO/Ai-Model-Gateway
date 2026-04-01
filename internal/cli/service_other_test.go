@@ -17,17 +17,17 @@ func TestNewServiceManagerProvider(t *testing.T) {
 
 func TestCmdServiceInstallNotSupported(t *testing.T) {
 	cli := New()
-	
+
 	err := cli.cmdServiceInstall([]string{})
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
-	
+
 	if !strings.Contains(err.Error(), "not supported") {
 		t.Errorf("expected 'not supported' error, got %v", err)
 	}
-	
+
 	if !strings.Contains(err.Error(), runtime.GOOS) {
 		t.Errorf("expected error to mention OS, got %v", err)
 	}
@@ -35,9 +35,9 @@ func TestCmdServiceInstallNotSupported(t *testing.T) {
 
 func TestCmdServiceUninstallNotSupported(t *testing.T) {
 	cli := New()
-	
+
 	err := cli.cmdServiceUninstall([]string{})
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
@@ -45,9 +45,9 @@ func TestCmdServiceUninstallNotSupported(t *testing.T) {
 
 func TestCmdServiceStartNotSupported(t *testing.T) {
 	cli := New()
-	
+
 	err := cli.cmdServiceStart([]string{})
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
@@ -55,9 +55,9 @@ func TestCmdServiceStartNotSupported(t *testing.T) {
 
 func TestCmdServiceStopNotSupported(t *testing.T) {
 	cli := New()
-	
+
 	err := cli.cmdServiceStop([]string{})
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
@@ -65,9 +65,9 @@ func TestCmdServiceStopNotSupported(t *testing.T) {
 
 func TestCmdServiceStatusNotSupported(t *testing.T) {
 	cli := New()
-	
+
 	err := cli.cmdServiceStatus([]string{})
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
@@ -76,13 +76,13 @@ func TestCmdServiceStatusNotSupported(t *testing.T) {
 func TestInstallServiceNotSupported(t *testing.T) {
 	cli := New()
 	provider := NewServiceManagerProvider()
-	
+
 	err := cli.installService(provider)
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
-	
+
 	if !strings.Contains(err.Error(), "not supported") {
 		t.Errorf("expected 'not supported' error, got %v", err)
 	}
@@ -91,9 +91,9 @@ func TestInstallServiceNotSupported(t *testing.T) {
 func TestUninstallServiceNotSupported(t *testing.T) {
 	cli := New()
 	provider := NewServiceManagerProvider()
-	
+
 	err := cli.uninstallService(provider)
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
@@ -102,9 +102,9 @@ func TestUninstallServiceNotSupported(t *testing.T) {
 func TestStartServiceNotSupported(t *testing.T) {
 	cli := New()
 	provider := NewServiceManagerProvider()
-	
+
 	err := cli.startService(provider)
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
@@ -113,9 +113,9 @@ func TestStartServiceNotSupported(t *testing.T) {
 func TestStopServiceNotSupported(t *testing.T) {
 	cli := New()
 	provider := NewServiceManagerProvider()
-	
+
 	err := cli.stopService(provider)
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}
@@ -124,9 +124,9 @@ func TestStopServiceNotSupported(t *testing.T) {
 func TestServiceStatusNotSupported(t *testing.T) {
 	cli := New()
 	provider := NewServiceManagerProvider()
-	
+
 	err := cli.serviceStatus(provider)
-	
+
 	if err == nil {
 		t.Error("expected error on non-Windows platform")
 	}

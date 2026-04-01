@@ -15,7 +15,7 @@ func TestRoundRobinStrategy_Name(t *testing.T) {
 
 func TestRoundRobinStrategy_Select(t *testing.T) {
 	strategy := &RoundRobinStrategy{}
-	
+
 	pool := []weightedUpstream{
 		{upstream: config.Upstream{Name: "a"}, weight: 1},
 		{upstream: config.Upstream{Name: "b"}, weight: 1},
@@ -37,7 +37,7 @@ func TestRoundRobinStrategy_Select(t *testing.T) {
 func TestRoundRobinStrategy_SelectEmptyPool(t *testing.T) {
 	strategy := &RoundRobinStrategy{}
 	pool := []weightedUpstream{}
-	
+
 	upstream, _ := strategy.Select(pool, 0)
 	if upstream.Name != "" {
 		t.Errorf("expected empty upstream for empty pool, got %s", upstream.Name)
@@ -46,7 +46,7 @@ func TestRoundRobinStrategy_SelectEmptyPool(t *testing.T) {
 
 func TestRoundRobinStrategy_CalculateWeight(t *testing.T) {
 	strategy := &RoundRobinStrategy{}
-	
+
 	// Round-robin always returns weight of 1 regardless of input
 	tests := []struct {
 		baseWeight int
@@ -76,7 +76,7 @@ func TestHealthWeightedStrategy_Name(t *testing.T) {
 
 func TestHealthWeightedStrategy_CalculateWeight(t *testing.T) {
 	strategy := &HealthWeightedStrategy{}
-	
+
 	tests := []struct {
 		name       string
 		baseWeight int
@@ -140,7 +140,7 @@ func TestWeightedRoundRobinStrategy_Name(t *testing.T) {
 
 func TestWeightedRoundRobinStrategy_CalculateWeight(t *testing.T) {
 	strategy := &WeightedRoundRobinStrategy{}
-	
+
 	tests := []struct {
 		baseWeight int
 		status     UpstreamStatus
@@ -148,8 +148,8 @@ func TestWeightedRoundRobinStrategy_CalculateWeight(t *testing.T) {
 	}{
 		{5, UpstreamStatus{Healthy: true}, 5},
 		{10, UpstreamStatus{Healthy: false, ConsecutiveFailures: 5}, 10}, // No health adjustment
-		{0, UpstreamStatus{}, 1}, // Minimum weight
-		{-5, UpstreamStatus{}, 1}, // Negative input clamped
+		{0, UpstreamStatus{}, 1},                                         // Minimum weight
+		{-5, UpstreamStatus{}, 1},                                        // Negative input clamped
 	}
 
 	for _, tt := range tests {
@@ -169,7 +169,7 @@ func TestSelectWeighted(t *testing.T) {
 	// With weights 3:1, the selection should be: heavy, heavy, heavy, light
 	expected := []string{"heavy", "heavy", "heavy", "light", "heavy", "heavy", "heavy", "light"}
 	cursor := 0
-	
+
 	for i, exp := range expected {
 		upstream, nextCursor := selectWeighted(pool, cursor)
 		if upstream.Name != exp {
@@ -181,7 +181,7 @@ func TestSelectWeighted(t *testing.T) {
 
 func TestSelectWeighted_EmptyPool(t *testing.T) {
 	pool := []weightedUpstream{}
-	
+
 	upstream, _ := selectWeighted(pool, 0)
 	if upstream.Name != "" {
 		t.Errorf("expected empty upstream for empty pool, got %s", upstream.Name)
@@ -203,14 +203,14 @@ func TestSelectWeighted_ZeroWeights(t *testing.T) {
 
 func TestStrategyRegistry(t *testing.T) {
 	registry := NewStrategyRegistry()
-	
+
 	// Test that all built-in strategies are registered
 	strategies := []string{
 		config.RouterStrategyRoundRobin,
 		config.RouterStrategyHealthWeightedRR,
 		"weighted_rr",
 	}
-	
+
 	for _, name := range strategies {
 		strategy := registry.Get(name)
 		if strategy == nil {
@@ -225,7 +225,7 @@ func TestStrategyRegistry(t *testing.T) {
 
 func TestStrategyRegistry_UnknownStrategy(t *testing.T) {
 	registry := NewStrategyRegistry()
-	
+
 	// Unknown strategy should default to health_weighted_rr
 	strategy := registry.Get("unknown_strategy")
 	if strategy.Name() != config.RouterStrategyHealthWeightedRR {
@@ -235,10 +235,10 @@ func TestStrategyRegistry_UnknownStrategy(t *testing.T) {
 
 func TestStrategyRegistry_Register(t *testing.T) {
 	registry := &StrategyRegistry{}
-	
+
 	customStrategy := &RoundRobinStrategy{}
 	registry.Register(customStrategy)
-	
+
 	retrieved := registry.Get(config.RouterStrategyRoundRobin)
 	if retrieved == nil {
 		t.Error("registered strategy not found")

@@ -387,13 +387,13 @@ func TestModelBridgeConfig_ShouldSkipUserAgent(t *testing.T) {
 		userAgent string
 		expected  bool
 	}{
-		{"", false},                         // empty UA - don't skip
-		{"Bot/1.0", true},                   // matches pattern
-		{"Bot/2.0/Special", true},           // matches wildcard
-		{"Crawler", true},                   // exact match
-		{"Mozilla/5.0", false},              // no match
-		{"  Bot/1.0  ", true},               // whitespace trimmed
-		{"DifferentBot/1.0", false},         // doesn't match
+		{"", false},                 // empty UA - don't skip
+		{"Bot/1.0", true},           // matches pattern
+		{"Bot/2.0/Special", true},   // matches wildcard
+		{"Crawler", true},           // exact match
+		{"Mozilla/5.0", false},      // no match
+		{"  Bot/1.0  ", true},       // whitespace trimmed
+		{"DifferentBot/1.0", false}, // doesn't match
 	}
 
 	for _, tt := range tests {

@@ -113,7 +113,7 @@ func logAdminAccess(r *http.Request, requestID string, success bool, authMethod 
 	method := r.Method
 	path := r.URL.Path
 	userAgent := r.UserAgent()
-	
+
 	status := "denied"
 	if success {
 		status = "granted"

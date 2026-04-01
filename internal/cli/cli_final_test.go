@@ -15,29 +15,29 @@ import (
 // Test for more service manager scenarios
 func TestStartServiceSuccess(t *testing.T) {
 	cli := New()
-	
+
 	mockHandle := &MockServiceHandle{
 		StartFunc: func(args ...string) error {
 			return nil
 		},
 	}
-	
+
 	mockConn := &MockServiceManagerConnection{
 		OpenServiceFunc: func(name string) (ServiceHandle, error) {
 			return mockHandle, nil
 		},
 	}
-	
+
 	mockManager := &MockServiceManager{
 		ConnectFunc: func() (ServiceManagerConnection, error) {
 			return mockConn, nil
 		},
 	}
-	
+
 	provider := NewServiceManagerProviderWithManager(mockManager)
-	
+
 	err := cli.startService(provider)
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -45,29 +45,29 @@ func TestStartServiceSuccess(t *testing.T) {
 
 func TestStopServiceSuccess(t *testing.T) {
 	cli := New()
-	
+
 	mockHandle := &MockServiceHandle{
 		ControlFunc: func(cmd svc.Cmd) (svc.Status, error) {
 			return svc.Status{State: svc.StopPending}, nil
 		},
 	}
-	
+
 	mockConn := &MockServiceManagerConnection{
 		OpenServiceFunc: func(name string) (ServiceHandle, error) {
 			return mockHandle, nil
 		},
 	}
-	
+
 	mockManager := &MockServiceManager{
 		ConnectFunc: func() (ServiceManagerConnection, error) {
 			return mockConn, nil
 		},
 	}
-	
+
 	provider := NewServiceManagerProviderWithManager(mockManager)
-	
+
 	err := cli.stopService(provider)
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -75,29 +75,29 @@ func TestStopServiceSuccess(t *testing.T) {
 
 func TestServiceStatusSuccess(t *testing.T) {
 	cli := New()
-	
+
 	mockHandle := &MockServiceHandle{
 		QueryFunc: func() (svc.Status, error) {
 			return svc.Status{State: svc.Running, ProcessId: 1234}, nil
 		},
 	}
-	
+
 	mockConn := &MockServiceManagerConnection{
 		OpenServiceFunc: func(name string) (ServiceHandle, error) {
 			return mockHandle, nil
 		},
 	}
-	
+
 	mockManager := &MockServiceManager{
 		ConnectFunc: func() (ServiceManagerConnection, error) {
 			return mockConn, nil
 		},
 	}
-	
+
 	provider := NewServiceManagerProviderWithManager(mockManager)
-	
+
 	err := cli.serviceStatus(provider)
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -111,7 +111,7 @@ func TestInstallServiceSuccess(t *testing.T) {
 
 func TestUninstallServiceSuccess(t *testing.T) {
 	cli := New()
-	
+
 	mockHandle := &MockServiceHandle{
 		QueryFunc: func() (svc.Status, error) {
 			return svc.Status{State: svc.Stopped}, nil
@@ -120,23 +120,23 @@ func TestUninstallServiceSuccess(t *testing.T) {
 			return nil
 		},
 	}
-	
+
 	mockConn := &MockServiceManagerConnection{
 		OpenServiceFunc: func(name string) (ServiceHandle, error) {
 			return mockHandle, nil
 		},
 	}
-	
+
 	mockManager := &MockServiceManager{
 		ConnectFunc: func() (ServiceManagerConnection, error) {
 			return mockConn, nil
 		},
 	}
-	
+
 	provider := NewServiceManagerProviderWithManager(mockManager)
-	
+
 	err := cli.uninstallService(provider)
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -151,7 +151,7 @@ func TestUninstallServiceWithStop(t *testing.T) {
 func TestValidateMinimalConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	
+
 	configContent := `
 listen: ":8080"
 upstreams:
@@ -164,12 +164,12 @@ upstreams:
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("failed to create test config: %v", err)
 	}
-	
+
 	cli := New()
 	cli.configPath = configPath
-	
+
 	err := cli.validateConfig([]string{})
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -179,7 +179,7 @@ upstreams:
 func TestStartCommandWithDaemonFlag(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	
+
 	configContent := `
 listen: ":8080"
 upstreams:
@@ -192,21 +192,21 @@ upstreams:
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("failed to create test config: %v", err)
 	}
-	
+
 	cli := New()
 	cli.configPath = configPath
-	
+
 	// Test that daemon flag is recognized
 	oldStderr := os.Stderr
 	_, w, _ := os.Pipe()
 	os.Stderr = w
-	
+
 	// This will fail because we don't have a real config loaded, but tests flag parsing
 	err := cli.Run([]string{"start", "-daemon"})
-	
+
 	w.Close()
 	os.Stderr = oldStderr
-	
+
 	// The error should be related to running the app, not flag parsing
 	// Note: This might pass or fail depending on the app runner
 	_ = err
@@ -215,23 +215,23 @@ upstreams:
 // Test for health command with flag parsing
 func TestHealthCommandFlags(t *testing.T) {
 	cli := New()
-	
+
 	healthCmd := cli.commands["health"]
 	if healthCmd == nil {
 		t.Fatal("health command not found")
 	}
-	
+
 	// Test that flags are properly configured
 	if healthCmd.Flags == nil {
 		t.Fatal("health command flags should not be nil")
 	}
-	
+
 	// Test parsing endpoint flag
 	err := healthCmd.Flags.Parse([]string{"-endpoint", "http://custom:8080/health"})
 	if err != nil {
 		t.Errorf("expected no error parsing flags, got %v", err)
 	}
-	
+
 	endpoint := healthCmd.Flags.Lookup("endpoint").Value.String()
 	if endpoint != "http://custom:8080/health" {
 		t.Errorf("expected endpoint 'http://custom:8080/health', got '%s'", endpoint)
@@ -241,18 +241,18 @@ func TestHealthCommandFlags(t *testing.T) {
 // Test for config command flags
 func TestConfigCommandFlags(t *testing.T) {
 	cli := New()
-	
+
 	configCmd := cli.commands["config"]
 	if configCmd == nil {
 		t.Fatal("config command not found")
 	}
-	
+
 	// Test reload flag
 	err := configCmd.Flags.Parse([]string{"-reload"})
 	if err != nil {
 		t.Errorf("expected no error parsing flags, got %v", err)
 	}
-	
+
 	reload := configCmd.Flags.Lookup("reload").Value.String()
 	if reload != "true" {
 		t.Errorf("expected reload 'true', got '%s'", reload)
@@ -276,14 +276,14 @@ func TestStartGatewayErrors(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cli := New()
 			cli.configPath = "test.yaml"
-			
+
 			err := cli.startGateway([]string{}, tc.runner, tc.statFunc)
-			
+
 			if tc.wantErr && err == nil {
 				t.Error("expected error")
 			}
@@ -297,7 +297,7 @@ func TestStartGatewayErrors(t *testing.T) {
 // Test for empty config path
 func TestEmptyConfigPath(t *testing.T) {
 	cli := NewWithOptions("", func(int) {})
-	
+
 	if cli.configPath != "configs/config.yaml" {
 		t.Errorf("expected default config path, got '%s'", cli.configPath)
 	}
@@ -323,10 +323,10 @@ func TestHealthCheckerRequestError(t *testing.T) {
 			}, nil
 		},
 	}
-	
+
 	hc := NewHealthCheckerWithClient(mockClient)
 	err := hc.Check([]string{"-endpoint", "http://localhost:8080/health"})
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -335,13 +335,13 @@ func TestHealthCheckerRequestError(t *testing.T) {
 // Test for MockOSExit
 func TestMockOSExit(t *testing.T) {
 	mockExit := &MockOSExit{}
-	
+
 	mockExit.Exit(1)
-	
+
 	if !mockExit.Called {
 		t.Error("expected Exit to be called")
 	}
-	
+
 	if mockExit.Code != 1 {
 		t.Errorf("expected code 1, got %d", mockExit.Code)
 	}
@@ -358,27 +358,27 @@ func TestMockFileInfo(t *testing.T) {
 		IsDirFunc:   func() bool { return false },
 		SysFunc:     func() interface{} { return nil },
 	}
-	
+
 	if info.Name() != "test.txt" {
 		t.Errorf("expected name 'test.txt', got '%s'", info.Name())
 	}
-	
+
 	if info.Size() != 100 {
 		t.Errorf("expected size 100, got %d", info.Size())
 	}
-	
+
 	if info.Mode() != 0644 {
 		t.Errorf("expected mode 0644, got %v", info.Mode())
 	}
-	
+
 	if !info.ModTime().Equal(now) {
 		t.Error("expected matching mod time")
 	}
-	
+
 	if info.IsDir() {
 		t.Error("expected not a directory")
 	}
-	
+
 	if info.Sys() != nil {
 		t.Error("expected nil sys")
 	}
@@ -388,39 +388,39 @@ func TestMockFileInfo(t *testing.T) {
 func TestServiceManagerDefaultMockBehavior(t *testing.T) {
 	// Test that default mocks return expected values
 	conn := &MockServiceManagerConnection{}
-	
+
 	handle, err := conn.OpenService("test")
 	if err == nil {
 		t.Error("expected error for default OpenService")
 	}
 	_ = handle
-	
+
 	// Skip CreateService test due to mgr.Config type requirements
 }
 
 func TestServiceHandleDefaultBehavior(t *testing.T) {
 	handle := &MockServiceHandle{}
-	
+
 	err := handle.Close()
 	if err != nil {
 		t.Errorf("expected no error for default Close, got %v", err)
 	}
-	
+
 	err = handle.Start()
 	if err != nil {
 		t.Errorf("expected no error for default Start, got %v", err)
 	}
-	
+
 	_, err = handle.Control(svc.Stop)
 	if err != nil {
 		t.Errorf("expected no error for default Control, got %v", err)
 	}
-	
+
 	_, err = handle.Query()
 	if err != nil {
 		t.Errorf("expected no error for default Query, got %v", err)
 	}
-	
+
 	err = handle.Delete()
 	if err != nil {
 		t.Errorf("expected no error for default Delete, got %v", err)
@@ -444,16 +444,16 @@ func TestNewDefaultHTTPClientVariations(t *testing.T) {
 		1 * time.Minute,
 		1 * time.Hour,
 	}
-	
+
 	for _, timeout := range timeouts {
 		client := NewDefaultHTTPClient(timeout)
-		
+
 		defaultClient, ok := client.(*DefaultHTTPClient)
 		if !ok {
 			t.Error("expected *DefaultHTTPClient")
 			continue
 		}
-		
+
 		if defaultClient.client == nil {
 			t.Error("expected non-nil http.Client")
 		}

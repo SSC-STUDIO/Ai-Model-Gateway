@@ -14,7 +14,7 @@ import (
 // Test for nil flag set handling
 func TestCLIRunWithNilFlags(t *testing.T) {
 	cli := New()
-	
+
 	// Register a command with nil flags
 	cmd := &Command{
 		Name:        "noflags",
@@ -25,9 +25,9 @@ func TestCLIRunWithNilFlags(t *testing.T) {
 		},
 	}
 	cli.Register(cmd)
-	
+
 	err := cli.Run([]string{"noflags", "arg1", "arg2"})
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -36,7 +36,7 @@ func TestCLIRunWithNilFlags(t *testing.T) {
 // Test for command that returns an error
 func TestCLIRunCommandReturnsError(t *testing.T) {
 	cli := New()
-	
+
 	expectedErr := errors.New("command failed")
 	cmd := &Command{
 		Name:        "failcmd",
@@ -46,9 +46,9 @@ func TestCLIRunCommandReturnsError(t *testing.T) {
 		},
 	}
 	cli.Register(cmd)
-	
+
 	err := cli.Run([]string{"failcmd"})
-	
+
 	if err != expectedErr {
 		t.Errorf("expected error '%v', got '%v'", expectedErr, err)
 	}
@@ -57,13 +57,13 @@ func TestCLIRunCommandReturnsError(t *testing.T) {
 // Test GetCommands returns a copy
 func TestGetCommandsIsCopy(t *testing.T) {
 	cli := New()
-	
+
 	originalCount := len(cli.commands)
 	commands := cli.GetCommands()
-	
+
 	// Modify the returned map
 	delete(commands, "start")
-	
+
 	// Original should be unchanged
 	if len(cli.commands) != originalCount {
 		t.Error("GetCommands should return a copy, not modify original")
@@ -77,7 +77,7 @@ func TestEmptyCommandName(t *testing.T) {
 		Description: "Empty name command",
 		Run:         func(args []string) error { return nil },
 	}
-	
+
 	if cmd.Name != "" {
 		t.Error("expected empty name")
 	}
@@ -86,24 +86,24 @@ func TestEmptyCommandName(t *testing.T) {
 // Test for multiple command registrations
 func TestMultipleRegister(t *testing.T) {
 	cli := New()
-	
+
 	// Register the same command multiple times
 	cmd := &Command{
 		Name:        "duplicate",
 		Description: "First registration",
 		Run:         func(args []string) error { return nil },
 	}
-	
+
 	cli.Register(cmd)
-	
+
 	cmd2 := &Command{
 		Name:        "duplicate",
 		Description: "Second registration",
 		Run:         func(args []string) error { return nil },
 	}
-	
+
 	cli.Register(cmd2)
-	
+
 	// Should have the second command
 	if cli.commands["duplicate"].Description != "Second registration" {
 		t.Error("expected second registration to overwrite first")
@@ -113,17 +113,17 @@ func TestMultipleRegister(t *testing.T) {
 // Test for config flag parsing
 func TestCLIRunWithConfigFlagOnly(t *testing.T) {
 	cli := New()
-	
+
 	// Test with only -config flag and no command
 	oldStderr := os.Stderr
 	_, w, _ := os.Pipe()
 	os.Stderr = w
-	
+
 	err := cli.Run([]string{"-config", "/test/config.yaml"})
-	
+
 	w.Close()
 	os.Stderr = oldStderr
-	
+
 	// Should print usage because no command provided
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -157,7 +157,7 @@ func TestHealthCheckerVariousJSON(t *testing.T) {
 			json: `{"status":"ok","error":null}`,
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockClient := &MockHTTPClient{
@@ -169,10 +169,10 @@ func TestHealthCheckerVariousJSON(t *testing.T) {
 					}, nil
 				},
 			}
-			
+
 			hc := NewHealthCheckerWithClient(mockClient)
 			err := hc.Check([]string{})
-			
+
 			if err != nil {
 				t.Errorf("expected no error, got %v", err)
 			}
@@ -188,7 +188,7 @@ func TestHealthCheckerEndpoints(t *testing.T) {
 		"http://127.0.0.1:9090/-/health",
 		"http://10.0.0.1:8080/api/health",
 	}
-	
+
 	for _, endpoint := range endpoints {
 		t.Run(endpoint, func(t *testing.T) {
 			capturedEndpoint := ""
@@ -202,14 +202,14 @@ func TestHealthCheckerEndpoints(t *testing.T) {
 					}, nil
 				},
 			}
-			
+
 			hc := NewHealthCheckerWithClient(mockClient)
 			err := hc.Check([]string{"-endpoint", endpoint})
-			
+
 			if err != nil {
 				t.Errorf("expected no error, got %v", err)
 			}
-			
+
 			if capturedEndpoint != endpoint {
 				t.Errorf("expected endpoint '%s', got '%s'", endpoint, capturedEndpoint)
 			}
@@ -224,9 +224,9 @@ func TestHealthCheckerLargeJSON(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		models = append(models, `"model-"`+string(rune('0'+i%10)))
 	}
-	
+
 	jsonData := `{"status":"ok","available_models":[` + strings.Join(models, ",") + `]}`
-	
+
 	mockClient := &MockHTTPClient{
 		DoFunc: func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
@@ -236,10 +236,10 @@ func TestHealthCheckerLargeJSON(t *testing.T) {
 			}, nil
 		},
 	}
-	
+
 	hc := NewHealthCheckerWithClient(mockClient)
 	err := hc.Check([]string{})
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -250,7 +250,7 @@ func TestPrintVersionWithEnvVar(t *testing.T) {
 	// Save original value
 	origVersion := os.Getenv("GATEWAY_VERSION")
 	defer os.Setenv("GATEWAY_VERSION", origVersion)
-	
+
 	tests := []struct {
 		name    string
 		version string
@@ -260,26 +260,26 @@ func TestPrintVersionWithEnvVar(t *testing.T) {
 		{"version 2.5.3", "2.5.3", "2.5.3"},
 		{"empty version", "", "dev"},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			os.Setenv("GATEWAY_VERSION", tc.version)
-			
+
 			cli := New()
-			
+
 			oldStdout := os.Stdout
 			r, w, _ := os.Pipe()
 			os.Stdout = w
-			
+
 			cli.printVersion()
-			
+
 			w.Close()
 			os.Stdout = oldStdout
-			
+
 			var buf bytes.Buffer
 			io.Copy(&buf, r)
 			output := buf.String()
-			
+
 			if !strings.Contains(output, tc.want) {
 				t.Errorf("expected output to contain '%s', got '%s'", tc.want, output)
 			}
@@ -290,23 +290,23 @@ func TestPrintVersionWithEnvVar(t *testing.T) {
 // Test CLI with very long config path
 func TestCLILongConfigPath(t *testing.T) {
 	cli := New()
-	
+
 	// Create a very long path
 	longPath := "/very/long/path" + strings.Repeat("/nested", 50) + "/config.yaml"
-	
+
 	oldStderr := os.Stderr
 	_, w, _ := os.Pipe()
 	os.Stderr = w
-	
+
 	err := cli.Run([]string{"-config", longPath, "help"})
-	
+
 	w.Close()
 	os.Stderr = oldStderr
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
-	
+
 	if cli.configPath != longPath {
 		t.Errorf("expected config path '%s', got '%s'", longPath, cli.configPath)
 	}
@@ -315,7 +315,7 @@ func TestCLILongConfigPath(t *testing.T) {
 // Test for command that panics
 func TestCommandPanic(t *testing.T) {
 	cli := New()
-	
+
 	cmd := &Command{
 		Name:        "paniccmd",
 		Description: "Command that panics",
@@ -324,14 +324,14 @@ func TestCommandPanic(t *testing.T) {
 		},
 	}
 	cli.Register(cmd)
-	
+
 	// This will panic - we need to recover
 	defer func() {
 		if r := recover(); r == nil {
 			t.Error("expected panic")
 		}
 	}()
-	
+
 	cli.Run([]string{"paniccmd"})
 }
 
@@ -353,20 +353,20 @@ func TestFlagParsingScenarios(t *testing.T) {
 			wantError: true, // validate doesn't take args but has config issue
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cli := New()
-			
+
 			oldStderr := os.Stderr
 			_, w, _ := os.Pipe()
 			os.Stderr = w
-			
+
 			err := cli.Run(tc.args)
-			
+
 			w.Close()
 			os.Stderr = oldStderr
-			
+
 			if tc.wantError && err == nil {
 				t.Error("expected error")
 			}
@@ -382,16 +382,16 @@ func TestDefaultHTTPClientTimeouts(t *testing.T) {
 		30 * time.Second,
 		1 * time.Minute,
 	}
-	
+
 	for _, timeout := range timeouts {
 		t.Run(timeout.String(), func(t *testing.T) {
 			client := NewDefaultHTTPClient(timeout)
-			
+
 			defaultClient, ok := client.(*DefaultHTTPClient)
 			if !ok {
 				t.Fatal("expected *DefaultHTTPClient")
 			}
-			
+
 			if defaultClient.client.Timeout != timeout {
 				t.Errorf("expected timeout %v, got %v", timeout, defaultClient.client.Timeout)
 			}
@@ -402,7 +402,7 @@ func TestDefaultHTTPClientTimeouts(t *testing.T) {
 // Test for nil HTTP client in health checker
 func TestHealthCheckerNilClient(t *testing.T) {
 	hc := NewHealthChecker()
-	
+
 	// client should be nil initially
 	if hc.client != nil {
 		t.Error("expected client to be nil")
@@ -417,7 +417,7 @@ func TestHealthCheckerEmptyRequest(t *testing.T) {
 			if req.Method != "GET" {
 				t.Errorf("expected GET method, got %s", req.Method)
 			}
-			
+
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(`{"status":"ok"}`)),
@@ -425,10 +425,10 @@ func TestHealthCheckerEmptyRequest(t *testing.T) {
 			}, nil
 		},
 	}
-	
+
 	hc := NewHealthCheckerWithClient(mockClient)
 	err := hc.Check([]string{})
-	
+
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
@@ -437,7 +437,7 @@ func TestHealthCheckerEmptyRequest(t *testing.T) {
 // Test command map access patterns
 func TestCommandMapAccess(t *testing.T) {
 	cli := New()
-	
+
 	// Test accessing all commands
 	for name, cmd := range cli.commands {
 		if cmd.Name != name {
@@ -465,7 +465,7 @@ func TestHealthCheckerBridgeTypeVariations(t *testing.T) {
 			json: `{"status":"ok","bridge":true}`,
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockClient := &MockHTTPClient{
@@ -477,10 +477,10 @@ func TestHealthCheckerBridgeTypeVariations(t *testing.T) {
 					}, nil
 				},
 			}
-			
+
 			hc := NewHealthCheckerWithClient(mockClient)
 			err := hc.Check([]string{})
-			
+
 			if err != nil {
 				t.Errorf("expected no error, got %v", err)
 			}
@@ -507,7 +507,7 @@ func TestHealthCheckerModelsTypeVariations(t *testing.T) {
 			json: `{"status":"ok","available_models":["gpt-4",123,null]}`,
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockClient := &MockHTTPClient{
@@ -519,10 +519,10 @@ func TestHealthCheckerModelsTypeVariations(t *testing.T) {
 					}, nil
 				},
 			}
-			
+
 			hc := NewHealthCheckerWithClient(mockClient)
 			err := hc.Check([]string{})
-			
+
 			if err != nil {
 				t.Errorf("expected no error, got %v", err)
 			}
@@ -549,7 +549,7 @@ func TestHealthCheckerUpstreamsTypeVariations(t *testing.T) {
 			json: `{"status":"ok","upstreams":5}`,
 		},
 	}
-	
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockClient := &MockHTTPClient{
@@ -561,15 +561,13 @@ func TestHealthCheckerUpstreamsTypeVariations(t *testing.T) {
 					}, nil
 				},
 			}
-			
+
 			hc := NewHealthCheckerWithClient(mockClient)
 			err := hc.Check([]string{})
-			
+
 			if err != nil {
 				t.Errorf("expected no error, got %v", err)
 			}
 		})
 	}
 }
-
-

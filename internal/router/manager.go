@@ -41,9 +41,9 @@ type Manager struct {
 	nextStickyPrune time.Time
 
 	// New interfaces for testability and extensibility
-	strategyRegistry  *StrategyRegistry
-	healthChecker     HealthChecker
-	metricsCollector  MetricsCollector
+	strategyRegistry *StrategyRegistry
+	healthChecker    HealthChecker
+	metricsCollector MetricsCollector
 }
 
 // ManagerOption configures a Manager.

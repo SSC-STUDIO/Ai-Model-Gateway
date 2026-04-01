@@ -183,9 +183,9 @@ func TestConfigValidate_InvalidRouterStrategy(t *testing.T) {
 
 func TestConfigValidate_NegativeValues(t *testing.T) {
 	tests := []struct {
-		name      string
-		modifier  func(*Config)
-		wantErr   string
+		name     string
+		modifier func(*Config)
+		wantErr  string
 	}{
 		{
 			name: "negative max_retries",
