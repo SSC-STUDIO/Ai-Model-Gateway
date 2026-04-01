@@ -15,6 +15,11 @@ func NewServiceManagerProvider() *ServiceManagerProvider {
 	return &ServiceManagerProvider{}
 }
 
+// Connect implements ServiceManager interface (stub for non-Windows)
+func (p *ServiceManagerProvider) Connect() (ServiceManagerConnection, error) {
+	return nil, fmt.Errorf("service management is not supported on %s", runtime.GOOS)
+}
+
 func (c *CLI) cmdServiceInstall(args []string) error {
 	return fmt.Errorf("service management is not supported on %s", runtime.GOOS)
 }
