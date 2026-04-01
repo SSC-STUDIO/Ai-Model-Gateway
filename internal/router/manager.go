@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -40,6 +39,35 @@ type Manager struct {
 	sticky          map[string]stickyAssignment
 	healthClient    *http.Client
 	nextStickyPrune time.Time
+
+	// New interfaces for testability and extensibility
+	strategyRegistry  *StrategyRegistry
+	healthChecker     HealthChecker
+	metricsCollector  MetricsCollector
+}
+
+// ManagerOption configures a Manager.
+type ManagerOption func(*Manager)
+
+// WithStrategyRegistry sets the strategy registry.
+func WithStrategyRegistry(sr *StrategyRegistry) ManagerOption {
+	return func(m *Manager) {
+		m.strategyRegistry = sr
+	}
+}
+
+// WithHealthChecker sets the health checker.
+func WithHealthChecker(hc HealthChecker) ManagerOption {
+	return func(m *Manager) {
+		m.healthChecker = hc
+	}
+}
+
+// WithMetricsCollector sets the metrics collector.
+func WithMetricsCollector(mc MetricsCollector) ManagerOption {
+	return func(m *Manager) {
+		m.metricsCollector = mc
+	}
 }
 
 // stickyAssignment tracks a sticky routing assignment with expiration.
@@ -63,7 +91,7 @@ const (
 
 // NewManager creates a new routing manager with the given config store.
 // It initializes the health check client with optimized connection pooling.
-func NewManager(store *state.ConfigStore) *Manager {
+func NewManager(store *state.ConfigStore, opts ...ManagerOption) *Manager {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: defaultProbeTimeout, KeepAlive: 30 * time.Second}).DialContext,
@@ -74,13 +102,26 @@ func NewManager(store *state.ConfigStore) *Manager {
 		TLSHandshakeTimeout:   defaultProbeTimeout,
 		ExpectContinueTimeout: time.Second,
 	}
-	return &Manager{
-		store:        store,
-		rr:           make(map[string]int, 64),
-		statuses:     make(map[string]UpstreamStatus, 16),
-		sticky:       make(map[string]stickyAssignment, 256),
-		healthClient: &http.Client{Transport: transport},
+
+	httpClient := &http.Client{Transport: transport}
+
+	m := &Manager{
+		store:            store,
+		rr:               make(map[string]int, 64),
+		statuses:         make(map[string]UpstreamStatus, 16),
+		sticky:           make(map[string]stickyAssignment, 256),
+		healthClient:     httpClient,
+		strategyRegistry: NewStrategyRegistry(),
+		healthChecker:    NewHTTPHealthChecker(httpClient),
+		metricsCollector: &NoopMetricsCollector{},
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(m)
+	}
+
+	return m
 }
 
 // CurrentConfig returns the current configuration.
@@ -173,10 +214,15 @@ func (m *Manager) PickSticky(model string, stickyKey string, excluded map[string
 	now := time.Now()
 
 	if upstream, ok := m.pickStickyAssignment(cfg.Upstreams, model, stickyKey, excluded, true, now); ok {
+		m.metricsCollector.RecordRouting(upstream.Name, model, true)
 		return upstream, true
 	}
 
-	return m.pickFromPools(cfg, model, excluded, now)
+	upstream, ok := m.pickFromPools(cfg, model, excluded, now)
+	if ok {
+		m.metricsCollector.RecordRouting(upstream.Name, model, true)
+	}
+	return upstream, ok
 }
 
 // pickFromPools selects an upstream from the healthy or fallback pools.
@@ -184,20 +230,21 @@ func (m *Manager) pickFromPools(cfg config.Config, model string, excluded map[st
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	healthyPools, fallbackPools := m.buildPoolsLocked(cfg.Upstreams, cfg.Router.Strategy, model, excluded, now)
+	strategy := m.strategyRegistry.Get(cfg.Router.Strategy)
+	healthyPools, fallbackPools := m.buildPoolsLocked(cfg.Upstreams, strategy, model, excluded, now)
 	classes := prioritizedUpstreamClasses()
 
 	// Try healthy pools first
 	for _, class := range classes {
 		if healthyPool := healthyPools[class]; len(healthyPool) > 0 {
-			return m.pickFromPoolLocked(cfg.Router.Strategy, model, class, healthyPool), true
+			return m.pickFromPoolLocked(strategy, model, class, healthyPool), true
 		}
 	}
 
 	// Fall back to unhealthy but available pools
 	for _, class := range classes {
 		if fallbackPool := fallbackPools[class]; len(fallbackPool) > 0 {
-			return m.pickFromPoolLocked(cfg.Router.Strategy, model, class, fallbackPool), true
+			return m.pickFromPoolLocked(strategy, model, class, fallbackPool), true
 		}
 	}
 	return config.Upstream{}, false
@@ -340,42 +387,13 @@ func (m *Manager) runHealthChecksOnce(ctx context.Context) {
 
 // probeUpstream probes a single upstream and reports the result.
 func (m *Manager) probeUpstream(ctx context.Context, upstream config.Upstream, cfg config.Config) {
-	timeout := time.Duration(cfg.Health.TimeoutMs) * time.Millisecond
-	if timeout <= 0 {
-		timeout = defaultHealthTimeout
-	}
+	result := m.healthChecker.Check(ctx, upstream, cfg.Health)
 
-	reqCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, joinURL(upstream.BaseURL, cfg.Health.Path), nil)
-	if err != nil {
-		m.ReportProbe(upstream.Name, 0, err)
-		return
+	if result.Error != nil {
+		m.ReportProbe(upstream.Name, result.Latency, result.Error)
+	} else {
+		m.ReportProbe(upstream.Name, result.Latency, nil)
 	}
-
-	if upstream.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+upstream.APIKey)
-	}
-	for key, value := range upstream.Headers {
-		req.Header.Set(key, value)
-	}
-
-	start := time.Now()
-	resp, err := m.healthClient.Do(req)
-	latency := time.Since(start)
-	if err != nil {
-		m.ReportProbe(upstream.Name, latency, err)
-		return
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-
-	if resp.StatusCode >= http.StatusBadRequest {
-		m.ReportProbe(upstream.Name, latency, fmt.Errorf("probe status %d", resp.StatusCode))
-		return
-	}
-	m.ReportProbe(upstream.Name, latency, nil)
 }
 
 // reportSuccess updates the status after a successful request.
@@ -396,6 +414,9 @@ func (m *Manager) reportSuccess(name string, latency time.Duration, statusCode i
 	status.RetryableFailureSince = time.Time{}
 	status.CooldownUntil = time.Time{}
 	m.statuses[name] = status
+
+	m.metricsCollector.RecordHealthStatus(name, true)
+	m.metricsCollector.RecordLatency(name, latency)
 }
 
 // reconcileConfig updates internal state when configuration changes.
@@ -518,6 +539,8 @@ func (m *Manager) reportFailure(name string, latency time.Duration, statusCode i
 	}
 
 	m.statuses[name] = status
+	m.metricsCollector.RecordHealthStatus(name, false)
+	m.metricsCollector.RecordLatency(name, latency)
 }
 
 // statusLocked returns the status for an upstream, defaulting to healthy if not found.
@@ -532,7 +555,7 @@ func (m *Manager) statusLocked(name string) UpstreamStatus {
 
 // buildPoolsLocked builds healthy and fallback pools for upstream selection.
 // Caller must hold m.mu.
-func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy string, model string, excluded map[string]struct{}, now time.Time) (map[string][]weightedUpstream, map[string][]weightedUpstream) {
+func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy Strategy, model string, excluded map[string]struct{}, now time.Time) (map[string][]weightedUpstream, map[string][]weightedUpstream) {
 	classes := prioritizedUpstreamClasses()
 	healthyPools := make(map[string][]weightedUpstream, len(classes))
 	fallbackPools := make(map[string][]weightedUpstream, len(classes))
@@ -571,7 +594,7 @@ func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy string,
 			continue
 		}
 
-		effectiveWeight := calculateEffectiveWeight(upstream.Weight, strategy, status)
+		effectiveWeight := strategy.CalculateWeight(upstream.Weight, status)
 
 		candidate := weightedUpstream{upstream: upstream, weight: effectiveWeight}
 		fallbackPools[providerClass] = append(fallbackPools[providerClass], candidate)
@@ -582,60 +605,14 @@ func (m *Manager) buildPoolsLocked(upstreams []config.Upstream, strategy string,
 	return healthyPools, fallbackPools
 }
 
-// calculateEffectiveWeight computes the weight for an upstream based on strategy and health.
-func calculateEffectiveWeight(baseWeight int, strategy string, status UpstreamStatus) int {
-	switch strategy {
-	case "round_robin":
-		return 1
-	case "health_weighted_rr":
-		weight := baseWeight
-		if status.ConsecutiveFailures > 0 {
-			weight -= status.ConsecutiveFailures
-		}
-		if status.ConsecutiveSuccess >= 3 {
-			weight++
-		}
-		if weight < 1 {
-			return 1
-		}
-		return weight
-	default:
-		if baseWeight < 1 {
-			return 1
-		}
-		return baseWeight
-	}
-}
-
 // pickFromPoolLocked selects an upstream from a pool using weighted round-robin.
 // Caller must hold m.mu.
-func (m *Manager) pickFromPoolLocked(strategy string, model string, class string, pool []weightedUpstream) config.Upstream {
-	key := strategy + ":" + class + ":" + model
-	totalWeight := 0
-	for _, candidate := range pool {
-		if candidate.weight < 1 {
-			totalWeight++
-			continue
-		}
-		totalWeight += candidate.weight
-	}
-	if totalWeight <= 0 {
-		return pool[0].upstream
-	}
-
-	cursor := m.rr[key] % totalWeight
-	m.rr[key] = (cursor + 1) % totalWeight
-	for _, candidate := range pool {
-		weight := candidate.weight
-		if weight < 1 {
-			weight = 1
-		}
-		if cursor < weight {
-			return candidate.upstream
-		}
-		cursor -= weight
-	}
-	return pool[len(pool)-1].upstream
+func (m *Manager) pickFromPoolLocked(strategy Strategy, model string, class string, pool []weightedUpstream) config.Upstream {
+	key := strategy.Name() + ":" + class + ":" + model
+	cursor := m.rr[key]
+	upstream, nextCursor := strategy.Select(pool, cursor)
+	m.rr[key] = nextCursor
+	return upstream
 }
 
 // pickStickyAssignment tries to select a sticky-assigned upstream.

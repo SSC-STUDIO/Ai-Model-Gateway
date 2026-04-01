@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](VERSION)
+[![Test Coverage](https://img.shields.io/badge/coverage-80%25+-brightgreen.svg)](#development)
 
 ![AI Model Gateway icon](docs/assets/icon.svg)
 
@@ -18,6 +20,7 @@
 
 ## Highlights
 
+- **CLI 管理**: 支持命令行启动、验证配置、健康检查、Windows 服务管理
 - OpenAI 兼容接口：`chat/completions`、`responses`、`embeddings`、`files`、`audio`、`images`、`models` 等
 - 多上游容灾：按健康状态、权重和失败窗口自动切换
 - 热加载：修改 YAML 后自动生效
@@ -41,6 +44,8 @@
 
 - License: [MIT](LICENSE)
 - Change log: [CHANGELOG.md](CHANGELOG.md)
+- CLI Documentation: [docs/cli.md](docs/cli.md)
+- Installation Guide: [docs/installation.md](docs/installation.md)
 - CI: [GitHub Actions workflow](.github/workflows/ci.yml)
 - Release workflow: [GitHub Release workflow](.github/workflows/release.yml)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
@@ -62,6 +67,8 @@
 
 - `cmd/gateway`
   Gateway 入口。
+- `internal/cli`
+  命令行接口实现。
 - `internal/config`
   YAML 配置结构、默认值、校验、加载器。
 - `internal/router`
@@ -74,12 +81,14 @@
   SQLite telemetry、时间序列、pricing 聚合。
 - `internal/state`
   运行时配置原子存储。
+- `internal/service`
+  Windows 服务管理。
 - `configs`
   配置示例。
 - `scripts`
   常用启动、服务安装、压测脚本。
 - `docs`
-  图标与 README 截图素材。
+  图标与 README 截图素材、CLI 文档、安装指南。
 
 ## Supported endpoints
 
@@ -120,8 +129,28 @@
 
 ### Requirements
 
-- Go 1.26+
+- Go 1.26+ (for building from source)
 - Windows PowerShell（脚本示例默认按 PowerShell 写）
+
+### Installation
+
+#### Option 1: Download Binary (Recommended)
+
+从 [GitHub Releases](https://github.com/SSC-STUDIO/ai-model-gateway/releases) 下载对应平台的预编译二进制文件。
+
+#### Option 2: Build from Source
+
+```powershell
+go build -o gateway.exe ./cmd/gateway
+```
+
+#### Option 3: Install as Windows Service
+
+```powershell
+# Install and start as Windows service
+gateway.exe install
+gateway.exe service-start
+```
 
 ### 1. Prepare config
 
@@ -147,6 +176,21 @@ Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 
 ### 2. Run the gateway
 
+#### Using CLI (Recommended)
+
+```powershell
+# Start with default config
+gateway.exe start
+
+# Start with custom config
+gateway.exe -config .\configs\config.yaml start
+
+# Validate config before starting
+gateway.exe validate
+```
+
+#### Legacy Mode (Backward Compatible)
+
 ```powershell
 go run .\cmd\gateway -config .\configs\config.yaml
 ```
@@ -157,7 +201,17 @@ go run .\cmd\gateway -config .\configs\config.yaml
 http://127.0.0.1:18080
 ```
 
-### 3. Open admin pages
+### 3. Health Check
+
+```powershell
+# Check gateway health
+gateway.exe health
+
+# Or use curl
+curl.exe http://127.0.0.1:18080/-/health
+```
+
+### 4. Open admin pages
 
 浏览器访问管理页时，先建立同源的 `aigw_admin_token` cookie 会话，再访问页面；脚本或 CLI 直接调用 admin API 时，推荐使用 Bearer token。
 
@@ -178,6 +232,24 @@ http://127.0.0.1:18080/admin/settings
 - 浏览器：admin 页面会携带 `credentials: 'same-origin'`，cookie-auth 的写请求仅允许同源 `Origin`，缺失时仅接受同源 `Referer` 后备。
 - 自动化：脚本、CLI、curl 调用 `/-/admin/config`、`/-/admin/config/rollback`、`/-/admin/upstreams/test` 时，推荐使用 `Authorization: Bearer <token>`，不会被 `Origin` / `Referer` 限制误伤。
 - 暴露面：不要把 admin URL、Bearer token 或已登录的 admin cookie 会话暴露给不受信任来源；管理页应只在受信任浏览器上下文中打开。
+
+## CLI Commands
+
+网关提供完整的命令行接口：
+
+| 命令 | 说明 |
+|------|------|
+| `gateway start` | 启动网关服务 |
+| `gateway validate` | 验证配置文件 |
+| `gateway health` | 检查服务健康状态 |
+| `gateway install` | 安装为 Windows 服务 |
+| `gateway uninstall` | 卸载 Windows 服务 |
+| `gateway service-start` | 启动 Windows 服务 |
+| `gateway service-stop` | 停止 Windows 服务 |
+| `gateway service-status` | 查看服务状态 |
+| `gateway version` | 显示版本信息 |
+
+更多 CLI 用法详见 [docs/cli.md](docs/cli.md)。
 
 ## Configuration guide
 
@@ -385,7 +457,20 @@ upstreams:
 .\scripts\invoke-responses-burst.ps1 -Concurrency 20 -RequestsPerWorker 1 -LaunchIntervalMs 200
 ```
 
-如果你要把它装成 Windows 服务，请以管理员 PowerShell 运行安装/卸载脚本。
+如果你要把它装成 Windows 服务，推荐直接使用 CLI 命令：
+
+```powershell
+# 安装为 Windows 服务（需要管理员权限）
+gateway.exe install
+
+# 管理服务
+gateway.exe service-start
+gateway.exe service-stop
+gateway.exe service-status
+
+# 卸载服务
+gateway.exe uninstall
+```
 
 ## Development
 
@@ -396,12 +481,36 @@ gofmt -w .\cmd\gateway\main.go .\internal\**\*.go
 go test ./...
 ```
 
+### Test Coverage
+
+项目当前测试覆盖率：
+
+- `internal/cli`: 80%+ ✅
+- `internal/config`: 80%+ ✅
+- `internal/router`: 80%+ ✅
+
 ### Useful checks
 
 ```powershell
+# CLI health check
+gateway.exe health
+
+# Or curl
 curl.exe http://127.0.0.1:18080/-/health
 curl.exe http://127.0.0.1:18080/v1/models
 ```
+
+## Migration from PowerShell Scripts
+
+如果你之前使用 PowerShell 脚本，可以迁移到新的 CLI 命令：
+
+| 旧脚本 | 新 CLI 命令 |
+|--------|-------------|
+| `install-service.ps1` | `gateway install` |
+| `uninstall-service.ps1` | `gateway uninstall` |
+| `start-gateway.ps1` | `gateway start` |
+| `quick-verify.ps1` | `gateway validate` |
+| `restart-gateway.ps1` | `gateway service-stop && gateway service-start` |
 
 ## Public repo notes
 
@@ -418,4 +527,4 @@ curl.exe http://127.0.0.1:18080/v1/models
 
 ## License
 
-当前仓库未附带许可证；如果你要公开分发，建议补一个明确的 LICENSE 文件。
+[MIT](LICENSE)

@@ -9,20 +9,43 @@ import (
 	"time"
 )
 
-func checkHealth(args []string) error {
+// HealthChecker handles health check operations
+type HealthChecker struct {
+	client HTTPClient
+}
+
+// NewHealthChecker creates a new HealthChecker with the default HTTP client
+func NewHealthChecker() *HealthChecker {
+	return &HealthChecker{}
+}
+
+// NewHealthCheckerWithClient creates a new HealthChecker with a custom HTTP client
+func NewHealthCheckerWithClient(client HTTPClient) *HealthChecker {
+	return &HealthChecker{client: client}
+}
+
+// Check performs a health check against the specified endpoint
+func (h *HealthChecker) Check(args []string) error {
 	fs := flag.NewFlagSet("health", flag.ExitOnError)
 	endpoint := fs.String("endpoint", "http://127.0.0.1:18080/-/health", "Health check endpoint")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
-	
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	client := &http.Client{
-		Timeout: *timeout,
+	client := h.client
+	if client == nil {
+		client = NewDefaultHTTPClient(*timeout)
 	}
 
-	resp, err := client.Get(*endpoint)
+	req, err := http.NewRequest("GET", *endpoint, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "✗ Health check failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "✗ Health check failed: %v\n", err)
 		os.Exit(1)
@@ -42,7 +65,7 @@ func checkHealth(args []string) error {
 	}
 
 	fmt.Println("✓ Gateway is healthy")
-	
+
 	if status, ok := health["status"].(string); ok {
 		fmt.Printf("  Status: %s\n", status)
 	}
@@ -61,4 +84,10 @@ func checkHealth(args []string) error {
 	}
 
 	return nil
+}
+
+// checkHealth is the legacy function for backward compatibility
+func checkHealth(args []string) error {
+	checker := NewHealthChecker()
+	return checker.Check(args)
 }

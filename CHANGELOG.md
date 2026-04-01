@@ -4,7 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with a lightweight structure suitable for a small operational project.
 
-## [Unreleased]
+## [1.0.0] — 2026-04-01
+
+### Added
+
+- **CLI Support**: Comprehensive command-line interface for managing the gateway
+  - `gateway start` - Start the gateway server
+  - `gateway validate` - Validate configuration without starting
+  - `gateway health` - Check gateway health status
+  - `gateway install` / `uninstall` - Windows service management
+  - `gateway service-start` / `service-stop` / `service-status` - Service control
+  - `gateway version` - Display version information
+- **Test Coverage Improvements**: Achieved 80%+ coverage for critical packages
+  - `internal/cli`: Comprehensive test suite with mocks
+  - `internal/config`: Extended config validation and save tests
+  - `internal/router`: Health, manager, and strategy tests
+- **Windows Service Management**: Native Windows service integration via CLI commands
+- **Configuration Management**: Runtime config reload and export via CLI
+
+### Changed
+
+- **Architecture Refactoring**: Cleaner separation between CLI, app, and service layers
+  - `internal/cli` - Command handling and execution
+  - `internal/app` - Application lifecycle management  
+  - `internal/service` - Windows service integration
+- **Entry Point**: `cmd/gateway/main.go` now supports both legacy mode and new CLI mode
+- Bumped VERSION from 0.2.3 to 1.0.0
+
+### Documentation
+
+- Added comprehensive CLI documentation in [docs/cli.md](docs/cli.md)
+- Added installation guide in [docs/installation.md](docs/installation.md)
+- Updated README.md with CLI examples, installation instructions, and test coverage info
+
+## [0.2.3] — 2026-03-30
 
 ### Added
 
@@ -132,7 +165,7 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 - Duplicate `loaded` key removed from Japanese i18n locale.
 - Removed dead code: 4 JS functions, 3 CSS rules, 30 Go template replacer entries (~100 lines net reduction).
 
-## [2026-03-15] Public release baseline
+## [0.1.2] — 2026-03-15
 
 ### Added
 

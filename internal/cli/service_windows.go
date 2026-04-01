@@ -16,7 +16,31 @@ const serviceName = "AIModelGateway"
 const serviceDisplayName = "AI Model Gateway"
 const serviceDescription = "High-performance AI model proxy gateway service"
 
+// ServiceManagerProvider provides a ServiceManager instance
+type ServiceManagerProvider struct {
+	manager ServiceManager
+}
+
+// NewServiceManagerProvider creates a new provider with the real service manager
+func NewServiceManagerProvider() *ServiceManagerProvider {
+	return &ServiceManagerProvider{
+		manager: &RealServiceManager{},
+	}
+}
+
+// NewServiceManagerProviderWithManager creates a new provider with a custom manager
+func NewServiceManagerProviderWithManager(manager ServiceManager) *ServiceManagerProvider {
+	return &ServiceManagerProvider{
+		manager: manager,
+	}
+}
+
 func (c *CLI) cmdServiceInstall(args []string) error {
+	provider := NewServiceManagerProvider()
+	return c.installService(provider)
+}
+
+func (c *CLI) installService(provider *ServiceManagerProvider) error {
 	fmt.Println("Installing service...")
 
 	exepath, err := exec.LookPath(os.Args[0])
@@ -24,7 +48,7 @@ func (c *CLI) cmdServiceInstall(args []string) error {
 		return fmt.Errorf("find executable: %w", err)
 	}
 
-	m, err := mgr.Connect()
+	m, err := provider.manager.Connect()
 	if err != nil {
 		return fmt.Errorf("connect to service manager: %w", err)
 	}
@@ -52,14 +76,19 @@ func (c *CLI) cmdServiceInstall(args []string) error {
 	fmt.Printf("  Executable: %s\n", exepath)
 	fmt.Printf("  Config: %s\n", c.configPath)
 	fmt.Println("\nTo start the service, run: gateway service-start")
-	
+
 	return nil
 }
 
 func (c *CLI) cmdServiceUninstall(args []string) error {
+	provider := NewServiceManagerProvider()
+	return c.uninstallService(provider)
+}
+
+func (c *CLI) uninstallService(provider *ServiceManagerProvider) error {
 	fmt.Println("Uninstalling service...")
 
-	m, err := mgr.Connect()
+	m, err := provider.manager.Connect()
 	if err != nil {
 		return fmt.Errorf("connect to service manager: %w", err)
 	}
@@ -95,7 +124,12 @@ func (c *CLI) cmdServiceUninstall(args []string) error {
 }
 
 func (c *CLI) cmdServiceStart(args []string) error {
-	m, err := mgr.Connect()
+	provider := NewServiceManagerProvider()
+	return c.startService(provider)
+}
+
+func (c *CLI) startService(provider *ServiceManagerProvider) error {
+	m, err := provider.manager.Connect()
 	if err != nil {
 		return fmt.Errorf("connect to service manager: %w", err)
 	}
@@ -116,7 +150,12 @@ func (c *CLI) cmdServiceStart(args []string) error {
 }
 
 func (c *CLI) cmdServiceStop(args []string) error {
-	m, err := mgr.Connect()
+	provider := NewServiceManagerProvider()
+	return c.stopService(provider)
+}
+
+func (c *CLI) stopService(provider *ServiceManagerProvider) error {
+	m, err := provider.manager.Connect()
 	if err != nil {
 		return fmt.Errorf("connect to service manager: %w", err)
 	}
@@ -138,7 +177,12 @@ func (c *CLI) cmdServiceStop(args []string) error {
 }
 
 func (c *CLI) cmdServiceStatus(args []string) error {
-	m, err := mgr.Connect()
+	provider := NewServiceManagerProvider()
+	return c.serviceStatus(provider)
+}
+
+func (c *CLI) serviceStatus(provider *ServiceManagerProvider) error {
+	m, err := provider.manager.Connect()
 	if err != nil {
 		return fmt.Errorf("connect to service manager: %w", err)
 	}
@@ -160,7 +204,7 @@ func (c *CLI) cmdServiceStatus(args []string) error {
 	fmt.Printf("Service: %s\n", serviceName)
 	fmt.Printf("State:   %s\n", stateStr)
 	fmt.Printf("Pid:     %d\n", status.ProcessId)
-	
+
 	return nil
 }
 

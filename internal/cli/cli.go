@@ -23,8 +23,9 @@ type Command struct {
 
 // CLI manages available commands
 type CLI struct {
-	commands map[string]*Command
+	commands   map[string]*Command
 	configPath string
+	osExit     func(int) // injectable os.Exit for testing
 }
 
 // New creates a new CLI instance
@@ -32,6 +33,24 @@ func New() *CLI {
 	c := &CLI{
 		commands:   make(map[string]*Command),
 		configPath: "configs/config.yaml",
+		osExit:     os.Exit,
+	}
+	c.registerCommands()
+	return c
+}
+
+// NewWithOptions creates a new CLI instance with custom options
+func NewWithOptions(configPath string, osExit func(int)) *CLI {
+	if configPath == "" {
+		configPath = "configs/config.yaml"
+	}
+	if osExit == nil {
+		osExit = os.Exit
+	}
+	c := &CLI{
+		commands:   make(map[string]*Command),
+		configPath: configPath,
+		osExit:     osExit,
 	}
 	c.registerCommands()
 	return c
@@ -50,7 +69,7 @@ func (c *CLI) Run(args []string) error {
 	}
 
 	cmdName := args[0]
-	
+
 	// Handle global flags before command
 	if cmdName == "-config" && len(args) >= 2 {
 		c.configPath = args[1]
@@ -125,7 +144,8 @@ func (c *CLI) printCommandHelp(cmdName string) {
 	cmd, exists := c.commands[cmdName]
 	if !exists {
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmdName)
-		os.Exit(1)
+		c.osExit(1)
+		return
 	}
 	fmt.Fprintf(os.Stderr, "Usage: gateway %s\n\n%s\n", cmd.Usage, cmd.Description)
 	if cmd.Flags != nil {
@@ -134,17 +154,24 @@ func (c *CLI) printCommandHelp(cmdName string) {
 	}
 }
 
+// Version is set at build time via ldflags
+var Version = "dev"
+
 func (c *CLI) printVersion() {
-	version := os.Getenv("GATEWAY_VERSION")
-	if version == "" {
-		version = "dev"
+	if Version == "" {
+		Version = "dev"
 	}
-	fmt.Printf("AI Model Gateway version %s\n", version)
+	fmt.Printf("AI Model Gateway version %s\n", Version)
 }
 
 // GetConfigPath returns the configured config file path
 func (c *CLI) GetConfigPath() string {
 	return c.configPath
+}
+
+// SetConfigPath sets the config file path
+func (c *CLI) SetConfigPath(path string) {
+	c.configPath = path
 }
 
 // LoadConfig loads the configuration file
@@ -159,4 +186,13 @@ func (c *CLI) LoadConfig() (*config.Config, error) {
 // ContextWithTimeout creates a context with the specified timeout
 func ContextWithTimeout(timeout time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)
+}
+
+// GetCommands returns a copy of the registered commands (for testing)
+func (c *CLI) GetCommands() map[string]*Command {
+	result := make(map[string]*Command, len(c.commands))
+	for k, v := range c.commands {
+		result[k] = v
+	}
+	return result
 }

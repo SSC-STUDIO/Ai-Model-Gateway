@@ -7,17 +7,22 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"ai-model-gateway/internal/app"
 	"ai-model-gateway/internal/config"
 )
 
+// AppRunnerFunc is a function type that runs the gateway application
+type AppRunnerFunc func(ctx context.Context, configPath string) error
+
+// defaultAppRunner is the default implementation using the app package
+var defaultAppRunner AppRunnerFunc = app.Run
+
 func (c *CLI) registerCommands() {
 	// Start command
 	startFlags := flag.NewFlagSet("start", flag.ExitOnError)
 	startFlags.Bool("daemon", false, "Run as daemon (background)")
-	
+
 	c.Register(&Command{
 		Name:        "start",
 		Description: "Start the gateway server",
@@ -39,7 +44,7 @@ func (c *CLI) registerCommands() {
 	configFlags.Bool("reload", false, "Reload configuration without restarting")
 	configFlags.Bool("export", false, "Export current configuration")
 	configFlags.String("output", "", "Output file for export")
-	
+
 	c.Register(&Command{
 		Name:        "config",
 		Description: "Configuration management",
@@ -51,8 +56,8 @@ func (c *CLI) registerCommands() {
 	// Health command
 	healthFlags := flag.NewFlagSet("health", flag.ExitOnError)
 	healthFlags.String("endpoint", "http://127.0.0.1:18080/-/health", "Health check endpoint")
-	healthFlags.Duration("timeout", 5*time.Second, "Request timeout")
-	
+	healthFlags.Duration("timeout", defaultHealthTimeout, "Request timeout")
+
 	c.Register(&Command{
 		Name:        "health",
 		Description: "Check gateway health status",
@@ -98,12 +103,20 @@ func (c *CLI) registerCommands() {
 	})
 }
 
+// cmdStart runs the start command
 func (c *CLI) cmdStart(args []string) error {
+	return c.startGateway(args, defaultAppRunner, os.Stat)
+}
+
+// startGateway starts the gateway with injectable dependencies
+type statFunc func(name string) (os.FileInfo, error)
+
+func (c *CLI) startGateway(args []string, runner AppRunnerFunc, stat statFunc) error {
 	fmt.Println("Starting AI Model Gateway...")
 	fmt.Printf("Config: %s\n", c.configPath)
 
 	// Check if config exists
-	if _, err := os.Stat(c.configPath); os.IsNotExist(err) {
+	if _, err := stat(c.configPath); os.IsNotExist(err) {
 		return fmt.Errorf("config file not found: %s", c.configPath)
 	}
 
@@ -123,10 +136,15 @@ func (c *CLI) cmdStart(args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	return app.Run(ctx, c.configPath)
+	return runner(ctx, c.configPath)
 }
 
+// cmdValidate runs the validate command
 func (c *CLI) cmdValidate(args []string) error {
+	return c.validateConfig(args)
+}
+
+func (c *CLI) validateConfig(args []string) error {
 	fmt.Printf("Validating config: %s\n", c.configPath)
 
 	cfg, err := c.LoadConfig()
@@ -144,7 +162,7 @@ func (c *CLI) cmdValidate(args []string) error {
 	fmt.Printf("  Admin enabled: %v\n", cfg.Admin.Enabled)
 	fmt.Printf("  Health enabled: %v\n", cfg.Health.Enabled)
 	fmt.Printf("  Bridge enabled: %v\n", cfg.Bridge.Enabled)
-	
+
 	return nil
 }
 
@@ -156,3 +174,6 @@ func (c *CLI) cmdConfig(args []string) error {
 func (c *CLI) cmdHealth(args []string) error {
 	return checkHealth(args)
 }
+
+// defaultHealthTimeout is the default timeout for health checks
+const defaultHealthTimeout = 5000000000 // 5 seconds in nanoseconds

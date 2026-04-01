@@ -11,6 +11,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// parseConfig parses configuration from YAML bytes.
+func parseConfig(data []byte) (Config, error) {
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, fmt.Errorf("parse config: %w", err)
+	}
+	return cfg, nil
+}
+
 func LoadFromFile(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

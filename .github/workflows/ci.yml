@@ -42,7 +42,7 @@ jobs:
         run: .\scripts\check-no-todo.ps1
 
       - name: Run tests
-        run: go test ./...
+        run: go test -timeout 10m ./...
 
   build-windows:
     name: Build Windows Artifact
