@@ -173,15 +173,139 @@ func cookieToken(r *http.Request) string {
 	return strings.TrimSpace(cookie.Value)
 }
 
+// CORSConfig 存储 CORS 配置
+type CORSConfig struct {
+	AllowedOrigins   []string
+	AllowedMethods   []string
+	AllowedHeaders   []string
+	ExposedHeaders   []string
+	AllowCredentials bool
+	MaxAge           int
+}
+
+// DefaultCORSConfig 返回默认的 CORS 配置
+func DefaultCORSConfig() CORSConfig {
+	return CORSConfig{
+		AllowedOrigins:   []string{},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "X-Request-ID"},
+		ExposedHeaders:   []string{"Content-Length", "Content-Type", "X-Request-ID"},
+		AllowCredentials: true,
+		MaxAge:           86400,
+	}
+}
+
+// corsMiddleware 处理 CORS 请求
+func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
+	// 预处理允许的 Origin（支持通配符）
+	allowedOrigins := make([]string, 0, len(config.AllowedOrigins))
+	for _, origin := range config.AllowedOrigins {
+		origin = strings.TrimSpace(origin)
+		if origin != "" && origin != "*" {
+			allowedOrigins = append(allowedOrigins, origin)
+		}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+
+			// 检查 Origin 是否允许
+			isAllowed := false
+			if len(allowedOrigins) == 0 {
+				// 如果没有配置允许的来源，则只允许同源请求
+				isAllowed = origin == ""
+			} else {
+				for _, allowed := range allowedOrigins {
+					if matchOrigin(origin, allowed) {
+						isAllowed = true
+						break
+					}
+				}
+			}
+
+			// 设置 CORS 头
+			if isAllowed && origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+			if config.AllowCredentials {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+			if len(config.ExposedHeaders) > 0 {
+				w.Header().Set("Access-Control-Expose-Headers", strings.Join(config.ExposedHeaders, ", "))
+			}
+
+			// 处理预检请求
+			if r.Method == http.MethodOptions {
+				w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowedMethods, ", "))
+				w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowedHeaders, ", "))
+				if config.MaxAge > 0 {
+					w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
+				}
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// matchOrigin 检查 origin 是否匹配允许的模式
+func matchOrigin(origin, pattern string) bool {
+	origin = strings.ToLower(strings.TrimSpace(origin))
+	pattern = strings.ToLower(strings.TrimSpace(pattern))
+
+	if pattern == origin {
+		return true
+	}
+
+	// 支持通配符匹配，例如 https://*.example.com
+	if strings.Contains(pattern, "*") {
+		parts := strings.Split(pattern, "*")
+		if len(parts) == 2 {
+			return strings.HasPrefix(origin, parts[0]) && strings.HasSuffix(origin, parts[1])
+		}
+	}
+
+	return false
+}
+
 // securityHeaders adds security-related HTTP headers to all responses
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Security headers to prevent common attacks
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+
 		// Content Security Policy - prevents XSS and data injection attacks
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';")
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"script-src 'self' 'unsafe-inline'; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; "+
+				"font-src 'self'; "+
+				"connect-src 'self'; "+
+				"media-src 'self'; "+
+				"object-src 'none'; "+
+				"frame-ancestors 'none'; "+
+				"base-uri 'self'; "+
+				"form-action 'self';")
+
+		// HTTP Strict Transport Security - forces HTTPS
+		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+
+		// Prevent browsers from MIME-type sniffing
+		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
+
+		// Cross-Origin policies
+		w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
+
 		next.ServeHTTP(w, r)
 	})
 }

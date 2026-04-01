@@ -175,6 +175,9 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	rateLimiter := NewRateLimiter(DefaultRateLimitConfig())
 	r.Use(RateLimitMiddleware(rateLimiter))
 
+	// CORS 中间件
+	r.Use(corsMiddleware(DefaultCORSConfig()))
+
 	r.Use(securityHeaders)
 	r.Use(withRequestID)
 	r.Use(accessLog)
