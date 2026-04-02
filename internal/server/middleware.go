@@ -273,19 +273,56 @@ type CORSConfig struct {
 	MaxAge           int
 }
 
-// DefaultCORSConfig 返回默认 CORS 配置
+// DefaultCORSConfig 返回默认的 CORS 配置 - SECURITY FIX: 更严格的默认配置
 func DefaultCORSConfig() CORSConfig {
 	return CORSConfig{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID"},
+		// SECURITY FIX: 默认不配置任何允许的来源，必须由管理员显式配置
+		AllowedOrigins: []string{},
+		// SECURITY FIX: 只允许必要的方法
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		// SECURITY FIX: 最小化允许的头部
+		AllowedHeaders: []string{
+			"Accept",
+			"Authorization",
+			"Content-Type",
+			"X-Requested-With",
+			"X-Request-ID",
+		},
+		// SECURITY FIX: 最小化暴露的头部
+		ExposedHeaders: []string{
+			"Content-Length",
+			"Content-Type",
+			"X-Request-ID",
+		},
+		// SECURITY FIX: 允许凭证，但配合严格的来源验证
 		AllowCredentials: true,
-		MaxAge:           86400,
+		// SECURITY FIX: 缓存预检请求24小时
+		MaxAge: 86400,
 	}
 }
 
-// corsMiddleware 返回 CORS 中间件
+// corsMiddleware 处理 CORS 请求 - SECURITY FIX: 增强的安全性
 func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
+	// SECURITY FIX: 如果通配符在配置中，记录警告
+	hasWildcard := false
+	allowedOrigins := make([]string, 0, len(config.AllowedOrigins))
+	for _, origin := range config.AllowedOrigins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		if origin == "*" {
+			hasWildcard = true
+			// SECURITY FIX: 不允许使用通配符与 AllowCredentials: true
+			// 如果检测到通配符，记录警告并跳过
+			if config.AllowCredentials {
+				log.Println("[SECURITY WARNING] CORS wildcard (*) origin is not allowed with AllowCredentials=true. Ignoring wildcard.")
+				continue
+			}
+		}
+		allowedOrigins = append(allowedOrigins, origin)
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
@@ -293,12 +330,32 @@ func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 				origin = "*"
 			}
 
-			// 检查是否允许该来源
-			allowOrigin := "*"
-			if len(config.AllowOrigins) > 0 && config.AllowOrigins[0] != "*" {
-				for _, o := range config.AllowOrigins {
-					if o == origin {
-						allowOrigin = origin
+			// SECURITY FIX: 如果没有 Origin 头，可能是同源请求或直接的API调用
+			if origin == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// SECURITY FIX: 严格验证 Origin 格式
+			if !isValidOrigin(origin) {
+				log.Printf("[SECURITY] Invalid origin format rejected: %s", origin)
+				http.Error(w, "Invalid Origin header", http.StatusBadRequest)
+				return
+			}
+
+			// 检查 Origin 是否允许
+			isAllowed := false
+			if len(allowedOrigins) == 0 {
+				// SECURITY FIX: 如果没有配置允许的来源，拒绝所有跨域请求
+				isAllowed = false
+			} else if hasWildcard && !config.AllowCredentials {
+				// 通配符允许（但不允许凭证）
+				isAllowed = true
+			} else {
+				// 检查具体匹配
+				for _, allowed := range allowedOrigins {
+					if matchOriginStrict(origin, allowed) {
+						isAllowed = true
 						break
 					}
 				}
@@ -306,27 +363,116 @@ func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 				allowOrigin = origin
 			}
 
-			w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
-			w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowMethods, ", "))
-			w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowHeaders, ", "))
-			w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
+			// 如果不允许，拒绝请求
+			if !isAllowed {
+				log.Printf("[SECURITY] CORS origin rejected: %s", origin)
+				http.Error(w, "CORS origin not allowed", http.StatusForbidden)
+				return
+			}
 
+			// 设置 CORS 头
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 			if config.AllowCredentials {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 
 			// 处理预检请求
 			if r.Method == http.MethodOptions {
+				w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowedMethods, ", "))
+				w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowedHeaders, ", "))
+				if config.MaxAge > 0 {
+					w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
+				}
+				// SECURITY FIX: 添加 Vary 头
+				w.Header().Set("Vary", "Origin")
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 
+			// SECURITY FIX: 添加 Vary 头以防止缓存问题
+			w.Header().Set("Vary", "Origin")
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
-// securityHeaders 添加安全响应头
+// isValidOrigin 验证 Origin 格式是否有效
+func isValidOrigin(origin string) bool {
+	if origin == "" {
+		return true
+	}
+	
+	// 验证基本格式: scheme://host[:port]
+	origin = strings.ToLower(origin)
+	
+	// 允许的特殊值
+	if origin == "null" {
+		return true
+	}
+	
+	// 检查 scheme
+	validSchemes := []string{"http://", "https://"}
+	hasValidScheme := false
+	for _, scheme := range validSchemes {
+		if strings.HasPrefix(origin, scheme) {
+			hasValidScheme = true
+			break
+		}
+	}
+	
+	if !hasValidScheme {
+		return false
+	}
+	
+	// 检查长度限制（防止 DoS）
+	if len(origin) > 2048 {
+		return false
+	}
+	
+	// 检查禁止字符
+	forbiddenChars := []string{"\n", "\r", "\x00", "<", ">", "\"", "'", "`"}
+	for _, char := range forbiddenChars {
+		if strings.Contains(origin, char) {
+			return false
+		}
+	}
+	
+	return true
+}
+
+// matchOriginStrict 严格检查 origin 是否匹配允许的模式
+func matchOriginStrict(origin, pattern string) bool {
+	origin = strings.ToLower(strings.TrimSpace(origin))
+	pattern = strings.ToLower(strings.TrimSpace(pattern))
+
+	if pattern == origin {
+		return true
+	}
+
+	// SECURITY FIX: 更严格的通配符匹配
+	if strings.Contains(pattern, "*") {
+		// 只允许在子域名位置使用通配符
+		parts := strings.Split(pattern, "*")
+		if len(parts) == 2 {
+			// 确保通配符只用于子域名匹配，而不是顶级域或路径
+			beforeWildcard := parts[0]
+			afterWildcard := parts[1]
+			
+			// 验证通配符位置（应该只用于子域名）
+			if strings.HasSuffix(beforeWildcard, ".") && strings.HasPrefix(afterWildcard, ".") {
+				// 例如: https://*.example.com
+				return strings.HasPrefix(origin, beforeWildcard) && strings.HasSuffix(origin, afterWildcard)
+			}
+		}
+		
+		// SECURITY FIX: 拒绝不安全的通配符使用
+		return false
+	}
+
+	return false
+}
+
+// securityHeaders adds security-related HTTP headers to all responses
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -646,10 +646,11 @@ func renderUpstreams(upstreams []config.Upstream) []configViewUpstream {
 	}
 	items := make([]configViewUpstream, 0, len(upstreams))
 	for _, upstream := range upstreams {
+		// SECURITY FIX: Mask API keys in the admin view
 		items = append(items, configViewUpstream{
 			Name:                upstream.Name,
 			BaseURL:             upstream.BaseURL,
-			APIKey:              upstream.APIKey,
+			APIKey:              config.MaskKey(upstream.APIKey),
 			ProviderClass:       upstream.ProviderClassNormalized(),
 			Models:              append([]string(nil), upstream.Models...),
 			Weight:              upstream.Weight,

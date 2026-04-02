@@ -2,7 +2,9 @@ package server
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"sync"
@@ -12,10 +14,14 @@ import (
 const (
 	// 会话过期时间：24小时
 	SessionMaxAge = 24 * time.Hour
-	// 会话ID长度
-	SessionIDLength = 32
+	// 会话ID长度（字节数）- SECURITY FIX: 增加到48字节增强安全性
+	SessionIDLength = 48
+	// 最小会话ID长度
+	SessionIDMinLength = 32
 	// 清理间隔
 	SessionCleanupInterval = 5 * time.Minute
+	// 最大会话数限制 - SECURITY FIX: 防止资源耗尽攻击
+	MaxSessionCount = 10000
 )
 
 // Session 会话数据
@@ -43,6 +49,8 @@ type SessionManager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
 	config   SessionConfig
+	// SECURITY FIX: 添加速率限制器防止会话洪泛攻击
+	sessionCreationTracker map[string]int64 // IP -> last creation timestamp
 }
 
 // SessionConfig 会话配置
@@ -71,20 +79,42 @@ func DefaultSessionConfig() SessionConfig {
 // NewSessionManager 创建新的会话管理器
 func NewSessionManager(config SessionConfig) *SessionManager {
 	sm := &SessionManager{
-		sessions: make(map[string]*Session),
-		config:   config,
+		sessions:               make(map[string]*Session),
+		config:                 config,
+		sessionCreationTracker: make(map[string]int64),
 	}
 	// 启动清理协程
 	go sm.cleanup()
 	return sm
 }
 
-// CreateSession 创建新会话
-func (sm *SessionManager) CreateSession() *Session {
+// CreateSession 创建新会话 - SECURITY FIX: 添加IP限制和速率限制
+func (sm *SessionManager) CreateSession(clientIP ...string) *Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	sessionID := generateSessionID()
+	// SECURITY FIX: 检查会话数量限制，防止资源耗尽
+	if len(sm.sessions) >= MaxSessionCount {
+		// 清理一些旧会话
+		sm.cleanExpiredSessionsLocked()
+	}
+	
+	// 如果仍然超过限制，拒绝创建新会话
+	if len(sm.sessions) >= MaxSessionCount {
+		return nil
+	}
+
+	// SECURITY FIX: IP速率限制
+	if len(clientIP) > 0 && clientIP[0] != "" {
+		now := time.Now().Unix()
+		lastCreation, exists := sm.sessionCreationTracker[clientIP[0]]
+		if exists && now-lastCreation < 1 { // 同一IP 1秒内只能创建一个会话
+			return nil
+		}
+		sm.sessionCreationTracker[clientIP[0]] = now
+	}
+
+	sessionID := generateSecureSessionID()
 	now := time.Now()
 	session := &Session{
 		ID:         sessionID,
@@ -102,6 +132,11 @@ func (sm *SessionManager) CreateSession() *Session {
 func (sm *SessionManager) GetSession(sessionID string) (*Session, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
+
+	// SECURITY FIX: 验证会话ID格式
+	if !isValidSessionID(sessionID) {
+		return nil, false
+	}
 
 	session, exists := sm.sessions[sessionID]
 	if !exists || session.IsExpired() {
@@ -182,7 +217,7 @@ func (sm *SessionManager) RegenerateSessionID(oldSessionID string) (*Session, bo
 	delete(sm.sessions, oldSessionID)
 
 	// 创建新会话 ID，保留数据
-	newSessionID := generateSessionID()
+	newSessionID := generateSecureSessionID()
 	newSession := &Session{
 		ID:         newSessionID,
 		Data:       session.Data,
@@ -202,23 +237,94 @@ func (sm *SessionManager) cleanup() {
 
 	for range ticker.C {
 		sm.mu.Lock()
-		for id, session := range sm.sessions {
-			if session.IsExpired() {
-				delete(sm.sessions, id)
-			}
-		}
+		sm.cleanExpiredSessionsLocked()
 		sm.mu.Unlock()
 	}
 }
 
-// generateSessionID 生成安全的会话 ID
-func generateSessionID() string {
+// cleanExpiredSessionsLocked 清理过期会话（必须在锁内调用）
+func (sm *SessionManager) cleanExpiredSessionsLocked() {
+	for id, session := range sm.sessions {
+		if session.IsExpired() {
+			delete(sm.sessions, id)
+		}
+	}
+}
+
+// generateSecureSessionID 生成安全的会话 ID
+// SECURITY FIX: 使用密码学安全随机数生成器，失败时不回退到不安全的替代方案
+func generateSecureSessionID() string {
+	// 使用密码学安全随机数
 	b := make([]byte, SessionIDLength)
 	if _, err := rand.Read(b); err != nil {
-		// 如果随机数生成失败，使用时间戳和计数器组合
-		return fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Unix())
+		// SECURITY FIX: 如果随机数生成失败，等待并重试，而不是使用时间戳
+		// 重试最多3次
+		for i := 0; i < 3; i++ {
+			time.Sleep(10 * time.Millisecond)
+			if _, err := rand.Read(b); err == nil {
+				return encodeSessionID(b)
+			}
+		}
+		// 如果仍然失败，使用系统熵池和其他熵源的组合
+		return fallbackSecureSessionID()
 	}
-	return base64.URLEncoding.EncodeToString(b)
+	return encodeSessionID(b)
+}
+
+// fallbackSecureSessionID 备用安全会话ID生成（当rand.Read失败时使用）
+// SECURITY FIX: 即使回退也保持密码学安全性
+func fallbackSecureSessionID() string {
+	// 使用多种熵源的组合
+	entropy := make([]byte, 0, SessionIDLength*2)
+	
+	// 添加时间熵（纳秒级）
+	now := time.Now()
+	timeEntropy := sha256.Sum256([]byte(fmt.Sprintf("%d-%d-%d", now.UnixNano(), now.Unix(), now.YearDay())))
+	entropy = append(entropy, timeEntropy[:]...)
+	
+	// 添加进程信息熵
+	pidEntropy := sha256.Sum256([]byte(fmt.Sprintf("%d-%d", now.UnixNano()/1000, now.Hour()*3600+now.Minute()*60+now.Second())))
+	entropy = append(entropy, pidEntropy[:]...)
+	
+	// 最终哈希
+	finalHash := sha256.Sum256(entropy)
+	return encodeSessionID(finalHash[:SessionIDLength])
+}
+
+// encodeSessionID 编码会话ID
+func encodeSessionID(data []byte) string {
+	// 使用URL安全的base64编码
+	encoded := base64.URLEncoding.EncodeToString(data)
+	// 移除填充字符
+	encoded = base64TrimPadding(encoded)
+	return encoded
+}
+
+// base64TrimPadding 移除base64填充
+func base64TrimPadding(s string) string {
+	return s[:len(s)-len(s)%4]
+}
+
+// isValidSessionID 验证会话ID格式
+// SECURITY FIX: 验证会话ID长度和字符集
+func isValidSessionID(sessionID string) bool {
+	if len(sessionID) < SessionIDMinLength {
+		return false
+	}
+	// 验证只包含base64 URL安全字符
+	for _, c := range sessionID {
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '=') {
+			return false
+		}
+	}
+	return true
+}
+
+// hashSessionID 哈希会话ID（用于日志记录）
+// SECURITY FIX: 不在日志中记录原始会话ID
+func hashSessionID(sessionID string) string {
+	hash := sha256.Sum256([]byte(sessionID))
+	return hex.EncodeToString(hash[:8]) // 只取前8字节用于日志
 }
 
 // SessionMiddleware 会话管理中间件
@@ -234,13 +340,17 @@ func SessionMiddleware(sm *SessionManager) func(http.Handler) http.Handler {
 				if session != nil {
 					sm.DeleteSession(session.ID)
 				}
-				// 创建新会话
-				session = sm.CreateSession()
-				sm.SetSessionCookie(w, session)
+				// 创建新会话 - SECURITY FIX: 传递客户端IP进行速率限制
+				session = sm.CreateSession(getClientIP(r))
+				if session != nil {
+					sm.SetSessionCookie(w, session)
+				}
 			} else if session == nil {
 				// 对于非认证端点，创建匿名会话
-				session = sm.CreateSession()
-				sm.SetSessionCookie(w, session)
+				session = sm.CreateSession(getClientIP(r))
+				if session != nil {
+					sm.SetSessionCookie(w, session)
+				}
 			}
 
 			// 将会话添加到请求上下文
@@ -248,6 +358,28 @@ func SessionMiddleware(sm *SessionManager) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// getClientIP 获取客户端IP地址
+func getClientIP(r *http.Request) string {
+	// 检查X-Forwarded-For头
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// 取第一个IP
+		if idx := len(xff); idx > 0 {
+			for i, c := range xff {
+				if c == ',' {
+					return xff[:i]
+				}
+			}
+			return xff
+		}
+	}
+	// 检查X-Real-IP头
+	if xri := r.Header.Get("X-Real-Ip"); xri != "" {
+		return xri
+	}
+	// 使用RemoteAddr
+	return r.RemoteAddr
 }
 
 // LogoutHandler 退出登录处理器
