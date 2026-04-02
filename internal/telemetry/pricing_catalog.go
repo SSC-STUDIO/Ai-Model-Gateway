@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"ai-model-gateway/internal/config"
+	"ai-model-gateway/internal/pathsecurity"
 )
 
 type PricingCatalog struct {
@@ -286,6 +287,10 @@ func loadPricingCatalogCache(path string) (PricingCatalogSnapshot, error) {
 	if strings.TrimSpace(path) == "" {
 		return PricingCatalogSnapshot{}, fmt.Errorf("pricing cache path is empty")
 	}
+	// SECURITY FIX: 验证路径安全
+	if err := pathsecurity.ValidatePathComponent(filepath.Base(path)); err != nil {
+		return PricingCatalogSnapshot{}, fmt.Errorf("invalid cache path: %w", err)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return PricingCatalogSnapshot{}, err
@@ -301,6 +306,10 @@ func loadPricingCatalogCache(path string) (PricingCatalogSnapshot, error) {
 func savePricingCatalogCache(path string, snapshot PricingCatalogSnapshot) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
+	}
+	// SECURITY FIX: 验证路径安全
+	if err := pathsecurity.ValidatePathComponent(filepath.Base(path)); err != nil {
+		return fmt.Errorf("invalid cache path: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

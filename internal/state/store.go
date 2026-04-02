@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ai-model-gateway/internal/config"
+	"ai-model-gateway/internal/pathsecurity"
 )
 
 const configHistoryLimit = 20
@@ -79,18 +80,37 @@ func (s *ConfigStore) RollbackVersion(versionID string) (config.Config, error) {
 	if s.path == "" {
 		return config.Config{}, errors.New("config path is not set")
 	}
-	// 验证 versionID 不包含路径遍历字符
-	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|` ) {
-		return config.Config{}, errors.New("invalid version ID")
+	// 增强验证 versionID - 使用 pathsecurity 包
+	if err := pathsecurity.ValidatePathComponent(versionID); err != nil {
+		return config.Config{}, fmt.Errorf("invalid version ID: %w", err)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// SECURITY FIX: 验证版本文件路径是否在允许目录内
+	historyDir := s.historyDir()
+	realHistoryDir, err := filepath.Abs(historyDir)
+	if err != nil {
+		return config.Config{}, fmt.Errorf("invalid history directory: %w", err)
+	}
+	realHistoryDir = filepath.Clean(realHistoryDir)
+
 	backupPath := s.backupPath()
 	version, err := s.findVersionLocked(versionID)
 	if err != nil {
 		return config.Config{}, err
+	}
+
+	// 验证版本文件路径是否在历史目录内
+	realVersionPath, err := filepath.Abs(version.Path)
+	if err != nil {
+		return config.Config{}, fmt.Errorf("invalid version path: %w", err)
+	}
+	realVersionPath = filepath.Clean(realVersionPath)
+	
+	if !strings.HasPrefix(realVersionPath, realHistoryDir+string(filepath.Separator)) {
+		return config.Config{}, errors.New("version path is outside history directory")
 	}
 
 	restore, err := config.LoadFromFile(version.Path)
@@ -144,18 +164,38 @@ func (s *ConfigStore) ReadVersionFile(versionID string) (ConfigVersion, []byte, 
 	if s.path == "" {
 		return ConfigVersion{}, nil, errors.New("config path is not set")
 	}
-	// 验证 versionID 不包含路径遍历字符
-	if strings.Contains(versionID, "..") || strings.ContainsAny(versionID, `\/:*?"<>|` ) {
-		return ConfigVersion{}, nil, errors.New("invalid version ID")
+	// 增强验证 versionID
+	if err := pathsecurity.ValidatePathComponent(versionID); err != nil {
+		return ConfigVersion{}, nil, fmt.Errorf("invalid version ID: %w", err)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// SECURITY FIX: 验证版本文件路径是否在允许目录内
+	historyDir := s.historyDir()
+	realHistoryDir, err := filepath.Abs(historyDir)
+	if err != nil {
+		return ConfigVersion{}, nil, fmt.Errorf("invalid history directory: %w", err)
+	}
+	realHistoryDir = filepath.Clean(realHistoryDir)
+
 	version, err := s.findVersionLocked(versionID)
 	if err != nil {
 		return ConfigVersion{}, nil, err
 	}
+
+	// 验证版本文件路径是否在历史目录内
+	realVersionPath, err := filepath.Abs(version.Path)
+	if err != nil {
+		return ConfigVersion{}, nil, fmt.Errorf("invalid version path: %w", err)
+	}
+	realVersionPath = filepath.Clean(realVersionPath)
+
+	if !strings.HasPrefix(realVersionPath, realHistoryDir+string(filepath.Separator)) {
+		return ConfigVersion{}, nil, errors.New("version path is outside history directory")
+	}
+
 	data, err := os.ReadFile(version.Path)
 	if err != nil {
 		return ConfigVersion{}, nil, fmt.Errorf("read config version: %w", err)
@@ -164,12 +204,27 @@ func (s *ConfigStore) ReadVersionFile(versionID string) (ConfigVersion, []byte, 
 }
 
 func (s *ConfigStore) backupPath() string {
-	return s.path + ".bak"
+	// SECURITY FIX: 确保备份路径在配置目录内
+	if s.path == "" {
+		return ""
+	}
+	baseDir := filepath.Dir(s.path)
+	baseName := filepath.Base(s.path)
+	return filepath.Join(baseDir, baseName+".bak")
 }
 
 func (s *ConfigStore) historyDir() string {
+	if s.path == "" {
+		return ""
+	}
+	// SECURITY FIX: 确保历史目录在配置目录内
+	baseDir := filepath.Dir(s.path)
+	realBaseDir, _ := filepath.Abs(baseDir)
+	realBaseDir = filepath.Clean(realBaseDir)
+	
 	base := filepath.Base(s.path)
-	return filepath.Join(filepath.Dir(s.path), "."+base+".history")
+	historyDir := filepath.Join(realBaseDir, "."+base+".history")
+	return historyDir
 }
 
 func (s *ConfigStore) writeBackupLocked() error {

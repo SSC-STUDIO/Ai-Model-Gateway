@@ -149,10 +149,27 @@ func (c *Config) Validate() error {
 
 func resolveRelativePaths(cfg *Config, sourcePath string) {
 	baseDir := filepath.Dir(sourcePath)
+	realBaseDir, _ := filepath.Abs(baseDir)
+	realBaseDir = filepath.Clean(realBaseDir)
+
 	if cfg.Telemetry.SQLitePath != "" && !filepath.IsAbs(cfg.Telemetry.SQLitePath) {
 		cfg.Telemetry.SQLitePath = filepath.Clean(filepath.Join(baseDir, cfg.Telemetry.SQLitePath))
+		// SECURITY FIX: 验证路径在基础目录内
+		realPath, _ := filepath.Abs(cfg.Telemetry.SQLitePath)
+		realPath = filepath.Clean(realPath)
+		if !strings.HasPrefix(realPath, realBaseDir+string(filepath.Separator)) {
+			// 路径遍历检测，回退到基础目录
+			cfg.Telemetry.SQLitePath = filepath.Join(realBaseDir, "telemetry.db")
+		}
 	}
 	if cfg.Pricing.CachePath != "" && !filepath.IsAbs(cfg.Pricing.CachePath) {
 		cfg.Pricing.CachePath = filepath.Clean(filepath.Join(baseDir, cfg.Pricing.CachePath))
+		// SECURITY FIX: 验证路径在基础目录内
+		realPath, _ := filepath.Abs(cfg.Pricing.CachePath)
+		realPath = filepath.Clean(realPath)
+		if !strings.HasPrefix(realPath, realBaseDir+string(filepath.Separator)) {
+			// 路径遍历检测，回退到基础目录
+			cfg.Pricing.CachePath = filepath.Join(realBaseDir, "pricing_cache.json")
+		}
 	}
 }
