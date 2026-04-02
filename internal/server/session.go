@@ -98,7 +98,7 @@ func (sm *SessionManager) CreateSession(clientIP ...string) *Session {
 		// 清理一些旧会话
 		sm.cleanExpiredSessionsLocked()
 	}
-	
+
 	// 如果仍然超过限制，拒绝创建新会话
 	if len(sm.sessions) >= MaxSessionCount {
 		return nil
@@ -276,19 +276,21 @@ func generateSecureSessionID() string {
 func fallbackSecureSessionID() string {
 	// 使用多种熵源的组合
 	entropy := make([]byte, 0, SessionIDLength*2)
-	
+
 	// 添加时间熵（纳秒级）
 	now := time.Now()
 	timeEntropy := sha256.Sum256([]byte(fmt.Sprintf("%d-%d-%d", now.UnixNano(), now.Unix(), now.YearDay())))
 	entropy = append(entropy, timeEntropy[:]...)
-	
+
 	// 添加进程信息熵
 	pidEntropy := sha256.Sum256([]byte(fmt.Sprintf("%d-%d", now.UnixNano()/1000, now.Hour()*3600+now.Minute()*60+now.Second())))
 	entropy = append(entropy, pidEntropy[:]...)
-	
+
 	// 最终哈希
 	finalHash := sha256.Sum256(entropy)
-	return encodeSessionID(finalHash[:SessionIDLength])
+	extraHash := sha256.Sum256(append(entropy, finalHash[:]...))
+	combined := append(finalHash[:], extraHash[:]...)
+	return encodeSessionID(combined[:SessionIDLength])
 }
 
 // encodeSessionID 编码会话ID

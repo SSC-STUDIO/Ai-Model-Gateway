@@ -200,6 +200,55 @@ func TestStoreSnapshotReusesCacheUntilNewWritesArrive(t *testing.T) {
 	}
 }
 
+func TestStoreSnapshotClockRollbackDoesNotExtendCacheExpiry(t *testing.T) {
+	store, err := NewStore(filepath.Join(t.TempDir(), "telemetry.db"))
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+
+	store.RecordRequest(RequestRecord{
+		Timestamp:      time.Now(),
+		RequestID:      "req-1",
+		Path:           "/v1/chat/completions",
+		RequestedModel: "gpt-5.4",
+		Model:          "gpt-5.4",
+		Upstream:       "alpha",
+		StatusCode:     200,
+		Attempts:       1,
+		DurationMs:     120,
+		Success:        true,
+		Usage: Usage{
+			PromptTokens:     10,
+			CompletionTokens: 4,
+			TotalTokens:      14,
+		},
+	})
+
+	_ = store.Snapshot()
+
+	futureGeneratedAt := time.Now().Add(30 * time.Second)
+	store.cacheMu.Lock()
+	store.snapshotCache.expires = time.Now().Add(-time.Millisecond)
+	store.snapshotCache.value.GeneratedAt = futureGeneratedAt
+	store.cacheMu.Unlock()
+
+	rebuilt := store.Snapshot()
+	if !rebuilt.GeneratedAt.After(futureGeneratedAt) {
+		t.Fatalf("expected generated_at to remain monotonic after rollback, got %s <= %s", rebuilt.GeneratedAt, futureGeneratedAt)
+	}
+
+	cacheExpiryUpperBound := time.Now().Add(snapshotCacheTTL + 500*time.Millisecond)
+	store.cacheMu.Lock()
+	expires := store.snapshotCache.expires
+	store.cacheMu.Unlock()
+	if expires.After(cacheExpiryUpperBound) {
+		t.Fatalf("expected cache expiry to stay near wall clock, got %s > %s", expires, cacheExpiryUpperBound)
+	}
+}
+
 func TestStoreQueryTimeSeriesCachesByWindowAndInvalidatesOnWrite(t *testing.T) {
 	store, err := NewStore(filepath.Join(t.TempDir(), "telemetry.db"))
 	if err != nil {

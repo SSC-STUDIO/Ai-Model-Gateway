@@ -83,6 +83,30 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	return rl.GetLimiter(ip).Allow()
 }
 
+func (rl *RateLimiter) allowScoped(ip string, scope string, requests int) bool {
+	if !rl.config.Enabled || requests <= 0 {
+		return true
+	}
+
+	key := scope + ":" + ip
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	entry, exists := rl.limiters[key]
+	if !exists {
+		limiter := rate.NewLimiter(rate.Every(rl.config.Window/time.Duration(requests)), requests)
+		rl.limiters[key] = &rateLimiterEntry{
+			limiter:  limiter,
+			lastSeen: time.Now(),
+		}
+		return limiter.Allow()
+	}
+
+	entry.lastSeen = time.Now()
+	return entry.limiter.Allow()
+}
+
 // AllowWithBurst 检查请求是否允许（使用指定的burst）
 func (rl *RateLimiter) AllowWithBurst(ip string, burst int) bool {
 	if !rl.config.Enabled {
@@ -116,7 +140,7 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 
 			// 检查是否是登录端点
 			if isLoginEndpoint(r.URL.Path) {
-				if !rl.GetLimiter(ip).AllowN(time.Now(), rl.config.LoginLimit) {
+				if !rl.allowScoped(ip, "login", rl.config.LoginLimit) {
 					http.Error(w, `{"error":"rate limit exceeded","code":"RATE_LIMITED"}`, http.StatusTooManyRequests)
 					return
 				}
@@ -124,7 +148,7 @@ func RateLimitMiddleware(rl *RateLimiter) func(http.Handler) http.Handler {
 
 			// 检查是否是API端点
 			if isAPIEndpoint(r.URL.Path) {
-				if !rl.GetLimiter(ip).AllowN(time.Now(), rl.config.APIPathLimit) {
+				if !rl.allowScoped(ip, "api", rl.config.APIPathLimit) {
 					http.Error(w, `{"error":"rate limit exceeded","code":"RATE_LIMITED"}`, http.StatusTooManyRequests)
 					return
 				}

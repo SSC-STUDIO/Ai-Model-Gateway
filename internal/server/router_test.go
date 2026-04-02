@@ -13,6 +13,7 @@ import (
 
 	"ai-model-gateway/internal/config"
 	"ai-model-gateway/internal/observability"
+	"ai-model-gateway/internal/proxy"
 	"ai-model-gateway/internal/router"
 	"ai-model-gateway/internal/state"
 	"ai-model-gateway/internal/telemetry"
@@ -30,6 +31,25 @@ func newTestStore(t *testing.T) *telemetry.Store {
 	return store
 }
 
+func newTestRouter(t *testing.T, manager *router.Manager, stats *telemetry.Store, pricingCatalog *telemetry.PricingCatalog) http.Handler {
+	t.Helper()
+
+	originalProxyHandlerFactory := newProxyHandler
+	originalSSRFChecker := ssrfChecker
+
+	newProxyHandler = func(manager *router.Manager, stats *telemetry.Store) *proxy.Handler {
+		return proxy.NewHandlerWithSSRFChecker(manager, stats, nil)
+	}
+	ssrfChecker = nil
+
+	t.Cleanup(func() {
+		newProxyHandler = originalProxyHandlerFactory
+		ssrfChecker = originalSSRFChecker
+	})
+
+	return NewRouter(manager, stats, pricingCatalog)
+}
+
 func TestHealthIncludesRequestID(t *testing.T) {
 	cfg := config.Config{
 		Router: config.RouterConfig{Strategy: "health_weighted_rr"},
@@ -39,7 +59,7 @@ func TestHealthIncludesRequestID(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/-/health", nil)
 	req.Header.Set(observability.RequestIDHeader, "req-health")
 
@@ -72,7 +92,7 @@ func TestModelsEndpointReturnsOpenAICompatibleModelObjects(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 
 	recorder := httptest.NewRecorder()
@@ -129,7 +149,7 @@ func TestResponsesResourceRouteProxiesWithoutBody(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/v1/responses/resp_123", nil)
 	req.Header.Set(observability.RequestIDHeader, "req-response-get")
 
@@ -178,7 +198,7 @@ func TestResponsesCompactRouteProxiesPostBody(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", strings.NewReader(`{"model":"gpt-5.2-codex","input":[{"role":"user","content":"checkpoint"}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(observability.RequestIDHeader, "req-response-compact")
@@ -237,7 +257,7 @@ func TestMessagesRouteProxiesAnthropicHeaders(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":64,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-beta", "prompt-caching-2024-07-31")
@@ -304,7 +324,7 @@ func TestMessagesCountTokensRouteProxiesAnthropicHeaders(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-opus-4-6","system":"test","messages":[{"role":"user","content":"ping"}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(observability.RequestIDHeader, "req-count-tokens")
@@ -349,7 +369,7 @@ func TestFileContentRouteProxiesWithoutBody(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/v1/files/file_123/content", nil)
 	req.Header.Set(observability.RequestIDHeader, "req-file-content")
 
@@ -395,7 +415,7 @@ func TestAdminDataIncludesTelemetry(t *testing.T) {
 		},
 	})
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), stats, telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), stats, telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/-/admin/data", nil)
 	req.Header.Set("Authorization", "Bearer secret")
 	recorder := httptest.NewRecorder()
@@ -457,7 +477,7 @@ func TestAdminRequiresAuth(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -477,7 +497,7 @@ func TestAdminAcceptsQueryToken(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/admin?token=secret", nil)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -514,7 +534,7 @@ func TestAdminAcceptsCookieToken(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
 	recorder := httptest.NewRecorder()
@@ -532,7 +552,7 @@ func TestAdminCookieSettingsRouteSucceedsSameOrigin(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
 	req.Host = "127.0.0.1:18080"
 	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
@@ -555,7 +575,7 @@ func TestAdminCookieDataRouteSucceeds(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/-/admin/data", nil)
 	req.AddCookie(&http.Cookie{Name: adminAuthCookie, Value: "secret"})
 	recorder := httptest.NewRecorder()
@@ -573,7 +593,7 @@ func TestAdminOverviewRouteTrimsDuplicateOverviewNavigation(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	req.Header.Set("Authorization", "Bearer secret")
@@ -619,7 +639,7 @@ func TestAdminSettingsAndFaviconRoutes(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	settingsReq := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
 	settingsReq.Header.Set("Authorization", "Bearer secret")
@@ -717,7 +737,7 @@ func TestAdminRoutesRenderChineseLocale(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	overviewReq := httptest.NewRequest(http.MethodGet, "/admin", nil)
 	overviewReq.Header.Set("Authorization", "Bearer secret")
@@ -780,7 +800,7 @@ func TestAdminUpstreamProbe(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	body := bytes.NewBufferString(`{"upstream":{"name":"probe","base_url":"` + upstream.URL + `","api_key":"sk-demo","headers":{"X-Test":"yes"},"timeout_ms":2000,"enabled":true}}`)
 	req := httptest.NewRequest(http.MethodPost, "/-/admin/upstreams/test", body)
 	req.Header.Set("Authorization", "Bearer secret")
@@ -839,7 +859,7 @@ func TestAdminCookieMutationRequiresSameOrigin(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	cookie := &http.Cookie{Name: adminAuthCookie, Value: "secret"}
 
 	t.Run("save same origin with origin succeeds", func(t *testing.T) {
@@ -924,7 +944,7 @@ func TestAdminBearerMutationIgnoresOriginChecks(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	t.Run("save without origin succeeds", func(t *testing.T) {
 		payload := `{"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":1,"retry_backoff_ms":1000,"retry_backoff_max_ms":5000,"failure_threshold":3,"cooldown_sec":30,"failure_passthrough_after_sec":300},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429],"status_code_min":500,"message_keywords":[]},"intercepts":[]},"upstreams":[{"name":"bearer-provider","base_url":"https://bearer.example.com","api_key":"sk-bearer","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"enabled":true,"headers":{}}]}`
@@ -983,7 +1003,7 @@ func TestAdminConfigPutRoundTripsEnabledFlag(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodPut, "/-/admin/config", strings.NewReader(`{"admin":{"enabled":false,"language":"en"},"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":2,"retry_backoff_ms":250,"retry_backoff_max_ms":2000,"failure_threshold":2,"cooldown_sec":15,"failure_passthrough_after_sec":0},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429,500,502,503,504],"message_keywords":["timeout","temporarily unavailable"]},"intercepts":[]},"upstreams":[{"name":"alpha","base_url":"https://alpha.example.com","api_key":"","provider_class":"quota_limited","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"same_upstream_retries":0,"enabled":true,"headers":{}}]}`))
 	req.Host = "127.0.0.1:18080"
 	req.Header.Set("Origin", "http://127.0.0.1:18080")
@@ -1026,7 +1046,7 @@ func TestAdminConfigPutRejectsUnknownLanguageWithFullSupportedSet(t *testing.T) 
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodPut, "/-/admin/config", strings.NewReader(`{"admin":{"enabled":true,"language":"it"},"health":{"enabled":true,"interval_sec":10,"timeout_ms":2000,"path":"/v1/models"},"bridge":{"enabled":false,"exclude_user_agents":[],"rules":[]},"router":{"strategy":"round_robin","max_retries":2,"retry_backoff_ms":250,"retry_backoff_max_ms":2000,"failure_threshold":2,"cooldown_sec":15,"failure_passthrough_after_sec":0},"proxy":{"retry":{"infinite_on_error":false,"status_codes":[408,429,500,502,503,504],"message_keywords":["timeout","temporarily unavailable"]},"intercepts":[]},"upstreams":[{"name":"alpha","base_url":"https://alpha.example.com","api_key":"","provider_class":"quota_limited","models":["gpt-5.2"],"weight":1,"timeout_ms":30000,"same_upstream_retries":0,"enabled":true,"headers":{}}]}`))
 	req.Header.Set("Authorization", "Bearer secret")
 	req.Header.Set("Content-Type", "application/json")
@@ -1073,7 +1093,7 @@ func TestAdminConfigUpdatesUpstreams(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	payload := map[string]any{
 		"admin": map[string]any{
@@ -1248,7 +1268,7 @@ func TestAdminConfigReturnsRedactedSecrets(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewRouter(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(state.NewConfigStore(cfg)), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 	req := httptest.NewRequest(http.MethodGet, "/-/admin/config", nil)
 	req.Header.Set("Authorization", "Bearer secret")
 	recorder := httptest.NewRecorder()
@@ -1301,7 +1321,7 @@ func TestAdminConfigExportReturnsYAML(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	req := httptest.NewRequest(http.MethodGet, "/-/admin/config/export", nil)
 	req.Header.Set("Authorization", "Bearer secret")
@@ -1357,7 +1377,7 @@ func TestAdminConfigRollbackRestoresPreviousVersion(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	payload := map[string]any{
 		"health": map[string]any{
@@ -1488,7 +1508,7 @@ func TestAdminConfigHistoryListsSavedVersions(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	for _, name := range []string{"provider-a", "provider-b"} {
 		payload := map[string]any{
@@ -1598,7 +1618,7 @@ func TestAdminConfigHistoryDiffReturnsLineChanges(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	payload := map[string]any{
 		"health": map[string]any{
@@ -1732,7 +1752,7 @@ func TestAdminConfigRollbackSpecificVersion(t *testing.T) {
 	}
 
 	store := state.NewConfigStoreWithPath(cfg, configPath)
-	handler := NewRouter(router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
+	handler := newTestRouter(t, router.NewManager(store), newTestStore(t), telemetry.NewPricingCatalog(cfg.Pricing))
 
 	saveVersion := func(name string) {
 		payload := map[string]any{

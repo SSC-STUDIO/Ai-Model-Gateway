@@ -354,15 +354,22 @@ func (s *Store) Snapshot() Snapshot {
 	}
 
 	version := s.currentVersion()
-	now := time.Now()
+	wallNow := time.Now()
+	generatedAt := wallNow
+	var previousGeneratedAt time.Time
 
 	s.cacheMu.Lock()
-	if now.Before(s.snapshotCache.expires) && s.snapshotCache.version == version {
+	if wallNow.Before(s.snapshotCache.expires) && s.snapshotCache.version == version {
 		snapshot := s.snapshotCache.value
 		s.cacheMu.Unlock()
 		return snapshot
 	}
+	previousGeneratedAt = s.snapshotCache.value.GeneratedAt
 	s.cacheMu.Unlock()
+
+	if !previousGeneratedAt.IsZero() && !generatedAt.After(previousGeneratedAt) {
+		generatedAt = previousGeneratedAt.Add(time.Nanosecond)
+	}
 
 	s.flushWriter()
 	snapshot := Snapshot{
@@ -375,13 +382,14 @@ func (s *Store) Snapshot() Snapshot {
 		ByModel:         s.queryUsageBreakdown("model"),
 		ByUpstream:      s.queryUsageBreakdown("upstream"),
 		ByModelRoute:    s.queryModelRouteBreakdown(),
-		GeneratedAt:     now,
+		GeneratedAt:     generatedAt,
 	}
+	expiresAt := time.Now().Add(snapshotCacheTTL)
 
 	s.cacheMu.Lock()
 	s.snapshotCache = cachedSnapshot{
 		version: version,
-		expires: now.Add(snapshotCacheTTL),
+		expires: expiresAt,
 		value:   snapshot,
 	}
 	s.cacheMu.Unlock()

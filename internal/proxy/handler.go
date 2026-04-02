@@ -109,9 +109,14 @@ func (e errRequestBodyTooLarge) Error() string {
 // Error implements the error interface for errRequestBodyTooLarge.
 // It allows errors.Is/As to work with this type.
 
-// NewHandler creates a new proxy handler with the given manager and stats store.
-// It configures an HTTP client with optimized connection pooling.
+// NewHandler creates a new proxy handler with the default SSRF checker.
 func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
+	return NewHandlerWithSSRFChecker(manager, stats, NewSSRFChecker())
+}
+
+// NewHandlerWithSSRFChecker creates a new proxy handler with the given SSRF checker.
+// Passing nil disables URL validation, which is useful for isolated tests.
+func NewHandlerWithSSRFChecker(manager *router.Manager, stats *telemetry.Store, checker *SSRFChecker) *Handler {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -126,7 +131,7 @@ func NewHandler(manager *router.Manager, stats *telemetry.Store) *Handler {
 		Manager:     manager,
 		Stats:       stats,
 		Client:      &http.Client{Transport: transport},
-		ssrfChecker: NewSSRFChecker(),
+		ssrfChecker: checker,
 	}
 }
 

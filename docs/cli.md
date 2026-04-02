@@ -98,13 +98,13 @@ gateway uninstall
 
 ### Configuration Management
 
-```bash
-# Reload configuration without restart
-gateway config -reload
+`gateway config` 的 `-reload` / `-export` 目前仍是占位参数，CLI 尚未提供对应执行逻辑。
 
-# Export current configuration
-gateway config -export -output config.backup.yaml
-```
+当前可用替代：
+
+- 导出脱敏配置：`GET /-/admin/config/export`
+- 修改配置：`PUT /-/admin/config`
+- 回滚配置：`POST /-/admin/config/rollback`
 
 ## Examples
 
@@ -142,9 +142,6 @@ gateway health -endpoint http://localhost:18080/-/health
 ```bash
 # Edit config, then validate before applying
 gateway validate
-
-# If running as service, reload config
-gateway config -reload
 ```
 
 ## Exit Codes

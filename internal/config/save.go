@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,19 +9,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// SaveToFile saves the configuration to a file with sensitive data masked
+var (
+	replaceFileAtomically = osReplaceFile
+)
+
+// SaveToFile saves the configuration to a file.
 func SaveToFile(path string, cfg Config) error {
 	RelativizePaths(&cfg, path)
-	
-	// SECURITY FIX: Sanitize sensitive data before saving
-	// Create a copy with masked API keys and auth tokens
-	sanitizedCfg := sanitizeConfigForExport(cfg)
-	
-	data, err := yaml.Marshal(sanitizedCfg)
+
+	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := writeFileAtomically(path, data, 0o600); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
@@ -34,7 +33,7 @@ func SaveToFileWithEncryption(path string, cfg Config, masterKey string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize secure storage: %w", err)
 	}
-	
+
 	// Encrypt API keys before saving
 	for i := range cfg.Upstreams {
 		if cfg.Upstreams[i].APIKey != "" && !IsEncrypted(cfg.Upstreams[i].APIKey) {
@@ -45,7 +44,7 @@ func SaveToFileWithEncryption(path string, cfg Config, masterKey string) error {
 			cfg.Upstreams[i].APIKey = encrypted
 		}
 	}
-	
+
 	// Encrypt admin auth token if present
 	if cfg.Admin.AuthToken != "" && !IsEncrypted(cfg.Admin.AuthToken) {
 		encrypted, err := storage.Encrypt(cfg.Admin.AuthToken)
@@ -54,7 +53,7 @@ func SaveToFileWithEncryption(path string, cfg Config, masterKey string) error {
 		}
 		cfg.Admin.AuthToken = encrypted
 	}
-	
+
 	RelativizePaths(&cfg, path)
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -81,12 +80,12 @@ func sanitizeConfigForExport(cfg Config) Config {
 		Proxy:     cfg.Proxy,
 		Upstreams: make([]Upstream, len(cfg.Upstreams)),
 	}
-	
+
 	// Mask admin auth token
 	if sanitized.Admin.AuthToken != "" {
 		sanitized.Admin.AuthToken = MaskKey(sanitized.Admin.AuthToken)
 	}
-	
+
 	// Mask API keys in upstreams
 	for i, u := range cfg.Upstreams {
 		sanitized.Upstreams[i] = Upstream{
@@ -102,7 +101,7 @@ func sanitizeConfigForExport(cfg Config) Config {
 			Headers:             copyStringMap(u.Headers),
 		}
 	}
-	
+
 	return sanitized
 }
 
@@ -115,6 +114,43 @@ func copyStringMap(m map[string]string) map[string]string {
 		copied[k] = v
 	}
 	return copied
+}
+
+func writeFileAtomically(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+
+	tempFile, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tempPath := tempFile.Name()
+	success := false
+	defer func() {
+		if success {
+			return
+		}
+		_ = tempFile.Close()
+		_ = os.Remove(tempPath)
+	}()
+
+	if err := tempFile.Chmod(perm); err != nil {
+		return err
+	}
+	if _, err := tempFile.Write(data); err != nil {
+		return err
+	}
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
+	if err := replaceFileAtomically(tempPath, path); err != nil {
+		return err
+	}
+
+	success = true
+	return nil
 }
 
 func RelativizePaths(cfg *Config, sourcePath string) {

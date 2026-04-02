@@ -34,6 +34,10 @@ func newTestStore(t *testing.T) *telemetry.Store {
 	return store
 }
 
+func newProxyHandlerForTest(manager *router.Manager, stats *telemetry.Store) *Handler {
+	return NewHandlerWithSSRFChecker(manager, stats, nil)
+}
+
 type zeroReadCloser struct {
 	remaining int64
 }
@@ -71,7 +75,7 @@ func TestHandlerRejectsRequestBodyOverProxyLimit(t *testing.T) {
 	cfg := config.Config{}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-too-large"))
 	req.Header.Set("Content-Type", "application/json")
@@ -108,7 +112,7 @@ func TestHandlerPreservesInvalidRequestErrorForOrdinaryBodyReadFailure(t *testin
 	cfg := config.Config{}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-body-read-error"))
 	req.Header.Set("Content-Type", "application/json")
@@ -142,10 +146,6 @@ func TestHandlerPreservesInvalidRequestErrorForOrdinaryBodyReadFailure(t *testin
 }
 
 func TestHandlerRetriesAndAddsObservabilityHeaders(t *testing.T) {
-	// Skip in CI due to SSRF validation blocking localhost
-	if os.Getenv("CI") == "true" {
-		t.Skip("Skipping test in CI environment due to SSRF validation")
-	}
 	var badCalls atomic.Int32
 	badServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		badCalls.Add(1)
@@ -179,7 +179,7 @@ func TestHandlerRetriesAndAddsObservabilityHeaders(t *testing.T) {
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-123"))
 	req.Header.Set("Content-Type", "application/json")
@@ -246,7 +246,7 @@ func TestHandlerInterceptRuleForcesRetry(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -272,10 +272,6 @@ func TestHandlerInterceptRuleForcesRetry(t *testing.T) {
 }
 
 func TestHandlerInfiniteRetryModeKeepsRecoveringSingleUpstream(t *testing.T) {
-	// Skip in CI due to SSRF validation blocking localhost
-	if os.Getenv("CI") == "true" {
-		t.Skip("Skipping test in CI environment due to SSRF validation")
-	}
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempt := calls.Add(1)
@@ -309,7 +305,7 @@ func TestHandlerInfiniteRetryModeKeepsRecoveringSingleUpstream(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-infinite"))
 	req.Header.Set("Content-Type", "application/json")
@@ -357,7 +353,7 @@ func TestHandlerAllowsOptionalModelEndpoints(t *testing.T) {
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"prompt":"a red bird"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-img"))
 	req.Header.Set("Content-Type", "application/json")
@@ -420,7 +416,7 @@ func TestHandlerExtractsModelFromMultipartRequests(t *testing.T) {
 	}
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body.Bytes()))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-audio"))
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -469,7 +465,7 @@ func TestHandlerPassthroughsRetryableUpstreamBodyAfterWindow(t *testing.T) {
 	manager.ReportRequestFailure("solo", time.Millisecond, http.StatusTooManyRequests, nil, true, "status")
 	time.Sleep(1100 * time.Millisecond)
 
-	handler := NewHandler(manager, newTestStore(t))
+	handler := newProxyHandlerForTest(manager, newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hi"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-pass"))
 	req.Header.Set("Content-Type", "application/json")
@@ -531,7 +527,7 @@ func TestHandlerQuotaLimitedUpstreamGetsBlockedAfterQuotaError(t *testing.T) {
 	cfg.Normalize()
 
 	manager := router.NewManager(state.NewConfigStore(cfg))
-	handler := NewHandler(manager, newTestStore(t))
+	handler := newProxyHandlerForTest(manager, newTestStore(t))
 
 	makeRequest := func(requestID string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.2-codex","messages":[{"role":"user","content":"hi"}]}`))
@@ -588,7 +584,7 @@ func TestHandlerRecordsFinal503WithLastUpstream(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.2","input":"hi"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-final-503"))
 	req.Header.Set("Content-Type", "application/json")
@@ -642,7 +638,7 @@ func TestResponsesCompatFallbackToChatCompletions(t *testing.T) {
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-opus-4-6","input":"ping"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-compat"))
 	req.Header.Set("Content-Type", "application/json")
@@ -712,7 +708,7 @@ func TestChatCompletionsAnthropicMessagesCompatFallback(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-chat"))
 	req.Header.Set("Content-Type", "application/json")
@@ -766,7 +762,7 @@ func TestChatCompletionsAnthropicMessagesCompatFallbackStream(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"Reply with exactly ok"}],"stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-stream"))
 	req.Header.Set("Content-Type", "application/json")
@@ -849,7 +845,7 @@ func TestChatCompletionsAnthropicMessagesCompatFallbackPreservesImages(t *testin
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{
 		"model":"claude-opus-4-6",
 		"messages":[
@@ -902,7 +898,7 @@ func TestResponsesAnthropicMessagesCompatFallback(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-sonnet-4-6","input":"Reply with exactly ok","stream":false}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-responses"))
 	req.Header.Set("Content-Type", "application/json")
@@ -972,7 +968,7 @@ func TestResponsesAnthropicMessagesCompatFallbackPreservesStructuredImageInput(t
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{
 		"model":"claude-sonnet-4-6",
 		"input":[
@@ -1043,7 +1039,7 @@ func TestResponsesAnthropicMessagesCompatFallbackForNonClaudeWhenAnthropicBaseUR
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"kimi-for-coding","input":"Reply with exactly ok","stream":false}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-kimi-responses-anthropic-compat"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1120,7 +1116,7 @@ func TestChatCompletionsAnthropicMessagesCompatFallbackForNonClaudeWhenAnthropic
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"kimi-for-coding","messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-kimi-chat-anthropic-compat"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1185,7 +1181,7 @@ func TestMessagesRoutePassthroughAnthropicStream(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-direct-messages"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1251,7 +1247,7 @@ func TestMessagesRoutePassthroughAnthropicBridgeRewritesJSONModel(t *testing.T) 
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":16,"messages":[{"role":"user","content":"Reply with pong"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-direct-anthropic-bridge-json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1315,7 +1311,7 @@ func TestMessagesRoutePassthroughAnthropicBridgeRewritesStreamModel(t *testing.T
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"Reply with pong"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-direct-anthropic-bridge-stream"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1403,7 +1399,7 @@ func TestMessageCountTokensAnthropicCompatStripsAuthorizationAndRecordsTelemetry
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-opus-4-6-thinking","system":"Count carefully.","messages":[{"role":"user","content":"ping"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-count-tokens-direct"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1498,7 +1494,7 @@ func TestMessagesRouteOverridesCallerCredentialsForAnthropic(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":32,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-direct-message-credentials"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1553,7 +1549,7 @@ func TestMessageCountTokensAnthropicCompatReturns503WhenUsageMissing(t *testing.
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"claude-opus-4-6","messages":[{"role":"user","content":"ping"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-count-tokens-missing-usage"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1626,7 +1622,7 @@ func TestResponsesCompatStreamEmitsCompletedEvent(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-opus-4-6","input":"ping","stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-compat-stream"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1696,7 +1692,7 @@ func TestResponsesAnthropicMessagesCompatFallbackStreamForNonClaudeWhenAnthropic
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"kimi-for-coding","input":"ping","stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-kimi-responses-stream"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1756,7 +1752,7 @@ func TestHandlerPassesThroughResponsesEventStreamWithoutRetry(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hi","stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-sse-retry"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1790,10 +1786,6 @@ func TestHandlerPassesThroughResponsesEventStreamWithoutRetry(t *testing.T) {
 }
 
 func TestHandlerInfiniteRetryBuffersResponsesEventStreamUntilCompleted(t *testing.T) {
-	// Skip in CI due to SSRF validation blocking localhost
-	if os.Getenv("CI") == "true" {
-		t.Skip("Skipping test in CI environment due to SSRF validation")
-	}
 	var firstCalls atomic.Int32
 	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		firstCalls.Add(1)
@@ -1832,7 +1824,7 @@ func TestHandlerInfiniteRetryBuffersResponsesEventStreamUntilCompleted(t *testin
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hi","stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-sse-infinite"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1902,7 +1894,7 @@ func TestHandlerBridgesModelFromConfig(t *testing.T) {
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.2","input":"hi"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-bridge"))
 	req.Header.Set("Content-Type", "application/json")
@@ -1988,7 +1980,7 @@ func TestHandlerBridgedAnthropicMessagesCompatToChatCompletions(t *testing.T) {
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","system":"You are terse.","max_tokens":64,"messages":[{"role":"user","content":"Reply with exactly ok"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-bridge"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2070,7 +2062,7 @@ func TestHandlerBridgedAnthropicMessagesCompatToChatCompletionsStream(t *testing
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus-4-6","max_tokens":32,"stream":true,"messages":[{"role":"user","content":"Reply with pong"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-anthropic-bridge-stream"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2162,7 +2154,7 @@ func TestHandlerBridgedAnthropicMessagesCompatPreservesTools(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{
 		"model":"claude-opus-4-6",
 		"max_tokens":64,
@@ -2241,7 +2233,7 @@ func TestHandlerBridgedAnthropicMessagesCompatPreservesImages(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{
 		"model":"claude-opus-4-6",
 		"messages":[
@@ -2315,7 +2307,7 @@ func TestHandlerBridgedResponsesCompatFallbackToChatCompletions(t *testing.T) {
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claude-opus-4-6","input":"ping"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-bridge-responses-compat"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2406,7 +2398,7 @@ func TestHandlerBridgedNonClaudeResponsesCompatFallbackToChatCompletions(t *test
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.3-codex","input":"ping"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-bridge-responses-compat-non-claude"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2488,7 +2480,7 @@ func TestMessageCountTokensUsesAnthropicBaseURLWhenConfigured(t *testing.T) {
 	}
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", strings.NewReader(`{"model":"kimi-k2.5","messages":[{"role":"user","content":"ping"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-kimi-count-tokens"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2561,7 +2553,7 @@ func TestHandlerFallsBackToRequestedModelWhenBridgeUpstreamFails(t *testing.T) {
 	cfg.Normalize()
 
 	store := newTestStore(t)
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), store)
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), store)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.2","input":"hi"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-bridge-fallback"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2645,7 +2637,7 @@ func TestHandlerBridgesMultipartModelFromConfig(t *testing.T) {
 		t.Fatalf("close writer: %v", err)
 	}
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body.Bytes()))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-bridge-multipart"))
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -2694,7 +2686,7 @@ func TestHandlerSkipsBridgeForExcludedUserAgent(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.2-codex","input":"hi"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-codex"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2746,7 +2738,7 @@ func TestHandlerResponsesCompactSkipsBridgeRouting(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses/compact", strings.NewReader(`{"model":"gpt-5.2-codex","input":"hi"}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-compact"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2802,7 +2794,7 @@ func TestHandlerResponsesReuseStickyUpstreamFromPreviousResponseID(t *testing.T)
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 
 	first := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.2-codex","input":"hi"}`))
 	first = first.WithContext(observability.WithRequestID(first.Context(), "req-sticky-1"))
@@ -2877,7 +2869,7 @@ func TestHandlerResponsesCompactUsesStickyResponseID(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 
 	first := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.2-codex","input":"hi"}`))
 	first = first.WithContext(observability.WithRequestID(first.Context(), "req-compact-sticky-1"))
@@ -2927,7 +2919,7 @@ func TestHandlerRetriesSameUpstreamWhenConfigured(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.2-codex","messages":[{"role":"user","content":"hi"}],"stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-same-upstream"))
 	req.Header.Set("Content-Type", "application/json")
@@ -2990,7 +2982,7 @@ func TestHandlerCancelsDisabledInFlightUpstreamAndFailsOver(t *testing.T) {
 	cfg.Normalize()
 
 	store := state.NewConfigStore(cfg)
-	handler := NewHandler(router.NewManager(store), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(store), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-disable-failover"))
 	req.Header.Set("Content-Type", "application/json")
@@ -3051,7 +3043,7 @@ func TestHandlerAllowsChatCompletionsStreamDoneMarker(t *testing.T) {
 	}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Reply with pong"}],"stream":true}`))
 	req = req.WithContext(observability.WithRequestID(req.Context(), "req-chat-stream"))
 	req.Header.Set("Content-Type", "application/json")
@@ -3084,7 +3076,7 @@ func TestHandlerDoKeepsStreamingBodyReadableUntilClose(t *testing.T) {
 	cfg := config.Config{}
 	cfg.Normalize()
 
-	handler := NewHandler(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
+	handler := newProxyHandlerForTest(router.NewManager(state.NewConfigStore(cfg)), newTestStore(t))
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 
 	resp, _, err := handler.do(req, []byte(`{"model":"gpt-5.4","stream":true}`), "application/json", config.Upstream{

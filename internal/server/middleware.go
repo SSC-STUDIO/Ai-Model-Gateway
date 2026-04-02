@@ -269,6 +269,7 @@ type CORSConfig struct {
 	AllowOrigins     []string
 	AllowMethods     []string
 	AllowHeaders     []string
+	ExposedHeaders   []string
 	AllowCredentials bool
 	MaxAge           int
 }
@@ -277,11 +278,11 @@ type CORSConfig struct {
 func DefaultCORSConfig() CORSConfig {
 	return CORSConfig{
 		// SECURITY FIX: 默认不配置任何允许的来源，必须由管理员显式配置
-		AllowedOrigins: []string{},
+		AllowOrigins: []string{},
 		// SECURITY FIX: 只允许必要的方法
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		// SECURITY FIX: 最小化允许的头部
-		AllowedHeaders: []string{
+		AllowHeaders: []string{
 			"Accept",
 			"Authorization",
 			"Content-Type",
@@ -305,8 +306,8 @@ func DefaultCORSConfig() CORSConfig {
 func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 	// SECURITY FIX: 如果通配符在配置中，记录警告
 	hasWildcard := false
-	allowedOrigins := make([]string, 0, len(config.AllowedOrigins))
-	for _, origin := range config.AllowedOrigins {
+	allowedOrigins := make([]string, 0, len(config.AllowOrigins))
+	for _, origin := range config.AllowOrigins {
 		origin = strings.TrimSpace(origin)
 		if origin == "" {
 			continue
@@ -325,11 +326,12 @@ func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			origin := r.Header.Get("Origin")
-			if origin == "" {
-				origin = "*"
+			if isAdminMutation(r) {
+				next.ServeHTTP(w, r)
+				return
 			}
 
+			origin := r.Header.Get("Origin")
 			// SECURITY FIX: 如果没有 Origin 头，可能是同源请求或直接的API调用
 			if origin == "" {
 				next.ServeHTTP(w, r)
@@ -359,8 +361,6 @@ func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 						break
 					}
 				}
-			} else {
-				allowOrigin = origin
 			}
 
 			// 如果不允许，拒绝请求
@@ -375,11 +375,14 @@ func corsMiddleware(config CORSConfig) func(http.Handler) http.Handler {
 			if config.AllowCredentials {
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
+			if len(config.ExposedHeaders) > 0 {
+				w.Header().Set("Access-Control-Expose-Headers", strings.Join(config.ExposedHeaders, ", "))
+			}
 
 			// 处理预检请求
 			if r.Method == http.MethodOptions {
-				w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowedMethods, ", "))
-				w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowedHeaders, ", "))
+				w.Header().Set("Access-Control-Allow-Methods", strings.Join(config.AllowMethods, ", "))
+				w.Header().Set("Access-Control-Allow-Headers", strings.Join(config.AllowHeaders, ", "))
 				if config.MaxAge > 0 {
 					w.Header().Set("Access-Control-Max-Age", strconv.Itoa(config.MaxAge))
 				}
@@ -401,15 +404,15 @@ func isValidOrigin(origin string) bool {
 	if origin == "" {
 		return true
 	}
-	
+
 	// 验证基本格式: scheme://host[:port]
 	origin = strings.ToLower(origin)
-	
+
 	// 允许的特殊值
 	if origin == "null" {
 		return true
 	}
-	
+
 	// 检查 scheme
 	validSchemes := []string{"http://", "https://"}
 	hasValidScheme := false
@@ -419,16 +422,16 @@ func isValidOrigin(origin string) bool {
 			break
 		}
 	}
-	
+
 	if !hasValidScheme {
 		return false
 	}
-	
+
 	// 检查长度限制（防止 DoS）
 	if len(origin) > 2048 {
 		return false
 	}
-	
+
 	// 检查禁止字符
 	forbiddenChars := []string{"\n", "\r", "\x00", "<", ">", "\"", "'", "`"}
 	for _, char := range forbiddenChars {
@@ -436,7 +439,7 @@ func isValidOrigin(origin string) bool {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -457,14 +460,14 @@ func matchOriginStrict(origin, pattern string) bool {
 			// 确保通配符只用于子域名匹配，而不是顶级域或路径
 			beforeWildcard := parts[0]
 			afterWildcard := parts[1]
-			
+
 			// 验证通配符位置（应该只用于子域名）
 			if strings.HasSuffix(beforeWildcard, ".") && strings.HasPrefix(afterWildcard, ".") {
 				// 例如: https://*.example.com
 				return strings.HasPrefix(origin, beforeWildcard) && strings.HasSuffix(origin, afterWildcard)
 			}
 		}
-		
+
 		// SECURITY FIX: 拒绝不安全的通配符使用
 		return false
 	}

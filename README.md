@@ -231,6 +231,7 @@ http://127.0.0.1:18080/admin/settings
 
 - 浏览器：admin 页面会携带 `credentials: 'same-origin'`，cookie-auth 的写请求仅允许同源 `Origin`，缺失时仅接受同源 `Referer` 后备。
 - 自动化：脚本、CLI、curl 调用 `/-/admin/config`、`/-/admin/config/rollback`、`/-/admin/upstreams/test` 时，推荐使用 `Authorization: Bearer <token>`，不会被 `Origin` / `Referer` 限制误伤。
+- 导出与排障：`GET /-/admin/config/export`、配置视图、config history diff、upstream probe 响应会自动脱敏 `api_key`、`auth_token` 和常见敏感 header 值；导出的 YAML 适合做备份模板，不适合直接当作可运行配置回灌。
 - 暴露面：不要把 admin URL、Bearer token 或已登录的 admin cookie 会话暴露给不受信任来源；管理页应只在受信任浏览器上下文中打开。
 
 ## CLI Commands

@@ -12,7 +12,7 @@ import (
 	"os"
 	"strings"
 
-	"golang.org/x/crypto/pbkdf2"
+	"crypto/pbkdf2"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	saltSize   = 32
 	keySize    = 32
 	iterations = 100000
-	
+
 	// Prefix for encrypted values
 	encryptedPrefix = "ENC:"
 )
@@ -37,22 +37,25 @@ func NewSecureStorage(masterKey string) (*SecureStorage, error) {
 	if masterKey == "" {
 		masterKey = os.Getenv("AI_GATEWAY_MASTER_KEY")
 	}
-	
+
 	if masterKey == "" {
 		return nil, fmt.Errorf("master key not provided and AI_GATEWAY_MASTER_KEY not set")
 	}
-	
+
 	// Derive a fixed-size key from the master key
-	key := deriveKey(masterKey, []byte("ai-gateway-fixed-salt"))
-	
+	key, err := deriveKey(masterKey, []byte("ai-gateway-fixed-salt"))
+	if err != nil {
+		return nil, fmt.Errorf("derive master key: %w", err)
+	}
+
 	return &SecureStorage{
 		masterKey: key,
 	}, nil
 }
 
 // deriveKey derives a fixed-size key from a password using PBKDF2
-func deriveKey(password string, salt []byte) []byte {
-	return pbkdf2.Key([]byte(password), salt, iterations, keySize, sha256.New)
+func deriveKey(password string, salt []byte) ([]byte, error) {
+	return pbkdf2.Key(sha256.New, password, salt, iterations, keySize)
 }
 
 // Encrypt encrypts a plaintext string using AES-GCM
@@ -60,31 +63,31 @@ func (s *SecureStorage) Encrypt(plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil
 	}
-	
+
 	// Don't double-encrypt
 	if strings.HasPrefix(plaintext, encryptedPrefix) {
 		return plaintext, nil
 	}
-	
+
 	block, err := aes.NewCipher(s.masterKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create cipher: %w", err)
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", fmt.Errorf("failed to create GCM: %w", err)
 	}
-	
+
 	// Generate random nonce
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", fmt.Errorf("failed to generate nonce: %w", err)
 	}
-	
+
 	// Encrypt and authenticate
 	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
-	
+
 	// Return as base64-encoded string with prefix
 	return encryptedPrefix + base64.StdEncoding.EncodeToString(ciphertext), nil
 }
@@ -94,44 +97,44 @@ func (s *SecureStorage) Decrypt(ciphertext string) (string, error) {
 	if ciphertext == "" {
 		return "", nil
 	}
-	
+
 	// Check if it's encrypted
 	if !strings.HasPrefix(ciphertext, encryptedPrefix) {
 		// Not encrypted, return as-is
 		return ciphertext, nil
 	}
-	
+
 	// Remove prefix
 	encoded := strings.TrimPrefix(ciphertext, encryptedPrefix)
-	
+
 	// Decode base64
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode ciphertext: %w", err)
 	}
-	
+
 	block, err := aes.NewCipher(s.masterKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create cipher: %w", err)
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", fmt.Errorf("failed to create GCM: %w", err)
 	}
-	
+
 	nonceSize := gcm.NonceSize()
 	if len(data) < nonceSize {
 		return "", fmt.Errorf("ciphertext too short")
 	}
-	
+
 	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
-	
+
 	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt: %w", err)
 	}
-	
+
 	return string(plaintext), nil
 }
 
@@ -145,17 +148,17 @@ func MaskKey(key string) string {
 	if key == "" {
 		return ""
 	}
-	
+
 	// If encrypted, show a masked version
 	if IsEncrypted(key) {
 		return "ENC:****"
 	}
-	
+
 	// For plaintext keys, show first 4 and last 4 characters
 	if len(key) <= 8 {
 		return "****"
 	}
-	
+
 	return key[:4] + "****" + key[len(key)-4:]
 }
 
@@ -177,7 +180,7 @@ func NewSecureConfig(cfg *Config, masterKey string) (*SecureConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &SecureConfig{
 		Config:  cfg,
 		storage: storage,
@@ -203,12 +206,12 @@ func (sc *SecureConfig) DecryptUpstreamAPIKey(upstreamIndex int) (string, error)
 	if upstreamIndex < 0 || upstreamIndex >= len(sc.Upstreams) {
 		return "", fmt.Errorf("invalid upstream index: %d", upstreamIndex)
 	}
-	
+
 	apiKey := sc.Upstreams[upstreamIndex].APIKey
 	if apiKey == "" {
 		return "", nil
 	}
-	
+
 	return sc.storage.Decrypt(apiKey)
 }
 
@@ -237,7 +240,7 @@ func (sc *SecureConfig) SanitizedConfig() *Config {
 		Proxy:     sc.Config.Proxy,
 		Upstreams: make([]Upstream, len(sc.Config.Upstreams)),
 	}
-	
+
 	// Copy upstreams with masked API keys
 	for i, u := range sc.Config.Upstreams {
 		sanitized.Upstreams[i] = Upstream{
@@ -253,12 +256,12 @@ func (sc *SecureConfig) SanitizedConfig() *Config {
 			Headers:             copyHeaders(u.Headers),
 		}
 	}
-	
+
 	// Mask admin auth token if present
 	if sanitized.Admin.AuthToken != "" {
 		sanitized.Admin.AuthToken = MaskKey(sanitized.Admin.AuthToken)
 	}
-	
+
 	return sanitized
 }
 

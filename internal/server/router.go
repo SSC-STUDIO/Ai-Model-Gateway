@@ -24,8 +24,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ssrfChecker is a package-level SSRF checker for validating URLs
+// ssrfChecker is a package-level SSRF checker for validating URLs.
 var ssrfChecker = proxy.NewSSRFChecker()
+
+var newProxyHandler = proxy.NewHandler
 
 type ModelItem struct {
 	ID      string `json:"id"`
@@ -211,7 +213,7 @@ func NewRouter(manager *router.Manager, stats *telemetry.Store, pricingCatalog *
 	r.Use(accessLog)
 	r.Use(requireAdminAuth(manager.CurrentConfig))
 
-	p := proxy.NewHandler(manager, stats)
+	p := newProxyHandler(manager, stats)
 	var adminDataCache struct {
 		mu       sync.Mutex
 		cond     *sync.Cond

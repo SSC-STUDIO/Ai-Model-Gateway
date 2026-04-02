@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -76,6 +77,38 @@ func TestWriteFileAtomically_ReplaceExisting(t *testing.T) {
 	}
 	if string(content) != string(newData) {
 		t.Errorf("file content mismatch: expected %q, got %q", newData, content)
+	}
+}
+
+func TestWriteFileAtomically_RenameRetryFailureKeepsOriginalFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "test.txt")
+	original := []byte("old data")
+
+	if err := os.WriteFile(filePath, original, 0o644); err != nil {
+		t.Fatalf("failed to create existing file: %v", err)
+	}
+
+	origReplace := replaceFileAtomically
+	t.Cleanup(func() {
+		replaceFileAtomically = origReplace
+	})
+
+	replaceFileAtomically = func(oldpath, newpath string) error {
+		return errors.New("simulated second rename failure")
+	}
+
+	err := writeFileAtomically(filePath, []byte("new data"), 0o644)
+	if err == nil {
+		t.Fatal("expected writeFileAtomically to fail")
+	}
+
+	content, readErr := os.ReadFile(filePath)
+	if readErr != nil {
+		t.Fatalf("expected original file to remain after failed replace, read error: %v", readErr)
+	}
+	if string(content) != string(original) {
+		t.Fatalf("expected original file content %q, got %q", original, content)
 	}
 }
 
