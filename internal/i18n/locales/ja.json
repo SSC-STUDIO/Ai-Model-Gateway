@@ -1,0 +1,25 @@
+{
+  "errors": {
+    "no_provider": "モデルプロバイダーが利用できません",
+    "model_not_found": "モデルが見つかりません",
+    "upstream_timeout": "アップストリームリクエストがタイムアウトしました",
+    "retry_exhausted": "すべての再試行が失敗しました",
+    "request_too_large": "リクエストボディが大きすぎます",
+    "unauthorized": "認証されていません",
+    "forbidden": "アクセスが拒否されました",
+    "invalid_token": "無効なトークンです",
+    "invalid_request_body": "無効なリクエストボディです",
+    "no_auth_credential": "認証情報がありません",
+    "malformed_cookie": "Cookieの形式が正しくありません",
+    "signature_mismatch": "署名が一致しません",
+    "cookie_expired": "Cookieの有効期限が切れました",
+    "config_export_unavailable": "設定のエクスポートは利用できません",
+    "config_save_unavailable": "このランタイムでは設定の保存は利用できません",
+    "invalid_config_payload": "無効な設定データです",
+    "config_history_unavailable": "このランタイムでは設定履歴は利用できません",
+    "config_diff_unavailable": "このランタイムでは設定差分は利用できません",
+    "config_rollback_unavailable": "このランタイムでは設定ロールバックは利用できません",
+    "invalid_rollback_payload": "無効なロールバックデータです",
+    "invalid_upstream_probe_payload": "無効なアップストリームプローブデータです"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "errors": {
+    "no_provider": "aucun fournisseur disponible pour le modèle",
+    "model_not_found": "modèle non trouvé",
+    "upstream_timeout": "délai de requête en amont dépassé",
+    "retry_exhausted": "toutes les tentatives de réessai épuisées",
+    "request_too_large": "corps de requête trop grand",
+    "unauthorized": "non autorisé",
+    "forbidden": "interdit",
+    "invalid_token": "jeton invalide",
+    "invalid_request_body": "corps de requête invalide",
+    "no_auth_credential": "aucune information d'identification",
+    "malformed_cookie": "cookie malformé",
+    "signature_mismatch": "signature ne correspond pas",
+    "cookie_expired": "cookie expiré",
+    "config_export_unavailable": "exportation de configuration non disponible",
+    "config_save_unavailable": "enregistrement de configuration non disponible dans ce runtime",
+    "invalid_config_payload": "charge de configuration invalide",
+    "config_history_unavailable": "historique de configuration non disponible dans ce runtime",
+    "config_diff_unavailable": "différence d'historique non disponible dans ce runtime",
+    "config_rollback_unavailable": "restauration de configuration non disponible dans ce runtime",
+    "invalid_rollback_payload": "charge de restauration invalide",
+    "invalid_upstream_probe_payload": "charge de test d'amont invalide"
+  }
+}

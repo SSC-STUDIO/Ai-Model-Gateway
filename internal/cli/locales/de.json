@@ -1,0 +1,42 @@
+{
+  "cli": {
+    "gateway_failed": "Gateway-Fehler: %v",
+    "install_failed": "Installationsfehler: %v",
+    "uninstall_failed": "Deinstallationsfehler: %v",
+    "start_failed": "Startfehler: %v",
+    "stop_failed": "Stoppfehler: %v",
+    "status_failed": "Statusprüfungsfehler: %v",
+    "unknown_command": "Unbekannter Befehl: %s",
+    "config_not_found": "Konfigurationsdatei nicht gefunden: %s",
+    "config_invalid": "Konfigurationsvalidierung fehlgeschlagen: %v",
+    "config_valid": "✓ Konfiguration ist gültig",
+    "health_check_failed": "Integritätsprüfung fehlgeschlagen: %v",
+    "service_installed": "✓ Dienst erfolgreich installiert",
+    "service_uninstalled": "✓ Dienst erfolgreich deinstalliert",
+    "service_started": "✓ Dienst erfolgreich gestartet",
+    "service_stopped": "✓ Dienst erfolgreich gestoppt",
+    "service_not_installed": "Dienst nicht installiert",
+    "service_status": "Dienststatus: %s",
+    "use_install_for_service": "Verwenden Sie 'gateway install', um als Windows-Dienst zu installieren",
+    "listen": "Listen",
+    "providers": "Anbieter",
+    "admin": "Admin",
+    "health_check": "Integritätsprüfung",
+    "bridge": "Brücke"
+  },
+  "usage": {
+    "title": "Verwendung: gateway [befehl] [optionen]",
+    "commands_title": "Befehle:",
+    "options_title": "Optionen:",
+    "start_desc": "Gateway-Server starten",
+    "validate_desc": "Konfigurationsdatei validieren",
+    "health_desc": "Gateway-Status prüfen",
+    "install_desc": "Als Windows-Dienst installieren",
+    "uninstall_desc": "Windows-Dienst deinstallieren",
+    "service_start_desc": "Windows-Dienst starten",
+    "service_stop_desc": "Windows-Dienst stoppen",
+    "service_status_desc": "Windows-Dienststatus prüfen",
+    "config_desc": "Pfad zur Konfigurationsdatei (Standard: configs/config.yaml)",
+    "lang_desc": "Sprache der Benutzeroberfläche (Standard: de)"
+  }
+}

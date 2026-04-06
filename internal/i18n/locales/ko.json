@@ -1,0 +1,25 @@
+{
+  "errors": {
+    "no_provider": "사용 가능한 모델 제공자가 없습니다",
+    "model_not_found": "모델을 찾을 수 없습니다",
+    "upstream_timeout": "업스트림 요청 시간 초과",
+    "retry_exhausted": "모든 재시도 시도가 소진되었습니다",
+    "request_too_large": "요청 본문이 너무 큽니다",
+    "unauthorized": "인증되지 않음",
+    "forbidden": "접근 금지",
+    "invalid_token": "유효하지 않은 토큰",
+    "invalid_request_body": "유효하지 않은 요청 본문",
+    "no_auth_credential": "인증 자격 증명 없음",
+    "malformed_cookie": "잘못된 형식의 쿠키",
+    "signature_mismatch": "서명 불일치",
+    "cookie_expired": "쿠키 만료됨",
+    "config_export_unavailable": "구성 낼 수 없음",
+    "config_save_unavailable": "이 런타임에서 구성 저장을 사용할 수 없음",
+    "invalid_config_payload": "유효하지 않은 구성 데이터",
+    "config_history_unavailable": "이 런타임에서 구성 기록을 사용할 수 없음",
+    "config_diff_unavailable": "이 런타임에서 구성 차이를 사용할 수 없음",
+    "config_rollback_unavailable": "이 런타임에서 구성 롤백을 사용할 수 없음",
+    "invalid_rollback_payload": "유효하지 않은 롤백 데이터",
+    "invalid_upstream_probe_payload": "유효하지 않은 업스트림 프로브 데이터"
+  }
+}

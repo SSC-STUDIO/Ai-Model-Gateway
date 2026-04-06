@@ -1,0 +1,25 @@
+{
+  "errors": {
+    "no_provider": "没有可用的模型提供商",
+    "model_not_found": "模型未找到",
+    "upstream_timeout": "上游请求超时",
+    "retry_exhausted": "所有重试尝试已耗尽",
+    "request_too_large": "请求体过大",
+    "unauthorized": "未授权",
+    "forbidden": "禁止访问",
+    "invalid_token": "无效令牌",
+    "invalid_request_body": "无效请求体",
+    "no_auth_credential": "无认证凭据",
+    "malformed_cookie": "Cookie格式错误",
+    "signature_mismatch": "签名不匹配",
+    "cookie_expired": "Cookie已过期",
+    "config_export_unavailable": "配置导出不可用",
+    "config_save_unavailable": "此运行时不支持配置保存",
+    "invalid_config_payload": "无效配置数据",
+    "config_history_unavailable": "此运行时不支持配置历史",
+    "config_diff_unavailable": "此运行时不支持配置差异对比",
+    "config_rollback_unavailable": "此运行时不支持配置回滚",
+    "invalid_rollback_payload": "无效回滚数据",
+    "invalid_upstream_probe_payload": "无效上游探测数据"
+  }
+}

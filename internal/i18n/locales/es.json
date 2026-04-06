@@ -1,0 +1,25 @@
+{
+  "errors": {
+    "no_provider": "no hay proveedor disponible para el modelo",
+    "model_not_found": "modelo no encontrado",
+    "upstream_timeout": "tiempo de espera de solicitud agotado",
+    "retry_exhausted": "todos los intentos de reintento agotados",
+    "request_too_large": "cuerpo de solicitud demasiado grande",
+    "unauthorized": "no autorizado",
+    "forbidden": "prohibido",
+    "invalid_token": "token inválido",
+    "invalid_request_body": "cuerpo de solicitud inválido",
+    "no_auth_credential": "sin credencial de autenticación",
+    "malformed_cookie": "cookie malformada",
+    "signature_mismatch": "firma no coincide",
+    "cookie_expired": "cookie expirada",
+    "config_export_unavailable": "exportación de configuración no disponible",
+    "config_save_unavailable": "guardado de configuración no disponible en este runtime",
+    "invalid_config_payload": "carga de configuración inválida",
+    "config_history_unavailable": "historial de configuración no disponible en este runtime",
+    "config_diff_unavailable": "diff de historial no disponible en este runtime",
+    "config_rollback_unavailable": "rollback de configuración no disponible en este runtime",
+    "invalid_rollback_payload": "carga de rollback inválida",
+    "invalid_upstream_probe_payload": "carga de prueba de upstream inválida"
+  }
+}

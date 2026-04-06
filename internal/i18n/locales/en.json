@@ -1,0 +1,25 @@
+{
+  "errors": {
+    "no_provider": "no available provider for model",
+    "model_not_found": "model not found",
+    "upstream_timeout": "upstream request timed out",
+    "retry_exhausted": "all retry attempts exhausted",
+    "request_too_large": "request body too large",
+    "unauthorized": "unauthorized",
+    "forbidden": "forbidden",
+    "invalid_token": "invalid token",
+    "invalid_request_body": "invalid request body",
+    "no_auth_credential": "no authentication credential",
+    "malformed_cookie": "malformed cookie",
+    "signature_mismatch": "signature mismatch",
+    "cookie_expired": "cookie expired",
+    "config_export_unavailable": "config export is not available",
+    "config_save_unavailable": "config save is not available in this runtime",
+    "invalid_config_payload": "invalid config payload",
+    "config_history_unavailable": "config history is not available in this runtime",
+    "config_diff_unavailable": "config history diff is not available in this runtime",
+    "config_rollback_unavailable": "config rollback is not available in this runtime",
+    "invalid_rollback_payload": "invalid rollback payload",
+    "invalid_upstream_probe_payload": "invalid upstream probe payload"
+  }
+}

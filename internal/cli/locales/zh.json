@@ -1,0 +1,42 @@
+{
+  "cli": {
+    "gateway_failed": "网关启动失败: %v",
+    "install_failed": "安装失败: %v",
+    "uninstall_failed": "卸载失败: %v",
+    "start_failed": "启动失败: %v",
+    "stop_failed": "停止失败: %v",
+    "status_failed": "状态检查失败: %v",
+    "unknown_command": "未知命令: %s",
+    "config_not_found": "配置文件未找到: %s",
+    "config_invalid": "配置验证失败: %v",
+    "config_valid": "✓ 配置有效",
+    "health_check_failed": "健康检查失败: %v",
+    "service_installed": "✓ 服务安装成功",
+    "service_uninstalled": "✓ 服务卸载成功",
+    "service_started": "✓ 服务启动成功",
+    "service_stopped": "✓ 服务停止成功",
+    "service_not_installed": "服务未安装",
+    "service_status": "服务状态: %s",
+    "use_install_for_service": "使用 'gateway install' 安装为 Windows 服务",
+    "listen": "监听",
+    "providers": "提供商",
+    "admin": "管理",
+    "health_check": "健康检查",
+    "bridge": "桥接"
+  },
+  "usage": {
+    "title": "用法: gateway [命令] [选项]",
+    "commands_title": "命令:",
+    "options_title": "选项:",
+    "start_desc": "启动网关服务器",
+    "validate_desc": "验证配置文件",
+    "health_desc": "检查网关健康状态",
+    "install_desc": "安装为 Windows 服务",
+    "uninstall_desc": "卸载 Windows 服务",
+    "service_start_desc": "启动 Windows 服务",
+    "service_stop_desc": "停止 Windows 服务",
+    "service_status_desc": "检查 Windows 服务状态",
+    "config_desc": "配置文件路径 (默认: configs/config.yaml)",
+    "lang_desc": "界面语言 (默认: zh)"
+  }
+}

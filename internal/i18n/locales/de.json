@@ -1,0 +1,25 @@
+{
+  "errors": {
+    "no_provider": "kein Anbieter für Modell verfügbar",
+    "model_not_found": "Modell nicht gefunden",
+    "upstream_timeout": "Upstream-Anfrage Zeitüberschreitung",
+    "retry_exhausted": "alle Wiederholungsversuche erschöpft",
+    "request_too_large": "Anfragekörper zu groß",
+    "unauthorized": "nicht autorisiert",
+    "forbidden": "verboten",
+    "invalid_token": "ungültiges Token",
+    "invalid_request_body": "ungültiger Anfragekörper",
+    "no_auth_credential": "keine Anmeldeinformationen",
+    "malformed_cookie": "fehlerhaftes Cookie",
+    "signature_mismatch": "Signatur stimmt nicht überein",
+    "cookie_expired": "Cookie abgelaufen",
+    "config_export_unavailable": "Konfigurationsexport nicht verfügbar",
+    "config_save_unavailable": "Konfigurationsspeicherung in dieser Laufzeit nicht verfügbar",
+    "invalid_config_payload": "ungültige Konfigurationsnutzlast",
+    "config_history_unavailable": "Konfigurationsverlauf in dieser Laufzeit nicht verfügbar",
+    "config_diff_unavailable": "Konfigurationsverlaufsdiff in dieser Laufzeit nicht verfügbar",
+    "config_rollback_unavailable": "Konfigurationsrollback in dieser Laufzeit nicht verfügbar",
+    "invalid_rollback_payload": "ungültige Rollback-Nutzlast",
+    "invalid_upstream_probe_payload": "ungültige Upstream-Testnutzlast"
+  }
+}
