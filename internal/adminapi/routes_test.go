@@ -894,6 +894,63 @@ func TestMountNilAuth(t *testing.T) {
 	}
 }
 
+func TestRouteUsage_Unauthorized(t *testing.T) {
+	d, cleanup := setupTestDeps(t)
+	defer cleanup()
+	r := setupRouter(t, d)
+
+	req := httptest.NewRequest("GET", "/api/admin/route-usage", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != 401 {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestRouteUsage_WithAuth(t *testing.T) {
+	d, cleanup := setupTestDeps(t)
+	defer cleanup()
+	seedTelemetry(t, d.Store)
+
+	r := setupRouter(t, d)
+	req := authedRequest(t, "GET", "/api/admin/route-usage?hours=1&limit=10", "")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result []interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	// seedTelemetry inserts 3 requests; we expect a non-empty JSON array.
+	if len(result) == 0 {
+		t.Error("expected non-empty route-usage array")
+	}
+}
+
+func TestRouteUsage_DefaultParams(t *testing.T) {
+	d, cleanup := setupTestDeps(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+	req := authedRequest(t, "GET", "/api/admin/route-usage", "")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var result []interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON array, got: %s", w.Body.String())
+	}
+}
+
 // Ensure unused import doesn't cause issues.
 var _ = os.DevNull
 

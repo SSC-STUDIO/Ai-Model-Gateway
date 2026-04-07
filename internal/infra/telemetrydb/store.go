@@ -953,58 +953,65 @@ ORDER BY COALESCE(SUM(requests), 0) DESC, model ASC`
 	return result
 }
 
-// calculatePercentiles calculates p50, p95, p99 and max latency for a model.
+// calculatePercentiles calculates p50, p95, p99 and max latency for a model
+// using SQL OFFSET-based percentile queries to avoid loading all rows into memory.
 func (s *Store) calculatePercentiles(bm *ModelBenchmark, cutoff string) {
-	// Get all latency values for this model
-	rows, err := s.db.Query(`
-		SELECT latency_ms FROM requests
-		WHERE timestamp >= ? AND model = ? AND latency_ms > 0
-		ORDER BY latency_ms ASC`, cutoff, bm.Model)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
-	var latencies []int64
-	var maxLatency int64
-	for rows.Next() {
-		var lat int64
-		if err := rows.Scan(&lat); err != nil {
-			continue
-		}
-		latencies = append(latencies, lat)
-		if lat > maxLatency {
-			maxLatency = lat
-		}
-	}
-
-	if len(latencies) == 0 {
+	// Get count and max in a single query
+	var count int64
+	var maxLatency sql.NullInt64
+	err := s.db.QueryRow(`
+		SELECT COUNT(*), MAX(latency_ms)
+		FROM requests
+		WHERE timestamp >= ? AND model = ? AND latency_ms > 0`,
+		cutoff, bm.Model).Scan(&count, &maxLatency)
+	if err != nil || count == 0 {
 		return
 	}
 
-	bm.MaxLatencyMs = maxLatency
-	n := len(latencies)
+	bm.MaxLatencyMs = maxLatency.Int64
+
+	// Helper to fetch the latency value at a given OFFSET from the ordered set.
+	percentileAt := func(offset int64) (float64, error) {
+		var val int64
+		err := s.db.QueryRow(`
+			SELECT latency_ms FROM requests
+			WHERE timestamp >= ? AND model = ? AND latency_ms > 0
+			ORDER BY latency_ms ASC
+			LIMIT 1 OFFSET ?`,
+			cutoff, bm.Model, offset).Scan(&val)
+		return float64(val), err
+	}
 
 	// P50 (median)
-	if n%2 == 0 {
-		bm.P50LatencyMs = float64(latencies[n/2-1]+latencies[n/2]) / 2
+	if count%2 == 0 {
+		lo, err1 := percentileAt(count/2 - 1)
+		hi, err2 := percentileAt(count / 2)
+		if err1 == nil && err2 == nil {
+			bm.P50LatencyMs = (lo + hi) / 2
+		}
 	} else {
-		bm.P50LatencyMs = float64(latencies[n/2])
+		if v, err := percentileAt(count / 2); err == nil {
+			bm.P50LatencyMs = v
+		}
 	}
 
 	// P95
-	p95Idx := int(float64(n) * 0.95)
-	if p95Idx >= n {
-		p95Idx = n - 1
+	p95Off := int64(float64(count) * 0.95)
+	if p95Off >= count {
+		p95Off = count - 1
 	}
-	bm.P95LatencyMs = float64(latencies[p95Idx])
+	if v, err := percentileAt(p95Off); err == nil {
+		bm.P95LatencyMs = v
+	}
 
 	// P99
-	p99Idx := int(float64(n) * 0.99)
-	if p99Idx >= n {
-		p99Idx = n - 1
+	p99Off := int64(float64(count) * 0.99)
+	if p99Off >= count {
+		p99Off = count - 1
 	}
-	bm.P99LatencyMs = float64(latencies[p99Idx])
+	if v, err := percentileAt(p99Off); err == nil {
+		bm.P99LatencyMs = v
+	}
 }
 
 func (s *Store) queryGroupedSummaries(window time.Duration, limit int, groupColumn string) []GroupSummary {

@@ -450,6 +450,92 @@ func TestQueryModelRouteUsage(t *testing.T) {
 	}
 }
 
+func TestQueryModelBenchmark_Percentiles(t *testing.T) {
+	cfg := testConfig(t)
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+
+	// Insert 100 requests with latencies 1ms..100ms for model "test-model".
+	for i := 1; i <= 100; i++ {
+		rec := &core.RequestRecord{
+			RequestID:      fmt.Sprintf("req-%d", i),
+			Timestamp:      time.Now().UTC(),
+			Model:          "test-model",
+			RequestedModel: "test-model",
+			EffectiveModel: "test-model",
+			Provider:       "test-provider",
+			StatusCode:     200,
+			Latency:        time.Duration(i) * time.Millisecond,
+			InputTokens:    10,
+			OutputTokens:   5,
+			Path:           "/v1/chat/completions",
+			RouteMode:      "direct",
+			Attempts:       1,
+		}
+		if err := s.Record(ctx, rec); err != nil {
+			t.Fatalf("Record(%d) error: %v", i, err)
+		}
+	}
+	s.Flush()
+
+	results := s.QueryModelBenchmark(time.Hour, nil)
+	if len(results) == 0 {
+		t.Fatal("expected at least 1 benchmark result")
+	}
+
+	bm := results[0]
+	if bm.Model != "test-model" {
+		t.Fatalf("expected model 'test-model', got %q", bm.Model)
+	}
+	if bm.Requests != 100 {
+		t.Fatalf("expected 100 requests, got %d", bm.Requests)
+	}
+
+	// With 100 values 1..100 sorted ascending:
+	// P50: average of values at index 49 and 50 → (50+51)/2 = 50.5
+	if bm.P50LatencyMs != 50.5 {
+		t.Errorf("P50: expected 50.5, got %v", bm.P50LatencyMs)
+	}
+	// P95: int(100*0.95)=95 → value at index 95 = 96
+	if bm.P95LatencyMs != 96 {
+		t.Errorf("P95: expected 96, got %v", bm.P95LatencyMs)
+	}
+	// P99: int(100*0.99)=99 → value at index 99 = 100
+	if bm.P99LatencyMs != 100 {
+		t.Errorf("P99: expected 100, got %v", bm.P99LatencyMs)
+	}
+	// Max should be 100
+	if bm.MaxLatencyMs != 100 {
+		t.Errorf("MaxLatency: expected 100, got %d", bm.MaxLatencyMs)
+	}
+
+	// Test with odd count: 99 values (1..99)
+	// Delete the last request row to get 99 entries
+	s.db.Exec(`DELETE FROM requests WHERE latency_ms = 100`)
+	// Invalidate cache
+	s.cacheMu.Lock()
+	s.queryCache = make(map[string]cachedResult)
+	s.cacheMu.Unlock()
+
+	results2 := s.QueryModelBenchmark(time.Hour, []string{"test-model"})
+	if len(results2) == 0 {
+		t.Fatal("expected benchmark result after delete")
+	}
+	bm2 := results2[0]
+	// P50 with 99 values: index 49 → value 50
+	if bm2.P50LatencyMs != 50 {
+		t.Errorf("P50 (odd): expected 50, got %v", bm2.P50LatencyMs)
+	}
+	if bm2.MaxLatencyMs != 99 {
+		t.Errorf("MaxLatency (odd): expected 99, got %d", bm2.MaxLatencyMs)
+	}
+}
+
 func TestClose_Idempotent(t *testing.T) {
 	cfg := testConfig(t)
 	s, err := New(cfg)

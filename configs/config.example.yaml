@@ -13,6 +13,9 @@ admin:
   bootstrap_token: "12345678901234567890123456789012"  # 32 chars
   cookie_signing_key: "abcdef1234567890abcdef1234567890"  # 32 chars
   language: zh
+  rate_limit:
+    requests_per_second: 10        # Token refill rate (default: 10)
+    burst: 20                      # Max burst size (default: 20)
 
 routing:
   strategy: health_weighted_rr

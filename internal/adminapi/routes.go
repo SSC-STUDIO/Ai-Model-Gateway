@@ -46,6 +46,9 @@ type Deps struct {
 	// Optional hook for custom upstream probe behavior.
 	UpstreamTest func(upstream core.Provider, health core.HealthCheckConfig) (interface{}, int, error)
 
+	// Optional event bus for SSE config-change notifications.
+	EventBus *EventBus
+
 	// I18n bundle for translated error messages
 	I18n *i18n.Bundle
 }
@@ -57,6 +60,21 @@ func Mount(r chi.Router, d Deps) {
 	}
 
 	r.Route("/api/admin", func(api chi.Router) {
+		// Rate limiting
+		rps := 10.0
+		burst := 20
+		if d.GetConfig != nil {
+			if cfg := d.GetConfig(); cfg != nil {
+				if cfg.Admin.RateLimit.RequestsPerSecond > 0 {
+					rps = cfg.Admin.RateLimit.RequestsPerSecond
+				}
+				if cfg.Admin.RateLimit.Burst > 0 {
+					burst = cfg.Admin.RateLimit.Burst
+				}
+			}
+		}
+		api.Use(RateLimitMiddleware(rps, burst))
+
 		// Public auth endpoints
 		api.Post("/auth/login", loginHandler(d))
 		api.Post("/auth/logout", logoutHandler(d.Auth))
@@ -78,7 +96,11 @@ func Mount(r chi.Router, d Deps) {
 			p.Post("/upstreams/test", upstreamsTestHandler(d))
 			p.Get("/logs/stream", logsStreamHandler(d, DefaultLogStreamManager))
 			p.Get("/logs/export", logsExportHandler(d, DefaultLogStreamManager))
+			if d.EventBus != nil {
+				p.Get("/events", eventsStreamHandler(d.EventBus))
+			}
 			p.Get("/models/benchmark", modelsBenchmarkHandler(d))
+			p.Get("/route-usage", routeUsageHandler(d))
 		})
 	})
 
@@ -517,6 +539,9 @@ func configSaveHandler(d Deps) http.HandlerFunc {
 		if response == nil && d.GetConfig != nil {
 			response = sanitizedConfigView(d.GetConfig())
 		}
+		if d.EventBus != nil {
+			d.EventBus.Publish(Event{Type: "config_changed", Data: "config saved via API"})
+		}
 		writeJSON(w, http.StatusOK, response)
 	}
 }
@@ -592,6 +617,9 @@ func configRollbackHandler(d Deps) http.HandlerFunc {
 		}
 		if response == nil && d.GetConfig != nil {
 			response = sanitizedConfigView(d.GetConfig())
+		}
+		if d.EventBus != nil {
+			d.EventBus.Publish(Event{Type: "config_changed", Data: "config rolled back to " + payload.VersionID})
 		}
 		writeJSON(w, http.StatusOK, response)
 	}
@@ -678,6 +706,21 @@ func modelsBenchmarkHandler(d Deps) http.HandlerFunc {
 			"models":         d.Selector.ListModels(),
 			"benchmarks":     result,
 		})
+	}
+}
+
+// routeUsageHandler returns aggregated usage grouped by requested/effective model pair.
+func routeUsageHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hours := parsePositiveInt(r.URL.Query().Get("hours"), 24, 1, 720)
+		limit := parsePositiveInt(r.URL.Query().Get("limit"), 50, 1, 500)
+		window := time.Duration(hours) * time.Hour
+
+		rows := d.Store.QueryModelRouteUsage(window, limit)
+		if rows == nil {
+			rows = []telemetrydb.ModelRouteUsage{}
+		}
+		writeJSON(w, http.StatusOK, rows)
 	}
 }
 

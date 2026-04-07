@@ -37,6 +37,10 @@ type AdminConfig struct {
 	BootstrapToken   string `yaml:"bootstrap_token"    json:"-"`
 	CookieSigningKey string `yaml:"cookie_signing_key" json:"-"`
 	Language         string `yaml:"language"            json:"language"`
+	RateLimit        struct {
+		RequestsPerSecond float64 `yaml:"requests_per_second" json:"requests_per_second"`
+		Burst             int     `yaml:"burst"               json:"burst"`
+	} `yaml:"rate_limit" json:"rate_limit"`
 }
 
 // RoutingConfig controls request routing, retry, and health-check behaviour.
