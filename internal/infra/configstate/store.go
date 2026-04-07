@@ -33,14 +33,14 @@ type storedVersion struct {
 	path string
 }
 
-// Store keeps v2 config state and history metadata backed by files.
+// Store keeps config state and history metadata backed by files.
 type Store struct {
 	path    string
 	current atomic.Value // stores *core.Config
 	mu      sync.Mutex
 }
 
-// New creates a config state store for the v2 config file.
+// New creates a config state store for the config file.
 func New(path string, initial *core.Config) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("config path is not set")
@@ -68,7 +68,7 @@ func (s *Store) Path() string {
 	return s.path
 }
 
-// Current returns the in-memory v2 config snapshot.
+// Current returns the in-memory config snapshot.
 func (s *Store) Current() *core.Config {
 	if s == nil {
 		return nil
@@ -88,7 +88,7 @@ func (s *Store) SetCurrent(cfg *core.Config) {
 	s.current.Store(cloneConfig(cfg))
 }
 
-// Save writes a new v2 config file while preserving backup/history files.
+// Save writes a new config file while preserving backup/history files.
 func (s *Store) Save(cfg *core.Config) error {
 	if s == nil {
 		return errors.New("config store is nil")

@@ -153,7 +153,7 @@ compat:
 
 func TestLoadFromFile_ResolvesRelativePricingCachePath(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.v2.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
 	yaml := `
 providers:
   - name: local
@@ -192,7 +192,7 @@ func TestLoadFromFile_ExampleConfigUsesCutoverSafePaths(t *testing.T) {
 	}
 
 	baseDir := filepath.Clean(filepath.Join("..", "..", "..", "configs"))
-	wantTelemetry := filepath.Join(baseDir, "data", "telemetry.db.v2")
+	wantTelemetry := filepath.Join(baseDir, "data", "telemetry.db")
 	if cfg.Telemetry.SQLitePath != wantTelemetry {
 		t.Fatalf("expected example telemetry path %q, got %q", wantTelemetry, cfg.Telemetry.SQLitePath)
 	}

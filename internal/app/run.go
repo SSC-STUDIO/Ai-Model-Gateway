@@ -1,4 +1,4 @@
-// Package app is the v2 application entry point that wires together
+// Package app is the application entry point that wires together
 // core interfaces, infra adapters, and the HTTP server.
 package app
 
@@ -21,7 +21,7 @@ var newRunTransport = func() core.UpstreamTransport {
 
 func updatePublicContractRuntime(core.Pipeline, core.RouteSelector) {}
 
-// Run loads the v2 config, assembles all components, and starts the server.
+// Run loads the config, assembles all components, and starts the server.
 // It blocks until ctx is cancelled or a fatal error occurs.
 func Run(ctx context.Context, configPath string) error {
 	// --- Config watcher (hot-reload) ---
@@ -34,7 +34,7 @@ func Run(ctx context.Context, configPath string) error {
 	defer watcher.Stop()
 
 	cfg := watcher.Config()
-	log.Printf("[v2] config loaded from %s", configPath)
+	log.Printf("[gateway] config loaded from %s", configPath)
 
 	// --- Build optional runtime deps (config history/pricing catalog) ---
 
@@ -63,7 +63,7 @@ func Run(ctx context.Context, configPath string) error {
 	adminRuntime.TelemetryStore = store
 	defer func() {
 		if err := store.Close(); err != nil {
-			log.Printf("[v2] close telemetry store: %v", err)
+			log.Printf("[gateway] close telemetry store: %v", err)
 		}
 	}()
 
@@ -119,6 +119,6 @@ func Run(ctx context.Context, configPath string) error {
 		mountAdminRoutes(r, cfg, store, routeSelector, getConfig, adminRuntime)
 	}
 
-	log.Printf("[v2] starting gateway-v2 on %s", cfg.Server.Listen)
+	log.Printf("[gateway] starting gateway on %s", cfg.Server.Listen)
 	return srv.ListenAndServe(ctx)
 }

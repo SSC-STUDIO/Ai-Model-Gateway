@@ -11,7 +11,7 @@ import (
 
 func writeTestConfig(t *testing.T, dir string, content string) string {
 	t.Helper()
-	path := filepath.Join(dir, "config.v2.yaml")
+	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write test config: %v", err)
 	}

@@ -1,5 +1,5 @@
-// Package adminapi assembles the v2 admin management API routes.
-// Routes are mounted at /api/admin/v2/* with the admin frontend at /admin/*.
+// Package adminapi assembles the admin management API routes.
+// Routes are mounted at /api/admin/* with the admin frontend at /admin/*.
 package adminapi
 
 import (
@@ -56,7 +56,7 @@ func Mount(r chi.Router, d Deps) {
 		return
 	}
 
-	r.Route("/api/admin/v2", func(api chi.Router) {
+	r.Route("/api/admin", func(api chi.Router) {
 		// Public auth endpoints
 		api.Post("/auth/login", loginHandler(d))
 		api.Post("/auth/logout", logoutHandler(d.Auth))
@@ -166,11 +166,11 @@ func isAdminMutation(r *http.Request) bool {
 		return false
 	}
 	switch {
-	case r.Method == http.MethodPut && r.URL.Path == "/api/admin/v2/config":
+	case r.Method == http.MethodPut && r.URL.Path == "/api/admin/config":
 		return true
-	case r.Method == http.MethodPost && r.URL.Path == "/api/admin/v2/config/rollback":
+	case r.Method == http.MethodPost && r.URL.Path == "/api/admin/config/rollback":
 		return true
-	case r.Method == http.MethodPost && r.URL.Path == "/api/admin/v2/upstreams/test":
+	case r.Method == http.MethodPost && r.URL.Path == "/api/admin/upstreams/test":
 		return true
 	}
 	return false
@@ -464,7 +464,7 @@ func configExportHandler(d Deps) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/yaml")
-		w.Header().Set("Content-Disposition", `attachment; filename="config.v2.export.yaml"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="config.export.yaml"`)
 		_, _ = w.Write(data)
 	}
 }

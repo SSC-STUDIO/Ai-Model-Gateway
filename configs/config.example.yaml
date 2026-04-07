@@ -1,4 +1,4 @@
-# AI-Model-Gateway v2 Configuration (parity candidate track)
+# AI-Model-Gateway Configuration
 # Top-level structure: server, admin, routing, providers, telemetry, pricing, compat
 
 server:
@@ -94,7 +94,7 @@ providers:
     headers: {}
 
 telemetry:
-  sqlite_path: data/telemetry.db.v2
+  sqlite_path: data/telemetry.db
   retention_days: 30
   aggregation_sec: 60
   cache_ttl_sec: 5

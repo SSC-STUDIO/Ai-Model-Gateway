@@ -1,4 +1,4 @@
-// Package httpserver provides the v2 HTTP server wiring.
+// Package httpserver provides the HTTP server wiring.
 // It mounts the /v1/* gateway routes and /admin/* management routes.
 package httpserver
 
@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Server wraps the standard http.Server with v2-specific setup.
+// Server wraps the standard http.Server with gateway-specific setup.
 type Server struct {
 	cfg      core.ServerConfig
 	router   chi.Router
@@ -58,7 +58,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("[v2] listening on %s", s.cfg.Listen)
+		log.Printf("[gateway] listening on %s", s.cfg.Listen)
 		if err := s.srv.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
@@ -71,7 +71,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := s.srv.Shutdown(shutCtx); err != nil {
-			log.Printf("[v2] shutdown error: %v", err)
+			log.Printf("[gateway] shutdown error: %v", err)
 		}
 		return nil
 	}

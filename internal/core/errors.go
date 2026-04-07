@@ -2,7 +2,7 @@ package core
 
 import "errors"
 
-// Sentinel errors used across the v2 pipeline.
+// Sentinel errors used across the pipeline.
 var (
 	// ErrNoProvider is returned when no healthy provider can serve the model.
 	ErrNoProvider = errors.New("no available provider for model")

@@ -15,7 +15,7 @@ func TestStoreSaveCreatesHistoryAndKeepsV2Format(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.v2.yaml")
+	path := filepath.Join(dir, "config.yaml")
 
 	initial := testConfig("alpha", ":18080")
 	writeV2ConfigFile(t, path, initial)
@@ -32,7 +32,7 @@ func TestStoreSaveCreatesHistoryAndKeepsV2Format(t *testing.T) {
 
 	loaded, err := configloader.LoadFromFile(path)
 	if err != nil {
-		t.Fatalf("load saved v2 config: %v", err)
+		t.Fatalf("load saved config: %v", err)
 	}
 	if len(loaded.Providers) != 1 || loaded.Providers[0].Name != "beta" {
 		t.Fatalf("unexpected saved providers: %+v", loaded.Providers)
@@ -62,7 +62,7 @@ func TestStoreRollbackVersionRestoresPreviousConfig(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.v2.yaml")
+	path := filepath.Join(dir, "config.yaml")
 
 	initial := testConfig("alpha", ":18080")
 	writeV2ConfigFile(t, path, initial)

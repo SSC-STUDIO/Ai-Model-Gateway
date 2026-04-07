@@ -158,7 +158,7 @@ func cookieAuthedRequest(t *testing.T, method, path string, body string, cookie 
 
 func loginCookie(t *testing.T, r chi.Router) *http.Cookie {
 	t.Helper()
-	req := httptest.NewRequest("POST", "/api/admin/v2/auth/login", strings.NewReader(`{"token":"`+testToken+`"}`))
+	req := httptest.NewRequest("POST", "/api/admin/auth/login", strings.NewReader(`{"token":"`+testToken+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -202,7 +202,7 @@ func TestLogin_Success(t *testing.T) {
 	defer cleanup()
 	r := setupRouter(t, d)
 
-	req := httptest.NewRequest("POST", "/api/admin/v2/auth/login", strings.NewReader(`{"token":"`+testToken+`"}`))
+	req := httptest.NewRequest("POST", "/api/admin/auth/login", strings.NewReader(`{"token":"`+testToken+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -221,7 +221,7 @@ func TestLogin_InvalidToken(t *testing.T) {
 	defer cleanup()
 	r := setupRouter(t, d)
 
-	req := httptest.NewRequest("POST", "/api/admin/v2/auth/login", strings.NewReader(`{"token":"wrong"}`))
+	req := httptest.NewRequest("POST", "/api/admin/auth/login", strings.NewReader(`{"token":"wrong"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -236,7 +236,7 @@ func TestProtectedEndpoint_Unauthorized(t *testing.T) {
 	defer cleanup()
 	r := setupRouter(t, d)
 
-	req := httptest.NewRequest("GET", "/api/admin/v2/overview", nil)
+	req := httptest.NewRequest("GET", "/api/admin/overview", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -252,7 +252,7 @@ func TestOverview_WithAuth(t *testing.T) {
 	seedTelemetry(t, d.Store)
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/overview", "")
+	req := authedRequest(t, "GET", "/api/admin/overview", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -289,7 +289,7 @@ func TestData_Unauthorized(t *testing.T) {
 	defer cleanup()
 	r := setupRouter(t, d)
 
-	req := httptest.NewRequest("GET", "/api/admin/v2/data", nil)
+	req := httptest.NewRequest("GET", "/api/admin/data", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -304,7 +304,7 @@ func TestData_WithAuth(t *testing.T) {
 	seedTelemetry(t, d.Store)
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/data?hours=1&limit=10", "")
+	req := authedRequest(t, "GET", "/api/admin/data?hours=1&limit=10", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -344,7 +344,7 @@ func TestData_WithPricingHook_AdditiveField(t *testing.T) {
 	}
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/data?hours=1&limit=10", "")
+	req := authedRequest(t, "GET", "/api/admin/data?hours=1&limit=10", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -370,7 +370,7 @@ func TestData_WithPricingHookError_OmitsField(t *testing.T) {
 	}
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/data?hours=1&limit=10", "")
+	req := authedRequest(t, "GET", "/api/admin/data?hours=1&limit=10", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -393,7 +393,7 @@ func TestTimeseries_WithAuth(t *testing.T) {
 	seedTelemetry(t, d.Store)
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/timeseries?hours=1&bucket=1", "")
+	req := authedRequest(t, "GET", "/api/admin/timeseries?hours=1&bucket=1", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -418,7 +418,7 @@ func TestModels_WithAuth(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/models", "")
+	req := authedRequest(t, "GET", "/api/admin/models", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -449,7 +449,7 @@ func TestConfig_WithAuth_SanitizedKeys(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/config", "")
+	req := authedRequest(t, "GET", "/api/admin/config", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -508,7 +508,7 @@ func TestConfigExport_WithAuth(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/config/export", "")
+	req := authedRequest(t, "GET", "/api/admin/config/export", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -535,7 +535,7 @@ func TestConfigSave_NotImplementedWithoutDeps(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "PUT", "/api/admin/v2/config", `{"admin":{"language":"en"}}`)
+	req := authedRequest(t, "PUT", "/api/admin/config", `{"admin":{"language":"en"}}`)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -552,7 +552,7 @@ func TestConfigSave_CookieMutationRequiresSameOrigin(t *testing.T) {
 	cookie := loginCookie(t, r)
 
 	t.Run("cross origin denied", func(t *testing.T) {
-		req := cookieAuthedRequest(t, "PUT", "/api/admin/v2/config", `{"admin":{"language":"en"}}`, cookie)
+		req := cookieAuthedRequest(t, "PUT", "/api/admin/config", `{"admin":{"language":"en"}}`, cookie)
 		req.Header.Set("Origin", "https://evil.example")
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -563,7 +563,7 @@ func TestConfigSave_CookieMutationRequiresSameOrigin(t *testing.T) {
 	})
 
 	t.Run("same origin allowed to reach handler", func(t *testing.T) {
-		req := cookieAuthedRequest(t, "PUT", "/api/admin/v2/config", `{"admin":{"language":"en"}}`, cookie)
+		req := cookieAuthedRequest(t, "PUT", "/api/admin/config", `{"admin":{"language":"en"}}`, cookie)
 		req.Header.Set("Origin", "http://127.0.0.1:18080")
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -579,7 +579,7 @@ func TestConfigSave_BearerMutationBypassesSameOrigin(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "PUT", "/api/admin/v2/config", `{"admin":{"language":"en"}}`)
+	req := authedRequest(t, "PUT", "/api/admin/config", `{"admin":{"language":"en"}}`)
 	req.Header.Set("Origin", "https://evil.example")
 	req.Host = "127.0.0.1:18080"
 	w := httptest.NewRecorder()
@@ -595,7 +595,7 @@ func TestConfigHistory_NotImplementedWithoutDeps(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/config/history", "")
+	req := authedRequest(t, "GET", "/api/admin/config/history", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -609,7 +609,7 @@ func TestConfigHistoryDiff_NotImplementedWithoutDeps(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "GET", "/api/admin/v2/config/history/v1/diff", "")
+	req := authedRequest(t, "GET", "/api/admin/config/history/v1/diff", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -626,7 +626,7 @@ func TestConfigRollback_CookieMutationRequiresSameOrigin(t *testing.T) {
 	cookie := loginCookie(t, r)
 
 	t.Run("cross origin denied", func(t *testing.T) {
-		req := cookieAuthedRequest(t, "POST", "/api/admin/v2/config/rollback", `{}`, cookie)
+		req := cookieAuthedRequest(t, "POST", "/api/admin/config/rollback", `{}`, cookie)
 		req.Header.Set("Origin", "https://evil.example")
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -637,7 +637,7 @@ func TestConfigRollback_CookieMutationRequiresSameOrigin(t *testing.T) {
 	})
 
 	t.Run("same origin allowed to reach handler", func(t *testing.T) {
-		req := cookieAuthedRequest(t, "POST", "/api/admin/v2/config/rollback", `{}`, cookie)
+		req := cookieAuthedRequest(t, "POST", "/api/admin/config/rollback", `{}`, cookie)
 		req.Header.Set("Origin", "http://127.0.0.1:18080")
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -654,7 +654,7 @@ func TestConfigRollback_BearerMutationBypassesSameOrigin(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := authedRequest(t, "POST", "/api/admin/v2/config/rollback", `{}`)
+	req := authedRequest(t, "POST", "/api/admin/config/rollback", `{}`)
 	req.Header.Set("Origin", "https://evil.example")
 	req.Host = "127.0.0.1:18080"
 	w := httptest.NewRecorder()
@@ -683,7 +683,7 @@ func TestUpstreamsTest_CookieMutationRequiresSameOrigin(t *testing.T) {
 	payload := `{"upstream":{"name":"probe","base_url":"https://example.com","api_key":"sk-demo","timeout_ms":2000,"enabled":true}}`
 
 	t.Run("cross origin denied", func(t *testing.T) {
-		req := cookieAuthedRequest(t, "POST", "/api/admin/v2/upstreams/test", payload, cookie)
+		req := cookieAuthedRequest(t, "POST", "/api/admin/upstreams/test", payload, cookie)
 		req.Header.Set("Origin", "https://evil.example")
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -694,7 +694,7 @@ func TestUpstreamsTest_CookieMutationRequiresSameOrigin(t *testing.T) {
 	})
 
 	t.Run("same origin succeeds", func(t *testing.T) {
-		req := cookieAuthedRequest(t, "POST", "/api/admin/v2/upstreams/test", payload, cookie)
+		req := cookieAuthedRequest(t, "POST", "/api/admin/upstreams/test", payload, cookie)
 		req.Header.Set("Origin", "http://127.0.0.1:18080")
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -719,7 +719,7 @@ func TestUpstreamsTest_BearerMutationBypassesSameOrigin(t *testing.T) {
 
 	r := setupRouter(t, d)
 	payload := `{"upstream":{"name":"probe","base_url":"https://example.com","api_key":"sk-demo","timeout_ms":2000,"enabled":true}}`
-	req := authedRequest(t, "POST", "/api/admin/v2/upstreams/test", payload)
+	req := authedRequest(t, "POST", "/api/admin/upstreams/test", payload)
 	req.Header.Set("Origin", "https://evil.example")
 	req.Host = "127.0.0.1:18080"
 	w := httptest.NewRecorder()
@@ -742,7 +742,7 @@ func TestUpstreamsTest_FallbackProbeRejectsLoopback(t *testing.T) {
 
 	r := setupRouter(t, d)
 	payload := fmt.Sprintf(`{"upstream":{"name":"probe","base_url":"%s","api_key":"sk-demo","timeout_ms":2000,"enabled":true}}`, upstream.URL)
-	req := authedRequest(t, "POST", "/api/admin/v2/upstreams/test", payload)
+	req := authedRequest(t, "POST", "/api/admin/upstreams/test", payload)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -759,7 +759,7 @@ func TestLogout(t *testing.T) {
 	defer cleanup()
 
 	r := setupRouter(t, d)
-	req := httptest.NewRequest("POST", "/api/admin/v2/auth/logout", nil)
+	req := httptest.NewRequest("POST", "/api/admin/auth/logout", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -885,7 +885,7 @@ func TestMountNilAuth(t *testing.T) {
 	Mount(r, Deps{Auth: nil})
 	// Should not panic and no routes should be mounted.
 
-	req := httptest.NewRequest("GET", "/api/admin/v2/overview", nil)
+	req := httptest.NewRequest("GET", "/api/admin/overview", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 

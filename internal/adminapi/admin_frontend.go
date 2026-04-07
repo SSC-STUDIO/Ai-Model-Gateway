@@ -84,7 +84,7 @@ func (b adminFrontendBundle) handlers() (http.HandlerFunc, http.Handler) {
 func adminFrontendPlaceholderHandlers() (http.HandlerFunc, http.Handler) {
 	fallback := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body><h1>AI-Model-Gateway v2 Admin</h1><p>Embedded admin assets are unavailable.</p></body></html>`))
+		_, _ = w.Write([]byte(`<!DOCTYPE html><html><body><h1>AI-Model-Gateway Admin</h1><p>Embedded admin assets are unavailable.</p></body></html>`))
 	})
 	return fallback, fallback
 }

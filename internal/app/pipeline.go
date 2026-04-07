@@ -192,7 +192,7 @@ func (pl *pipeline) Handle(ctx context.Context, req *core.GatewayRequest) (*core
 		// --- Stage 6: Compat Adapt Response ---
 		if pl.compat != nil && !resp.Stream {
 			if err := pl.compat.AdaptResponse(ctx, req, resp); err != nil {
-				log.Printf("[v2/pipeline] compat adapt response error: %v", err)
+				log.Printf("[pipeline] compat adapt response error: %v", err)
 				// Sanitize error message to prevent information leakage
 				safeErrMsg := sanitizeErrorMessage(err.Error())
 				resp = &core.GatewayResponse{

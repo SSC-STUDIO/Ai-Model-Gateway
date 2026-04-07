@@ -97,27 +97,27 @@ export function App() {
   const [token, setToken] = useState('')
 
   // Use cached fetch for data that can be cached
-  const { data: overview, refetch: refetchOverview } = useCachedFetch<AnyRecord>('/api/admin/v2/overview', {
+  const { data: overview, refetch: refetchOverview } = useCachedFetch<AnyRecord>('/api/admin/overview', {
     ttl: 30000,
     enabled: authed,
   })
 
-  const { data: telemetry, refetch: refetchTelemetry } = useCachedFetch<DataResponse>('/api/admin/v2/data', {
+  const { data: telemetry, refetch: refetchTelemetry } = useCachedFetch<DataResponse>('/api/admin/data', {
     ttl: 30000,
     enabled: authed && (tab === 'telemetry' || tab === 'overview'),
   })
 
-  const { data: timeseries, refetch: refetchTimeseries } = useCachedFetch<TimeSeriesResponse>('/api/admin/v2/timeseries', {
+  const { data: timeseries, refetch: refetchTimeseries } = useCachedFetch<TimeSeriesResponse>('/api/admin/timeseries', {
     ttl: 30000,
     enabled: authed && (tab === 'telemetry' || tab === 'timeseries'),
   })
 
-  const { data: configView, refetch: refetchConfig } = useCachedFetch<AnyRecord>('/api/admin/v2/config', {
+  const { data: configView, refetch: refetchConfig } = useCachedFetch<AnyRecord>('/api/admin/config', {
     ttl: 60000,
     enabled: authed && tab === 'settings',
   })
 
-  const { data: historyPayload, refetch: refetchHistory } = useCachedFetch<unknown>('/api/admin/v2/config/history', {
+  const { data: historyPayload, refetch: refetchHistory } = useCachedFetch<unknown>('/api/admin/config/history', {
     ttl: 60000,
     enabled: authed && tab === 'history',
   })
@@ -179,27 +179,27 @@ export function App() {
     setTab(newTab)
     // Invalidate relevant caches when switching tabs to get fresh data
     if (newTab === 'overview') {
-      invalidateCache(/\/api\/admin\/v2\/overview/)
+      invalidateCache(/\/api\/admin\/overview/)
       void refetchOverview()
     } else if (newTab === 'telemetry') {
-      invalidateCache(/\/api\/admin\/v2\/(data|timeseries)/)
+      invalidateCache(/\/api\/admin\/(data|timeseries)/)
       void refetchTelemetry()
       void refetchTimeseries()
     } else if (newTab === 'timeseries') {
-      invalidateCache(/\/api\/admin\/v2\/timeseries/)
+      invalidateCache(/\/api\/admin\/timeseries/)
       void refetchTimeseries()
     } else if (newTab === 'settings') {
-      invalidateCache(/\/api\/admin\/v2\/config$/)
+      invalidateCache(/\/api\/admin\/config$/)
       void refetchConfig()
     } else if (newTab === 'history') {
-      invalidateCache(/\/api\/admin\/v2\/config\/history/)
+      invalidateCache(/\/api\/admin\/config\/history/)
       void refetchHistory()
     }
   }, [refetchOverview, refetchTelemetry, refetchTimeseries, refetchConfig, refetchHistory])
 
   async function bootstrap() {
     try {
-      await readJSON<AnyRecord>('/api/admin/v2/overview')
+      await readJSON<AnyRecord>('/api/admin/overview')
       setAuthed(true)
     } catch {
       setAuthed(false)
@@ -214,7 +214,7 @@ export function App() {
       if (benchmarkModels.length > 0) {
         benchmarkModels.forEach((m) => params.append('models', m))
       }
-      const data = await readJSON<BenchmarkResponse>(`/api/admin/v2/models/benchmark?${params.toString()}`)
+      const data = await readJSON<BenchmarkResponse>(`/api/admin/models/benchmark?${params.toString()}`)
       setBenchmark(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -235,7 +235,7 @@ export function App() {
     setBusy(true)
     setError('')
     try {
-      await readJSON('/api/admin/v2/auth/login', {
+      await readJSON('/api/admin/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
@@ -255,7 +255,7 @@ export function App() {
   const logout = useCallback(async () => {
     setBusy(true)
     try {
-      await readJSON('/api/admin/v2/auth/logout', { method: 'POST' })
+      await readJSON('/api/admin/auth/logout', { method: 'POST' })
       setAuthed(false)
       setBenchmark(null)
       setProbeResult(null)
@@ -274,12 +274,12 @@ export function App() {
     setError('')
     try {
       const payload = JSON.parse(configText) as AnyRecord
-      const updated = await readJSON<AnyRecord>('/api/admin/v2/config', {
+      const updated = await readJSON<AnyRecord>('/api/admin/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      invalidateCache(/\/api\/admin\/v2\/config/)
+      invalidateCache(/\/api\/admin\/config/)
       await refetchConfig()
       setConfigText(pretty(updated))
       handleTabChange('history')
@@ -297,7 +297,7 @@ export function App() {
       return
     }
     try {
-      setHistoryDiff(await readJSON(`/api/admin/v2/config/history/${encodeURIComponent(versionId)}/diff`))
+      setHistoryDiff(await readJSON(`/api/admin/config/history/${encodeURIComponent(versionId)}/diff`))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -312,12 +312,12 @@ export function App() {
     setBusy(true)
     setError('')
     try {
-      const updated = await readJSON<AnyRecord>('/api/admin/v2/config/rollback', {
+      const updated = await readJSON<AnyRecord>('/api/admin/config/rollback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version_id: selectedVersion }),
       })
-      invalidateCache(/\/api\/admin\/v2\/config/)
+      invalidateCache(/\/api\/admin\/config/)
       await refetchConfig()
       setConfigText(pretty(updated))
       handleTabChange('history')
@@ -338,7 +338,7 @@ export function App() {
     setError('')
     setProbeResult(null)
     try {
-      const result = await readJSON('/api/admin/v2/upstreams/test', {
+      const result = await readJSON('/api/admin/upstreams/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

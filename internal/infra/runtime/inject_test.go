@@ -65,7 +65,7 @@ func TestOptionalAdminFieldsInjectsConfigHooksFromRuntime(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.v2.yaml")
+	path := filepath.Join(dir, "config.yaml")
 	initial := testRuntimeConfig("alpha")
 	writeRuntimeConfigFile(t, path, initial)
 

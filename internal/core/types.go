@@ -1,4 +1,4 @@
-// Package core defines the pure types, interfaces, and rules for the v2 gateway.
+// Package core defines the pure types, interfaces, and rules for the gateway.
 // This is the innermost layer — it has zero dependencies on infra, app, or adminapi.
 package core
 

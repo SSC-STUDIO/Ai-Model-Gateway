@@ -18,7 +18,7 @@ const Name = "AIModelGateway"
 const (
 	serviceName        = "AIModelGateway"
 	serviceDisplayName = "AI Model Gateway"
-	serviceDescription = "AI Model Gateway v2 service"
+	serviceDescription = "AI Model Gateway service"
 )
 
 var gatewayRuntimeRunner RuntimeRunner = func(ctx context.Context, configPath string) error {

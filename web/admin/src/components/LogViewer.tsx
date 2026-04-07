@@ -63,7 +63,7 @@ export function LogViewer({ maxEntries = 1000 }: LogViewerProps) {
       }
       params.set('tail', '100')
 
-      const url = `/api/admin/v2/logs/stream?${params.toString()}`
+      const url = `/api/admin/logs/stream?${params.toString()}`
       const es = new EventSource(url)
       eventSourceRef.current = es
 
@@ -153,7 +153,7 @@ export function LogViewer({ maxEntries = 1000 }: LogViewerProps) {
     }
 
     try {
-      const response = await fetch(`/api/admin/v2/logs/export?${params.toString()}`, {
+      const response = await fetch(`/api/admin/logs/export?${params.toString()}`, {
         credentials: 'same-origin',
       })
 

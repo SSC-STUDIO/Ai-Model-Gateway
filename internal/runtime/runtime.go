@@ -9,12 +9,12 @@ import (
 	"ai-model-gateway/internal/infra/configloader"
 )
 
-// RuntimeRunner starts the v2 gateway runtime with a concrete config path.
+// RuntimeRunner starts the gateway runtime with a concrete config path.
 type RuntimeRunner func(ctx context.Context, configPath string) error
 
 var defaultRuntimeRunner RuntimeRunner = v2app.Run
 
-// RunGatewayRuntime starts the v2 runtime with the given config.
+// RunGatewayRuntime starts the runtime with the given config.
 func RunGatewayRuntime(ctx context.Context, configPath string, runner RuntimeRunner) error {
 	if runner == nil {
 		runner = defaultRuntimeRunner

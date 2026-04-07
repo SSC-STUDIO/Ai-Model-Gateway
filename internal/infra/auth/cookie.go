@@ -1,5 +1,5 @@
 // Package auth implements stateless signed-cookie and Bearer-token
-// authentication for the v2 admin API, replacing the v1 SessionManager.
+// authentication for the admin API.
 package auth
 
 import (
@@ -16,7 +16,7 @@ import (
 
 const (
 	// CookieName is the name of the admin authentication cookie.
-	CookieName = "aigw_v2"
+	CookieName = "aigw"
 
 	// cookieMaxAge is the default cookie lifetime.
 	cookieMaxAge = 24 * time.Hour

@@ -8,7 +8,7 @@ import (
 	"ai-model-gateway/internal/telemetry"
 )
 
-// Catalog wraps the pricing catalog behind v2-facing types.
+// Catalog wraps the pricing catalog behind gateway types.
 type Catalog struct {
 	inner *telemetry.PricingCatalog
 }
@@ -29,7 +29,7 @@ type Snapshot struct {
 	Catalog       map[string]Price `json:"catalog"`
 }
 
-// NewCatalog creates a v2 pricing catalog.
+// NewCatalog creates a pricing catalog.
 func NewCatalog(cfg core.PricingConfig) *Catalog {
 	return &Catalog{
 		inner: telemetry.NewPricingCatalog(cfg),

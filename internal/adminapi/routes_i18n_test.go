@@ -26,7 +26,7 @@ func TestLoginHandler_I18n_Chinese(t *testing.T) {
 
 	// Test invalid token with Chinese i18n
 	body, _ := json.Marshal(map[string]string{"token": "wrong"})
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/v2/auth/login", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -60,7 +60,7 @@ func TestLoginHandler_I18n_InvalidRequestBody(t *testing.T) {
 	}
 
 	// Test invalid JSON with Chinese i18n
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/v2/auth/login", bytes.NewReader([]byte("invalid json")))
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/auth/login", bytes.NewReader([]byte("invalid json")))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -88,7 +88,7 @@ func TestRequireAuth_I18n_Unauthorized(t *testing.T) {
 	}
 	bundle := i18n.NewWithCatalog("zh", catalog)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/v2/overview", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/overview", nil)
 	rec := httptest.NewRecorder()
 
 	// Create a simple handler that should not be called
@@ -125,7 +125,7 @@ func TestConfigSaveHandler_I18n_NotImplemented(t *testing.T) {
 	}
 
 	body, _ := json.Marshal(map[string]string{"key": "value"})
-	req := httptest.NewRequest(http.MethodPut, "/api/admin/v2/config", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/config", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -158,7 +158,7 @@ func TestConfigExportHandler_I18n_NotImplemented(t *testing.T) {
 		I18n:         bundle,
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/v2/config/export", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/config/export", nil)
 	rec := httptest.NewRecorder()
 
 	handler := configExportHandler(deps)
@@ -188,7 +188,7 @@ func TestI18nFallback_WhenBundleNil(t *testing.T) {
 
 	// Test that it falls back to English when bundle is nil
 	body, _ := json.Marshal(map[string]string{"token": "wrong"})
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/v2/auth/login", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 

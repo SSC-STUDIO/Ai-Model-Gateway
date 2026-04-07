@@ -93,7 +93,7 @@ func (w *Watcher) pollLoop() {
 func (w *Watcher) check() {
 	data, err := os.ReadFile(w.path)
 	if err != nil {
-		log.Printf("[v2/config] watch read error: %v", err)
+		log.Printf("[config] watch read error: %v", err)
 		return
 	}
 
@@ -107,7 +107,7 @@ func (w *Watcher) check() {
 
 	cfg, err := LoadFromFile(w.path)
 	if err != nil {
-		log.Printf("[v2/config] watch reload error (keeping old config): %v", err)
+		log.Printf("[config] watch reload error (keeping old config): %v", err)
 		return
 	}
 
@@ -118,7 +118,7 @@ func (w *Watcher) check() {
 	copy(callbacks, w.onChange)
 	w.mu.Unlock()
 
-	log.Printf("[v2/config] config reloaded from %s", w.path)
+	log.Printf("[config] config reloaded from %s", w.path)
 
 	for _, fn := range callbacks {
 		fn(cfg)

@@ -287,7 +287,7 @@ func (s *Store) writerLoop() {
 			return
 		}
 		if err := s.writeBatch(batch); err != nil {
-			log.Printf("[v2/telemetry] write batch error: %v", err)
+			log.Printf("[telemetry] write batch error: %v", err)
 		}
 		batch = batch[:0]
 	}
@@ -555,10 +555,10 @@ func (s *Store) pruneOldData() {
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.cfg.RetentionDays).UTC().Format(time.RFC3339)
 	if _, err := s.db.Exec(`DELETE FROM requests WHERE timestamp < ?`, cutoff); err != nil {
-		log.Printf("[v2/telemetry] prune requests: %v", err)
+		log.Printf("[telemetry] prune requests: %v", err)
 	}
 	if _, err := s.db.Exec(`DELETE FROM agg_minutes WHERE bucket < ?`, cutoff); err != nil {
-		log.Printf("[v2/telemetry] prune agg_minutes: %v", err)
+		log.Printf("[telemetry] prune agg_minutes: %v", err)
 	}
 }
 

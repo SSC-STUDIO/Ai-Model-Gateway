@@ -7,11 +7,11 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// V2 Configuration — maps to config.v2.yaml
+// Configuration — maps to config.yaml
 // Top-level: server, admin, routing, providers, telemetry, pricing, compat
 // ---------------------------------------------------------------------------
 
-// Config holds the complete v2 gateway configuration.
+// Config holds the complete gateway configuration.
 type Config struct {
 	Server    ServerConfig    `yaml:"server"    json:"server"`
 	Admin     AdminConfig     `yaml:"admin"     json:"admin"`

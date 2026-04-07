@@ -1,7 +1,7 @@
-# AI Model Gateway v2
+# AI Model Gateway
 
 ## Project Overview
-AI model routing gateway service (v2 architecture). Go project with modular internal architecture.
+AI model routing gateway service. Go project with modular internal architecture.
 
 ## Tech Stack
 - Language: Go
@@ -26,8 +26,9 @@ AI model routing gateway service (v2 architecture). Go project with modular inte
 - `configs/` — configuration files
 - `bin/` — compiled binaries
 - `docs/` — documentation
+- `web/admin/` — admin frontend (Preact + Vite)
 
-## v2 Architecture
+## Architecture
 - Clean separation: core (domain), app (application), infra (infrastructure)
-- Simplified runtime without v1 compatibility layer
-- Direct v2 config loading, no conversion needed
+- Admin API: `/api/admin/*`
+- Gateway proxy: `/v1/*` (OpenAI-compatible)

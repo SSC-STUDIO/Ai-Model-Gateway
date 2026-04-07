@@ -1,4 +1,4 @@
-// Package configloader loads and parses v2 configuration files.
+// Package configloader loads and parses configuration files.
 package configloader
 
 import (
@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoadFromFile reads and parses a v2 config YAML file.
+// LoadFromFile reads and parses a config YAML file.
 // The returned Config is normalised with defaults applied.
 // Relative paths (e.g. sqlite_path) are resolved relative to the config file's directory.
 func LoadFromFile(path string) (*core.Config, error) {
@@ -38,7 +38,7 @@ func LoadFromFile(path string) (*core.Config, error) {
 	return cfg, nil
 }
 
-// LoadFromReader parses a v2 config from an io.Reader.
+// LoadFromReader parses a config from an io.Reader.
 func LoadFromReader(r io.Reader) (*core.Config, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {

@@ -21,7 +21,7 @@ import (
 
 func TestRun_HotReloadUpdatesLiveRoutingState(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.v2.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
 	listenAddr := reserveListenAddr(t)
 
 	writeV2Config(t, configPath, gatewayTestConfig{
@@ -118,7 +118,7 @@ func TestRun_HotReloadUpdatesPipelineRetryState(t *testing.T) {
 	defer upstream.Close()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.v2.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
 	listenAddr := reserveListenAddr(t)
 
 	writeV2Config(t, configPath, gatewayTestConfig{
@@ -232,7 +232,7 @@ func TestRun_SameRetriesReuseProviderBeforeSwitching(t *testing.T) {
 	defer providerB.Close()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.v2.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
 	listenAddr := reserveListenAddr(t)
 
 	writeV2Config(t, configPath, gatewayTestConfig{
@@ -310,7 +310,7 @@ func TestRun_StartupHealthProbeBlocksUnhealthyProviderBeforeFirstRequest(t *test
 	defer provider.Close()
 
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "config.v2.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
 	listenAddr := reserveListenAddr(t)
 
 	writeV2Config(t, configPath, gatewayTestConfig{

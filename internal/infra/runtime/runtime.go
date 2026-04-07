@@ -44,7 +44,7 @@ type AdminRuntime struct {
 	TelemetryStore TelemetryStore
 }
 
-// NewAdminRuntime assembles optional runtime dependencies from the v2 config.
+// NewAdminRuntime assembles optional runtime dependencies from the config.
 func NewAdminRuntime(configPath string, initial *core.Config) (*AdminRuntime, error) {
 	if initial == nil {
 		return nil, errors.New("initial config is nil")
