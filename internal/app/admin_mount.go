@@ -20,18 +20,21 @@ func mountAdminRoutes(
 	selector core.RouteSelector,
 	getConfig func() *core.Config,
 	adminRuntime *runtimedeps.AdminRuntime,
-) {
+) *adminapi.EventBus {
 	if cfg == nil || !cfg.Admin.Enabled {
-		return
+		return nil
 	}
 
 	authenticator := auth.New(cfg.Admin.BootstrapToken, cfg.Admin.CookieSigningKey)
+	eventBus := adminapi.NewEventBus(50)
 	deps := adminapi.Deps{
 		Auth:      authenticator,
 		Store:     store,
 		Selector:  selector,
 		GetConfig: getConfig,
+		EventBus:  eventBus,
 	}
 	runtimedeps.InjectOptionalFields(&deps, runtimedeps.OptionalAdminFields(adminRuntime))
 	adminapi.Mount(r, deps)
+	return eventBus
 }

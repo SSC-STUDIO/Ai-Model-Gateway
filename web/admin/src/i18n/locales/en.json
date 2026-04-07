@@ -160,6 +160,11 @@
     "language": "Language",
     "theme": "Theme"
   },
+  "sse": {
+    "connected": "Connected",
+    "reconnecting": "Reconnecting",
+    "disconnected": "Disconnected"
+  },
   "benchmark": {
     "title": "Model Benchmark",
     "loading": "Loading benchmark data...",

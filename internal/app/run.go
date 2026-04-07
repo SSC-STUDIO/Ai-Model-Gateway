@@ -8,6 +8,7 @@ import (
 	"log"
 	"time"
 
+	"ai-model-gateway/internal/adminapi"
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/infra/configloader"
 	"ai-model-gateway/internal/infra/httpserver"
@@ -116,7 +117,10 @@ func Run(ctx context.Context, configPath string) error {
 
 	// Admin routes (if enabled)
 	if cfg.Admin.Enabled {
-		mountAdminRoutes(r, cfg, store, routeSelector, getConfig, adminRuntime)
+		eventBus := mountAdminRoutes(r, cfg, store, routeSelector, getConfig, adminRuntime)
+		if eventBus != nil {
+			adminapi.StartMetricsPush(ctx, eventBus, store, 5*time.Second)
+		}
 	}
 
 	log.Printf("[gateway] starting gateway on %s", cfg.Server.Listen)

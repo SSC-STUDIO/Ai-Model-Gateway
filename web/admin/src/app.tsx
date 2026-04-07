@@ -3,7 +3,7 @@ import { useI18n } from './i18n'
 import { ThemeToggle } from './theme/ThemeToggle'
 import { LanguageSelector } from './theme/LanguageSelector'
 import { LogViewer } from './components/LogViewer'
-import { useCachedFetch, invalidateCache } from './hooks'
+import { useCachedFetch, invalidateCache, useSSE } from './hooks'
 import type { TabKey, AnyRecord, DataResponse, TimeSeriesResponse, BenchmarkResponse, ProbeProvider } from './types'
 
 // Lazy load tab components for code splitting
@@ -97,11 +97,17 @@ export function App() {
   const [token, setToken] = useState('')
   const [refreshInterval, setRefreshInterval] = useState(0)
 
+  // SSE-pushed overview override (bypasses cache)
+  const [sseOverview, setSseOverview] = useState<AnyRecord | null>(null)
+
   // Use cached fetch for data that can be cached
-  const { data: overview, refetch: refetchOverview } = useCachedFetch<AnyRecord>('/api/admin/overview', {
+  const { data: fetchedOverview, refetch: refetchOverview } = useCachedFetch<AnyRecord>('/api/admin/overview', {
     ttl: 30000,
     enabled: authed,
   })
+
+  // SSE data takes priority over cached fetch
+  const overview = sseOverview ?? fetchedOverview
 
   const { data: telemetry, refetch: refetchTelemetry } = useCachedFetch<DataResponse>('/api/admin/data', {
     ttl: 30000,
@@ -143,6 +149,24 @@ export function App() {
   const [benchmarkHours, setBenchmarkHours] = useState(24)
   const [benchmarkModels, setBenchmarkModels] = useState<string[]>([])
   const [benchmarkLoading, setBenchmarkLoading] = useState(false)
+
+  // SSE real-time updates
+  const handleSSEEvent = useCallback((type: string, data: string) => {
+    if (type === 'metrics_update') {
+      try {
+        const parsed = JSON.parse(data) as AnyRecord
+        setSseOverview(parsed)
+      } catch { /* ignore malformed data */ }
+    } else if (type === 'config_changed') {
+      invalidateCache(/\/api\/admin\/config/)
+      void refetchConfig()
+    }
+  }, [refetchConfig])
+
+  const { connected: sseConnected, reconnecting: sseReconnecting } = useSSE(
+    authed ? '/api/admin/events' : '',
+    handleSSEEvent
+  )
 
   // Update URL when tab changes
   useEffect(() => {
@@ -231,9 +255,9 @@ export function App() {
     }
   }, [tab, authed, benchmarkHours, benchmarkModels])
 
-  // Auto-refresh for Overview and Telemetry tabs
+  // Auto-refresh for Overview and Telemetry tabs (paused when SSE is connected)
   useEffect(() => {
-    if (!authed || refreshInterval === 0) return
+    if (!authed || refreshInterval === 0 || sseConnected) return
     const id = setInterval(() => {
       if (tab === 'overview') {
         void refetchOverview()
@@ -244,7 +268,7 @@ export function App() {
       }
     }, refreshInterval)
     return () => clearInterval(id)
-  }, [authed, refreshInterval, tab, refetchOverview, refetchTelemetry, refetchTimeseries])
+  }, [authed, refreshInterval, tab, sseConnected, refetchOverview, refetchTelemetry, refetchTimeseries])
 
   async function submitLogin(event: Event) {
     event.preventDefault()
@@ -275,6 +299,7 @@ export function App() {
       setAuthed(false)
       setBenchmark(null)
       setProbeResult(null)
+      setSseOverview(null)
       setError('')
       // Clear all caches on logout
       invalidateCache()
@@ -553,6 +578,10 @@ export function App() {
               )}
             </div>
           )}
+          <span class={`sse-status ${sseConnected ? 'connected' : sseReconnecting ? 'reconnecting' : 'disconnected'}`}>
+            <span class="sse-dot" />
+            {sseConnected ? t('sse.connected') : sseReconnecting ? t('sse.reconnecting') : t('sse.disconnected')}
+          </span>
           <div class="header-controls">
             <LanguageSelector />
             <ThemeToggle />

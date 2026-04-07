@@ -4,6 +4,7 @@
 package app
 
 import (
+	"ai-model-gateway/internal/adminapi"
 	"ai-model-gateway/internal/core"
 	runtimedeps "ai-model-gateway/internal/infra/runtime"
 	"ai-model-gateway/internal/infra/telemetrydb"
@@ -18,6 +19,6 @@ func mountAdminRoutes(
 	_ core.RouteSelector,
 	_ func() *core.Config,
 	_ *runtimedeps.AdminRuntime,
-) {
+) *adminapi.EventBus {
 	panic("mountAdminRoutes should not be called in app_testshim builds")
 }
