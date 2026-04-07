@@ -95,6 +95,7 @@ export function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [token, setToken] = useState('')
+  const [refreshInterval, setRefreshInterval] = useState(0)
 
   // Use cached fetch for data that can be cached
   const { data: overview, refetch: refetchOverview } = useCachedFetch<AnyRecord>('/api/admin/overview', {
@@ -230,6 +231,21 @@ export function App() {
     }
   }, [tab, authed, benchmarkHours, benchmarkModels])
 
+  // Auto-refresh for Overview and Telemetry tabs
+  useEffect(() => {
+    if (!authed || refreshInterval === 0) return
+    const id = setInterval(() => {
+      if (tab === 'overview') {
+        void refetchOverview()
+        void refetchTelemetry()
+      } else if (tab === 'telemetry') {
+        void refetchTelemetry()
+        void refetchTimeseries()
+      }
+    }, refreshInterval)
+    return () => clearInterval(id)
+  }, [authed, refreshInterval, tab, refetchOverview, refetchTelemetry, refetchTimeseries])
+
   async function submitLogin(event: Event) {
     event.preventDefault()
     setBusy(true)
@@ -269,7 +285,7 @@ export function App() {
     }
   }, [])
 
-  async function saveConfig() {
+  async function saveConfig(): Promise<boolean> {
     setBusy(true)
     setError('')
     try {
@@ -283,8 +299,10 @@ export function App() {
       await refetchConfig()
       setConfigText(pretty(updated))
       handleTabChange('history')
+      return true
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      return false
     } finally {
       setBusy(false)
     }
@@ -517,6 +535,24 @@ export function App() {
               </button>
             ))}
           </div>
+          {(tab === 'overview' || tab === 'telemetry') && (
+            <div class="auto-refresh-controls">
+              <span class="auto-refresh-label">{t('autoRefresh.interval')}:</span>
+              {([0, 10000, 30000, 60000] as const).map((ms) => (
+                <button
+                  key={ms}
+                  type="button"
+                  class={`auto-refresh-btn${refreshInterval === ms ? ' active' : ''}`}
+                  onClick={() => setRefreshInterval(ms)}
+                >
+                  {ms === 0 ? t('autoRefresh.off') : `${ms / 1000}s`}
+                </button>
+              ))}
+              {refreshInterval > 0 && (
+                <span class="auto-refresh-indicator">{t('autoRefresh.active')}</span>
+              )}
+            </div>
+          )}
           <div class="header-controls">
             <LanguageSelector />
             <ThemeToggle />

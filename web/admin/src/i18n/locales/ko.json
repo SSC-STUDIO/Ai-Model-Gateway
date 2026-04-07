@@ -76,12 +76,33 @@
     "costTotal": "총 비용"
   },
   "timeseries": {
-    "title": "시계열"
+    "title": "시계열",
+    "requests": "요청 수",
+    "avgLatency": "평균 지연",
+    "successRate": "성공률",
+    "bucketSize": "버킷 크기",
+    "timeRange": "시간 범위",
+    "noData": "시계열 데이터가 없습니다"
+  },
+  "autoRefresh": {
+    "off": "끄기",
+    "interval": "자동 새로고침",
+    "active": "자동 새로고침 중"
   },
   "settings": {
     "title": "설정",
     "editableJson": "편집 가능 JSON",
-    "saveConfig": "설정 저장"
+    "saveConfig": "설정 저장",
+    "structured": "구조화",
+    "advancedJson": "고급 JSON",
+    "confirmTitle": "저장 확인",
+    "confirmMessage": "이 설정을 저장하시겠습니까? 게이트웨이가 다시 로드됩니다.",
+    "confirmYes": "저장",
+    "confirmCancel": "취소",
+    "saveSuccess": "설정이 성공적으로 저장되었습니다.",
+    "saveError": "설정 저장에 실패했습니다.",
+    "readOnlyArray": "배열 (읽기 전용, JSON 편집기에서 수정하세요)",
+    "sensitive": "민감"
   },
   "history": {
     "title": "설정 이력",
@@ -89,7 +110,10 @@
     "selectVersion": "버전 선택",
     "rollback": "롤백",
     "entries": "항목",
-    "diff": "차이"
+    "diff": "차이",
+    "linesAdded": "줄 추가",
+    "linesRemoved": "줄 삭제",
+    "blocks": "블록"
   },
   "probe": {
     "title": "업스트림 프로브",

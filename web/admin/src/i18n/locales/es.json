@@ -76,12 +76,33 @@
     "costTotal": "Costo total"
   },
   "timeseries": {
-    "title": "Series temporales"
+    "title": "Series temporales",
+    "requests": "Solicitudes",
+    "avgLatency": "Latencia media",
+    "successRate": "Tasa de exito",
+    "bucketSize": "Tamano de bucket",
+    "timeRange": "Rango de tiempo",
+    "noData": "No hay datos de series temporales disponibles"
+  },
+  "autoRefresh": {
+    "off": "Apagado",
+    "interval": "Auto-actualizar",
+    "active": "Actualizando automaticamente"
   },
   "settings": {
     "title": "Ajustes",
     "editableJson": "JSON editable",
-    "saveConfig": "Guardar config"
+    "saveConfig": "Guardar config",
+    "structured": "Estructurado",
+    "advancedJson": "JSON avanzado",
+    "confirmTitle": "Confirmar guardado",
+    "confirmMessage": "¿Está seguro de que desea guardar esta configuración? El gateway se recargará.",
+    "confirmYes": "Guardar",
+    "confirmCancel": "Cancelar",
+    "saveSuccess": "Configuración guardada correctamente.",
+    "saveError": "Error al guardar la configuración.",
+    "readOnlyArray": "Array (solo lectura, use el editor JSON para modificar)",
+    "sensitive": "Sensible"
   },
   "history": {
     "title": "Historial de configuración",
@@ -89,7 +110,10 @@
     "selectVersion": "Seleccionar versión",
     "rollback": "Revertir",
     "entries": "Entradas",
-    "diff": "Diferencia"
+    "diff": "Diferencia",
+    "linesAdded": "lineas agregadas",
+    "linesRemoved": "lineas eliminadas",
+    "blocks": "bloques"
   },
   "probe": {
     "title": "Sonda upstream",

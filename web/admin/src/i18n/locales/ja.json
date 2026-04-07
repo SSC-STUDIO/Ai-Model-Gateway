@@ -76,12 +76,33 @@
     "costTotal": "総コスト"
   },
   "timeseries": {
-    "title": "時系列"
+    "title": "時系列",
+    "requests": "リクエスト数",
+    "avgLatency": "平均遅延",
+    "successRate": "成功率",
+    "bucketSize": "バケットサイズ",
+    "timeRange": "時間範囲",
+    "noData": "時系列データがありません"
+  },
+  "autoRefresh": {
+    "off": "オフ",
+    "interval": "自動更新",
+    "active": "自動更新中"
   },
   "settings": {
     "title": "設定",
     "editableJson": "編集可能 JSON",
-    "saveConfig": "設定を保存"
+    "saveConfig": "設定を保存",
+    "structured": "構造化",
+    "advancedJson": "高度な JSON",
+    "confirmTitle": "保存確認",
+    "confirmMessage": "この設定を保存してもよろしいですか？ゲートウェイがリロードされます。",
+    "confirmYes": "保存",
+    "confirmCancel": "キャンセル",
+    "saveSuccess": "設定が正常に保存されました。",
+    "saveError": "設定の保存に失敗しました。",
+    "readOnlyArray": "配列（読み取り専用、JSONエディタで変更してください）",
+    "sensitive": "機密"
   },
   "history": {
     "title": "設定履歴",
@@ -89,7 +110,10 @@
     "selectVersion": "バージョンを選択",
     "rollback": "ロールバック",
     "entries": "エントリー",
-    "diff": "差分"
+    "diff": "差分",
+    "linesAdded": "行追加",
+    "linesRemoved": "行削除",
+    "blocks": "ブロック"
   },
   "probe": {
     "title": "アップストリームプローブ",

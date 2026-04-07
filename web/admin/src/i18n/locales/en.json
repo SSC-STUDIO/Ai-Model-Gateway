@@ -76,12 +76,33 @@
     "costTotal": "Total Cost"
   },
   "timeseries": {
-    "title": "Timeseries"
+    "title": "Timeseries",
+    "requests": "Requests",
+    "avgLatency": "Average Latency",
+    "successRate": "Success Rate",
+    "bucketSize": "Bucket Size",
+    "timeRange": "Time Range",
+    "noData": "No timeseries data available"
+  },
+  "autoRefresh": {
+    "off": "Off",
+    "interval": "Auto-refresh",
+    "active": "Auto-refreshing"
   },
   "settings": {
     "title": "Settings",
     "editableJson": "Editable JSON",
-    "saveConfig": "Save Config"
+    "saveConfig": "Save Config",
+    "structured": "Structured",
+    "advancedJson": "Advanced JSON",
+    "confirmTitle": "Confirm Save",
+    "confirmMessage": "Are you sure you want to save this configuration? The gateway will reload.",
+    "confirmYes": "Save",
+    "confirmCancel": "Cancel",
+    "saveSuccess": "Configuration saved successfully.",
+    "saveError": "Failed to save configuration.",
+    "readOnlyArray": "Array (read-only, use JSON editor to modify)",
+    "sensitive": "Sensitive"
   },
   "history": {
     "title": "Config History",
@@ -89,7 +110,10 @@
     "selectVersion": "Select a version",
     "rollback": "Rollback",
     "entries": "Entries",
-    "diff": "Diff"
+    "diff": "Diff",
+    "linesAdded": "lines added",
+    "linesRemoved": "lines removed",
+    "blocks": "blocks"
   },
   "probe": {
     "title": "Upstream Probe",

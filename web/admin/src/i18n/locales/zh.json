@@ -76,12 +76,33 @@
     "costTotal": "总成本"
   },
   "timeseries": {
-    "title": "时序"
+    "title": "时序",
+    "requests": "请求数",
+    "avgLatency": "平均延迟",
+    "successRate": "成功率",
+    "bucketSize": "桶大小",
+    "timeRange": "时间范围",
+    "noData": "暂无时序数据"
+  },
+  "autoRefresh": {
+    "off": "关闭",
+    "interval": "自动刷新",
+    "active": "自动刷新中"
   },
   "settings": {
     "title": "设置",
     "editableJson": "可编辑 JSON",
-    "saveConfig": "保存配置"
+    "saveConfig": "保存配置",
+    "structured": "结构化",
+    "advancedJson": "高级 JSON",
+    "confirmTitle": "确认保存",
+    "confirmMessage": "确定要保存此配置吗？网关将重新加载。",
+    "confirmYes": "保存",
+    "confirmCancel": "取消",
+    "saveSuccess": "配置保存成功。",
+    "saveError": "配置保存失败。",
+    "readOnlyArray": "数组（只读，请使用 JSON 编辑器修改）",
+    "sensitive": "敏感"
   },
   "history": {
     "title": "配置历史",
@@ -89,7 +110,10 @@
     "selectVersion": "选择一个版本",
     "rollback": "回滚",
     "entries": "条目",
-    "diff": "差异"
+    "diff": "差异",
+    "linesAdded": "行新增",
+    "linesRemoved": "行删除",
+    "blocks": "个变更块"
   },
   "probe": {
     "title": "上游探测",

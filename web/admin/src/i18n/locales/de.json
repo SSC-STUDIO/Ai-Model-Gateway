@@ -76,12 +76,33 @@
     "costTotal": "Gesamtkosten"
   },
   "timeseries": {
-    "title": "Zeitreihen"
+    "title": "Zeitreihen",
+    "requests": "Anfragen",
+    "avgLatency": "Durchschn. Latenz",
+    "successRate": "Erfolgsrate",
+    "bucketSize": "Bucket-Größe",
+    "timeRange": "Zeitraum",
+    "noData": "Keine Zeitreihendaten verfügbar"
+  },
+  "autoRefresh": {
+    "off": "Aus",
+    "interval": "Auto-Aktualisierung",
+    "active": "Aktualisiert automatisch"
   },
   "settings": {
     "title": "Einstellungen",
     "editableJson": "Editierbares JSON",
-    "saveConfig": "Konfiguration speichern"
+    "saveConfig": "Konfiguration speichern",
+    "structured": "Strukturiert",
+    "advancedJson": "Erweitertes JSON",
+    "confirmTitle": "Speichern bestätigen",
+    "confirmMessage": "Möchten Sie diese Konfiguration wirklich speichern? Das Gateway wird neu geladen.",
+    "confirmYes": "Speichern",
+    "confirmCancel": "Abbrechen",
+    "saveSuccess": "Konfiguration erfolgreich gespeichert.",
+    "saveError": "Fehler beim Speichern der Konfiguration.",
+    "readOnlyArray": "Array (schreibgeschützt, verwenden Sie den JSON-Editor zum Ändern)",
+    "sensitive": "Sensibel"
   },
   "history": {
     "title": "Konfigurationsverlauf",
@@ -89,7 +110,10 @@
     "selectVersion": "Version auswählen",
     "rollback": "Rollback",
     "entries": "Einträge",
-    "diff": "Diff"
+    "diff": "Diff",
+    "linesAdded": "Zeilen hinzugefügt",
+    "linesRemoved": "Zeilen entfernt",
+    "blocks": "Blöcke"
   },
   "probe": {
     "title": "Upstream-Probe",

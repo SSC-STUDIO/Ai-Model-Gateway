@@ -297,6 +297,21 @@ const DonutChartComponent = ({ data, title }: DonutChartProps) => {
       <div class="chart-body">
         <svg ref={svgRef} class="chart-svg donut-svg" />
       </div>
+      {data.length > 0 && (
+        <div class="donut-legend">
+          {data.map((segment) => {
+            const pct = total > 0 ? ((segment.value / total) * 100).toFixed(1) : '0.0'
+            return (
+              <div class="donut-legend-item" key={segment.label}>
+                <span class="donut-legend-swatch" style={{ backgroundColor: segment.color }} />
+                <span class="donut-legend-label">{segment.label}</span>
+                <span class="donut-legend-value">{segment.value}</span>
+                <span class="donut-legend-pct">({pct}%)</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
