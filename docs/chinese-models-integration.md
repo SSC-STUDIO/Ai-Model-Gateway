@@ -1,4 +1,4 @@
-# 国产大模型API一键接入指南
+# 国产大模型 API 接入指南
 
 AI Model Gateway 支持主流国产大模型的快速接入，所有支持的厂商均采用 OpenAI 兼容协议。
 
@@ -16,19 +16,18 @@ AI Model Gateway 支持主流国产大模型的快速接入，所有支持的厂
 | 阶跃星辰 | StepFun | OpenAI兼容 | [StepFun](https://platform.stepfun.com/) |
 | 商汤 | 日日新 (SenseChat) | OpenAI兼容 | [SenseNova](https://platform.sensenova.cn/) |
 
-## 一键接入使用方式
+## 接入方式
 
-### 方式一：Web界面一键添加
+### 方式一：通过管理界面编辑 provider
 
-1. 打开管理界面 `http://127.0.0.1:18080/admin/settings`
-2. 找到"服务商"区块
-3. 点击 🇨🇳 **添加国产大模型** 下拉按钮
-4. 选择要添加的厂商
-5. 填写API Key并保存
+1. 打开管理界面 `http://127.0.0.1:18080/admin`
+2. 登录后切到配置相关 tab
+3. 在 provider 配置中手动补充对应厂商的 `base_url`、`api_key`、`models`
+4. 保存配置并重新验证模型列表
 
 ### 方式二：配置文件手动添加
 
-复制 `configs/chinese-models.yaml` 中的配置模板到 `config.yaml` 的 `upstreams` 部分，填入你的 API Key。
+复制 `configs/chinese-models.yaml` 中的配置模板到 `config.v2.yaml` 的 `providers` 部分，填入你的 API Key。
 
 ## 各厂商接入详情
 
@@ -139,16 +138,17 @@ AI Model Gateway 支持主流国产大模型的快速接入，所有支持的厂
 建议配置桥接规则，将标准模型名映射到国产大模型：
 
 ```yaml
-bridge:
-  enabled: true
-  rules:
-    # GPT-5 桥接到文心一言
-    - from: gpt-5.4
-      to: ERNIE-4.0-8K
-    # Claude 桥接到 GLM
-    - from: claude-opus-4-6
-      to: glm-4
-    # 其他桥接规则...
+compat:
+  bridge:
+    enabled: true
+    rules:
+      # GPT-5 桥接到文心一言
+      - from: gpt-5.4
+        to: ERNIE-4.0-8K
+      # Claude 桥接到 GLM
+      - from: claude-opus-4-6
+        to: glm-4
+      # 其他桥接规则...
 ```
 
 ## 故障排查

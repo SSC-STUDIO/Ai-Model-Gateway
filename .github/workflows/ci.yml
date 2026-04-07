@@ -44,8 +44,15 @@ jobs:
       - name: Run tests
         run: go test -timeout 10m ./...
 
+      - name: Verify default cutover binaries build
+        shell: pwsh
+        run: |
+          go build ./cmd/gateway
+          go build ./cmd/gateway-v2
+          go build ./cmd/config-convert
+
   build-windows:
-    name: Build Windows Artifact
+    name: Build Windows Cutover Artifacts
     runs-on: windows-latest
     needs: test
 
@@ -59,15 +66,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build gateway binary
+      - name: Build default runtime and migration helper
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          go build -trimpath -ldflags="-s -w" -o .\dist\ai-model-gateway-windows-amd64.exe .\cmd\gateway
+          go build -trimpath -ldflags="-s -w" -o .\dist\gateway.exe .\cmd\gateway
+          go build -trimpath -ldflags="-s -w" -o .\dist\gateway-v2.exe .\cmd\gateway-v2
+          go build -trimpath -ldflags="-s -w" -o .\dist\config-convert.exe .\cmd\config-convert
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ai-model-gateway-windows-amd64
-          path: dist/ai-model-gateway-windows-amd64.exe
+          path: dist/
           if-no-files-found: error

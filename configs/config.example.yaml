@@ -1,124 +1,118 @@
-listen: :8080
-reload:
-  enabled: true
-  debounce_ms: 200
-router:
+# AI-Model-Gateway v2 Configuration (parity candidate track)
+# Top-level structure: server, admin, routing, providers, telemetry, pricing, compat
+
+server:
+  listen: :18080
+  read_timeout_ms: 30000
+  write_timeout_ms: 60000
+  idle_timeout_ms: 120000
+  max_body_bytes: 104857600  # 100 MB
+
+admin:
+  enabled: true                    # Enable admin for testing
+  bootstrap_token: "12345678901234567890123456789012"  # 32 chars
+  cookie_signing_key: "abcdef1234567890abcdef1234567890"  # 32 chars
+  language: zh
+
+routing:
   strategy: health_weighted_rr
   max_retries: 2
-  retry_backoff_ms: 3000
-  retry_backoff_max_ms: 30000
-  failure_threshold: 20
-  cooldown_sec: 60
-  failure_passthrough_after_sec: 600
+  retry_backoff:
+    initial_ms: 3000
+    max_ms: 30000
+  health:
+    enabled: true
+    interval_sec: 10
+    timeout_ms: 2000
+    path: /v1/models          # Provider probe path
   sticky_sessions:
     enabled: true
     ttl_sec: 1800
-health:
-  enabled: true
-  interval_sec: 10
-  timeout_ms: 2000
-  path: /v1/models
-admin:
-  enabled: false  # 默认禁用
-  auth_token: ""  # 必填，无默认值 - 必须设置为至少32字符的安全值
-  language: zh
+  failure_policy:
+    threshold: 20
+    cooldown_sec: 60
+    passthrough_after_sec: 600
+    quota_recovery_interval_min: 0
+  retry:
+    infinite_on_error: true
+    status_codes:
+      - 408
+      - 429
+    status_code_min: 500
+    message_keywords:
+      - too many requests
+      - rate limit
+      - quota exceeded
+      - stream disconnected before completion
+      - stream closed before response.completed
+      - upstream request failed
+      - server busy
+      - system busy
+      - temporarily unavailable
+      - temporarily overloaded
+      - overloaded
+      - please try again later
+      - service unavailable
+  intercepts: []
+
+# Providers (renamed from upstreams in v1)
+providers:
+  - name: station-a
+    base_url: https://example-a.com
+    api_key: sk-xxxx
+    provider_class: free
+    models:
+      - gpt-4o-mini
+      - gpt-4.1-mini
+    weight: 5
+    timeout_ms: 300000
+    same_retries: 0
+    enabled: true
+
+  - name: station-b
+    base_url: https://example-b.com
+    api_key: sk-yyyy
+    provider_class: quota_limited
+    models:
+      - gpt-4o-mini
+    weight: 1
+    timeout_ms: 300000
+    same_retries: 0
+    enabled: true
+
+  - name: kimi-official
+    base_url: https://api.moonshot.cn
+    anthropic_base_url: https://api.moonshot.cn/anthropic
+    api_key: sk-your-kimi-key
+    provider_class: quota_limited
+    models:
+      - kimi-k2.5
+    weight: 1
+    timeout_ms: 180000
+    same_retries: 1
+    enabled: true
+    headers: {}
+
 telemetry:
-  sqlite_path: data/telemetry.db
+  sqlite_path: data/telemetry.db.v2
+  retention_days: 30
+  aggregation_sec: 60
+  cache_ttl_sec: 5
+
 pricing:
   cache_path: data/pricing-cache.json
   refresh_interval_hours: 12
   request_timeout_ms: 15000
-proxy:
-  retry:
-    infinite_on_error: true
-    status_codes:
-    - 408
-    - 429
-    status_code_min: 500
-    message_keywords:
-    - too many requests
-    - rate limit
-    - quota exceeded
-    - stream disconnected before completion
-    - stream closed before response.completed
-    - response.completed
-    - upstream request failed
-    - server busy
-    - system busy
-    - temporarily unavailable
-    - temporarily overloaded
-    - overloaded
-    - please try again later
-    - service unavailable
-  intercepts: []
-bridge:
-  enabled: false
-  exclude_user_agents:
-  - '*Codex Desktop*'
-  rules:
-  - from: gpt-5.2*
-    to: gpt-5.4
-upstreams:
-- name: station-a
-  base_url: https://example-a.com
-  api_key: sk-xxxx
-  provider_class: free
-  models:
-  - gpt-4o-mini
-  - gpt-4.1-mini
-  weight: 5
-  timeout_ms: 300000
-  same_upstream_retries: 0
-  enabled: true
-- name: station-b
-  base_url: https://example-b.com
-  api_key: sk-yyyy
-  provider_class: quota_limited
-  models:
-  - gpt-4o-mini
-  weight: 1
-  timeout_ms: 300000
-  same_upstream_retries: 0
-  enabled: true
-- name: xiavier
-  base_url: https://www.xiavier.com
-  api_key: sk-your-xiavier-key
-  provider_class: quota_limited
-  models:
-  - claude-haiku-4-5-20251001
-  - claude-opus-4-5-20251101
-  - claude-opus-4-6
-  - claude-opus-4-6-thinking
-  - claude-sonnet-4-5-20250929
-  - claude-sonnet-4-6
-  - claude-sonnet-4-6-thinking
-  weight: 1
-  timeout_ms: 180000
-  same_upstream_retries: 1
-  enabled: true
-- name: gm12331
-  base_url: https://gm.12331.xyz
-  api_key: sk-your-gm12331-key
-  provider_class: quota_limited
-  models:
-  - claude-opus-4-5
-  - claude-opus-4-5-20251101
-  - claude-opus-4-6
-  - claude-sonnet-4-5
-  - claude-sonnet-4-6
-  weight: 1
-  timeout_ms: 180000
-  same_upstream_retries: 1
-  enabled: true
-- name: kimi-official
-  base_url: https://api.kimi.com/coding
-  anthropic_base_url: https://api.kimi.com/coding
-  api_key: sk-your-kimi-code-key
-  provider_class: quota_limited
-  models:
-  - kimi-for-coding
-  weight: 1
-  timeout_ms: 180000
-  same_upstream_retries: 1
-  enabled: true
-  headers: {}
+
+compat:
+  bridge:
+    enabled: false
+    exclude_user_agents:
+      - '*Codex Desktop*'
+    rules:
+      - from: gpt-5.2*
+        to: gpt-5.4
+  fallback:
+    enabled: false            # Optional compatibility fallback layer
+    detect_repetition: false
+    models: {}

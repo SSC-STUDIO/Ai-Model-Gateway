@@ -1,261 +1,179 @@
 # Installation Guide
 
-This guide covers various methods to install and run the AI Model Gateway.
+This guide documents the replacement default: `gateway.exe` still comes from `./cmd/gateway`, but starting it without a subcommand already runs the v2 runtime.
 
-## Table of Contents
+## Runtime Defaults
 
-- [System Requirements](#system-requirements)
-- [Installation Methods](#installation-methods)
-  - [Method 1: Download Pre-built Binary (Recommended)](#method-1-download-pre-built-binary-recommended)
-  - [Method 2: Build from Source](#method-2-build-from-source)
-  - [Method 3: Run with Go](#method-3-run-with-go)
-- [Configuration](#configuration)
-- [Running as Windows Service](#running-as-windows-service)
-- [Post-Installation Verification](#post-installation-verification)
-- [Upgrading](#upgrading)
-- [Uninstallation](#uninstallation)
+- Default runtime binary: `gateway.exe` built from `./cmd/gateway`
+- Default config file: `configs/config.yaml`
+- Default health endpoint: `GET /-/health`
+- Default admin frontend: `GET /admin`
+- Default admin API: `/api/admin/v2/*`
+- Explicit v2 binary: `gateway-v2.exe` built from `./cmd/gateway-v2`
+- Migration helper: `config-convert.exe` built from `./cmd/config-convert`
 
 ## System Requirements
 
-- **Operating System**: Windows 10/11, Linux, macOS
-- **Go**: 1.26+ (only required for building from source)
-- **Memory**: 512MB minimum, 1GB recommended
-- **Disk**: 100MB for binary + space for logs and SQLite database
-- **Network**: Access to upstream AI service endpoints
+- Windows 10/11, Linux, or macOS
+- Go 1.26+ if building from source
+- Network access to your upstream model providers
 
-## Installation Methods
-
-### Method 1: Download Pre-built Binary (Recommended)
-
-1. Visit the [GitHub Releases](https://github.com/SSC-STUDIO/ai-model-gateway/releases) page
-2. Download the appropriate binary for your platform:
-   - Windows: `gateway-windows-amd64.exe`
-   - Linux: `gateway-linux-amd64`
-   - macOS: `gateway-darwin-amd64`
-3. Rename the binary to `gateway` (or `gateway.exe` on Windows)
-4. Place it in your desired installation directory
-5. (Optional) Add the directory to your system PATH
-
-### Method 2: Build from Source
+## Install From Source
 
 ```powershell
-# Clone the repository
 git clone https://github.com/SSC-STUDIO/ai-model-gateway.git
 cd ai-model-gateway
 
-# Build the binary
-go build -o gateway.exe ./cmd/gateway
-
-# Verify the build
-.\gateway.exe version
+go build -o .\gateway.exe .\cmd\gateway
+go build -o .\gateway-v2.exe .\cmd\gateway-v2
+go build -o .\config-convert.exe .\cmd\config-convert
 ```
 
-### Method 3: Run with Go
+On non-Windows platforms, omit the `.exe` suffix.
 
-For development or quick testing:
+## Create a Config
 
-```powershell
-# Run directly without building
-go run ./cmd/gateway -config ./configs/config.yaml
-```
-
-## Configuration
-
-1. Copy the example configuration file:
+### Option 1: Keep the stable `config.yaml` contract
 
 ```powershell
 Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 ```
 
-2. Edit `configs/config.yaml` with your settings:
+`gateway.exe` 会在启动时自动识别 `config.yaml` 的 v1 结构，并转换到稳定的 managed sidecar v2 配置后运行。之后 admin 的 save/history/rollback 也会持久化到这个 sidecar。
 
-### Minimum Required Configuration
+### Option 2: Migrate explicitly to `config.v2.yaml`
+
+```powershell
+.\config-convert.exe -in .\configs\config.yaml -out .\configs\config.v2.yaml
+```
+
+### Option 3: Start from a minimal v2 config
+
+Create `configs/config.v2.yaml`:
 
 ```yaml
-listen: ":18080"
-
-upstreams:
-  - name: my-upstream
-    base_url: "https://api.openai.com/v1"
-    api_key: "sk-your-api-key"
-    models:
-      - gpt-4
-      - gpt-3.5-turbo
-    enabled: true
+server:
+  listen: :18080
 
 admin:
   enabled: true
-  auth_token: "your-secure-admin-token"
+  bootstrap_token: "0123456789abcdef0123456789abcdef"
+  cookie_signing_key: "abcdef0123456789abcdef0123456789"
+  language: zh
+
+routing:
+  strategy: health_weighted_rr
+  health:
+    enabled: true
+    interval_sec: 10
+    timeout_ms: 2000
+    path: /v1/models
+
+providers:
+  - name: example-provider
+    base_url: https://api.openai.com/v1
+    api_key: sk-your-api-key
+    provider_class: quota_limited
+    models:
+      - gpt-4o-mini
+    enabled: true
+
+telemetry:
+  sqlite_path: data/telemetry.db
+
+pricing:
+  cache_path: data/pricing-cache.json
+
+compat:
+  bridge:
+    enabled: false
+    exclude_user_agents: []
+    rules: []
+  fallback:
+    enabled: false
+    detect_repetition: false
+    models: {}
 ```
 
-### Configuration File Locations
+Notes:
 
-The gateway looks for configuration in the following order:
+- `admin.bootstrap_token` must be at least 32 characters when admin is enabled.
+- `admin.cookie_signing_key` must be at least 32 characters when admin is enabled.
+- The v2 runtime requires at least one configured provider.
 
-1. Path specified via `-config` flag
-2. `configs/config.yaml` (default)
-3. `./config.yaml`
-
-### Validate Configuration
-
-Before starting, validate your configuration:
+## Run the Default Runtime
 
 ```powershell
-.\gateway.exe validate
+.\gateway.exe -config .\configs\config.yaml
 ```
 
-## Running as Windows Service
-
-The gateway can run as a Windows service for production deployments.
-
-### Install as Service
-
-Run PowerShell as Administrator:
+For development without building:
 
 ```powershell
-# Install with default config path
-.\gateway.exe install
-
-# Or specify custom config path
-.\gateway.exe -config C:\gateway\config.yaml install
+go run .\cmd\gateway -config .\configs\config.yaml
 ```
 
-### Manage the Service
+If you want the explicit v2 path instead:
 
 ```powershell
-# Start the service
-.\gateway.exe service-start
-
-# Check status
-.\gateway.exe service-status
-
-# Stop the service
-.\gateway.exe service-stop
-
-# Uninstall the service
-.\gateway.exe uninstall
+go run .\cmd\gateway-v2 -config .\configs\config.v2.yaml
 ```
 
-### Alternative: Using PowerShell Scripts
+## Verify the Default Path
 
-If you prefer using scripts:
+### Recommended
 
 ```powershell
-# Install service
-.\scripts\install-service.ps1
-
-# Uninstall service
-.\scripts\uninstall-service.ps1
+.\scripts\verify-default-runtime.ps1
 ```
 
-## Post-Installation Verification
+### Manual checks
 
-1. **Check if the gateway is running**:
-
-```powershell
-.\gateway.exe health
-```
-
-2. **Test the API**:
+Start the runtime, then verify:
 
 ```powershell
-# List available models
-curl.exe http://127.0.0.1:18080/v1/models
-
-# Check health endpoint
 curl.exe http://127.0.0.1:18080/-/health
+curl.exe http://127.0.0.1:18080/v1/models
+curl.exe http://127.0.0.1:18080/admin
+curl.exe -H "Authorization: Bearer 0123456789abcdef0123456789abcdef" http://127.0.0.1:18080/api/admin/v2/overview
 ```
 
-3. **Access the Admin Dashboard**:
-   - Open `http://127.0.0.1:18080/admin` in your browser
-   - Set the `aigw_admin_token` cookie to your configured auth token
-   - Or use the settings page: `http://127.0.0.1:18080/admin/settings`
+Expected results:
 
-## Upgrading
+- `/-/health` returns `200`
+- `/v1/models` returns the configured smoke model
+- `/admin` returns HTML
+- `/api/admin/v2/overview` returns JSON when called with a valid Bearer bootstrap token
 
-### Binary Upgrade
+## Admin Access
 
-1. Stop the service (if running as service):
-```powershell
-.\gateway.exe service-stop
+Open the admin frontend in your browser:
+
+```text
+http://127.0.0.1:18080/admin
 ```
 
-2. Backup your configuration:
-```powershell
-Copy-Item .\configs\config.yaml .\configs\config.yaml.backup
-```
+The v2 frontend presents a single app shell with tabs for overview, telemetry, timeseries, config, history, and upstream probe.
 
-3. Download and replace the binary
+For browser login, use the bootstrap token in the `/admin` login form.
 
-4. Validate the new binary:
-```powershell
-.\gateway.exe version
-.\gateway.exe validate
-```
+For automation, prefer Bearer authentication against `/api/admin/v2/*`.
 
-5. Start the service:
-```powershell
-.\gateway.exe service-start
-```
+## Packaging and Release Expectations
 
-### Configuration Migration
+The default cutover artifacts should include:
 
-When upgrading, check the [CHANGELOG.md](../CHANGELOG.md) for any configuration changes. The gateway will validate your config on startup and report any issues.
+- `gateway.exe` / `gateway` built from `./cmd/gateway`
+- `config-convert.exe` / `config-convert` built from `./cmd/config-convert`
 
-## Uninstallation
+Those are the binaries referenced by the repository workflows and verification guidance.
 
-### Remove Windows Service
+## Compatibility Notes
 
-```powershell
-# Run as Administrator
-.\gateway.exe service-stop
-.\gateway.exe uninstall
-```
+The same `./cmd/gateway` binary still exposes:
 
-### Remove Binary and Data
+- `validate`
+- `health`
+- Windows service install/start/stop/status commands
 
-```powershell
-# Remove binary
-Remove-Item .\gateway.exe
-
-# Remove configuration (optional)
-Remove-Item .\configs\config.yaml
-
-# Remove data files (optional)
-Remove-Item .\data\telemetry.db
-Remove-Item .\data\pricing-cache.json
-```
-
-## Troubleshooting
-
-### Service Won't Start
-
-1. Check Windows Event Viewer for errors
-2. Verify config file path is correct
-3. Ensure the service account has permissions to access the config file
-4. Check logs in the `logs/` directory
-
-### Port Already in Use
-
-If port 18080 is already in use:
-
-1. Change the `listen` address in config.yaml:
-```yaml
-listen: ":18081"  # Use different port
-```
-
-2. Or stop the process using port 18080
-
-### Configuration Errors
-
-Use the validate command to check your config:
-
-```powershell
-.\gateway.exe validate -config .\configs\config.yaml
-```
-
-## Next Steps
-
-- Read the [CLI documentation](cli.md) for command reference
-- Check the [README.md](../README.md) for feature documentation
-- Review [CONTRIBUTING.md](../CONTRIBUTING.md) for development setup
+So from the operator point of view, the binary name and CLI surface stay stable while the runtime core has already moved to v2.

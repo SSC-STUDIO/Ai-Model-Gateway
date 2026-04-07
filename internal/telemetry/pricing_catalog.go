@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"ai-model-gateway/internal/config"
+	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/pathsecurity"
 )
 
@@ -37,7 +37,7 @@ var (
 	tagPattern         = regexp.MustCompile(`(?is)<[^>]+>`)
 )
 
-func NewPricingCatalog(cfg config.PricingConfig) *PricingCatalog {
+func NewPricingCatalog(cfg core.PricingConfig) *PricingCatalog {
 	catalog := &PricingCatalog{}
 	catalog.cfg.Store(cfg)
 	state := BootstrapPricingSnapshot()
@@ -84,7 +84,7 @@ func (c *PricingCatalog) Snapshot() PricingCatalogSnapshot {
 	return current
 }
 
-func (c *PricingCatalog) UpdateConfig(cfg config.PricingConfig) {
+func (c *PricingCatalog) UpdateConfig(cfg core.PricingConfig) {
 	if c == nil {
 		return
 	}
@@ -154,15 +154,15 @@ func (c *PricingCatalog) refresh(parent context.Context) error {
 	return nil
 }
 
-func (c *PricingCatalog) currentConfig() config.PricingConfig {
+func (c *PricingCatalog) currentConfig() core.PricingConfig {
 	if c == nil {
-		return config.PricingConfig{}
+		return core.PricingConfig{}
 	}
 	value := c.cfg.Load()
 	if value == nil {
-		return config.PricingConfig{}
+		return core.PricingConfig{}
 	}
-	return value.(config.PricingConfig)
+	return value.(core.PricingConfig)
 }
 
 func fetchOfficialPricingCatalog(ctx context.Context) (PricingCatalogSnapshot, error) {

@@ -19,12 +19,14 @@ jobs:
           - goos: windows
             goarch: amd64
             runner: windows-latest
-            binary: ai-model-gateway-windows-amd64.exe
+            gateway_binary: gateway-windows-amd64.exe
+            converter_binary: config-convert-windows-amd64.exe
             archive: ai-model-gateway-windows-amd64.zip
           - goos: linux
             goarch: amd64
             runner: ubuntu-latest
-            binary: ai-model-gateway-linux-amd64
+            gateway_binary: gateway-linux-amd64
+            converter_binary: config-convert-linux-amd64
             archive: ai-model-gateway-linux-amd64.tar.gz
 
     steps:
@@ -37,7 +39,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build binary
+      - name: Build default runtime and migration helper
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
@@ -45,26 +47,33 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.binary }}" ./cmd/gateway
+          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.gateway_binary }}" ./cmd/gateway
+          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.converter_binary }}" ./cmd/config-convert
 
       - name: Package zip
         if: matrix.goos == 'windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path ".\dist\${{ matrix.binary }}" -DestinationPath ".\dist\${{ matrix.archive }}" -Force
+          Compress-Archive -Path ".\dist\${{ matrix.gateway_binary }}", ".\dist\${{ matrix.converter_binary }}" -DestinationPath ".\dist\${{ matrix.archive }}" -Force
 
       - name: Package tar.gz
         if: matrix.goos != 'windows'
         shell: bash
         run: |
           set -euo pipefail
-          tar -czf "dist/${{ matrix.archive }}" -C dist "${{ matrix.binary }}"
+          tar -czf "dist/${{ matrix.archive }}" -C dist "${{ matrix.gateway_binary }}" "${{ matrix.converter_binary }}"
 
-      - name: Upload raw binary artifact
+      - name: Upload default runtime artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}
-          path: dist/${{ matrix.binary }}
+          name: ${{ matrix.gateway_binary }}
+          path: dist/${{ matrix.gateway_binary }}
+
+      - name: Upload migration helper artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.converter_binary }}
+          path: dist/${{ matrix.converter_binary }}
 
       - name: Upload archive artifact
         uses: actions/upload-artifact@v4
@@ -76,5 +85,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/${{ matrix.binary }}
+            dist/${{ matrix.gateway_binary }}
+            dist/${{ matrix.converter_binary }}
             dist/${{ matrix.archive }}

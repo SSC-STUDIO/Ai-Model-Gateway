@@ -1,173 +1,102 @@
-# AI Model Gateway CLI
+# AI Model Gateway Command-Line Surfaces
 
-The gateway now provides a comprehensive command-line interface for managing the service.
+`gateway.exe` 的默认入口仍然来自 `./cmd/gateway`，但无子命令启动时已经直接进入 v2 runtime。这是当前的 drop-in replacement 路径。
 
-## Usage
+## Default Runtime
 
-```bash
-gateway [global-options] <command> [options]
-```
+- Build `gateway.exe` from `./cmd/gateway`.
+- Default config path: `configs/config.yaml`.
+- No subcommand: start the v2 runtime.
+- Default health endpoint: `GET /-/health`.
+- Default admin frontend: `GET /admin`.
+- Default admin API: `/api/admin/v2/*`.
 
-### Global Options
-
-- `-config string` - Path to config file (default: "configs/config.yaml")
-
-## Commands
-
-### Start the Gateway
+Usage:
 
 ```bash
-# Start with default config
-gateway start
-
-# Start with custom config
-gateway -config /path/to/config.yaml start
-
-# Legacy mode (backward compatible)
-gateway -config /path/to/config.yaml
+gateway.exe [-config /path/to/config.yaml]
 ```
 
-### Validate Configuration
-
-Check if your configuration file is valid without starting the server:
+Examples:
 
 ```bash
-gateway validate
-gateway validate -config /path/to/config.yaml
+# Start with the default config contract
+gateway.exe
+
+# Start with an explicit config
+gateway.exe -config ./configs/config.yaml
 ```
 
-Output:
-```
-✓ Configuration is valid
-  Listen: :18080
-  Upstreams: 9
-  Admin enabled: true
-  Health enabled: true
-  Bridge enabled: true
-```
+## CLI Commands Kept on the Same Binary
 
-### Health Check
+`cmd/gateway` 仍然保留这些兼容命令：
 
-Check if the gateway is running and healthy:
+- `gateway.exe validate`
+- `gateway.exe health`
+- `gateway.exe install`
+- `gateway.exe service-start`
+- `gateway.exe service-stop`
+- `gateway.exe service-status`
+- `gateway.exe uninstall`
+
+也就是说，用户侧入口名不变；只有真正跑服务的内部 runtime 已切到 v2。
+
+## Explicit v2 Entry
+
+如果你要直接使用 v2 配置 schema，可以显式构建 `./cmd/gateway-v2`：
 
 ```bash
-# Default endpoint
-gateway health
-
-# Custom endpoint
-gateway health -endpoint http://localhost:18080/-/health -timeout 10s
+go build -o gateway-v2.exe ./cmd/gateway-v2
+gateway-v2.exe -config ./configs/config.v2.yaml
 ```
 
-### Windows Service Management
+## Migration Helper
 
-On Windows, you can manage the gateway as a system service:
-
-#### Install Service
+Build `config-convert.exe` from `./cmd/config-convert` when you need to migrate an existing v1-style config into the v2 schema.
 
 ```bash
-# Install with default config
-gateway install
-
-# Install with custom config
-gateway -config C:\gateway\config.yaml install
+config-convert.exe -in ./configs/config.yaml -out ./configs/config.v2.yaml
+config-convert.exe -in ./configs/config.yaml -out ./configs/config.v2.yaml -listen :18081
 ```
 
-#### Start Service
+The converter is for config migration only. It does not start the server.
 
-```bash
-gateway service-start
+## Deterministic Verification
+
+Use the verification script to build the default runtime, launch it with a minimal `config.yaml`, and verify health plus admin reachability:
+
+```powershell
+.\scripts\verify-default-runtime.ps1
 ```
 
-#### Stop Service
+The script verifies:
 
-```bash
-gateway service-stop
+- `go build` succeeds for `./cmd/gateway`
+- `GET /-/health` returns `200`
+- `GET /v1/models` returns the smoke model
+- `GET /api/admin/v2/overview` succeeds with a Bearer admin token
+- stderr contains a `[v2]` runtime marker
+
+If you prefer to run the steps manually:
+
+```powershell
+go build -o .\dist\gateway.exe .\cmd\gateway
+.\scripts\verify-default-runtime.ps1 -SkipBuild
 ```
 
-#### Check Service Status
+## Admin Paths
 
-```bash
-gateway service-status
-```
+Use these paths with the replacement runtime:
 
-#### Uninstall Service
-
-```bash
-gateway uninstall
-```
-
-### Configuration Management
-
-`gateway config` 的 `-reload` / `-export` 目前仍是占位参数，CLI 尚未提供对应执行逻辑。
-
-当前可用替代：
-
-- 导出脱敏配置：`GET /-/admin/config/export`
-- 修改配置：`PUT /-/admin/config`
-- 回滚配置：`POST /-/admin/config/rollback`
-
-## Examples
-
-### Quick Start
-
-```bash
-# Start the gateway
-gateway start
-
-# In another terminal, check health
-gateway health
-```
-
-### Production Deployment on Windows
-
-```bash
-# 1. Validate config
-gateway validate -config C:\gateway\production.yaml
-
-# 2. Install as service
-gateway -config C:\gateway\production.yaml install
-
-# 3. Start the service
-gateway service-start
-
-# 4. Check status
-gateway service-status
-
-# 5. Monitor health
-gateway health -endpoint http://localhost:18080/-/health
-```
-
-### Configuration Management
-
-```bash
-# Edit config, then validate before applying
-gateway validate
-```
-
-## Exit Codes
-
-- `0` - Success
-- `1` - General error
-- `2` - Configuration error
-- `3` - Service error (Windows)
-
-## Environment Variables
-
-- `GATEWAY_VERSION` - Version string displayed by `gateway version`
-
-## Migration from Scripts
-
-If you were using the old PowerShell scripts, here's how to migrate:
-
-| Old Script | New CLI Command |
-|------------|-----------------|
-| `install-service.ps1` | `gateway install` |
-| `uninstall-service.ps1` | `gateway uninstall` |
-| `start-gateway.ps1` | `gateway start` |
-| `quick-verify.ps1` | `gateway validate` |
-| `restart-gateway.ps1` | `gateway service-stop && gateway service-start` |
-
-Scripts that are still useful and kept:
-- `rebuild-and-restart.ps1` - Rebuilds and restarts (needs `go build`)
-- `check-no-todo.ps1` - Code quality check
-- `invoke-responses-burst.ps1` - Load testing tool
+- Frontend: `http://127.0.0.1:18080/admin`
+- Login API: `POST /api/admin/v2/auth/login`
+- Logout API: `POST /api/admin/v2/auth/logout`
+- Overview API: `GET /api/admin/v2/overview`
+- Telemetry API: `GET /api/admin/v2/data`
+- Timeseries API: `GET /api/admin/v2/timeseries`
+- Config API: `GET|PUT /api/admin/v2/config`
+- Config export API: `GET /api/admin/v2/config/export`
+- Config history API: `GET /api/admin/v2/config/history`
+- Config diff API: `GET /api/admin/v2/config/history/{version_id}/diff`
+- Config rollback API: `POST /api/admin/v2/config/rollback`
+- Upstream probe API: `POST /api/admin/v2/upstreams/test`

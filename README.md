@@ -9,6 +9,13 @@
 
 本项目是一个本地运行的 OpenAI-compatible 网关，目标是把多家上游服务、热加载配置、自动切换、可视化运维、成本估算和缓存命中分析收敛到一个统一入口。
 
+## Runtime tracks（当前状态）
+
+- `gateway.exe` 的默认稳定入口仍是 `cmd/gateway`，但它在无子命令时已经直接启动 v2 runtime，并继续兼容 `configs/config.yaml`。
+- 第一次用 v1 风格 `config.yaml` 启动时，会生成稳定的 managed sidecar v2 配置，后续 admin 的 save/history/rollback 都持久化到这个 sidecar。
+- `cmd/gateway-v2` 保留为显式直连入口，默认读取 `configs/config.v2.yaml`。
+- `config-convert.exe` 用于把旧的 v1 风格配置显式迁移到独立的 `config.v2.yaml`。
+
 它适合这些场景：
 
 - 用统一的 `base_url` / `api_key` 接入多家 OpenAI 兼容中转站
@@ -20,7 +27,7 @@
 
 ## Highlights
 
-- **CLI 管理**: 支持命令行启动、验证配置、健康检查、Windows 服务管理
+- **默认运行时**: v2 运行时直接提供 OpenAI-compatible 网关、`/-/health` 和 `/admin`
 - OpenAI 兼容接口：`chat/completions`、`responses`、`embeddings`、`files`、`audio`、`images`、`models` 等
 - 多上游容灾：按健康状态、权重和失败窗口自动切换
 - 热加载：修改 YAML 后自动生效
@@ -36,7 +43,7 @@
 
 ![Admin overview](docs/screenshots/admin-overview.png)
 
-### Admin settings
+### Admin config
 
 ![Admin settings](docs/assets/admin-settings.png)
 
@@ -61,14 +68,18 @@
 3. 路由层根据健康状态、权重、失败计数和 sticky session 选择上游。
 4. 代理层转发请求，必要时做 SSE/Responses/Claude 兼容转换。
 5. telemetry 记录请求轨迹、usage、缓存命中、错误和估算成本。
-6. 管理页从 `/-/admin/data` 与 `/-/admin/timeseries` 读取聚合数据展示。
+6. 管理页从 `/api/admin/v2/data` 与 `/api/admin/v2/timeseries` 读取聚合数据展示。
 
 ### Project layout
 
 - `cmd/gateway`
-  Gateway 入口。
+  默认稳定入口；无子命令时直接跑 v2 runtime，同时保留 `validate`、`health`、Windows 服务等 CLI / 服务命令。
+- `cmd/gateway-v2`
+  显式直连 v2 runtime 的入口。
+- `cmd/config-convert`
+  v1 配置到 v2 配置的迁移工具。
 - `internal/cli`
-  命令行接口实现。
+  旧版兼容 CLI 实现。
 - `internal/config`
   YAML 配置结构、默认值、校验、加载器。
 - `internal/router`
@@ -76,7 +87,9 @@
 - `internal/proxy`
   OpenAI-compatible 转发、重试、Claude/Responses 兼容。
 - `internal/server`
-  HTTP 路由、管理页、管理接口。
+  旧版 v1 HTTP 路由与管理页实现。
+- `internal/v2`
+  v2 app、admin API、HTTP server、runtime infra。
 - `internal/telemetry`
   SQLite telemetry、时间序列、pricing 聚合。
 - `internal/state`
@@ -116,14 +129,19 @@
 - `GET /v1/models`
 - `GET /-/health`
 - `GET /admin`
-- `GET /admin/settings`
-- `GET /-/admin/data`
-- `GET /-/admin/timeseries`
-- `GET|PUT /-/admin/config`
-- `GET /-/admin/config/export`
-- `GET /-/admin/config/history`
-- `GET /-/admin/config/history/{version_id}/diff`
-- `POST /-/admin/config/rollback`
+- `GET /admin/*`
+- `POST /api/admin/v2/auth/login`
+- `POST /api/admin/v2/auth/logout`
+- `GET /api/admin/v2/overview`
+- `GET /api/admin/v2/data`
+- `GET /api/admin/v2/timeseries`
+- `GET /api/admin/v2/models`
+- `GET|PUT /api/admin/v2/config`
+- `GET /api/admin/v2/config/export`
+- `GET /api/admin/v2/config/history`
+- `GET /api/admin/v2/config/history/{version_id}/diff`
+- `POST /api/admin/v2/config/rollback`
+- `POST /api/admin/v2/upstreams/test`
 
 ## Quick start
 
@@ -142,14 +160,8 @@
 
 ```powershell
 go build -o gateway.exe ./cmd/gateway
-```
-
-#### Option 3: Install as Windows Service
-
-```powershell
-# Install and start as Windows service
-gateway.exe install
-gateway.exe service-start
+go build -o gateway-v2.exe ./cmd/gateway-v2
+go build -o config-convert.exe ./cmd/config-convert
 ```
 
 ### 1. Prepare config
@@ -158,7 +170,7 @@ gateway.exe service-start
 Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 ```
 
-按需填写：
+默认替换路径优先继续使用 `config.yaml`。按需填写：
 
 - `upstreams[].base_url`
 - `upstreams[].api_key`
@@ -166,6 +178,12 @@ Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 - `admin.auth_token`
 - `telemetry.sqlite_path`
 - `pricing.cache_path`
+
+如果你想直接切到显式 v2 配置，再使用迁移工具：
+
+```powershell
+.\config-convert.exe -in .\configs\config.yaml -out .\configs\config.v2.yaml
+```
 
 如果你要接 `Kimi Code` 上游，推荐使用：
 
@@ -176,24 +194,33 @@ Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 
 ### 2. Run the gateway
 
-#### Using CLI (Recommended)
+#### Default runtime
 
 ```powershell
-# Start with default config
-gateway.exe start
-
-# Start with custom config
-gateway.exe -config .\configs\config.yaml start
-
-# Validate config before starting
-gateway.exe validate
+.\gateway.exe -config .\configs\config.yaml
 ```
 
-#### Legacy Mode (Backward Compatible)
+`cmd/gateway` 在无子命令时会直接跑 v2 runtime；如果 `config.yaml` 是 v1 结构，会自动转换到稳定 sidecar v2 配置后再启动。
+
+#### Direct v2 runtime
 
 ```powershell
-go run .\cmd\gateway -config .\configs\config.yaml
+go run .\cmd\gateway-v2 -config .\configs\config.v2.yaml
 ```
+
+#### Deterministic cutover verification
+
+```powershell
+.\scripts\verify-default-runtime.ps1
+```
+
+最小验证清单：
+
+- `go build` 成功构建 `cmd/gateway`
+- `go build` 成功构建 `cmd/config-convert`
+- `curl.exe http://127.0.0.1:18081/-/health`
+- `curl.exe http://127.0.0.1:18081/admin`
+- `curl.exe -H "Authorization: Bearer <bootstrap-token>" http://127.0.0.1:18081/api/admin/v2/overview`
 
 默认监听地址由配置里的 `listen` 决定，常见本地地址例如：
 
@@ -204,16 +231,12 @@ http://127.0.0.1:18080
 ### 3. Health Check
 
 ```powershell
-# Check gateway health
-gateway.exe health
-
-# Or use curl
 curl.exe http://127.0.0.1:18080/-/health
 ```
 
 ### 4. Open admin pages
 
-浏览器访问管理页时，先建立同源的 `aigw_admin_token` cookie 会话，再访问页面；脚本或 CLI 直接调用 admin API 时，推荐使用 Bearer token。
+浏览器可以直接访问 `/admin`，再在登录表单中输入 bootstrap token；脚本或 CLI 直接调用 admin API 时，推荐使用 Bearer token。
 
 概览页：
 
@@ -221,42 +244,32 @@ curl.exe http://127.0.0.1:18080/-/health
 http://127.0.0.1:18080/admin
 ```
 
-设置页：
-
-```text
-http://127.0.0.1:18080/admin/settings
-```
-
 ### Admin auth modes and browser boundary
 
 - 浏览器：admin 页面会携带 `credentials: 'same-origin'`，cookie-auth 的写请求仅允许同源 `Origin`，缺失时仅接受同源 `Referer` 后备。
-- 自动化：脚本、CLI、curl 调用 `/-/admin/config`、`/-/admin/config/rollback`、`/-/admin/upstreams/test` 时，推荐使用 `Authorization: Bearer <token>`，不会被 `Origin` / `Referer` 限制误伤。
-- 导出与排障：`GET /-/admin/config/export`、配置视图、config history diff、upstream probe 响应会自动脱敏 `api_key`、`auth_token` 和常见敏感 header 值；导出的 YAML 适合做备份模板，不适合直接当作可运行配置回灌。
+- 自动化：脚本、CLI、curl 调用 `/api/admin/v2/config`、`/api/admin/v2/config/rollback`、`/api/admin/v2/upstreams/test` 时，推荐使用 `Authorization: Bearer <token>`，不会被 `Origin` / `Referer` 限制误伤。
+- 导出与排障：`GET /api/admin/v2/config/export`、配置视图、config history diff、upstream probe 响应会自动脱敏 `api_key`、`bootstrap_token`、`cookie_signing_key` 和常见敏感 header 值；导出的 YAML 适合做备份模板，不适合直接当作可运行配置回灌。
 - 暴露面：不要把 admin URL、Bearer token 或已登录的 admin cookie 会话暴露给不受信任来源；管理页应只在受信任浏览器上下文中打开。
 
-## CLI Commands
+## CLI
 
-网关提供完整的命令行接口：
+默认 `gateway.exe` 仍然来自 `cmd/gateway`，因此这些命令仍可用：
 
-| 命令 | 说明 |
-|------|------|
-| `gateway start` | 启动网关服务 |
-| `gateway validate` | 验证配置文件 |
-| `gateway health` | 检查服务健康状态 |
-| `gateway install` | 安装为 Windows 服务 |
-| `gateway uninstall` | 卸载 Windows 服务 |
-| `gateway service-start` | 启动 Windows 服务 |
-| `gateway service-stop` | 停止 Windows 服务 |
-| `gateway service-status` | 查看服务状态 |
-| `gateway version` | 显示版本信息 |
+- `gateway.exe validate`
+- `gateway.exe health`
+- `gateway.exe install`
+- `gateway.exe service-start`
+- `gateway.exe service-stop`
+- `gateway.exe service-status`
+- `gateway.exe uninstall`
 
-更多 CLI 用法详见 [docs/cli.md](docs/cli.md)。
+不带子命令运行 `gateway.exe` 时，启动的是 v2 runtime。更多 cutover / 兼容命令说明详见 [docs/cli.md](docs/cli.md)。
 
 ## Configuration guide
 
-### Upstreams
+### Providers
 
-每个上游都可以独立配置：
+每个 provider 都可以独立配置：
 
 - `name`
 - `base_url`
@@ -265,7 +278,7 @@ http://127.0.0.1:18080/admin/settings
 - `models`
 - `weight`
 - `timeout_ms`
-- `same_upstream_retries`
+- `same_retries`
 - `enabled`
 - `headers`
 
@@ -289,21 +302,20 @@ Kimi 相关有两种常见接法：
 
 ### Routing and retry
 
-`router` 控制：
+`routing` 控制：
 
 - `strategy`
 - `max_retries`
-- `retry_backoff_ms`
-- `retry_backoff_max_ms`
-- `failure_threshold`
-- `cooldown_sec`
-- `failure_passthrough_after_sec`
+- `retry_backoff.initial_ms`
+- `retry_backoff.max_ms`
+- `failure_policy.threshold`
+- `failure_policy.cooldown_sec`
+- `failure_policy.passthrough_after_sec`
 - `sticky_sessions.enabled`
 - `sticky_sessions.ttl_sec`
-
 ### Health checks
 
-`health` 控制主动探活：
+`routing.health` 控制主动探活：
 
 - `enabled`
 - `interval_sec`
@@ -312,16 +324,17 @@ Kimi 相关有两种常见接法：
 
 ### Model bridge
 
-bridge 可以把请求模型重写到另一个模型，例如把部分流量临时桥接到更稳定的模型。
+`compat.bridge` 可以把请求模型重写到另一个模型，例如把部分流量临时桥接到更稳定的模型。
 
 ```yaml
-bridge:
-  enabled: true
-  exclude_user_agents:
-    - "*Codex Desktop*"
-  rules:
-    - from: gpt-5.2
-      to: gpt-5.4
+compat:
+  bridge:
+    enabled: true
+    exclude_user_agents:
+      - "*Codex Desktop*"
+    rules:
+      - from: gpt-5.2
+        to: gpt-5.4
 ```
 
 说明：
@@ -331,10 +344,10 @@ bridge:
 - 命中 bridge 后，定价仍优先按原始 `requested_model` 归因
 - 对 Codex / IDE 内部请求，建议按 UA 做排除，避免误改写系统请求
 
-### Kimi upstream example
+### Kimi provider example
 
 ```yaml
-upstreams:
+providers:
   - name: kimi-official
     base_url: https://api.kimi.com/coding
     anthropic_base_url: https://api.kimi.com/coding
@@ -344,7 +357,7 @@ upstreams:
       - kimi-for-coding
     weight: 1
     timeout_ms: 180000
-    same_upstream_retries: 1
+    same_retries: 1
     enabled: true
     headers: {}
 ```
@@ -389,11 +402,11 @@ upstreams:
 - Cache Trends / Cache Hit Ranking
 - Recent Errors / Recent Requests
 
-### Settings page
+### Config and operations tabs
 
-设置页单独拆到 `/admin/settings`，避免把大块配置表单直接塞进首页。
+v2 管理页收敛为单个 `/admin` 应用壳，通过页内 tab 切换配置与运维视图。
 
-设置页支持：
+当前 tab 支持：
 
 - health check 编辑
 - model bridge 编辑
@@ -448,37 +461,26 @@ upstreams:
 
 ## Scripts
 
-常用脚本：
+当前仓库保留的常用脚本：
 
 ```powershell
-.\scripts\start-gateway.ps1
+.\scripts\verify-default-runtime.ps1
 .\scripts\rebuild-and-restart.ps1
-.\scripts\install-service.ps1
-.\scripts\uninstall-service.ps1
+.\scripts\check-no-todo.ps1
 .\scripts\invoke-responses-burst.ps1 -Concurrency 20 -RequestsPerWorker 1 -LaunchIntervalMs 200
 ```
 
-如果你要把它装成 Windows 服务，推荐直接使用 CLI 命令：
+说明：
 
-```powershell
-# 安装为 Windows 服务（需要管理员权限）
-gateway.exe install
-
-# 管理服务
-gateway.exe service-start
-gateway.exe service-stop
-gateway.exe service-status
-
-# 卸载服务
-gateway.exe uninstall
-```
+- `verify-default-runtime.ps1` 面向默认替换路径，会构建 `cmd/gateway` 并用 `config.yaml` 校验 `/-/health`、`/v1/models`、`/api/admin/v2/overview`，同时确认 stderr 出现 v2 runtime marker。
+- `rebuild-and-restart.ps1` 仍可用于本地重建/重启工作流。
 
 ## Development
 
 ### Format and test
 
 ```powershell
-gofmt -w .\cmd\gateway\main.go .\internal\**\*.go
+gofmt -w .\cmd\gateway\main.go .\cmd\gateway-v2\main.go .\internal\**\*.go
 go test ./...
 ```
 
@@ -493,31 +495,25 @@ go test ./...
 ### Useful checks
 
 ```powershell
-# CLI health check
-gateway.exe health
-
-# Or curl
 curl.exe http://127.0.0.1:18080/-/health
 curl.exe http://127.0.0.1:18080/v1/models
+curl.exe http://127.0.0.1:18080/admin
+curl.exe -H "Authorization: Bearer <bootstrap-token>" http://127.0.0.1:18080/api/admin/v2/overview
 ```
 
 ## Migration from PowerShell Scripts
 
-如果你之前使用 PowerShell 脚本，可以迁移到新的 CLI 命令：
+如果你之前依赖旧版 PowerShell / CLI 工作流：
 
-| 旧脚本 | 新 CLI 命令 |
-|--------|-------------|
-| `install-service.ps1` | `gateway install` |
-| `uninstall-service.ps1` | `gateway uninstall` |
-| `start-gateway.ps1` | `gateway start` |
-| `quick-verify.ps1` | `gateway validate` |
-| `restart-gateway.ps1` | `gateway service-stop && gateway service-start` |
+- 默认 `gateway.exe` 入口不变，但其无子命令启动路径已经切到 v2 runtime
+- 默认验证脚本改为 `.\scripts\verify-default-runtime.ps1`
+- 旧版 `validate`、`health`、Windows 服务命令继续保留在同一个 `gateway.exe`
 
 ## Public repo notes
 
 公开发布时，建议不要提交这些内容：
 
-- 实际生产 `config.yaml`
+- 实际生产 `config.yaml` / `config.v2.yaml`
 - API keys
 - SQLite telemetry 数据文件
 - pricing cache 数据文件

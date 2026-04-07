@@ -1,107 +1,124 @@
+// Package app is the v2 application entry point that wires together
+// core interfaces, infra adapters, and the HTTP server.
 package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
-	"net"
-	"net/http"
 	"time"
 
-	"ai-model-gateway/internal/config"
-	"ai-model-gateway/internal/router"
-	"ai-model-gateway/internal/server"
-	"ai-model-gateway/internal/state"
-	"ai-model-gateway/internal/telemetry"
+	"ai-model-gateway/internal/core"
+	"ai-model-gateway/internal/infra/configloader"
+	"ai-model-gateway/internal/infra/httpserver"
+	runtimedeps "ai-model-gateway/internal/infra/runtime"
+	"ai-model-gateway/internal/infra/telemetrydb"
 )
 
-// maxBodySizeKey 用于在上下文中存储最大请求体大小
-type maxBodySizeKey struct{}
-
-// withRequestBodyLimit 包装 handler 添加请求体大小限制
-func withRequestBodyLimit(h http.Handler, maxBytes int64) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 设置请求体的最大读取大小
-		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
-		// 将限制添加到上下文
-		ctx := context.WithValue(r.Context(), maxBodySizeKey{}, maxBytes)
-		h.ServeHTTP(w, r.WithContext(ctx))
-	})
+var newRunTransport = func() core.UpstreamTransport {
+	return NewUpstreamTransport()
 }
 
-func Run(ctx context.Context, configPath string) error {
-	cfg, err := config.LoadFromFile(configPath)
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
+func updatePublicContractRuntime(core.Pipeline, core.RouteSelector) {}
 
-	store := state.NewConfigStoreWithPath(cfg, configPath)
-	manager := router.NewManager(store)
-	stats, err := telemetry.NewStore(cfg.Telemetry.SQLitePath)
+// Run loads the v2 config, assembles all components, and starts the server.
+// It blocks until ctx is cancelled or a fatal error occurs.
+func Run(ctx context.Context, configPath string) error {
+	// --- Config watcher (hot-reload) ---
+
+	watcher, err := configloader.NewWatcher(configPath, 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("init config watcher: %w", err)
+	}
+	watcher.Start()
+	defer watcher.Stop()
+
+	cfg := watcher.Config()
+	log.Printf("[v2] config loaded from %s", configPath)
+
+	// --- Build optional runtime deps (config history/pricing catalog) ---
+
+	adminRuntime, err := runtimedeps.NewAdminRuntime(configPath, cfg)
+	if err != nil {
+		return fmt.Errorf("init admin runtime deps: %w", err)
+	}
+	if adminRuntime.PricingCatalog != nil {
+		adminRuntime.PricingCatalog.Start(ctx)
+	}
+	watcher.OnChange(func(next *core.Config) {
+		if adminRuntime.ConfigState != nil {
+			adminRuntime.ConfigState.SetCurrent(next)
+		}
+		if adminRuntime.PricingCatalog != nil {
+			adminRuntime.PricingCatalog.UpdateConfig(next.Pricing)
+		}
+	})
+
+	// --- Build infra adapters ---
+
+	store, err := telemetrydb.New(cfg.Telemetry)
 	if err != nil {
 		return fmt.Errorf("init telemetry store: %w", err)
 	}
+	adminRuntime.TelemetryStore = store
 	defer func() {
-		if err := stats.Close(); err != nil {
-			log.Printf("close telemetry store: %v", err)
+		if err := store.Close(); err != nil {
+			log.Printf("[v2] close telemetry store: %v", err)
 		}
 	}()
 
-	pricing := telemetry.NewPricingCatalog(cfg.Pricing)
-	pricing.Start(ctx)
+	// --- Build app-layer pipeline ---
 
-	go manager.StartHealthChecks(ctx)
+	routeSelector := NewRouteSelector(cfg.Routing, cfg.Providers)
+	transport := newRunTransport()
 
-	watcher := config.Watcher{Debounce: time.Duration(cfg.Reload.DebounceMs) * time.Millisecond}
-	go func() {
-		if err := watcher.WatchFile(ctx, configPath, func(newCfg config.Config) {
-			currentCfg := store.Get()
-			if !currentCfg.Reload.Enabled && !newCfg.Reload.Enabled {
-				return
+	if liveSelector, ok := routeSelector.(*selector); ok {
+		liveSelector.StartHealthChecks(ctx)
+		watcher.OnChange(func(next *core.Config) {
+			liveSelector.UpdateConfig(next.Routing, next.Providers)
+		})
+	}
+
+	buildPipeline := func(current *core.Config) core.Pipeline {
+		return NewPipeline(PipelineParams{
+			Resolver:  NewModelResolver(current.Compat),
+			Selector:  routeSelector,
+			Transport: transport,
+			Inspector: NewResponseInspector(current.Routing),
+			Compat:    NewCompatAdapter(current.Compat),
+			Sink:      store,
+			Cfg:       current.Routing,
+		})
+	}
+	pl := newLivePipeline(buildPipeline(cfg))
+	watcher.OnChange(func(next *core.Config) {
+		pl.Update(buildPipeline(next))
+	})
+
+	// --- Build HTTP server ---
+
+	srv := httpserver.New(cfg.Server)
+	r := srv.Router()
+	getConfig := func() *core.Config {
+		if adminRuntime.ConfigState != nil {
+			if current := adminRuntime.ConfigState.Current(); current != nil {
+				return current
 			}
-			manager.SetConfig(newCfg)
-			pricing.UpdateConfig(newCfg.Pricing)
-			log.Printf("config reloaded")
-		}); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("watch config failed: %v", err)
 		}
-	}()
-
-	listener, err := net.Listen("tcp", cfg.Listen)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", cfg.Listen, err)
+		return watcher.Config()
 	}
 
-	srv := &http.Server{
-		Addr:           cfg.Listen,
-		Handler:        server.NewRouter(manager, stats, pricing),
-		ReadTimeout:    30 * time.Second,
-		WriteTimeout:   60 * time.Second,
-		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: 1 << 20, // 1 MB
+	// Health endpoint (always available)
+	r.Get("/-/health", healthHandler(getConfig, routeSelector))
+
+	// Gateway /v1/* routes
+	MountGatewayRoutes(r, pl, routeSelector)
+
+	// Admin routes (if enabled)
+	if cfg.Admin.Enabled {
+		mountAdminRoutes(r, cfg, store, routeSelector, getConfig, adminRuntime)
 	}
 
-	// 包装 handler 添加请求体大小限制
-	srv.Handler = withRequestBodyLimit(srv.Handler, 100<<20) // 100 MB
-
-	errCh := make(chan error, 1)
-	go func() {
-		log.Printf("listening on %s", cfg.Listen)
-		if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("server error: %w", err)
-		}
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("server shutdown error: %v", err)
-		}
-		return nil
-	}
+	log.Printf("[v2] starting gateway-v2 on %s", cfg.Server.Listen)
+	return srv.ListenAndServe(ctx)
 }

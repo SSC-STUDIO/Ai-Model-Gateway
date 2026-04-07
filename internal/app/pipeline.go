@@ -430,7 +430,9 @@ func sanitizeErrorMessage(msg string) string {
 		"x-api-key",
 		"password",      // Password
 		"secret",        // Secret
-		"token",         // Token
+		"auth_token",    // Auth token
+		"access_token",  // Access token
+		"refresh_token", // Refresh token
 		"credential",    // Credentials
 	}
 
