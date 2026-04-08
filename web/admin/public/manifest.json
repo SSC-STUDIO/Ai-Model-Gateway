@@ -1,0 +1,9 @@
+{
+  "name": "AI Model Gateway Admin",
+  "short_name": "Gateway Admin",
+  "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"}],
+  "start_url": "/admin",
+  "display": "standalone",
+  "theme_color": "#0B0C0C",
+  "background_color": "#0B0C0C"
+}

@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with a lightweight structure suitable for a small operational project.
 
+## [1.1.0] — 2026-04-07
+
+### Added
+
+- **Multi-Token RBAC**: 支持多令牌认证与基于角色的访问控制
+- **审计日志**: 完整的管理操作审计追踪
+- **实时 SSE 监控**: 通过 Server-Sent Events 实时推送运行状态变更
+- **速率限制**: 可配置的请求速率限制策略
+- **响应式 Admin UI**: 全面适配桌面与移动端，支持触控操作
+- **Admin UI 多语言**: 支持英文 (en) 与中文 (zh) 界面切换
+- **Admin UI 主题**: 支持亮色/暗色主题切换，跟随系统偏好
+- **Favicon 与 PWA**: 添加 favicon、manifest、tab icons
+- **后端 i18n**: 后端国际化包，支持 7 种语言
+- **CLI i18n**: 命令行界面国际化，支持 7 种语言
+
+### Changed
+
+- **v2 架构重构**: 清晰分层 — core（领域）、app（应用）、infra（基础设施）
+- **简化运行时**: 移除 v1 兼容层，直接加载 v2 配置
+- **前端构建优化**: Vite build target 升级到 es2020，vendor chunk 分离（preact），显式 CSS 压缩
+- **性能优化**: 实现 buffer pool、优化 telemetry store、集成 json-iterator、调优 HTTP 连接池
+- **项目布局**: `internal/` 重组为 core/app/infra/adminapi 模块化结构，移除旧版 cli/server/v2 目录
+- Bumped VERSION from 1.0.0 to 1.1.0
+
+### Fixed
+
+- Admin UI 在小屏设备上的布局溢出问题
+- 主题切换时的闪烁问题（通过 inline script 预加载主题）
+
 ## [1.0.0] — 2026-04-01
 
 ### Added

@@ -79,6 +79,18 @@ function firstHistoryVersion(payload: unknown): string {
 export function App() {
   const { t } = useI18n()
 
+  const tabIcons: Record<TabKey, string> = {
+    overview: '\u{1F4CA}',
+    telemetry: '\u{1F4C8}',
+    benchmark: '\u26A1',
+    timeseries: '\u{1F4C9}',
+    settings: '\u2699\uFE0F',
+    history: '\u{1F4CB}',
+    probe: '\u{1F50D}',
+    logs: '\u{1F4DD}',
+    audit: '\u{1F512}',
+  }
+
   const tabLabels = useMemo(
     () => [
       { key: 'overview' as TabKey, label: t('tabs.overview') },
@@ -553,9 +565,16 @@ export function App() {
   return (
     <main class="app-shell">
       <header class="topbar">
-        <div>
-          <h1>{t('header.title')}</h1>
-          <p class="muted">{t('header.subtitle')}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <svg width="36" height="36" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect width="96" height="96" rx="24" fill="#0B0C0C"/>
+            <path d="M24 68V28H38L48 52L58 28H72V68H62V46L54 66H42L34 46V68H24Z" fill="#7EE7D6"/>
+            <circle cx="73" cy="24" r="8" fill="#F1B866"/>
+          </svg>
+          <div>
+            <h1>{t('header.title')}</h1>
+            <p class="muted">{t('header.subtitle')}</p>
+          </div>
         </div>
         <div class="topbar-actions">
           <div class="tabbar">
@@ -566,7 +585,7 @@ export function App() {
                 class={`tab${tab === item.key ? ' active' : ''}`}
                 onClick={() => handleTabChange(item.key)}
               >
-                {item.label}
+                {tabIcons[item.key]} {item.label}
               </button>
             ))}
           </div>

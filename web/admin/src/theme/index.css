@@ -897,7 +897,7 @@ body {
 /* Charts grid layout */
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
   margin-top: 20px;
 }
@@ -1431,6 +1431,46 @@ body {
 }
 
 /* Responsive styles */
+
+/* High DPI text rendering */
+body {
+  text-rendering: optimizeLegibility;
+}
+
+/* Table responsiveness: horizontal scroll wrapper */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* --- Tablet breakpoint (1024px) --- */
+@media (max-width: 1024px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .config-sections {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+
+  .topbar h1 {
+    font-size: 1.05rem;
+  }
+
+  .topbar .muted {
+    font-size: 0.75rem;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .panel-subsection.split {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+/* --- Mobile breakpoint (768px) --- */
 @media (max-width: 768px) {
   .app-shell {
     padding: 16px;
@@ -1441,6 +1481,8 @@ body {
     flex-direction: column;
     align-items: stretch;
     gap: 16px;
+    padding: 16px;
+    border-radius: 10px;
   }
 
   .topbar-actions {
@@ -1449,6 +1491,13 @@ body {
   }
 
   .topbar-actions .tabbar {
+    justify-content: center;
+  }
+
+  .tab {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
   }
 
@@ -1463,11 +1512,18 @@ body {
   .topbar-actions > button:last-child {
     margin-left: 0;
     margin-top: 8px;
+    min-height: 44px;
   }
 
   .history-toolbar select {
     min-width: 0;
     width: 100%;
+    max-width: 100%;
+  }
+
+  .history-toolbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .metrics-grid {
@@ -1476,5 +1532,154 @@ body {
 
   .login-panel {
     padding: 24px;
+  }
+
+  /* Settings structured editor: stack vertically */
+  .settings-field-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .settings-field-label {
+    flex: none;
+    max-width: 100%;
+  }
+
+  .settings-field-input {
+    width: 100%;
+  }
+
+  /* Log toolbar stacking */
+  .log-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .log-toolbar-left {
+    flex-direction: column;
+  }
+
+  .log-search-input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Ensure buttons meet 44px touch target */
+  button {
+    min-height: 44px;
+  }
+
+  .icon-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .panel-subsection.split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Small phone breakpoint (480px) --- */
+@media (max-width: 480px) {
+  .app-shell {
+    padding: 12px;
+    padding-top: 16px;
+    gap: 14px;
+  }
+
+  .topbar {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .topbar h1 {
+    font-size: 0.95rem;
+  }
+
+  .topbar-actions .tabbar {
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .tab {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    min-height: 44px;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .config-sections {
+    grid-template-columns: 1fr;
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    padding: 14px;
+    border-radius: 8px;
+  }
+
+  .panel h2 {
+    font-size: 0.9rem;
+  }
+
+  .login-panel {
+    padding: 16px;
+  }
+
+  .login-panel h1 {
+    font-size: 1.2rem;
+  }
+
+  .probe-form label {
+    font-size: 0.8rem;
+  }
+
+  /* Audit table: ensure horizontal scroll */
+  .table-wrap {
+    margin-left: -14px;
+    margin-right: -14px;
+    padding: 0 14px;
+  }
+
+  .donut-svg {
+    width: 160px;
+    height: 160px;
+  }
+
+  .chart-body {
+    height: 200px;
+  }
+
+  .settings-view-toggle {
+    width: 100%;
+  }
+
+  .settings-toggle-btn {
+    flex: 1;
+    text-align: center;
+  }
+
+  .log-container {
+    max-height: 350px;
+    font-size: 0.7rem;
+  }
+
+  .log-entry {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .log-timestamp {
+    min-width: auto;
+    font-size: 0.7rem;
   }
 }

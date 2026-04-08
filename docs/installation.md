@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide documents the replacement default: `gateway.exe` still comes from `./cmd/gateway`, but starting it without a subcommand already runs the v2 runtime.
+This guide documents the default runtime: `gateway.exe` comes from `./cmd/gateway` and runs the v2 runtime directly.
 
 ## Runtime Defaults
 
@@ -9,7 +9,6 @@ This guide documents the replacement default: `gateway.exe` still comes from `./
 - Default health endpoint: `GET /-/health`
 - Default admin frontend: `GET /admin`
 - Default admin API: `/api/admin/v2/*`
-- Explicit v2 binary: `gateway-v2.exe` built from `./cmd/gateway-v2`
 - Migration helper: `config-convert.exe` built from `./cmd/config-convert`
 
 ## System Requirements
@@ -25,7 +24,6 @@ git clone https://github.com/SSC-STUDIO/ai-model-gateway.git
 cd ai-model-gateway
 
 go build -o .\gateway.exe .\cmd\gateway
-go build -o .\gateway-v2.exe .\cmd\gateway-v2
 go build -o .\config-convert.exe .\cmd\config-convert
 ```
 
@@ -111,12 +109,6 @@ For development without building:
 
 ```powershell
 go run .\cmd\gateway -config .\configs\config.yaml
-```
-
-If you want the explicit v2 path instead:
-
-```powershell
-go run .\cmd\gateway-v2 -config .\configs\config.v2.yaml
 ```
 
 ## Verify the Default Path

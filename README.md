@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](VERSION)
 [![Test Coverage](https://img.shields.io/badge/coverage-80%25+-brightgreen.svg)](#development)
 
 ![AI Model Gateway icon](docs/assets/icon.svg)
@@ -32,6 +32,11 @@
 - 多上游容灾：按健康状态、权重和失败窗口自动切换
 - 热加载：修改 YAML 后自动生效
 - 会话粘性：`responses` 会优先回到同一上游，提高 prompt cache 命中率
+- 多 Token RBAC：支持多令牌认证与基于角色的访问控制
+- 审计日志：完整的操作审计追踪
+- 实时 SSE 监控：通过 Server-Sent Events 实时推送运行状态
+- 速率限制：可配置的请求速率限制策略
+- 响应式管理 UI：适配桌面与移动端的现代化管理界面，支持多语言（en/zh）与亮暗主题切换
 - 定价系统：本地缓存 OpenAI 官方价格页，桥接请求也能按请求模型计价
 - 持久化 telemetry：请求、错误、token、缓存命中、成本都落 SQLite
 - 管理页：图表、表格、成本、缓存趋势、配置编辑、配置历史、diff 预览
@@ -74,28 +79,30 @@
 
 - `cmd/gateway`
   默认稳定入口；无子命令时直接跑 v2 runtime，同时保留 `validate`、`health`、Windows 服务等 CLI / 服务命令。
-- `cmd/gateway-v2`
-  显式直连 v2 runtime 的入口。
 - `cmd/config-convert`
   v1 配置到 v2 配置的迁移工具。
-- `internal/cli`
-  旧版兼容 CLI 实现。
+- `internal/core`
+  领域模型与核心类型定义。
+- `internal/app`
+  应用层：生命周期管理、用例编排。
+- `internal/infra`
+  基础设施层：HTTP server、SQLite telemetry、文件系统。
+- `internal/adminapi`
+  Admin API 路由与处理器。
 - `internal/config`
   YAML 配置结构、默认值、校验、加载器。
 - `internal/router`
   上游选择、失败冷却、sticky session。
 - `internal/proxy`
   OpenAI-compatible 转发、重试、Claude/Responses 兼容。
-- `internal/server`
-  旧版 v1 HTTP 路由与管理页实现。
-- `internal/v2`
-  v2 app、admin API、HTTP server、runtime infra。
 - `internal/telemetry`
   SQLite telemetry、时间序列、pricing 聚合。
 - `internal/state`
   运行时配置原子存储。
 - `internal/service`
   Windows 服务管理。
+- `web/admin`
+  Preact + TypeScript 前端管理界面。
 - `configs`
   配置示例。
 - `scripts`

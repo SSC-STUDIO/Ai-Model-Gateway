@@ -1,6 +1,6 @@
 # AI Model Gateway Command-Line Surfaces
 
-`gateway.exe` 的默认入口仍然来自 `./cmd/gateway`，但无子命令启动时已经直接进入 v2 runtime。这是当前的 drop-in replacement 路径。
+`gateway.exe` 的默认入口来自 `./cmd/gateway`，直接运行 v2 runtime。
 
 ## Default Runtime
 
@@ -27,9 +27,9 @@ gateway.exe
 gateway.exe -config ./configs/config.yaml
 ```
 
-## CLI Commands Kept on the Same Binary
+## CLI Commands
 
-`cmd/gateway` 仍然保留这些兼容命令：
+`cmd/gateway` 保留这些兼容命令：
 
 - `gateway.exe validate`
 - `gateway.exe health`
@@ -39,18 +39,9 @@ gateway.exe -config ./configs/config.yaml
 - `gateway.exe service-status`
 - `gateway.exe uninstall`
 
-也就是说，用户侧入口名不变；只有真正跑服务的内部 runtime 已切到 v2。
+也就是说，用户侧入口名不变，runtime 已经是 v2。
 
-## Explicit v2 Entry
-
-如果你要直接使用 v2 配置 schema，可以显式构建 `./cmd/gateway-v2`：
-
-```bash
-go build -o gateway-v2.exe ./cmd/gateway-v2
-gateway-v2.exe -config ./configs/config.v2.yaml
-```
-
-## Migration Helper
+## Config Migration
 
 Build `config-convert.exe` from `./cmd/config-convert` when you need to migrate an existing v1-style config into the v2 schema.
 
