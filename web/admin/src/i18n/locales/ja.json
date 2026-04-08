@@ -11,8 +11,8 @@
     "audit": "監査ログ"
   },
   "header": {
-    "title": "AI Model Gateway 管理台",
-    "subtitle": "デフォルト入口は gateway.exe、runtime は v2 に切り替わりました"
+    "title": "AI Model Gateway",
+    "subtitle": "AI モデルルーティングゲートウェイ管理パネル"
   },
   "login": {
     "title": "AI Model Gateway 管理台",
@@ -193,6 +193,14 @@
     "requests": "リクエスト数",
     "tokens": "トークン数",
     "noData": "選択された時間範囲で利用可能なベンチマークデータがありません"
+  },
+  "empty": {
+    "noRequests": "リクエストデータがありません。ゲートウェイはトラフィックを待機中です。",
+    "noTelemetry": "テレメトリデータがまだありません。",
+    "noBenchmark": "ベンチマークデータがありません。",
+    "noTimeseries": "時系列データがありません。",
+    "noAudit": "監査ログエントリーがありません。",
+    "noHistory": "設定変更履歴がありません。"
   },
   "audit": {
     "title": "監査ログ",

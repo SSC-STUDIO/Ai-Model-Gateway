@@ -11,8 +11,8 @@
     "audit": "审计日志"
   },
   "header": {
-    "title": "AI Model Gateway 管理后台",
-    "subtitle": "默认入口保持 gateway.exe，实际 runtime 已切到 v2"
+    "title": "AI Model Gateway",
+    "subtitle": "AI 模型路由网关管理面板"
   },
   "login": {
     "title": "AI Model Gateway 管理后台",
@@ -193,6 +193,14 @@
     "requests": "请求数",
     "tokens": "Token数",
     "noData": "所选时间范围内没有可用的基准测试数据"
+  },
+  "empty": {
+    "noRequests": "暂无请求数据，网关正在等待流量",
+    "noTelemetry": "暂无遥测数据",
+    "noBenchmark": "暂无基准测试数据",
+    "noTimeseries": "暂无时序数据",
+    "noAudit": "暂无审计记录",
+    "noHistory": "暂无配置变更历史"
   },
   "audit": {
     "title": "审计日志",

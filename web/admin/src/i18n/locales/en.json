@@ -11,8 +11,8 @@
     "audit": "Audit Log"
   },
   "header": {
-    "title": "AI Model Gateway Admin",
-    "subtitle": "Default entry `gateway.exe`, runtime switched to v2"
+    "title": "AI Model Gateway",
+    "subtitle": "AI Model Routing Gateway Admin Panel"
   },
   "login": {
     "title": "AI Model Gateway Admin",
@@ -193,6 +193,14 @@
     "requests": "Requests",
     "tokens": "Tokens",
     "noData": "No benchmark data available for the selected time range"
+  },
+  "empty": {
+    "noRequests": "No request data yet. The gateway is waiting for traffic.",
+    "noTelemetry": "No telemetry data available yet.",
+    "noBenchmark": "No benchmark data available.",
+    "noTimeseries": "No timeseries data available.",
+    "noAudit": "No audit log entries.",
+    "noHistory": "No configuration change history."
   },
   "audit": {
     "title": "Audit Log",

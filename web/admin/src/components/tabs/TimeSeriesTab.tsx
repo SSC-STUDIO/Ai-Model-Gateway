@@ -124,8 +124,10 @@ const TimeSeriesTabComponent = ({ timeseries: initialTimeseries }: TimeSeriesTab
         </div>
       </div>
 
-      {points.length === 0 ? (
-        <p class="muted">{t('timeseries.noData')}</p>
+      {loading && points.length === 0 ? (
+        <p class="muted"><span class="loading-dots"></span> {t('timeseries.noData')}</p>
+      ) : points.length === 0 ? (
+        <p class="empty-state">{t('empty.noTimeseries')}</p>
       ) : (
         <div class="timeseries-charts">
           <LineChart

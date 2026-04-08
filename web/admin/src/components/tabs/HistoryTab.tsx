@@ -119,6 +119,15 @@ const HistoryTabComponent = ({
     onRollback()
   }, [onRollback])
 
+  if (historyEntries.length === 0) {
+    return (
+      <section class="panel">
+        <h2>{t('history.title')}</h2>
+        <p class="empty-state">{t('empty.noHistory')}</p>
+      </section>
+    )
+  }
+
   return (
     <section class="panel">
       <h2>{t('history.title')}</h2>

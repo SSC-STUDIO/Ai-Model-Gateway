@@ -11,8 +11,8 @@
     "audit": "Prüfprotokoll"
   },
   "header": {
-    "title": "AI Model Gateway Verwaltung",
-    "subtitle": "Standard-Eingang gateway.exe, Runtime auf v2 umgestellt"
+    "title": "AI Model Gateway",
+    "subtitle": "AI-Modell-Routing-Gateway Verwaltungspanel"
   },
   "login": {
     "title": "AI Model Gateway Verwaltung",
@@ -193,6 +193,14 @@
     "requests": "Anfragen",
     "tokens": "Tokens",
     "noData": "Keine Benchmark-Daten für den ausgewählten Zeitraum verfügbar"
+  },
+  "empty": {
+    "noRequests": "Keine Anfragedaten vorhanden. Das Gateway wartet auf Datenverkehr.",
+    "noTelemetry": "Noch keine Telemetriedaten verfügbar.",
+    "noBenchmark": "Keine Benchmark-Daten verfügbar.",
+    "noTimeseries": "Keine Zeitreihendaten verfügbar.",
+    "noAudit": "Keine Prüfprotokolleinträge.",
+    "noHistory": "Kein Konfigurationsänderungsverlauf."
   },
   "audit": {
     "title": "Prüfprotokoll",

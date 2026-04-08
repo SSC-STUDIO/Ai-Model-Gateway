@@ -11,8 +11,8 @@
     "audit": "Registro de Auditoría"
   },
   "header": {
-    "title": "Admin AI Model Gateway",
-    "subtitle": "Entrada predeterminada gateway.exe, runtime cambiado a v2"
+    "title": "AI Model Gateway",
+    "subtitle": "Panel de administración del gateway de enrutamiento de modelos AI"
   },
   "login": {
     "title": "Admin AI Model Gateway",
@@ -193,6 +193,14 @@
     "requests": "Solicitudes",
     "tokens": "Tokens",
     "noData": "No hay datos de benchmark disponibles para el rango de tiempo seleccionado"
+  },
+  "empty": {
+    "noRequests": "Sin datos de solicitudes. El gateway está esperando tráfico.",
+    "noTelemetry": "Sin datos de telemetría disponibles aún.",
+    "noBenchmark": "Sin datos de benchmark disponibles.",
+    "noTimeseries": "Sin datos de series temporales disponibles.",
+    "noAudit": "Sin entradas de registro de auditoría.",
+    "noHistory": "Sin historial de cambios de configuración."
   },
   "audit": {
     "title": "Registro de Auditoría",

@@ -39,9 +39,9 @@ const AuditTabComponent = ({ enabled }: AuditTabProps) => {
   return (
     <section class="panel">
       <h2>{t('audit.title')}</h2>
-      {loading && <p class="muted">{t('audit.loading')}</p>}
+      {loading && !data && <p class="muted"><span class="loading-dots"></span> {t('audit.loading')}</p>}
       {data && data.items.length === 0 && !loading && (
-        <p class="muted">{t('audit.empty')}</p>
+        <p class="empty-state">{t('empty.noAudit')}</p>
       )}
       {data && data.items.length > 0 && (
         <>

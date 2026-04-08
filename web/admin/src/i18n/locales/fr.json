@@ -11,8 +11,8 @@
     "audit": "Journal d'audit"
   },
   "header": {
-    "title": "Admin AI Model Gateway",
-    "subtitle": "Entrée par défaut gateway.exe, runtime basculé vers v2"
+    "title": "AI Model Gateway",
+    "subtitle": "Panneau d'administration de la passerelle de routage de modèles AI"
   },
   "login": {
     "title": "Admin AI Model Gateway",
@@ -193,6 +193,14 @@
     "requests": "Requêtes",
     "tokens": "Tokens",
     "noData": "Aucune donnée de benchmark disponible pour la plage de temps sélectionnée"
+  },
+  "empty": {
+    "noRequests": "Aucune donnée de requête. La passerelle attend du trafic.",
+    "noTelemetry": "Aucune donnée de télémesure disponible.",
+    "noBenchmark": "Aucune donnée de benchmark disponible.",
+    "noTimeseries": "Aucune donnée de séries temporelles disponible.",
+    "noAudit": "Aucune entrée de journal d'audit.",
+    "noHistory": "Aucun historique de modification de configuration."
   },
   "audit": {
     "title": "Journal d'audit",

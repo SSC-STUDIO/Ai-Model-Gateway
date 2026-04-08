@@ -27,11 +27,30 @@ const OverviewTabComponent = ({ overview }: OverviewTabProps) => {
 
   const windowKeys = useMemo(() => ['last_1m', 'last_5m', 'last_1h', 'last_24h'] as const, [])
 
+  const totalRequests = useMemo(() => {
+    if (!overview) return -1
+    let total = 0
+    for (const key of ['last_1m', 'last_5m', 'last_1h', 'last_24h'] as const) {
+      const w = overview[key] as AnyRecord | undefined
+      if (w && typeof w.requests === 'number') total += w.requests
+    }
+    return total
+  }, [overview])
+
   if (!overview) {
     return (
       <section class="panel">
         <h2>{t('overview.title')}</h2>
-        <p class="muted">{t('overview.loading')}</p>
+        <p class="muted"><span class="loading-dots"></span> {t('overview.loading')}</p>
+      </section>
+    )
+  }
+
+  if (totalRequests === 0) {
+    return (
+      <section class="panel">
+        <h2>{t('overview.title')}</h2>
+        <p class="empty-state">{t('empty.noRequests')}</p>
       </section>
     )
   }

@@ -154,7 +154,7 @@ const BenchmarkTabComponent = ({
 
       {benchmarkLoading && (
         <div class="panel-subsection">
-          <p class="muted">{t('benchmark.loading')}</p>
+          <p class="muted"><span class="loading-dots"></span> {t('benchmark.loading')}</p>
         </div>
       )}
 
@@ -247,7 +247,7 @@ const BenchmarkTabComponent = ({
 
       {benchmark && benchmark.models.length === 0 && !benchmarkLoading && (
         <div class="panel-subsection">
-          <p class="muted">{t('benchmark.noData')}</p>
+          <p class="empty-state">{t('empty.noBenchmark')}</p>
         </div>
       )}
     </section>

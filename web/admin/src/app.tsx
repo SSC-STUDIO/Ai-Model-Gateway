@@ -573,7 +573,6 @@ export function App() {
           </svg>
           <div>
             <h1>{t('header.title')}</h1>
-            <p class="muted">{t('header.subtitle')}</p>
           </div>
         </div>
         <div class="topbar-actions">

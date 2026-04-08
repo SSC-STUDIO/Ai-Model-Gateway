@@ -127,11 +127,27 @@ const TelemetryTabComponent = ({ telemetry, timeseries }: TelemetryTabProps) => 
     [telemetry?.pricing_economics?.models]
   )
 
+  const hasData = useMemo(() => {
+    if (!telemetry) return false
+    return (errors.length > 0 || requests.length > 0 ||
+      (telemetry.models && telemetry.models.length > 0) ||
+      (telemetry.upstreams && telemetry.upstreams.length > 0))
+  }, [telemetry, errors, requests])
+
   if (!telemetry || !timeseries) {
     return (
       <section class="panel">
         <h2>{t('telemetry.title')}</h2>
-        <p class="muted">{t('telemetry.loading')}</p>
+        <p class="muted"><span class="loading-dots"></span> {t('telemetry.loading')}</p>
+      </section>
+    )
+  }
+
+  if (!hasData) {
+    return (
+      <section class="panel">
+        <h2>{t('telemetry.title')}</h2>
+        <p class="empty-state">{t('empty.noTelemetry')}</p>
       </section>
     )
   }
