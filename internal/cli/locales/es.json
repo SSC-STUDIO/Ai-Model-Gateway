@@ -22,7 +22,19 @@
     "providers": "Proveedores",
     "admin": "Admin",
     "health_check": "Verificación de salud",
-    "bridge": "Puente"
+    "bridge": "Puente",
+    "version": "AI Model Gateway v%s",
+    "reload_sent": "✓ Señal de recarga enviada",
+    "reload_failed": "Recarga fallida: %v",
+    "status_title": "Estado del Gateway",
+    "status_url": "URL",
+    "status_strategy": "Estrategia",
+    "status_models": "Modelos",
+    "status_upstreams": "Upstreams",
+    "status_healthy": "saludable",
+    "status_unhealthy": "no saludable",
+    "enabled": "habilitado",
+    "disabled": "deshabilitado"
   },
   "usage": {
     "title": "Uso: gateway [comando] [opciones]",
@@ -36,6 +48,8 @@
     "service_start_desc": "Iniciar servicio de Windows",
     "service_stop_desc": "Detener servicio de Windows",
     "service_status_desc": "Verificar estado del servicio de Windows",
+    "version_desc": "Mostrar versión",
+    "status_desc": "Mostrar resumen del estado del gateway en ejecución",
     "config_desc": "Ruta al archivo de configuración (por defecto: configs/config.yaml)",
     "lang_desc": "Idioma de la interfaz (por defecto: es)"
   }

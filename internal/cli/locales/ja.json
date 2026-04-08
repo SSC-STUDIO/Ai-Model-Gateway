@@ -22,7 +22,19 @@
     "providers": "プロバイダー",
     "admin": "管理",
     "health_check": "ヘルスチェック",
-    "bridge": "ブリッジ"
+    "bridge": "ブリッジ",
+    "version": "AI Model Gateway v%s",
+    "reload_sent": "✓ リロード信号を送信しました",
+    "reload_failed": "リロード失敗: %v",
+    "status_title": "ゲートウェイステータス",
+    "status_url": "URL",
+    "status_strategy": "ストラテジー",
+    "status_models": "モデル",
+    "status_upstreams": "アップストリーム",
+    "status_healthy": "正常",
+    "status_unhealthy": "異常",
+    "enabled": "有効",
+    "disabled": "無効"
   },
   "usage": {
     "title": "使い方: gateway [コマンド] [オプション]",
@@ -36,6 +48,8 @@
     "service_start_desc": "Windowsサービスを開始",
     "service_stop_desc": "Windowsサービスを停止",
     "service_status_desc": "Windowsサービスの状態を確認",
+    "version_desc": "バージョンを表示",
+    "status_desc": "実行中のゲートウェイのステータス概要を表示",
     "config_desc": "設定ファイルのパス (デフォルト: configs/config.yaml)",
     "lang_desc": "インターフェース言語 (デフォルト: ja)"
   }

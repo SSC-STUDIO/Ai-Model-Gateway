@@ -22,7 +22,19 @@
     "providers": "제공자",
     "admin": "관리",
     "health_check": "상태 확인",
-    "bridge": "브리지"
+    "bridge": "브리지",
+    "version": "AI Model Gateway v%s",
+    "reload_sent": "✓ 리로드 신호 전송됨",
+    "reload_failed": "리로드 실패: %v",
+    "status_title": "게이트웨이 상태",
+    "status_url": "URL",
+    "status_strategy": "전략",
+    "status_models": "모델",
+    "status_upstreams": "업스트림",
+    "status_healthy": "정상",
+    "status_unhealthy": "비정상",
+    "enabled": "활성화됨",
+    "disabled": "비활성화됨"
   },
   "usage": {
     "title": "사용법: gateway [명령] [옵션]",
@@ -36,6 +48,8 @@
     "service_start_desc": "Windows 서비스 시작",
     "service_stop_desc": "Windows 서비스 중지",
     "service_status_desc": "Windows 서비스 상태 확인",
+    "version_desc": "버전 표시",
+    "status_desc": "실행 중인 게이트웨이 상태 요약 표시",
     "config_desc": "설정 파일 경로 (기본값: configs/config.yaml)",
     "lang_desc": "인터페이스 언어 (기본값: ko)"
   }

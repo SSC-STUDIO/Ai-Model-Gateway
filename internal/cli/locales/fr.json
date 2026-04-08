@@ -22,7 +22,19 @@
     "providers": "Fournisseurs",
     "admin": "Admin",
     "health_check": "Vérification de santé",
-    "bridge": "Pont"
+    "bridge": "Pont",
+    "version": "AI Model Gateway v%s",
+    "reload_sent": "✓ Signal de rechargement envoyé",
+    "reload_failed": "Échec du rechargement: %v",
+    "status_title": "État de la passerelle",
+    "status_url": "URL",
+    "status_strategy": "Stratégie",
+    "status_models": "Modèles",
+    "status_upstreams": "Upstreams",
+    "status_healthy": "sain",
+    "status_unhealthy": "non sain",
+    "enabled": "activé",
+    "disabled": "désactivé"
   },
   "usage": {
     "title": "Utilisation: gateway [commande] [options]",
@@ -36,6 +48,8 @@
     "service_start_desc": "Démarrer le service Windows",
     "service_stop_desc": "Arrêter le service Windows",
     "service_status_desc": "Vérifier l'état du service Windows",
+    "version_desc": "Afficher la version",
+    "status_desc": "Afficher le résumé de l'état de la passerelle en cours d'exécution",
     "config_desc": "Chemin vers le fichier de configuration (par défaut: configs/config.yaml)",
     "lang_desc": "Langue de l'interface (par défaut: fr)"
   }

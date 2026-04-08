@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -14,6 +15,8 @@ import (
 	"ai-model-gateway/internal/infra/configloader"
 	"ai-model-gateway/internal/runtime"
 )
+
+const Version = "1.1.0"
 
 var cliLang string
 
@@ -156,6 +159,10 @@ func main() {
 			fmt.Fprintf(os.Stderr, cli.T("cli.status_failed")+"\n", err)
 			os.Exit(1)
 		}
+	case "version":
+		fmt.Println(fmt.Sprintf(cli.T("cli.version"), Version))
+	case "status":
+		cmdStatus(configPath, subcommandArgs)
 	default:
 		fmt.Fprintf(os.Stderr, cli.T("cli.unknown_command")+"\n", cmd)
 		printUsage()
@@ -230,9 +237,13 @@ func cmdValidate(configPath string) {
 
 func cmdHealth(configPath string, args []string) {
 	fs := flag.NewFlagSet("health", flag.ExitOnError)
-	endpoint := fs.String("endpoint", "http://127.0.0.1:18080/-/health", "Health check endpoint")
+	endpoint := fs.String("endpoint", "", "Health check endpoint")
 	timeout := fs.Duration("timeout", 5*time.Second, "Request timeout")
 	fs.Parse(args)
+
+	if *endpoint == "" {
+		*endpoint = deriveHealthEndpoint(configPath)
+	}
 
 	checker := runtime.NewHealthChecker(*endpoint, *timeout)
 	result, err := checker.Check()
@@ -257,11 +268,59 @@ func cmdHealth(configPath string, args []string) {
 	}
 }
 
+func cmdStatus(configPath string, args []string) {
+	endpoint := deriveHealthEndpoint(configPath)
+	checker := runtime.NewHealthChecker(endpoint, 5*time.Second)
+	result, err := checker.Check()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, cli.T("cli.health_check_failed")+"\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(cli.T("cli.status_title"))
+	fmt.Printf("  %s: %s\n", cli.T("cli.status_url"), endpoint)
+	fmt.Printf("  %s: %s\n", cli.T("cli.status_strategy"), result.RouterStrategy)
+	fmt.Printf("  %s: %d\n", cli.T("cli.status_models"), len(result.AvailableModels))
+
+	healthy := 0
+	for _, u := range result.Upstreams {
+		if u != "" {
+			healthy++
+		}
+	}
+	total := len(result.Upstreams)
+	healthLabel := cli.T("cli.status_healthy")
+	if healthy < total {
+		healthLabel = cli.T("cli.status_unhealthy")
+	}
+	fmt.Printf("  %s: %d (%d %s)\n", cli.T("cli.status_upstreams"), total, healthy, healthLabel)
+}
+
+func deriveHealthEndpoint(configPath string) string {
+	fallback := "http://127.0.0.1:18080/-/health"
+	cfg, err := configloader.LoadFromFile(configPath)
+	if err != nil {
+		return fallback
+	}
+	listen := cfg.Server.Listen
+	if listen == "" {
+		return fallback
+	}
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return fallback
+	}
+	if host == "" || host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	return fmt.Sprintf("http://%s:%s/-/health", host, port)
+}
+
 func boolStatus(enabled bool) string {
 	if enabled {
-		return "enabled"
+		return cli.T("cli.enabled")
 	}
-	return "disabled"
+	return cli.T("cli.disabled")
 }
 
 func printUsage() {
@@ -276,6 +335,8 @@ func printUsage() {
 	fmt.Println("  service-start   " + cli.T("usage.service_start_desc"))
 	fmt.Println("  service-stop    " + cli.T("usage.service_stop_desc"))
 	fmt.Println("  service-status  " + cli.T("usage.service_status_desc"))
+	fmt.Println("  version         " + cli.T("usage.version_desc"))
+	fmt.Println("  status          " + cli.T("usage.status_desc"))
 	fmt.Println("")
 	fmt.Println(cli.T("usage.options_title"))
 	fmt.Println("  -config path    " + cli.T("usage.config_desc"))

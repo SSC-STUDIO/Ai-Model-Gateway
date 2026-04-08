@@ -22,7 +22,19 @@
     "providers": "提供商",
     "admin": "管理",
     "health_check": "健康检查",
-    "bridge": "桥接"
+    "bridge": "桥接",
+    "version": "AI Model Gateway v%s",
+    "reload_sent": "✓ 重载信号已发送",
+    "reload_failed": "重载失败: %v",
+    "status_title": "网关状态",
+    "status_url": "地址",
+    "status_strategy": "策略",
+    "status_models": "模型",
+    "status_upstreams": "上游",
+    "status_healthy": "健康",
+    "status_unhealthy": "不健康",
+    "enabled": "已启用",
+    "disabled": "已禁用"
   },
   "usage": {
     "title": "用法: gateway [命令] [选项]",
@@ -36,6 +48,8 @@
     "service_start_desc": "启动 Windows 服务",
     "service_stop_desc": "停止 Windows 服务",
     "service_status_desc": "检查 Windows 服务状态",
+    "version_desc": "显示版本号",
+    "status_desc": "显示运行中网关的状态摘要",
     "config_desc": "配置文件路径 (默认: configs/config.yaml)",
     "lang_desc": "界面语言 (默认: zh)"
   }

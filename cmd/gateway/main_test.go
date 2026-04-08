@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"testing"
+
+	"ai-model-gateway/internal/cli"
 )
 
 func TestMain(t *testing.T) {
@@ -34,6 +36,7 @@ func TestMain(t *testing.T) {
 }
 
 func TestBoolStatus(t *testing.T) {
+	cli.SetLanguage("en")
 	tests := []struct {
 		enabled  bool
 		expected string
