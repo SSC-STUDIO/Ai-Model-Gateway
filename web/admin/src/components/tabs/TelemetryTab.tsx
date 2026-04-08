@@ -228,23 +228,29 @@ const TelemetryTabComponent = ({ telemetry, timeseries }: TelemetryTabProps) => 
                 </tr>
               </thead>
               <tbody>
-                {requests.map((req, idx) => (
+                {requests.map((req, idx) => {
+                  const status = req.StatusCode ?? req.status ?? 0
+                  const inputTk = req.InputTokens ?? req.input_tokens
+                  const outputTk = req.OutputTokens ?? req.output_tokens
+                  const isCached = (req.CachedPromptTokens ?? 0) > 0 || req.cached
+                  return (
                   <tr key={idx}>
-                    <td>{req.time}</td>
-                    <td>{req.method}</td>
-                    <td class="path-cell">{req.path}</td>
-                    <td class={req.status >= 400 ? 'status-error' : 'status-ok'}>{req.status}</td>
-                    <td>{req.upstream}</td>
-                    <td>{req.model}</td>
-                    <td>{req.attempts}</td>
-                    <td>{req.latency_ms}ms</td>
+                    <td>{req.Timestamp ? new Date(req.Timestamp).toLocaleString() : req.time}</td>
+                    <td>{req.Path ? 'POST' : req.method}</td>
+                    <td class="path-cell">{req.Path ?? req.path}</td>
+                    <td class={status >= 400 ? 'status-error' : 'status-ok'}>{status}</td>
+                    <td>{req.Upstream ?? req.upstream}</td>
+                    <td>{req.Model ?? req.model}</td>
+                    <td>{req.Attempts ?? req.attempts}</td>
+                    <td>{req.LatencyMs ?? req.latency_ms}ms</td>
                     <td>
-                      {req.cached && <span class="cached-badge">cached</span>}
-                      {req.input_tokens && <span>{req.input_tokens}</span>}
-                      {req.input_tokens && req.output_tokens && <span> / {req.output_tokens}</span>}
+                      {isCached && <span class="cached-badge">cached</span>}
+                      {inputTk != null && <span>{inputTk}</span>}
+                      {inputTk != null && outputTk != null && <span> / {outputTk}</span>}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

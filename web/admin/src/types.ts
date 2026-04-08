@@ -31,17 +31,28 @@ export interface TimeSeriesResponse {
 }
 
 export interface RequestEntry {
-  time: string
-  method: string
-  path: string
-  status: number
-  upstream: string
-  model: string
-  attempts: number
-  latency_ms: number
+  // Backend returns PascalCase, support both
+  time?: string
+  Timestamp?: string
+  method?: string
+  path?: string
+  Path?: string
+  status?: number
+  StatusCode?: number
+  upstream?: string
+  Upstream?: string
+  model?: string
+  Model?: string
+  attempts?: number
+  Attempts?: number
+  latency_ms?: number
+  LatencyMs?: number
   input_tokens?: number
+  InputTokens?: number
   output_tokens?: number
+  OutputTokens?: number
   cached?: boolean
+  CachedPromptTokens?: number
 }
 
 export interface ErrorEntry {
