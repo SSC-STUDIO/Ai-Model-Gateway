@@ -72,7 +72,11 @@ func (b adminFrontendBundle) handlers() (http.HandlerFunc, http.Handler) {
 			root.ServeHTTP(w, r)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/admin/assets/") {
+		// Serve static files (assets, icons, manifest)
+		if strings.HasPrefix(r.URL.Path, "/admin/assets/") ||
+			r.URL.Path == "/admin/icon.svg" ||
+			r.URL.Path == "/admin/favicon.svg" ||
+			r.URL.Path == "/admin/manifest.json" {
 			b.static.ServeHTTP(w, r)
 			return
 		}

@@ -6,9 +6,13 @@ import './theme/index.css'
 
 applyTheme(getInitialTheme())
 
+const root = document.getElementById('app')!
+// Clear any existing content before rendering to prevent duplicate DOM nodes
+root.innerHTML = ''
+
 render(
   <I18nProvider>
     <App />
   </I18nProvider>,
-  document.getElementById('app')!
+  root
 )

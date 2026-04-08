@@ -217,25 +217,25 @@ const BenchmarkTabComponent = ({
                   {benchmark.models.map((m) => (
                     <tr key={m.model}>
                       <td>{m.model}</td>
-                      <td>{m.requests.toLocaleString()}</td>
+                      <td>{(m.requests ?? 0).toLocaleString()}</td>
                       <td
                         class={
-                          m.success_rate >= 0.99
+                          (m.success_rate ?? 0) >= 0.99
                             ? 'status-ok'
-                            : m.success_rate >= 0.95
+                            : (m.success_rate ?? 0) >= 0.95
                               ? 'status-warn'
                               : 'status-error'
                         }
                       >
-                        {(m.success_rate * 100).toFixed(2)}%
+                        {((m.success_rate ?? 0) * 100).toFixed(2)}%
                       </td>
-                      <td>{m.avg_latency_ms.toFixed(1)}ms</td>
-                      <td>{m.p50_latency_ms.toFixed(1)}ms</td>
-                      <td>{m.p95_latency_ms.toFixed(1)}ms</td>
-                      <td>{m.p99_latency_ms.toFixed(1)}ms</td>
-                      <td>{m.max_latency_ms.toFixed(1)}ms</td>
-                      <td>{(m.input_tokens + m.output_tokens).toLocaleString()}</td>
-                      <td class="cost-value">{formatUsd(m.estimated_cost_usd)}</td>
+                      <td>{(m.avg_latency_ms ?? 0).toFixed(1)}ms</td>
+                      <td>{(m.p50_latency_ms ?? 0).toFixed(1)}ms</td>
+                      <td>{(m.p95_latency_ms ?? 0).toFixed(1)}ms</td>
+                      <td>{(m.p99_latency_ms ?? 0).toFixed(1)}ms</td>
+                      <td>{(m.max_latency_ms ?? 0).toFixed(1)}ms</td>
+                      <td>{((m.input_tokens ?? 0) + (m.output_tokens ?? 0)).toLocaleString()}</td>
+                      <td class="cost-value">{formatUsd(m.estimated_cost_usd ?? 0)}</td>
                     </tr>
                   ))}
                 </tbody>

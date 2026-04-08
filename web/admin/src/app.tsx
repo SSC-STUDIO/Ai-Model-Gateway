@@ -1,20 +1,11 @@
-import { useEffect, useMemo, useState, useCallback, lazy, Suspense } from 'preact/compat'
+import { useEffect, useMemo, useState, useCallback } from 'preact/compat'
 import { useI18n } from './i18n'
 import { ThemeToggle } from './theme/ThemeToggle'
 import { LanguageSelector } from './theme/LanguageSelector'
 import { LogViewer } from './components/LogViewer'
 import { useCachedFetch, invalidateCache, useSSE } from './hooks'
 import type { TabKey, AnyRecord, DataResponse, TimeSeriesResponse, BenchmarkResponse, ProbeProvider } from './types'
-
-// Lazy load tab components for code splitting
-const OverviewTab = lazy(() => import('./components/tabs').then(m => ({ default: m.OverviewTab })))
-const TelemetryTab = lazy(() => import('./components/tabs').then(m => ({ default: m.TelemetryTab })))
-const SettingsTab = lazy(() => import('./components/tabs').then(m => ({ default: m.SettingsTab })))
-const HistoryTab = lazy(() => import('./components/tabs').then(m => ({ default: m.HistoryTab })))
-const ProbeTab = lazy(() => import('./components/tabs').then(m => ({ default: m.ProbeTab })))
-const TimeSeriesTab = lazy(() => import('./components/tabs').then(m => ({ default: m.TimeSeriesTab })))
-const BenchmarkTab = lazy(() => import('./components/tabs').then(m => ({ default: m.BenchmarkTab })))
-const AuditTab = lazy(() => import('./components/tabs').then(m => ({ default: m.AuditTab })))
+import { OverviewTab, TelemetryTab, SettingsTab, HistoryTab, ProbeTab, TimeSeriesTab, BenchmarkTab, AuditTab } from './components/tabs'
 
 const tabPaths: Record<TabKey, string> = {
   overview: '/admin',
@@ -442,81 +433,84 @@ export function App() {
 
   // Tab content renderer with Suspense
   const renderTabContent = () => {
-    const fallback = (
-      <section class="panel">
-        <p class="muted">{t('common.loading')}</p>
-      </section>
+    const refreshControls = (
+      <div class="auto-refresh-controls">
+        <span class="auto-refresh-label">{t('autoRefresh.interval')}:</span>
+        {([0, 10000, 30000, 60000] as const).map((ms) => (
+          <button
+            key={ms}
+            type="button"
+            class={`auto-refresh-btn${refreshInterval === ms ? ' active' : ''}`}
+            onClick={() => setRefreshInterval(ms)}
+          >
+            {ms === 0 ? t('autoRefresh.off') : `${ms / 1000}s`}
+          </button>
+        ))}
+        {refreshInterval > 0 && (
+          <span class="auto-refresh-indicator">{t('autoRefresh.active')}</span>
+        )}
+      </div>
     )
 
     switch (tab) {
       case 'overview':
         return (
-          <Suspense fallback={fallback}>
+          <>
+            {refreshControls}
             <OverviewTab overview={overview ?? null} />
-          </Suspense>
+          </>
         )
       case 'telemetry':
         return (
-          <Suspense fallback={fallback}>
+          <>
+            {refreshControls}
             <TelemetryTab telemetry={telemetry ?? null} timeseries={timeseries ?? null} />
-          </Suspense>
+          </>
         )
       case 'timeseries':
-        return (
-          <Suspense fallback={fallback}>
-            <TimeSeriesTab timeseries={timeseries ?? null} />
-          </Suspense>
-        )
+        return <TimeSeriesTab timeseries={timeseries ?? null} />
       case 'settings':
         return (
-          <Suspense fallback={fallback}>
-            <SettingsTab
-              configView={configView ?? null}
-              configText={configText}
-              setConfigText={setConfigText}
-              onSave={saveConfig}
-              busy={busy}
-            />
-          </Suspense>
+          <SettingsTab
+            configView={configView ?? null}
+            configText={configText}
+            setConfigText={setConfigText}
+            onSave={saveConfig}
+            busy={busy}
+          />
         )
       case 'history':
         return (
-          <Suspense fallback={fallback}>
-            <HistoryTab
-              historyPayload={historyPayload ?? null}
-              selectedVersion={selectedVersion}
-              historyDiff={historyDiff}
-              onVersionChange={handleVersionChange}
-              onRollback={handleRollback}
-              busy={busy}
-            />
-          </Suspense>
+          <HistoryTab
+            historyPayload={historyPayload ?? null}
+            selectedVersion={selectedVersion}
+            historyDiff={historyDiff}
+            onVersionChange={handleVersionChange}
+            onRollback={handleRollback}
+            busy={busy}
+          />
         )
       case 'probe':
         return (
-          <Suspense fallback={fallback}>
-            <ProbeTab
-              probeProvider={probeProvider}
-              setProbeProvider={setProbeProvider}
-              probeResult={probeResult}
-              onRunProbe={handleRunProbe}
-              busy={busy}
-            />
-          </Suspense>
+          <ProbeTab
+            probeProvider={probeProvider}
+            setProbeProvider={setProbeProvider}
+            probeResult={probeResult}
+            onRunProbe={handleRunProbe}
+            busy={busy}
+          />
         )
       case 'benchmark':
         return (
-          <Suspense fallback={fallback}>
-            <BenchmarkTab
-              benchmark={benchmark}
-              benchmarkHours={benchmarkHours}
-              benchmarkModels={benchmarkModels}
-              benchmarkLoading={benchmarkLoading}
-              onHoursChange={handleBenchmarkHoursChange}
-              onModelsChange={handleBenchmarkModelsChange}
-              onRefresh={handleBenchmarkRefresh}
-            />
-          </Suspense>
+          <BenchmarkTab
+            benchmark={benchmark}
+            benchmarkHours={benchmarkHours}
+            benchmarkModels={benchmarkModels}
+            benchmarkLoading={benchmarkLoading}
+            onHoursChange={handleBenchmarkHoursChange}
+            onModelsChange={handleBenchmarkModelsChange}
+            onRefresh={handleBenchmarkRefresh}
+          />
         )
       case 'logs':
         return (
@@ -526,11 +520,7 @@ export function App() {
           </section>
         )
       case 'audit':
-        return (
-          <Suspense fallback={fallback}>
-            <AuditTab enabled={authed} />
-          </Suspense>
-        )
+        return <AuditTab enabled={authed} />
       default:
         return null
     }
@@ -588,24 +578,6 @@ export function App() {
               </button>
             ))}
           </div>
-          {(tab === 'overview' || tab === 'telemetry') && (
-            <div class="auto-refresh-controls">
-              <span class="auto-refresh-label">{t('autoRefresh.interval')}:</span>
-              {([0, 10000, 30000, 60000] as const).map((ms) => (
-                <button
-                  key={ms}
-                  type="button"
-                  class={`auto-refresh-btn${refreshInterval === ms ? ' active' : ''}`}
-                  onClick={() => setRefreshInterval(ms)}
-                >
-                  {ms === 0 ? t('autoRefresh.off') : `${ms / 1000}s`}
-                </button>
-              ))}
-              {refreshInterval > 0 && (
-                <span class="auto-refresh-indicator">{t('autoRefresh.active')}</span>
-              )}
-            </div>
-          )}
           <span class={`sse-status ${sseConnected ? 'connected' : sseReconnecting ? 'reconnecting' : 'disconnected'}`}>
             <span class="sse-dot" />
             {sseConnected ? t('sse.connected') : sseReconnecting ? t('sse.reconnecting') : t('sse.disconnected')}

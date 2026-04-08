@@ -289,10 +289,14 @@ body {
 /* === Config Sections === */
 
 .config-sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  columns: 2;
+  column-gap: 16px;
   margin-top: 20px;
+}
+
+.config-sections > * {
+  break-inside: avoid;
+  margin-bottom: 16px;
 }
 
 .config-card {
@@ -1413,7 +1417,7 @@ select {
   }
 
   .config-sections {
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    columns: 2;
   }
 
   .topbar h1 { font-size: 1.1rem; }
@@ -1567,7 +1571,7 @@ select {
     gap: 10px;
   }
 
-  .config-sections { grid-template-columns: 1fr; }
+  .config-sections { columns: 1; }
   .charts-grid { grid-template-columns: 1fr; }
 
   .panel {
@@ -1662,4 +1666,125 @@ select {
   font-size: 0.9rem;
   padding: 48px 24px;
   line-height: 1.6;
+}
+
+/* === Button Groups (timeseries selectors, auto-refresh, etc.) === */
+
+.timeseries-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.timeseries-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.timeseries-selector span {
+  white-space: nowrap;
+}
+
+.ts-btn, .auto-refresh-btn {
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ts-btn:hover, .auto-refresh-btn:hover {
+  background: var(--accent-color);
+  color: var(--accent-text);
+  border-color: var(--accent-color);
+}
+
+.ts-btn.active, .auto-refresh-btn.active {
+  background: var(--accent-color);
+  color: var(--accent-text);
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.timeseries-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.timeseries-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.auto-refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.auto-refresh-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.auto-refresh-indicator {
+  font-size: 0.75rem;
+  color: var(--success-color);
+  padding: 2px 8px;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 6px;
+}
+
+/* === Benchmark Controls === */
+
+.benchmark-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.benchmark-toolbar select,
+.benchmark-toolbar input {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 480px) {
+  .timeseries-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .timeseries-header {
+    flex-direction: column;
+  }
+  .auto-refresh-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
