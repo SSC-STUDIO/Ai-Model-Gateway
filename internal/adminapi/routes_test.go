@@ -951,6 +951,199 @@ func TestRouteUsage_DefaultParams(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Multi-token / RBAC test helpers
+// ---------------------------------------------------------------------------
+
+var (
+	testViewerToken = makeTestSecret("viewer-token-val")
+	testAdminToken  = makeTestSecret("named-admin-val")
+)
+
+func setupTestDepsWithTokens(t *testing.T) (Deps, func()) {
+	t.Helper()
+	d, cleanup := setupTestDeps(t)
+	d.Auth.SetTokens([]auth.TokenEntry{
+		{Name: "alice-admin", Token: testAdminToken, Role: auth.RoleAdmin},
+		{Name: "bob-viewer", Token: testViewerToken, Role: auth.RoleViewer},
+	})
+	return d, cleanup
+}
+
+func viewerAuthedRequest(t *testing.T, method, path string, body string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testViewerToken)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func namedAdminAuthedRequest(t *testing.T, method, path string, body string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testAdminToken)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+// ---------------------------------------------------------------------------
+// RBAC integration tests
+// ---------------------------------------------------------------------------
+
+func TestRBAC_ViewerCanGETOverview(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+	seedTelemetry(t, d.Store)
+
+	r := setupRouter(t, d)
+	req := viewerAuthedRequest(t, "GET", "/api/admin/overview", "")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for viewer GET /overview, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_ViewerCannotPUTConfig(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+	req := viewerAuthedRequest(t, "PUT", "/api/admin/config", `{"admin":{"language":"en"}}`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer PUT /config, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_ViewerCannotPOSTRollback(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+	req := viewerAuthedRequest(t, "POST", "/api/admin/config/rollback", `{}`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer POST /config/rollback, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_ViewerCannotPOSTUpstreamsTest(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+	req := viewerAuthedRequest(t, "POST", "/api/admin/upstreams/test", `{"upstream":{"name":"x","base_url":"https://example.com"}}`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer POST /upstreams/test, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_NamedAdminCanPUTConfig(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+	req := namedAdminAuthedRequest(t, "PUT", "/api/admin/config", `{"admin":{"language":"en"}}`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	// 501 is expected because ConfigSave hook is nil — but NOT 403.
+	if w.Code == http.StatusForbidden {
+		t.Fatalf("named admin should not get 403 for PUT /config, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_NamedAdminCanGETOverview(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+	seedTelemetry(t, d.Store)
+
+	r := setupRouter(t, d)
+	req := namedAdminAuthedRequest(t, "GET", "/api/admin/overview", "")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for named admin GET /overview, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_BootstrapTokenStillWorksAsAdmin(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+	// Bootstrap token should pass admin-only mutation endpoints.
+	req := authedRequest(t, "PUT", "/api/admin/config", `{"admin":{"language":"en"}}`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code == http.StatusForbidden {
+		t.Fatalf("bootstrap token should not get 403 for PUT /config, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_UnknownTokenGets401(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+	req := httptest.NewRequest("GET", "/api/admin/overview", nil)
+	req.Header.Set("Authorization", "Bearer "+makeTestSecret("unknown-garbage"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unknown token, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRBAC_LoginReturnsRole(t *testing.T) {
+	d, cleanup := setupTestDepsWithTokens(t)
+	defer cleanup()
+
+	r := setupRouter(t, d)
+
+	// Login with viewer token.
+	req := httptest.NewRequest("POST", "/api/admin/auth/login", strings.NewReader(`{"token":"`+testViewerToken+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["role"] != "viewer" {
+		t.Fatalf("expected role=viewer in login response, got %q", resp["role"])
+	}
+
+	// Login with bootstrap token.
+	req2 := httptest.NewRequest("POST", "/api/admin/auth/login", strings.NewReader(`{"token":"`+testToken+`"}`))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+	var resp2 map[string]string
+	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	if resp2["role"] != "admin" {
+		t.Fatalf("expected role=admin in login response, got %q", resp2["role"])
+	}
+}
+
 // Ensure unused import doesn't cause issues.
 var _ = os.DevNull
 

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -77,23 +78,22 @@ func Mount(r chi.Router, d Deps) {
 
 		// Public auth endpoints
 		api.Post("/auth/login", loginHandler(d))
-		api.Post("/auth/logout", logoutHandler(d.Auth))
+		api.Post("/auth/logout", logoutHandler(d))
 
-		// Protected endpoints
+		// Protected endpoints (all roles: admin + viewer)
 		api.Group(func(p chi.Router) {
 			p.Use(requireAuth(d.Auth, d.I18n))
 			p.Use(sameOriginCookieWriteProtection(d.I18n))
+
+			// Read-only endpoints — accessible to all authenticated users.
 			p.Get("/overview", overviewHandler(d))
 			p.Get("/data", dataHandler(d))
 			p.Get("/timeseries", timeseriesHandler(d))
 			p.Get("/models", modelsHandler(d))
 			p.Get("/config", configHandler(d))
-			p.Put("/config", configSaveHandler(d))
 			p.Get("/config/export", configExportHandler(d))
 			p.Get("/config/history", configHistoryHandler(d))
 			p.Get("/config/history/{version_id}/diff", configHistoryDiffHandler(d))
-			p.Post("/config/rollback", configRollbackHandler(d))
-			p.Post("/upstreams/test", upstreamsTestHandler(d))
 			p.Get("/logs/stream", logsStreamHandler(d, DefaultLogStreamManager))
 			p.Get("/logs/export", logsExportHandler(d, DefaultLogStreamManager))
 			if d.EventBus != nil {
@@ -101,6 +101,15 @@ func Mount(r chi.Router, d Deps) {
 			}
 			p.Get("/models/benchmark", modelsBenchmarkHandler(d))
 			p.Get("/route-usage", routeUsageHandler(d))
+			p.Get("/audit-log", auditLogHandler(d))
+
+			// Mutation endpoints — admin role required.
+			p.Group(func(admin chi.Router) {
+				admin.Use(requireRole(auth.RoleAdmin, d.I18n))
+				admin.Put("/config", configSaveHandler(d))
+				admin.Post("/config/rollback", configRollbackHandler(d))
+				admin.Post("/upstreams/test", upstreamsTestHandler(d))
+			})
 		})
 	})
 
@@ -116,10 +125,20 @@ func Mount(r chi.Router, d Deps) {
 // Middleware
 // ---------------------------------------------------------------------------
 
+// authInfoContextKey is the context key for the resolved AuthInfo.
+type authInfoContextKey struct{}
+
+// AuthInfoFromContext retrieves the AuthInfo stored by requireAuth middleware.
+func AuthInfoFromContext(ctx context.Context) *auth.AuthInfo {
+	info, _ := ctx.Value(authInfoContextKey{}).(*auth.AuthInfo)
+	return info
+}
+
 func requireAuth(a *auth.Authenticator, bundle *i18n.Bundle) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if err := a.Authenticate(r); err != nil {
+			info, err := a.Authenticate(r)
+			if err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				msg := "unauthorized"
@@ -131,7 +150,25 @@ func requireAuth(a *auth.Authenticator, bundle *i18n.Bundle) func(http.Handler) 
 			}
 			authMode := requestAuthMode(r)
 			ctx := context.WithValue(r.Context(), authModeContextKey{}, authMode)
+			ctx = context.WithValue(ctx, authInfoContextKey{}, info)
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func requireRole(role string, bundle *i18n.Bundle) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			info := AuthInfoFromContext(r.Context())
+			if info == nil || info.Role != role {
+				msg := "forbidden"
+				if bundle != nil {
+					msg = bundle.T(i18n.ErrForbidden)
+				}
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -258,13 +295,35 @@ func loginHandler(d Deps) http.HandlerFunc {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": msg})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		info := d.Auth.LoginInfo(body.Token)
+		resp := map[string]string{"status": "ok"}
+		if info != nil {
+			resp["role"] = info.Role
+		}
+		// Audit: login
+		actor := ""
+		loginRole := ""
+		if info != nil {
+			actor = info.Name
+			loginRole = info.Role
+		}
+		if d.Store != nil {
+			_ = d.Store.WriteAuditLog(r.Context(), telemetrydb.AuditEntry{
+				Action:   "login",
+				Actor:    actor,
+				Role:     loginRole,
+				Details:  "admin login",
+				SourceIP: clientIP(r),
+			})
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
-func logoutHandler(a *auth.Authenticator) http.HandlerFunc {
+func logoutHandler(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		a.Logout(w)
+		writeAudit(d, r, "logout", "admin logout")
+		d.Auth.Logout(w)
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
@@ -542,6 +601,7 @@ func configSaveHandler(d Deps) http.HandlerFunc {
 		if d.EventBus != nil {
 			d.EventBus.Publish(Event{Type: "config_changed", Data: "config saved via API"})
 		}
+		writeAudit(d, r, "config_save", "configuration saved via API")
 		writeJSON(w, http.StatusOK, response)
 	}
 }
@@ -621,6 +681,7 @@ func configRollbackHandler(d Deps) http.HandlerFunc {
 		if d.EventBus != nil {
 			d.EventBus.Publish(Event{Type: "config_changed", Data: "config rolled back to " + payload.VersionID})
 		}
+		writeAudit(d, r, "config_rollback", "rollback to version "+payload.VersionID)
 		writeJSON(w, http.StatusOK, response)
 	}
 }
@@ -768,6 +829,7 @@ func upstreamsTestHandler(d Deps) http.HandlerFunc {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
+		writeAudit(d, r, "upstream_test", "probe upstream: "+target.Name+" ("+target.BaseURL+")")
 		writeJSON(w, status, result)
 	}
 }
@@ -1054,4 +1116,47 @@ func parsePositiveInt(raw string, fallback, minVal, maxVal int) int {
 		return maxVal
 	}
 	return value
+}
+
+// clientIP extracts the client IP from the request, preferring X-Forwarded-For.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i > 0 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+// writeAudit is a fire-and-forget helper that logs an admin action.
+func writeAudit(d Deps, r *http.Request, action, details string) {
+	if d.Store == nil {
+		return
+	}
+	actor := ""
+	role := ""
+	if info := AuthInfoFromContext(r.Context()); info != nil {
+		actor = info.Name
+		role = info.Role
+	}
+	_ = d.Store.WriteAuditLog(r.Context(), telemetrydb.AuditEntry{
+		Action:   action,
+		Actor:    actor,
+		Role:     role,
+		Details:  details,
+		SourceIP: clientIP(r),
+	})
+}
+
+func auditLogHandler(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit := parsePositiveInt(r.URL.Query().Get("limit"), 50, 1, 500)
+		offset := parsePositiveInt(r.URL.Query().Get("offset"), 0, 0, 1000000)
+		result := d.Store.QueryAuditLog(limit, offset)
+		writeJSON(w, http.StatusOK, result)
+	}
 }

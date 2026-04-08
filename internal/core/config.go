@@ -33,14 +33,22 @@ type ServerConfig struct {
 
 // AdminConfig controls the admin API and frontend.
 type AdminConfig struct {
-	Enabled          bool   `yaml:"enabled"            json:"enabled"`
-	BootstrapToken   string `yaml:"bootstrap_token"    json:"-"`
-	CookieSigningKey string `yaml:"cookie_signing_key" json:"-"`
-	Language         string `yaml:"language"            json:"language"`
+	Enabled          bool          `yaml:"enabled"            json:"enabled"`
+	BootstrapToken   string        `yaml:"bootstrap_token"    json:"-"`
+	CookieSigningKey string        `yaml:"cookie_signing_key" json:"-"`
+	Tokens           []TokenConfig `yaml:"tokens"             json:"tokens"`
+	Language         string        `yaml:"language"            json:"language"`
 	RateLimit        struct {
 		RequestsPerSecond float64 `yaml:"requests_per_second" json:"requests_per_second"`
 		Burst             int     `yaml:"burst"               json:"burst"`
 	} `yaml:"rate_limit" json:"rate_limit"`
+}
+
+// TokenConfig defines a named API token with a role.
+type TokenConfig struct {
+	Name  string `yaml:"name"  json:"name"`
+	Token string `yaml:"token" json:"-"`
+	Role  string `yaml:"role"  json:"role"` // "admin" or "viewer"
 }
 
 // RoutingConfig controls request routing, retry, and health-check behaviour.

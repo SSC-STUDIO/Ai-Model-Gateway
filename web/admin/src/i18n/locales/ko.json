@@ -7,7 +7,8 @@
     "history": "이력",
     "probe": "프로브",
     "logs": "로그",
-    "benchmark": "벤치마크"
+    "benchmark": "벤치마크",
+    "audit": "감사 로그"
   },
   "header": {
     "title": "AI Model Gateway 관리",
@@ -192,5 +193,20 @@
     "requests": "요청 수",
     "tokens": "토큰 수",
     "noData": "선택된 시간 범위에 사용 가능한 벤치마크 데이터가 없습니다"
+  },
+  "audit": {
+    "title": "감사 로그",
+    "loading": "감사 로그 로딩 중...",
+    "empty": "감사 항목이 없습니다",
+    "time": "시간",
+    "action": "작업",
+    "actor": "수행자",
+    "role": "역할",
+    "details": "상세",
+    "ip": "IP 주소",
+    "prev": "이전",
+    "next": "다음",
+    "page": "페이지",
+    "totalEntries": "개 항목"
   }
 }

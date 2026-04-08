@@ -1,0 +1,44 @@
+{
+  "server": {
+    "listen": ":18081"
+  },
+  "admin": {
+    "enabled": false
+  },
+  "routing": {
+    "strategy": "health_weighted_rr",
+    "health": {
+      "enabled": true,
+      "interval_sec": 10,
+      "timeout_ms": 5000,
+      "path": "/v1/models"
+    }
+  },
+  "providers": [
+    {
+      "name": "test-provider",
+      "base_url": "https://api.openai.com",
+      "api_key": "sk-test",
+      "provider_class": "quota_limited",
+      "models": ["gpt-4"],
+      "weight": 1,
+      "timeout_ms": 30000,
+      "same_retries": 1,
+      "enabled": true
+    }
+  ],
+  "telemetry": {
+    "sqlite_path": "data/test.db"
+  },
+  "pricing": {
+    "cache_path": "data/test-pricing.json"
+  },
+  "compat": {
+    "bridge": {
+      "enabled": false
+    },
+    "fallback": {
+      "enabled": false
+    }
+  }
+}

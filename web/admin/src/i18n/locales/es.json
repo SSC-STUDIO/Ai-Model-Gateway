@@ -7,7 +7,8 @@
     "history": "Historial",
     "probe": "Sonda",
     "logs": "Registros",
-    "benchmark": "Benchmark"
+    "benchmark": "Benchmark",
+    "audit": "Registro de Auditoría"
   },
   "header": {
     "title": "Admin AI Model Gateway",
@@ -192,5 +193,20 @@
     "requests": "Solicitudes",
     "tokens": "Tokens",
     "noData": "No hay datos de benchmark disponibles para el rango de tiempo seleccionado"
+  },
+  "audit": {
+    "title": "Registro de Auditoría",
+    "loading": "Cargando registro de auditoría...",
+    "empty": "No hay entradas de auditoría",
+    "time": "Hora",
+    "action": "Acción",
+    "actor": "Actor",
+    "role": "Rol",
+    "details": "Detalles",
+    "ip": "Dirección IP",
+    "prev": "Anterior",
+    "next": "Siguiente",
+    "page": "Página",
+    "totalEntries": "entradas"
   }
 }

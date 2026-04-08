@@ -14,6 +14,7 @@ const HistoryTab = lazy(() => import('./components/tabs').then(m => ({ default: 
 const ProbeTab = lazy(() => import('./components/tabs').then(m => ({ default: m.ProbeTab })))
 const TimeSeriesTab = lazy(() => import('./components/tabs').then(m => ({ default: m.TimeSeriesTab })))
 const BenchmarkTab = lazy(() => import('./components/tabs').then(m => ({ default: m.BenchmarkTab })))
+const AuditTab = lazy(() => import('./components/tabs').then(m => ({ default: m.AuditTab })))
 
 const tabPaths: Record<TabKey, string> = {
   overview: '/admin',
@@ -24,6 +25,7 @@ const tabPaths: Record<TabKey, string> = {
   probe: '/admin/probe',
   logs: '/admin/logs',
   benchmark: '/admin/benchmark',
+  audit: '/admin/audit',
 }
 
 function inferTab(pathname: string): TabKey {
@@ -34,6 +36,7 @@ function inferTab(pathname: string): TabKey {
   if (pathname.endsWith('/probe')) return 'probe'
   if (pathname.endsWith('/logs')) return 'logs'
   if (pathname.endsWith('/benchmark')) return 'benchmark'
+  if (pathname.endsWith('/audit')) return 'audit'
   return 'overview'
 }
 
@@ -86,6 +89,7 @@ export function App() {
       { key: 'history' as TabKey, label: t('tabs.history') },
       { key: 'probe' as TabKey, label: t('tabs.probe') },
       { key: 'logs' as TabKey, label: t('tabs.logs') },
+      { key: 'audit' as TabKey, label: t('tabs.audit') },
     ],
     [t]
   )
@@ -508,6 +512,12 @@ export function App() {
             <h2>{t('logs.title')}</h2>
             <LogViewer maxEntries={1000} />
           </section>
+        )
+      case 'audit':
+        return (
+          <Suspense fallback={fallback}>
+            <AuditTab enabled={authed} />
+          </Suspense>
         )
       default:
         return null

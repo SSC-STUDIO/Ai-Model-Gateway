@@ -23,12 +23,35 @@ const (
 
 	// signatureSep separates payload from signature in the cookie value.
 	signatureSep = "."
+
+	// payloadFieldSep separates role from timestamp in the cookie payload.
+	payloadFieldSep = ":"
+
+	// RoleAdmin grants full read-write access.
+	RoleAdmin = "admin"
+
+	// RoleViewer grants read-only access.
+	RoleViewer = "viewer"
 )
+
+// AuthInfo holds the resolved identity from a successful authentication.
+type AuthInfo struct {
+	Name string
+	Role string
+}
+
+// TokenEntry is a token the authenticator knows about.
+type TokenEntry struct {
+	Name  string
+	Token string
+	Role  string
+}
 
 // Authenticator validates admin requests via signed cookie or Bearer token.
 type Authenticator struct {
 	bootstrapToken   string
 	cookieSigningKey []byte
+	tokens           []TokenEntry
 }
 
 // New creates an Authenticator with the given bootstrap token and signing key.
@@ -39,13 +62,20 @@ func New(bootstrapToken string, cookieSigningKey string) *Authenticator {
 	}
 }
 
-// Login validates the provided token against the bootstrap token.
-// On success it sets a signed cookie on the response and returns nil.
+// SetTokens configures the additional named tokens.
+func (a *Authenticator) SetTokens(tokens []TokenEntry) {
+	a.tokens = tokens
+}
+
+// Login validates the provided token against bootstrap_token and the tokens
+// array. On success it sets a signed cookie (encoding the role) and returns
+// the resolved AuthInfo.
 func (a *Authenticator) Login(w http.ResponseWriter, token string) error {
-	if !hmac.Equal([]byte(token), []byte(a.bootstrapToken)) {
+	info := a.resolveToken(token)
+	if info == nil {
 		return errors.New("invalid token")
 	}
-	payload := a.newPayload()
+	payload := a.newPayload(info.Role)
 	signed := a.sign(payload)
 	http.SetCookie(w, &http.Cookie{
 		Name:     CookieName,
@@ -57,6 +87,12 @@ func (a *Authenticator) Login(w http.ResponseWriter, token string) error {
 		SameSite: http.SameSiteStrictMode,
 	})
 	return nil
+}
+
+// LoginInfo validates a token and returns the AuthInfo without setting a
+// cookie. Returns nil when the token is invalid.
+func (a *Authenticator) LoginInfo(token string) *AuthInfo {
+	return a.resolveToken(token)
 }
 
 // Logout clears the authentication cookie.
@@ -73,34 +109,53 @@ func (a *Authenticator) Logout(w http.ResponseWriter) {
 }
 
 // Authenticate checks the request for a valid signed cookie or Bearer token.
-// Returns nil on success.
-func (a *Authenticator) Authenticate(r *http.Request) error {
+// Returns the AuthInfo on success, or an error.
+func (a *Authenticator) Authenticate(r *http.Request) (*AuthInfo, error) {
 	// Try Bearer token first (for CLI / programmatic access).
 	if bearer := extractBearer(r); bearer != "" {
-		if hmac.Equal([]byte(bearer), []byte(a.bootstrapToken)) {
-			return nil
+		info := a.resolveToken(bearer)
+		if info != nil {
+			return info, nil
 		}
-		return errors.New("invalid bearer token")
+		return nil, errors.New("invalid bearer token")
 	}
 
 	// Try signed cookie.
 	cookie, err := r.Cookie(CookieName)
 	if err != nil {
-		return errors.New("no authentication credential")
+		return nil, errors.New("no authentication credential")
 	}
-	if err := a.verify(cookie.Value); err != nil {
-		return fmt.Errorf("invalid cookie: %w", err)
+	role, err := a.verify(cookie.Value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid cookie: %w", err)
 	}
-	return nil
+	return &AuthInfo{Name: "cookie-user", Role: role}, nil
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-// newPayload returns "issued_at_unix" as the cookie payload.
-func (a *Authenticator) newPayload() string {
-	return strconv.FormatInt(time.Now().Unix(), 10)
+// resolveToken checks the token against bootstrap_token and the tokens array.
+func (a *Authenticator) resolveToken(token string) *AuthInfo {
+	if hmac.Equal([]byte(token), []byte(a.bootstrapToken)) {
+		return &AuthInfo{Name: "bootstrap", Role: RoleAdmin}
+	}
+	for _, t := range a.tokens {
+		if hmac.Equal([]byte(token), []byte(t.Token)) {
+			role := t.Role
+			if role != RoleAdmin && role != RoleViewer {
+				role = RoleViewer
+			}
+			return &AuthInfo{Name: t.Name, Role: role}
+		}
+	}
+	return nil
+}
+
+// newPayload returns "role:issued_at_unix" as the cookie payload.
+func (a *Authenticator) newPayload(role string) string {
+	return role + payloadFieldSep + strconv.FormatInt(time.Now().Unix(), 10)
 }
 
 // sign returns "payload.base64(hmac-sha256(payload))"
@@ -112,11 +167,12 @@ func (a *Authenticator) sign(payload string) string {
 }
 
 // verify checks that the cookie value has a valid HMAC signature and is
-// not expired (older than cookieMaxAge).
-func (a *Authenticator) verify(value string) error {
+// not expired (older than cookieMaxAge). Returns the role encoded in the
+// cookie payload.
+func (a *Authenticator) verify(value string) (string, error) {
 	parts := strings.SplitN(value, signatureSep, 2)
 	if len(parts) != 2 {
-		return errors.New("malformed cookie")
+		return "", errors.New("malformed cookie")
 	}
 	payload, sig := parts[0], parts[1]
 
@@ -125,18 +181,29 @@ func (a *Authenticator) verify(value string) error {
 	mac.Write([]byte(payload))
 	expectedSig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	if !hmac.Equal([]byte(sig), []byte(expectedSig)) {
-		return errors.New("signature mismatch")
+		return "", errors.New("signature mismatch")
+	}
+
+	// Parse "role:timestamp" or legacy "timestamp" payload.
+	role := RoleAdmin
+	tsStr := payload
+	if idx := strings.LastIndex(payload, payloadFieldSep); idx >= 0 {
+		role = payload[:idx]
+		tsStr = payload[idx+1:]
 	}
 
 	// Check expiry.
-	issued, err := strconv.ParseInt(payload, 10, 64)
+	issued, err := strconv.ParseInt(tsStr, 10, 64)
 	if err != nil {
-		return errors.New("invalid payload timestamp")
+		return "", errors.New("invalid payload timestamp")
 	}
 	if time.Since(time.Unix(issued, 0)) > cookieMaxAge {
-		return errors.New("cookie expired")
+		return "", errors.New("cookie expired")
 	}
-	return nil
+	if role != RoleAdmin && role != RoleViewer {
+		role = RoleAdmin
+	}
+	return role, nil
 }
 
 // extractBearer extracts the Bearer token from the Authorization header.

@@ -7,7 +7,8 @@
     "history": "Verlauf",
     "probe": "Probe",
     "logs": "Protokolle",
-    "benchmark": "Benchmark"
+    "benchmark": "Benchmark",
+    "audit": "Prüfprotokoll"
   },
   "header": {
     "title": "AI Model Gateway Verwaltung",
@@ -192,5 +193,20 @@
     "requests": "Anfragen",
     "tokens": "Tokens",
     "noData": "Keine Benchmark-Daten für den ausgewählten Zeitraum verfügbar"
+  },
+  "audit": {
+    "title": "Prüfprotokoll",
+    "loading": "Prüfprotokoll wird geladen...",
+    "empty": "Keine Prüfeinträge vorhanden",
+    "time": "Zeit",
+    "action": "Aktion",
+    "actor": "Akteur",
+    "role": "Rolle",
+    "details": "Details",
+    "ip": "IP-Adresse",
+    "prev": "Zurück",
+    "next": "Weiter",
+    "page": "Seite",
+    "totalEntries": "Einträge"
   }
 }

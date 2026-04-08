@@ -1,6 +1,6 @@
 // Shared TypeScript types for AI Model Gateway Admin UI
 
-export type TabKey = 'overview' | 'telemetry' | 'timeseries' | 'settings' | 'history' | 'probe' | 'logs' | 'benchmark'
+export type TabKey = 'overview' | 'telemetry' | 'timeseries' | 'settings' | 'history' | 'probe' | 'logs' | 'benchmark' | 'audit'
 export type AnyRecord = Record<string, unknown>
 
 export interface TimeSeriesPoint {
@@ -160,4 +160,19 @@ export interface ProbeProvider {
   models: string
   timeout_ms: string
   enabled: boolean
+}
+
+export interface AuditEntry {
+  id: number
+  timestamp: string
+  action: string
+  actor: string
+  role: string
+  details: string
+  source_ip: string
+}
+
+export interface AuditLogResponse {
+  items: AuditEntry[]
+  total: number
 }

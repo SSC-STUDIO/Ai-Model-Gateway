@@ -7,7 +7,8 @@
     "history": "历史",
     "probe": "探测",
     "logs": "日志",
-    "benchmark": "基准测试"
+    "benchmark": "基准测试",
+    "audit": "审计日志"
   },
   "header": {
     "title": "AI Model Gateway 管理后台",
@@ -192,5 +193,20 @@
     "requests": "请求数",
     "tokens": "Token数",
     "noData": "所选时间范围内没有可用的基准测试数据"
+  },
+  "audit": {
+    "title": "审计日志",
+    "loading": "正在加载审计日志...",
+    "empty": "暂无审计记录",
+    "time": "时间",
+    "action": "操作",
+    "actor": "操作者",
+    "role": "角色",
+    "details": "详情",
+    "ip": "IP 地址",
+    "prev": "上一页",
+    "next": "下一页",
+    "page": "页",
+    "totalEntries": "条记录"
   }
 }

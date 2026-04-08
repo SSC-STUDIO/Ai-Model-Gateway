@@ -26,6 +26,13 @@ func mountAdminRoutes(
 	}
 
 	authenticator := auth.New(cfg.Admin.BootstrapToken, cfg.Admin.CookieSigningKey)
+	if len(cfg.Admin.Tokens) > 0 {
+		entries := make([]auth.TokenEntry, len(cfg.Admin.Tokens))
+		for i, t := range cfg.Admin.Tokens {
+			entries[i] = auth.TokenEntry{Name: t.Name, Token: t.Token, Role: t.Role}
+		}
+		authenticator.SetTokens(entries)
+	}
 	eventBus := adminapi.NewEventBus(50)
 	deps := adminapi.Deps{
 		Auth:      authenticator,

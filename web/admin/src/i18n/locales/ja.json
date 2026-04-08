@@ -7,7 +7,8 @@
     "history": "履歴",
     "probe": "プローブ",
     "logs": "ログ",
-    "benchmark": "ベンチマーク"
+    "benchmark": "ベンチマーク",
+    "audit": "監査ログ"
   },
   "header": {
     "title": "AI Model Gateway 管理台",
@@ -192,5 +193,20 @@
     "requests": "リクエスト数",
     "tokens": "トークン数",
     "noData": "選択された時間範囲で利用可能なベンチマークデータがありません"
+  },
+  "audit": {
+    "title": "監査ログ",
+    "loading": "監査ログを読み込み中...",
+    "empty": "監査エントリーがありません",
+    "time": "時間",
+    "action": "アクション",
+    "actor": "操作者",
+    "role": "ロール",
+    "details": "詳細",
+    "ip": "IPアドレス",
+    "prev": "前へ",
+    "next": "次へ",
+    "page": "ページ",
+    "totalEntries": "件"
   }
 }

@@ -68,6 +68,17 @@ type cachedResult struct {
 
 var sqlIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// AuditEntry represents a single admin audit log row.
+type AuditEntry struct {
+	ID        int64  `json:"id"`
+	Timestamp string `json:"timestamp"`
+	Action    string `json:"action"`
+	Actor     string `json:"actor"`
+	Role      string `json:"role"`
+	Details   string `json:"details"`
+	SourceIP  string `json:"source_ip"`
+}
+
 // New opens (or creates) the SQLite database at cfg.SQLitePath, applies
 // WAL pragmas, creates the schema, and starts the background writer.
 func New(cfg core.TelemetryConfig) (*Store, error) {
@@ -206,6 +217,24 @@ CREATE TABLE IF NOT EXISTS agg_minutes (
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("init schema: %w", err)
 	}
+
+	auditSchema := `
+CREATE TABLE IF NOT EXISTS audit_log (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp TEXT    NOT NULL,
+  action    TEXT    NOT NULL,
+  actor     TEXT    NOT NULL DEFAULT '',
+  role      TEXT    NOT NULL DEFAULT '',
+  details   TEXT    NOT NULL DEFAULT '',
+  source_ip TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+`
+	if _, err := s.db.Exec(auditSchema); err != nil {
+		return fmt.Errorf("init audit schema: %w", err)
+	}
+
 	if err := s.ensureColumn("requests", "path", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -1190,6 +1219,64 @@ func validColumnType(value string) bool {
 	default:
 		return false
 	}
+}
+
+// WriteAuditLog inserts an audit log entry synchronously.
+func (s *Store) WriteAuditLog(ctx context.Context, entry AuditEntry) error {
+	if entry.Timestamp == "" {
+		entry.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO audit_log (timestamp, action, actor, role, details, source_ip) VALUES (?, ?, ?, ?, ?, ?)`,
+		entry.Timestamp, entry.Action, entry.Actor, entry.Role, entry.Details, entry.SourceIP,
+	)
+	if err != nil {
+		return fmt.Errorf("write audit log: %w", err)
+	}
+	return nil
+}
+
+// AuditLogResult holds a page of audit entries with the total count.
+type AuditLogResult struct {
+	Items []AuditEntry `json:"items"`
+	Total int          `json:"total"`
+}
+
+// QueryAuditLog returns paginated audit entries (newest first) and total count.
+func (s *Store) QueryAuditLog(limit, offset int) AuditLogResult {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM audit_log`).Scan(&total); err != nil {
+		return AuditLogResult{}
+	}
+
+	rows, err := s.db.Query(
+		`SELECT id, timestamp, action, actor, role, details, source_ip FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?`,
+		limit, offset,
+	)
+	if err != nil {
+		return AuditLogResult{Total: total}
+	}
+	defer rows.Close()
+
+	var items []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		if err := rows.Scan(&e.ID, &e.Timestamp, &e.Action, &e.Actor, &e.Role, &e.Details, &e.SourceIP); err != nil {
+			continue
+		}
+		items = append(items, e)
+	}
+	if items == nil {
+		items = []AuditEntry{}
+	}
+	return AuditLogResult{Items: items, Total: total}
 }
 
 func parseTimestamp(value string) time.Time {
