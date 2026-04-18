@@ -4,6 +4,74 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with a lightweight structure suitable for a small operational project.
 
+## [Unreleased]
+
+### Added
+
+- **协议转换层**: OpenAI ↔ Claude 双向协议转换
+  - OpenAI 请求 → Claude 请求转换
+  - Claude 响应 → OpenAI 响应转换
+  - Claude 请求 → OpenAI 请求转换
+  - OpenAI 响应 → Claude 响应转换
+  - 流式 SSE 事件转换
+  - 工具调用映射（tools、functions）
+  - 模型名称映射（gpt-4 ↔ claude-3-opus 等）
+  - 测试覆盖率：85.6%
+
+- **独立 CLI 工具**: `gateway-cli` 命令行管理工具
+  - `gateway-cli config show` - 显示当前配置
+  - `gateway-cli provider list` - 列出所有 providers
+  - `gateway-cli provider test <name>` - 测试 provider 连接
+  - `gateway-cli telemetry events` - 查询事件日志
+  - `gateway-cli publish history` - 查看配置发布历史
+  - `gateway-cli publish rollback <revision>` - 回滚配置
+  - `gateway-cli test convert` - 测试协议转换
+  - `gateway-cli version` - 显示版本
+  - 支持 text 和 JSON 输出格式
+  - 测试覆盖率：80%+
+
+- **控制面 API 客户端**: 完整的 HTTP 客户端实现
+  - 11 个 API 方法覆盖所有控制面端点
+  - 20+ 类型定义
+  - Bearer token 认证
+  - 上下文支持和超时处理
+
+### Changed
+
+- CLI 现在支持 `-format text|json` 输出格式化
+- 增强错误消息，提供更好的上下文信息
+
+### Technical Details
+
+- 新增 `internal/gateway/converter` 包用于协议转换
+- 增强 `internal/cli/client.go` 完整 API 客户端
+- 所有新代码遵循 Go 最佳实践
+- 完整测试套件，包含竞态检测
+
+## [1.1.1] — 2026-04-17
+
+### Changed
+
+- **Admin UI 质感全面升级**：骨架屏加载动画、精美空状态、Tab 切换过渡、卡片交错进入动画
+- **微交互增强**：按钮按下缩放、Tab 悬停下划线光效、SSE 状态脉冲呼吸灯、Metric 数值 hover 光晕
+- **全局滚动条美化**：自定义滚动条，亮色/暗色主题自适应
+- **焦点环增强**：输入框聚焦外发光，提升可访问性感知
+- **玻璃拟态细节**：Panel 顶部光泽线、Topbar 渐变边框、卡片 hover 边框发光
+- **Switch 开关组件**：全新精致的 toggle switch，替换所有原生 checkbox
+- **全局 Toast 通知系统**：右上角堆叠式通知，支持 4 种类型，带图标和滑入动画
+- **数值更新闪光**：Overview/Telemetry metric 数值变化时触发高亮闪光
+- **折线图发光滤镜**：SVG filter 让折线带柔和光晕
+- **背景浮动光斑**：3 个缓慢漂移的径向渐变光球
+- **按钮 Loading Spinner**：busy 状态显示旋转动画替代文字变化
+- **表单输入框图标**：ProbeTab 关键输入框添加前缀图标（🏷️🔗🔒🤖等）
+- **复制到剪贴板**：Probe 结果区和 Settings JSON 编辑器添加一键复制按钮
+- **diff 行交错进入动画**：历史 diff 每行依次淡入
+- **表格行 hover 微移**：悬停时轻微右移增强交互感
+
+### Fixed
+
+- 暗色主题下空状态图标和背景渐变的适配
+
 ## [1.1.0] — 2026-04-07
 
 ### Added
