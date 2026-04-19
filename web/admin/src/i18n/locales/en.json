@@ -147,6 +147,32 @@
     "jsonPlaceholder": "Paste JSON configuration here...",
     "applyChanges": "Apply Changes",
     "validate": "Validate",
+    "previewYaml": "Preview YAML",
+    "routing": {
+      "title": "Routing Strategy",
+      "strategy": "Strategy",
+      "healthWeighted": "Health Weighted Round Robin",
+      "roundRobin": "Round Robin",
+      "leastConnections": "Least Connections",
+      "random": "Random",
+      "maxRetries": "Max Retries",
+      "healthChecks": "Health Checks",
+      "stickySessions": "Sticky Sessions"
+    },
+    "providers": {
+      "title": "Providers",
+      "details": "Details",
+      "weight": "Weight",
+      "models": "models",
+      "baseUrl": "Base URL",
+      "modelMappings": "Model Mappings",
+      "addModel": "Add Model",
+      "publicModel": "Public Model Name",
+      "upstreamModel": "Upstream Model Name",
+      "noModels": "No model mappings",
+      "selectProvider": "Select a Provider",
+      "selectProviderHint": "Click a provider on the left to view details"
+    },
     "visualEditor": "Visual Editor",
     "visualEditorComingSoon": "Visual Editor Coming Soon",
     "visualEditorHint": "Use visual interface to edit routing rules, provider configs and model mappings"

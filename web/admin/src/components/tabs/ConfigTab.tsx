@@ -35,6 +35,28 @@ const SUB_TABS: { key: ConfigSubTab; icon: string }[] = [
   { key: 'history', icon: '📋' },
 ]
 
+// Visual editor types
+interface ProviderConfig {
+  id: string
+  name: string
+  base_url: string
+  enabled: boolean
+  weight: number
+  models: ModelMapping[]
+}
+
+interface ModelMapping {
+  public_model: string
+  upstream_model: string
+}
+
+interface RoutingConfig {
+  strategy: string
+  max_retries: number
+  health_enabled: boolean
+  sticky_sessions_enabled: boolean
+}
+
 const ConfigTabComponent = ({
   controlConfig,
   historyPayload,
@@ -51,6 +73,19 @@ const ConfigTabComponent = ({
   const { t } = useI18n()
   const [subTab, setSubTab] = useState<ConfigSubTab>('current')
   const [jsonValue, setJsonValue] = useState('')
+
+  // Visual editor state
+  const [providers, setProviders] = useState<ProviderConfig[]>([
+    { id: 'openai', name: 'OpenAI', base_url: 'https://api.openai.com', enabled: true, weight: 100, models: [] },
+    { id: 'anthropic', name: 'Anthropic', base_url: 'https://api.anthropic.com', enabled: true, weight: 100, models: [] },
+  ])
+  const [routing, setRouting] = useState<RoutingConfig>({
+    strategy: 'health_weighted_rr',
+    max_retries: 2,
+    health_enabled: true,
+    sticky_sessions_enabled: true,
+  })
+  const [activeProviderId, setActiveProviderId] = useState<string | null>(null)
 
   const revision = controlConfig?.revision
   const policy = controlConfig?.policy
@@ -82,6 +117,58 @@ const ConfigTabComponent = ({
   const handleJsonChange = useCallback((e: Event) => {
     setJsonValue((e.currentTarget as HTMLTextAreaElement).value)
   }, [])
+
+  // Visual editor handlers
+  const handleRoutingChange = useCallback((key: keyof RoutingConfig, value: string | number | boolean) => {
+    setRouting((prev) => ({ ...prev, [key]: value }))
+  }, [])
+
+  const handleProviderToggle = useCallback((id: string) => {
+    setProviders((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p))
+    )
+  }, [])
+
+  const handleProviderWeightChange = useCallback((id: string, weight: number) => {
+    setProviders((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, weight } : p))
+    )
+  }, [])
+
+  const handleAddModel = useCallback((providerId: string) => {
+    setProviders((prev) =>
+      prev.map((p) =>
+        p.id === providerId
+          ? { ...p, models: [...p.models, { public_model: '', upstream_model: '' }] }
+          : p
+      )
+    )
+  }, [])
+
+  const handleModelChange = useCallback((providerId: string, index: number, field: 'public_model' | 'upstream_model', value: string) => {
+    setProviders((prev) =>
+      prev.map((p) =>
+        p.id === providerId
+          ? { ...p, models: p.models.map((m, i) => (i === index ? { ...m, [field]: value } : m)) }
+          : p
+      )
+    )
+  }, [])
+
+  const handleRemoveModel = useCallback((providerId: string, index: number) => {
+    setProviders((prev) =>
+      prev.map((p) =>
+        p.id === providerId
+          ? { ...p, models: p.models.filter((_, i) => i !== index) }
+          : p
+      )
+    )
+  }, [])
+
+  const activeProvider = useMemo(
+    () => providers.find((p) => p.id === activeProviderId),
+    [providers, activeProviderId]
+  )
 
   const renderSubTab = () => {
     switch (subTab) {
@@ -230,14 +317,158 @@ const ConfigTabComponent = ({
 
       case 'visual':
         return (
-          <div class="config-section">
-            <h3>{t('config.visualEditor')}</h3>
-            <div class="visual-config-placeholder">
-              <div class="empty-state-box">
-                <div class="empty-state-icon">🎨</div>
-                <p class="empty-state-title">{t('config.visualEditorComingSoon')}</p>
-                <p class="empty-state-hint">{t('config.visualEditorHint')}</p>
+          <div class="config-section visual-config">
+            <div class="visual-config-grid">
+              {/* Routing Strategy */}
+              <div class="visual-config-card">
+                <h4>{t('config.routing.title')}</h4>
+                <div class="visual-form-group">
+                  <label>{t('config.routing.strategy')}</label>
+                  <select
+                    value={routing.strategy}
+                    onChange={(e) => handleRoutingChange('strategy', (e.currentTarget as HTMLSelectElement).value)}
+                  >
+                    <option value="health_weighted_rr">{t('config.routing.healthWeighted')}</option>
+                    <option value="round_robin">{t('config.routing.roundRobin')}</option>
+                    <option value="least_connections">{t('config.routing.leastConnections')}</option>
+                    <option value="random">{t('config.routing.random')}</option>
+                  </select>
+                </div>
+                <div class="visual-form-group">
+                  <label>{t('config.routing.maxRetries')}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={routing.max_retries}
+                    onChange={(e) => handleRoutingChange('max_retries', parseInt((e.currentTarget as HTMLInputElement).value) || 0)}
+                  />
+                </div>
+                <div class="visual-form-group visual-form-row">
+                  <label class="visual-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={routing.health_enabled}
+                      onChange={(e) => handleRoutingChange('health_enabled', (e.currentTarget as HTMLInputElement).checked)}
+                    />
+                    <span>{t('config.routing.healthChecks')}</span>
+                  </label>
+                  <label class="visual-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={routing.sticky_sessions_enabled}
+                      onChange={(e) => handleRoutingChange('sticky_sessions_enabled', (e.currentTarget as HTMLInputElement).checked)}
+                    />
+                    <span>{t('config.routing.stickySessions')}</span>
+                  </label>
+                </div>
               </div>
+
+              {/* Providers */}
+              <div class="visual-config-card">
+                <h4>{t('config.providers.title')}</h4>
+                <div class="provider-list">
+                  {providers.map((provider) => (
+                    <div
+                      key={provider.id}
+                      class={`provider-item ${activeProviderId === provider.id ? 'active' : ''} ${!provider.enabled ? 'disabled' : ''}`}
+                      onClick={() => setActiveProviderId(provider.id)}
+                    >
+                      <div class="provider-item-header">
+                        <span class="provider-name">{provider.name}</span>
+                        <button
+                          type="button"
+                          class={`provider-toggle ${provider.enabled ? 'enabled' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleProviderToggle(provider.id)
+                          }}
+                        >
+                          {provider.enabled ? '✓' : '○'}
+                        </button>
+                      </div>
+                      <div class="provider-weight">
+                        <label>{t('config.providers.weight')}</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="200"
+                          value={provider.weight}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => handleProviderWeightChange(provider.id, parseInt((e.currentTarget as HTMLInputElement).value))}
+                        />
+                        <span>{provider.weight}</span>
+                      </div>
+                      <div class="provider-models-count">
+                        {provider.models.length} {t('config.providers.models')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Provider Details */}
+              <div class="visual-config-card provider-details-card">
+                <h4>{activeProvider ? `${activeProvider.name} ${t('config.providers.details')}` : t('config.providers.selectProvider')}</h4>
+                {activeProvider ? (
+                  <>
+                    <div class="visual-form-group">
+                      <label>{t('config.providers.baseUrl')}</label>
+                      <input type="text" value={activeProvider.base_url} readOnly />
+                    </div>
+                    <div class="model-mappings">
+                      <div class="model-mappings-header">
+                        <span>{t('config.providers.modelMappings')}</span>
+                        <button type="button" class="btn-small" onClick={() => handleAddModel(activeProvider.id)}>
+                          + {t('config.providers.addModel')}
+                        </button>
+                      </div>
+                      {activeProvider.models.length === 0 ? (
+                        <div class="no-models">{t('config.providers.noModels')}</div>
+                      ) : (
+                        <div class="model-list">
+                          {activeProvider.models.map((model, index) => (
+                            <div key={index} class="model-item">
+                              <input
+                                type="text"
+                                placeholder={t('config.providers.publicModel')}
+                                value={model.public_model}
+                                onChange={(e) => handleModelChange(activeProvider.id, index, 'public_model', (e.currentTarget as HTMLInputElement).value)}
+                              />
+                              <span class="model-arrow">→</span>
+                              <input
+                                type="text"
+                                placeholder={t('config.providers.upstreamModel')}
+                                value={model.upstream_model}
+                                onChange={(e) => handleModelChange(activeProvider.id, index, 'upstream_model', (e.currentTarget as HTMLInputElement).value)}
+                              />
+                              <button
+                                type="button"
+                                class="btn-icon btn-remove"
+                                onClick={() => handleRemoveModel(activeProvider.id, index)}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div class="select-provider-hint">{t('config.providers.selectProviderHint')}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div class="visual-config-actions">
+              <button type="button" class="primary" disabled={busy}>
+                {t('config.applyChanges')}
+              </button>
+              <button type="button" disabled={busy}>
+                {t('config.previewYaml')}
+              </button>
             </div>
           </div>
         )

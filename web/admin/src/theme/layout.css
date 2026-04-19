@@ -89,8 +89,12 @@
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
+}
+
+.status-badge {
+  white-space: nowrap;
 }
 
 .header-controls {
