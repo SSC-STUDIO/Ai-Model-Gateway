@@ -66,10 +66,13 @@ func (b adminFrontendBundle) handlers() (http.HandlerFunc, http.Handler) {
 		http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(b.index))
 	})
 	assets := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Handle admin routes
 		if r.URL.Path == "/admin" || r.URL.Path == "/admin/" {
 			root.ServeHTTP(w, r)
 			return
 		}
+
+		// Handle static assets under /admin/
 		if strings.HasPrefix(r.URL.Path, "/admin/assets/") ||
 			r.URL.Path == "/admin/icon.svg" ||
 			r.URL.Path == "/admin/favicon.svg" ||
@@ -77,6 +80,16 @@ func (b adminFrontendBundle) handlers() (http.HandlerFunc, http.Handler) {
 			b.static.ServeHTTP(w, r)
 			return
 		}
+
+		// Handle root-level static resources (for PWA manifest icons)
+		if r.URL.Path == "/icon.svg" ||
+			r.URL.Path == "/favicon.svg" ||
+			r.URL.Path == "/manifest.json" {
+			// For root-level assets, serve directly from embedded FS without strip
+			http.FileServer(http.FS(embeddedAdminFiles)).ServeHTTP(w, r)
+			return
+		}
+
 		root.ServeHTTP(w, r)
 	})
 	return root, assets

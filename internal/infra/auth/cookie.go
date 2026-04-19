@@ -208,7 +208,7 @@ func (a *Authenticator) verify(value string) (string, error) {
 		return "", errors.New("cookie expired")
 	}
 	if role != RoleAdmin && role != RoleViewer {
-		role = RoleAdmin
+		role = RoleViewer
 	}
 	return role, nil
 }

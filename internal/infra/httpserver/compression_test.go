@@ -38,27 +38,6 @@ func TestAcceptsGzip(t *testing.T) {
 	}
 }
 
-func TestParseGzipLevel(t *testing.T) {
-	tests := []struct {
-		level string
-		want  int
-	}{
-		{"fast", 1},
-		{"FAST", 1},
-		{"best", 9},
-		{"BEST", 9},
-		{"default", gzip.DefaultCompression},
-		{"", gzip.DefaultCompression},
-		{"unknown", gzip.DefaultCompression},
-	}
-
-	for _, tc := range tests {
-		got := parseGzipLevel(tc.level)
-		if got != tc.want {
-			t.Errorf("parseGzipLevel(%q) = %d, want %d", tc.level, got, tc.want)
-		}
-	}
-}
 
 func TestCompressionMiddleware_CompressesLargeResponse(t *testing.T) {
 	body := largeBody(50)
@@ -68,7 +47,7 @@ func TestCompressionMiddleware_CompressesLargeResponse(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(100, "default")
+	m := NewCompressionMiddleware(100, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -101,7 +80,7 @@ func TestCompressionMiddleware_SkipsSmallResponse(t *testing.T) {
 		io.WriteString(w, "small")
 	})
 
-	m := NewCompressionMiddleware(100, "default")
+	m := NewCompressionMiddleware(100, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -123,7 +102,7 @@ func TestCompressionMiddleware_SkipsSSE(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(100, "default")
+	m := NewCompressionMiddleware(100, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -145,7 +124,7 @@ func TestCompressionMiddleware_NoGzipAcceptEncoding(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(100, "default")
+	m := NewCompressionMiddleware(100, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	rec := httptest.NewRecorder()
 
@@ -166,7 +145,7 @@ func TestCompressionMiddleware_StatusCodePreserved(t *testing.T) {
 		io.WriteString(w, `{"error":"not found"}`)
 	})
 
-	m := NewCompressionMiddleware(1, "default")
+	m := NewCompressionMiddleware(1, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -187,7 +166,7 @@ func TestCompressionMiddleware_DefaultStatusCode(t *testing.T) {
 		io.WriteString(w, largeBody(50))
 	})
 
-	m := NewCompressionMiddleware(1, "default")
+	m := NewCompressionMiddleware(1, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -206,7 +185,7 @@ func TestCompressionMiddleware_HeadersPreserved(t *testing.T) {
 		io.WriteString(w, largeBody(50))
 	})
 
-	m := NewCompressionMiddleware(1, "default")
+	m := NewCompressionMiddleware(1, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -225,7 +204,7 @@ func TestCompressionMiddleware_FastLevel(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(1, "fast")
+	m := NewCompressionMiddleware(1, 1)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -256,7 +235,7 @@ func TestCompressionMiddleware_BestLevel(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(1, "best")
+	m := NewCompressionMiddleware(1, 9)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -287,7 +266,7 @@ func TestCompressionMiddleware_ExactMinBytes(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(100, "default")
+	m := NewCompressionMiddleware(100, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -306,7 +285,7 @@ func TestCompressionMiddleware_OneBelowMinBytes(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(100, "default")
+	m := NewCompressionMiddleware(100, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -328,7 +307,7 @@ func TestCompressionMiddleware_MultipleWrites(t *testing.T) {
 		io.WriteString(w, largeBody(20))
 	})
 
-	m := NewCompressionMiddleware(100, "default")
+	m := NewCompressionMiddleware(100, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -359,7 +338,7 @@ func TestCompressionMiddleware_EmptyBody(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	m := NewCompressionMiddleware(1, "default")
+	m := NewCompressionMiddleware(1, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()
@@ -378,7 +357,7 @@ func TestCompressionMiddleware_CompressedSizeSmaller(t *testing.T) {
 		io.WriteString(w, body)
 	})
 
-	m := NewCompressionMiddleware(1, "default")
+	m := NewCompressionMiddleware(1, 0)
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 	rec := httptest.NewRecorder()

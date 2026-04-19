@@ -641,7 +641,7 @@ func TestHandleChatCompletionReturnsCachedResponseOnSecondRequest(t *testing.T) 
 	snap := testGatewaySnapshot()
 	snap.RoutingPolicy.Cache = snapshot.CacheConfig{
 		Enabled:   true,
-		MaxSizeMB: 64,
+		MaxEntries: 64,
 		TTLSec:    300,
 	}
 
@@ -714,7 +714,7 @@ func TestHandleChatCompletionDoesNotCacheStreamRequests(t *testing.T) {
 	snap := testGatewaySnapshot()
 	snap.RoutingPolicy.Cache = snapshot.CacheConfig{
 		Enabled:   true,
-		MaxSizeMB: 64,
+		MaxEntries: 64,
 		TTLSec:    300,
 	}
 

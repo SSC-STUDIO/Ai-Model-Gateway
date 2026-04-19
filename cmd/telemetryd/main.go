@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	Version = "2.0.0-alpha"
+	Version = "1.2.0"
 )
 
 // Config is the bootstrap configuration for telemetryd.

@@ -107,6 +107,7 @@ type Provider struct {
 	SameRetries      int               `yaml:"same_retries"      json:"same_retries"`
 	Enabled          *bool             `yaml:"enabled"           json:"enabled"`
 	Headers          map[string]string `yaml:"headers"           json:"headers,omitempty"`
+	FallbackModels   []string          `yaml:"fallback_models"   json:"fallback_models,omitempty"`
 }
 
 // IsEnabled returns whether the provider is enabled (defaults to true).

@@ -2,6 +2,7 @@
 package compiler
 
 import (
+	crypto_rand "crypto/rand"
 	"fmt"
 	"net/url"
 	"strings"
@@ -247,6 +248,29 @@ func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
 			StatusCodeMin:   statusCodeMin,
 			MessageKeywords: append([]string(nil), cfg.Retry.MessageKeywords...),
 		},
+		RateLimit: snapshot.RateLimitConfig{
+			Enabled:           cfg.RateLimit.Enabled,
+			RequestsPerSecond: cfg.RateLimit.RequestsPerSecond,
+			Burst:             cfg.RateLimit.Burst,
+		},
+		Cache: snapshot.CacheConfig{
+			Enabled:    cfg.Cache.Enabled,
+			MaxEntries: cfg.Cache.MaxEntries,
+			TTLSec:     cfg.Cache.TTLSec,
+		},
+		Queue: snapshot.QueueConfig{
+			Enabled:         cfg.Queue.Enabled,
+			MaxConcurrent:   cfg.Queue.MaxConcurrent,
+			HighPriorityPct: cfg.Queue.HighPriorityPct,
+		},
+		KeyRotation: snapshot.KeyRotationConfig{
+			Enabled: cfg.KeyRotation.Enabled,
+		},
+		Compression: snapshot.CompressionConfig{
+			Enabled:      cfg.Compression.Enabled,
+			MinSizeBytes: cfg.Compression.MinSizeBytes,
+			Level:        cfg.Compression.Level,
+		},
 	}
 }
 
@@ -309,6 +333,7 @@ func compileProvider(provider core.Provider, index int) (snapshot.ProviderSnapsh
 			SameRetries:   provider.SameRetries,
 			ProviderClass: string(provider.ProviderClass),
 		},
+		FallbackModels: append([]string(nil), provider.FallbackModels...),
 	}, nil
 }
 
@@ -395,8 +420,10 @@ func generateSnapshotID() string {
 func randomSuffix() string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, 6)
+	buf := make([]byte, 6)
+	_, _ = crypto_rand.Read(buf)
 	for i := range b {
-		b[i] = chars[time.Now().Nanosecond()%len(chars)]
+		b[i] = chars[int(buf[i])%len(chars)]
 	}
 	return string(b)
 }

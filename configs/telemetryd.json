@@ -1,0 +1,1 @@
+{"ingest": "/run/user/1000/telemetry-ingest.sock", "query": "/run/user/1000/telemetry-query.sock", "data_dir": "data/telemetry"}

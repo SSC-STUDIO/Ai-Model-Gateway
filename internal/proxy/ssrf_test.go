@@ -77,15 +77,10 @@ func TestValidateURL(t *testing.T) {
 func TestValidateURLPathTraversal(t *testing.T) {
 	checker := NewSSRFChecker()
 
-	// Note: The current implementation does not block path traversal in URL paths
-	// This test documents the current behavior
-	// If you want to block path traversal, the SSRF checker needs to be updated
+	// Path traversal should be blocked
 	err := checker.ValidateURL("https://example.com/../../../etc/passwd")
-	// Currently path traversal is not blocked - this is a known limitation
-	if err != nil {
-		t.Logf("Path traversal was blocked: %v", err)
-	} else {
-		t.Log("Path traversal was not blocked (current behavior)")
+	if err == nil {
+		t.Error("Path traversal should be blocked")
 	}
 }
 

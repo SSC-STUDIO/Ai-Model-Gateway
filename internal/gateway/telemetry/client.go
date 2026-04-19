@@ -3,6 +3,7 @@ package telemetry
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log"
 	"net"
@@ -389,8 +390,10 @@ func generateBatchID() string {
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, n)
+	buf := make([]byte, n)
+	_, _ = rand.Read(buf)
 	for i := range b {
-		b[i] = letters[time.Now().Nanosecond()%len(letters)]
+		b[i] = letters[int(buf[i])%len(letters)]
 	}
 	return string(b)
 }

@@ -302,9 +302,9 @@ type RateLimitConfig struct {
 
 // CacheConfig contains cache configuration.
 type CacheConfig struct {
-	Enabled   bool `yaml:"enabled"    json:"enabled"`
-	MaxSizeMB int  `yaml:"max_size_mb" json:"max_size_mb"`
-	TTLSec    int  `yaml:"ttl_sec"    json:"ttl_sec"`
+	Enabled    bool `yaml:"enabled"     json:"enabled"`
+	MaxEntries int  `yaml:"max_entries" json:"max_entries"`
+	TTLSec     int  `yaml:"ttl_seconds" json:"ttl_seconds"`
 }
 
 // QueueConfig contains queue configuration.
@@ -321,9 +321,9 @@ type KeyRotationConfig struct {
 
 // CompressionConfig contains compression configuration.
 type CompressionConfig struct {
-	Enabled  bool   `yaml:"enabled"    json:"enabled"`
-	MinBytes int    `yaml:"min_bytes"  json:"min_bytes"`
-	Level    string `yaml:"level"      json:"level"`
+	Enabled      bool `yaml:"enabled"        json:"enabled"`
+	MinSizeBytes int  `yaml:"min_size_bytes" json:"min_size_bytes"`
+	Level        int  `yaml:"level"          json:"level"`
 }
 
 // CurrentSchemaVersion is the current snapshot schema version.

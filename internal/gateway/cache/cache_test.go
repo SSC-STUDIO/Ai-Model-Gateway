@@ -2,15 +2,14 @@ package cache
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 )
 
 func TestNewCacheAppliesDefaults(t *testing.T) {
 	c := NewCache(0, 0)
-	if c.maxBytes != 64*1024*1024 {
-		t.Fatalf("expected default 64 MB, got %d", c.maxBytes)
+	if c.maxItems != 1000 {
+		t.Fatalf("expected default 1000 items, got %d", c.maxItems)
 	}
 	if c.ttl != 300*time.Second {
 		t.Fatalf("expected default 300s TTL, got %v", c.ttl)
@@ -19,8 +18,8 @@ func TestNewCacheAppliesDefaults(t *testing.T) {
 
 func TestNewCacheUsesProvidedValues(t *testing.T) {
 	c := NewCache(10, 60)
-	if c.maxBytes != 10*1024*1024 {
-		t.Fatalf("expected 10 MB, got %d", c.maxBytes)
+	if c.maxItems != 10 {
+		t.Fatalf("expected 10 items, got %d", c.maxItems)
 	}
 	if c.ttl != 60*time.Second {
 		t.Fatalf("expected 60s TTL, got %v", c.ttl)
@@ -114,21 +113,20 @@ func TestDeleteNonexistent(t *testing.T) {
 }
 
 func TestLRUEviction(t *testing.T) {
-	// 1 MB cache, each entry is 256 KB.
-	c := NewCache(1, 60)
-	entrySize := 256 * 1024
+	// Cache with max 4 items
+	c := NewCache(4, 60)
 
 	// Fill cache: should hold exactly 4 entries.
 	for i := 0; i < 4; i++ {
 		key := fmt.Sprintf("key-%d", i)
-		c.Put(key, make([]byte, entrySize))
+		c.Put(key, []byte("value"))
 	}
 	if c.Len() != 4 {
 		t.Fatalf("expected 4 entries, got %d", c.Len())
 	}
 
 	// Adding a 5th should evict the oldest (key-0).
-	c.Put("key-4", make([]byte, entrySize))
+	c.Put("key-4", []byte("value"))
 	if c.Len() != 4 {
 		t.Fatalf("expected 4 entries after eviction, got %d", c.Len())
 	}
@@ -144,13 +142,12 @@ func TestLRUEviction(t *testing.T) {
 }
 
 func TestLRUPromotionOnGet(t *testing.T) {
-	// 1 MB cache, each entry is 256 KB (max 4 entries).
-	c := NewCache(1, 60)
-	entrySize := 256 * 1024
+	// Cache with max 3 items
+	c := NewCache(3, 60)
 
-	c.Put("old", make([]byte, entrySize))
-	c.Put("mid", make([]byte, entrySize))
-	c.Put("new", make([]byte, entrySize))
+	c.Put("old", []byte("value1"))
+	c.Put("mid", []byte("value2"))
+	c.Put("new", []byte("value3"))
 
 	// Accessing "old" promotes it to the front, making "mid" the LRU.
 	_, ok := c.Get("old")
@@ -160,8 +157,8 @@ func TestLRUPromotionOnGet(t *testing.T) {
 
 	// Adding two new entries: the first fits (total = 4), the second must
 	// evict the LRU entry, which is "mid" after "old" was promoted.
-	c.Put("extra1", make([]byte, entrySize))
-	c.Put("extra2", make([]byte, entrySize))
+	c.Put("extra1", []byte("v1"))
+	c.Put("extra2", []byte("v2"))
 
 	_, ok = c.Get("mid")
 	if ok {
@@ -173,22 +170,6 @@ func TestLRUPromotionOnGet(t *testing.T) {
 	}
 }
 
-func TestSizeTracking(t *testing.T) {
-	c := NewCache(1, 60)
-	val := []byte(strings.Repeat("x", 1024))
-	c.Put("a", val)
-	c.Put("b", val)
-
-	expected := int64(2 * 1024)
-	if c.SizeBytes() != expected {
-		t.Fatalf("expected %d bytes, got %d", expected, c.SizeBytes())
-	}
-
-	c.Delete("a")
-	if c.SizeBytes() != 1024 {
-		t.Fatalf("expected 1024 bytes after delete, got %d", c.SizeBytes())
-	}
-}
 
 func TestMakeKeyDeterministic(t *testing.T) {
 	c := NewCache(1, 60)

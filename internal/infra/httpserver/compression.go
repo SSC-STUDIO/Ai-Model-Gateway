@@ -32,25 +32,23 @@ type compressionResponseWriter struct {
 
 // NewCompressionMiddleware creates a compression middleware.
 // minBytes sets the minimum response body size to compress.
-// level configures the gzip compression level: "fast" (1), "default" (-1),
-// "best" (9). Any other value falls back to default.
-func NewCompressionMiddleware(minBytes int, level string) *CompressionMiddleware {
+// level is the gzip compression level (0-9, or -1 for default).
+func NewCompressionMiddleware(minBytes int, level int) *CompressionMiddleware {
 	return &CompressionMiddleware{
 		minBytes:  minBytes,
-		gzipLevel: parseGzipLevel(level),
+		gzipLevel: normalizeGzipLevel(level),
 	}
 }
 
-// parseGzipLevel maps a human-readable level name to a gzip constant.
-func parseGzipLevel(level string) int {
-	switch strings.ToLower(level) {
-	case "fast":
-		return gzip.BestSpeed
-	case "best":
-		return gzip.BestCompression
-	default:
+// normalizeGzipLevel ensures the level is valid for gzip.
+func normalizeGzipLevel(level int) int {
+	if level == 0 {
 		return gzip.DefaultCompression
 	}
+	if level < gzip.BestSpeed || level > gzip.BestCompression {
+		return gzip.DefaultCompression
+	}
+	return level
 }
 
 // Wrap returns an http.Handler that applies compression to eligible responses.

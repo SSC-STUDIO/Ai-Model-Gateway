@@ -125,9 +125,9 @@ type RateLimitConfig struct {
 
 // CacheConfig controls request caching.
 type CacheConfig struct {
-	Enabled   bool `yaml:"enabled"    json:"enabled"`
-	MaxSizeMB int  `yaml:"max_size_mb" json:"max_size_mb"`
-	TTLSec    int  `yaml:"ttl_sec"    json:"ttl_sec"`
+	Enabled    bool `yaml:"enabled"     json:"enabled"`
+	MaxEntries int  `yaml:"max_entries" json:"max_entries"`
+	TTLSec     int  `yaml:"ttl_seconds" json:"ttl_seconds"`
 }
 
 // QueueConfig controls request queuing.
@@ -144,9 +144,9 @@ type KeyRotationConfig struct {
 
 // CompressionConfig controls response compression.
 type CompressionConfig struct {
-	Enabled  bool   `yaml:"enabled"    json:"enabled"`
-	MinBytes int    `yaml:"min_bytes"  json:"min_bytes"`
-	Level    string `yaml:"level"      json:"level"`
+	Enabled     bool `yaml:"enabled"        json:"enabled"`
+	MinSizeBytes int  `yaml:"min_size_bytes" json:"min_size_bytes"`
+	Level       int  `yaml:"level"          json:"level"`
 }
 
 // IsEnabled returns whether the intercept rule is enabled (defaults to true).
@@ -300,27 +300,27 @@ func (r *RoutingConfig) normalize() {
 	if len(r.Retry.MessageKeywords) == 0 {
 		r.Retry.MessageKeywords = DefaultRetryKeywords()
 	}
+	if r.Cache.TTLSec == 0 {
+		r.Cache.TTLSec = 300
+	}
+	if r.Cache.MaxEntries == 0 {
+		r.Cache.MaxEntries = 1000
+	}
+	if r.Queue.MaxConcurrent == 0 {
+		r.Queue.MaxConcurrent = 100
+	}
+	if r.Queue.HighPriorityPct == 0 {
+		r.Queue.HighPriorityPct = 60
+	}
+	if r.Compression.Level == 0 {
+		r.Compression.Level = 5
+	}
+	if r.Compression.MinSizeBytes == 0 {
+		r.Compression.MinSizeBytes = 1024
+	}
 	for i := range r.Intercepts {
 		if strings.TrimSpace(r.Intercepts[i].Action) == "" {
 			r.Intercepts[i].Action = "fail"
-		}
-		if r.Cache.TTLSec == 0 {
-			r.Cache.TTLSec = 300
-		}
-		if r.Cache.MaxSizeMB == 0 {
-			r.Cache.MaxSizeMB = 256
-		}
-		if r.Queue.MaxConcurrent == 0 {
-			r.Queue.MaxConcurrent = 100
-		}
-		if r.Queue.HighPriorityPct == 0 {
-			r.Queue.HighPriorityPct = 60
-		}
-		if r.Compression.Level == "" {
-			r.Compression.Level = "default"
-		}
-		if r.Compression.MinBytes == 0 {
-			r.Compression.MinBytes = 1024
 		}
 	}
 }

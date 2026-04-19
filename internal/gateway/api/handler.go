@@ -59,11 +59,11 @@ var responseCache struct {
 }
 
 func getResponseCache(snap *snapshot.Snapshot) *cache.Cache {
-	cfgKey := fmt.Sprintf("%d:%d", snap.RoutingPolicy.Cache.MaxSizeMB, snap.RoutingPolicy.Cache.TTLSec)
+	cfgKey := fmt.Sprintf("%d:%d", snap.RoutingPolicy.Cache.MaxEntries, snap.RoutingPolicy.Cache.TTLSec)
 	responseCache.mu.Lock()
 	defer responseCache.mu.Unlock()
 	if responseCache.cache == nil || responseCache.cfgKey != cfgKey {
-		responseCache.cache = cache.NewCache(snap.RoutingPolicy.Cache.MaxSizeMB, snap.RoutingPolicy.Cache.TTLSec)
+		responseCache.cache = cache.NewCache(snap.RoutingPolicy.Cache.MaxEntries, snap.RoutingPolicy.Cache.TTLSec)
 		responseCache.cfgKey = cfgKey
 	}
 	return responseCache.cache

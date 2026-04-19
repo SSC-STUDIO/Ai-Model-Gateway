@@ -86,16 +86,16 @@ func (s *SSRFChecker) ValidateURL(rawURL string) error {
 		return fmt.Errorf("URL scheme not allowed: %s", scheme)
 	}
 
+	host := strings.ToLower(parsedURL.Hostname())
+
 	// Check for localhost variations (unless explicitly allowed)
 	if !s.config.AllowLocalhost {
-		host := strings.ToLower(parsedURL.Hostname())
 		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
 			return fmt.Errorf("localhost access not allowed")
 		}
 	}
 
 	// Check host for metadata service hostnames
-	host := strings.ToLower(parsedURL.Hostname())
 	metadataHosts := []string{
 		"169.254.169.254", // AWS, GCP, Azure metadata
 		"metadata.google.internal",
@@ -122,26 +122,19 @@ func (s *SSRFChecker) ValidateURL(rawURL string) error {
 		}
 	}
 
-	// Check for dangerous URL patterns
-	dangerousPatterns := []string{
-		"@",  // User info in URL (could be used for trickery)
-		"..", // Path traversal
-		"0x", // Hex encoded IP
+	// Check for user info in URL (e.g., https://user:pass@host)
+	if parsedURL.User != nil {
+		return fmt.Errorf("user info in URL not allowed")
 	}
-	urlLower := strings.ToLower(rawURL)
-	for _, pattern := range dangerousPatterns {
-		if strings.Contains(urlLower, pattern) {
-			// Note: @ is commonly used in URLs, so we need to be more specific
-			if pattern == "@" && strings.Count(urlLower, "@") > 0 {
-				// Check if it's after the scheme but before the host
-				if idx := strings.Index(urlLower, "://"); idx != -1 {
-					afterScheme := urlLower[idx+3:]
-					if strings.Contains(afterScheme, "@") {
-						return fmt.Errorf("user info in URL not allowed")
-					}
-				}
-			}
-		}
+
+	// Check for path traversal in URL path
+	if strings.Contains(parsedURL.Path, "..") {
+		return fmt.Errorf("path traversal not allowed")
+	}
+
+	// Check for hex-encoded IP addresses (e.g., 0x7f000001 for 127.0.0.1)
+	if strings.Contains(host, "0x") {
+		return fmt.Errorf("hex-encoded host not allowed")
 	}
 
 	return nil

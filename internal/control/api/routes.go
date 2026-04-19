@@ -90,6 +90,11 @@ func Mount(mux *http.ServeMux, deps Deps) {
 	// Admin UI
 	mux.Handle("/admin", wrap(http.HandlerFunc(adminHandler)))
 	mux.Handle("/admin/", wrap(adminAssetsHandler))
+
+	// Root-level static resources (for PWA manifest icons)
+	mux.Handle("/icon.svg", adminAssetsHandler)
+	mux.Handle("/favicon.svg", adminAssetsHandler)
+	mux.Handle("/manifest.json", adminAssetsHandler)
 }
 
 // overviewHandler handles overview requests.
