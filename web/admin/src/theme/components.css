@@ -39,12 +39,19 @@
   background: linear-gradient(180deg, var(--button-soft-bg) 0%, var(--button-soft-bg-active) 100%);
   cursor: pointer;
   font-size: 1rem;
+  line-height: 1;
   transition: all 0.2s ease;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  max-width: 36px;
+  max-height: 36px;
+  flex-shrink: 0;
+  box-sizing: border-box;
   box-shadow: 0 8px 16px -16px rgba(15, 23, 42, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
