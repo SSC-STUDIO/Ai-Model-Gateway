@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Admin UI 静态资源 404 错误（/icon.svg、/favicon.svg、/manifest.json）
+- 修复 SSRF 检查器变量重复声明问题
+- 修复缓存测试中未定义的 entrySize 变量
+- 添加 daemon JSON 配置文件用于服务启动
+
 ## [1.2.0] — 2026-04-19
 
 ### Added
