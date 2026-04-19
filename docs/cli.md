@@ -1,93 +1,144 @@
-# AI Model Gateway Command-Line Surfaces
+# Daemon CLI Guide
 
-`gateway.exe` 的默认入口来自 `./cmd/gateway`，直接运行 v2 runtime。
+仓库已经移除 `gateway` / `gateway.exe`。当前只有三个正式 CLI：
 
-## Default Runtime
+- `gatewayd`
+- `controld`
+- `telemetryd`
 
-- Build `gateway.exe` from `./cmd/gateway`.
-- Default config path: `configs/config.yaml`.
-- No subcommand: start the v2 runtime.
-- Default health endpoint: `GET /-/health`.
-- Default admin frontend: `GET /admin`.
-- Default admin API: `/api/admin/v2/*`.
+## 总原则
 
-Usage:
+- `-config` 仍表示 daemon 自己的 bootstrap JSON，不是 `config.yaml`
+- `controld -authoring-config` 才是人类可编辑 YAML 的入口
+- `gatewayd` 不读取 YAML
+- 推荐把 IPC 名称、数据目录和日志路径都放进同一个运行目录，例如 `.gateway-runtime/`
 
-```bash
-gateway.exe [-config /path/to/config.yaml]
+## gatewayd
+
+```text
+gatewayd -listen <addr> -control <socket-or-pipe> -telemetry <socket-or-pipe> -data-dir <dir>
 ```
 
-Examples:
+可用 flags：
 
-```bash
-# Start with the default config contract
-gateway.exe
+- `-config`
+  读取 bootstrap JSON
+- `-listen`
+  数据面 HTTP 监听地址
+- `-control`
+  控制面 RPC socket / named pipe
+- `-telemetry`
+  telemetry ingest socket / named pipe
+- `-data-dir`
+  数据面运行数据目录
+- `-version`
+  打印版本
 
-# Start with an explicit config
-gateway.exe -config ./configs/config.yaml
+## controld
+
+```text
+controld -listen <addr> -gateway <socket-or-pipe> -telemetry <socket-or-pipe> -data-dir <dir> -authoring-config <config.yaml>
 ```
 
-## CLI Commands
+可用 flags：
 
-`cmd/gateway` 保留这些兼容命令：
+- `-config`
+  读取 bootstrap JSON
+- `-listen`
+  控制面 HTTP 监听地址
+- `-gateway`
+  `gatewayd` 控制 RPC socket / named pipe
+- `-telemetry`
+  `telemetryd` query RPC socket / named pipe
+- `-data-dir`
+  控制面数据目录，包含 `publisher-state.db`
+- `-authoring-config`
+  人类可编辑 YAML 配置文件路径
+- `-version`
+  打印版本
 
-- `gateway.exe validate`
-- `gateway.exe health`
-- `gateway.exe install`
-- `gateway.exe service-start`
-- `gateway.exe service-stop`
-- `gateway.exe service-status`
-- `gateway.exe uninstall`
+说明：
 
-也就是说，用户侧入口名不变，runtime 已经是 v2。
+- 当 `publisher-state.db` 不存在时，`controld` 会从 `-authoring-config` 种出初始 revision
+- 当 `publisher-state.db` 已存在时，`controld` 会优先恢复持久化 revision/history，而不是重新读取 YAML 生成新 revision
 
-## Config Migration
+## telemetryd
 
-Build `config-convert.exe` from `./cmd/config-convert` when you need to migrate an existing v1-style config into the v2 schema.
-
-```bash
-config-convert.exe -in ./configs/config.yaml -out ./configs/config.v2.yaml
-config-convert.exe -in ./configs/config.yaml -out ./configs/config.v2.yaml -listen :18081
+```text
+telemetryd -ingest <socket-or-pipe> -query <socket-or-pipe> -data-dir <dir>
 ```
 
-The converter is for config migration only. It does not start the server.
+可用 flags：
 
-## Deterministic Verification
+- `-config`
+  读取 bootstrap JSON
+- `-ingest`
+  接收 `gatewayd` 事件写入的 ingest socket / named pipe
+- `-query`
+  接收 `controld` 查询请求的 query socket / named pipe
+- `-data-dir`
+  telemetry 数据目录
+- `-version`
+  打印版本
 
-Use the verification script to build the default runtime, launch it with a minimal `config.yaml`, and verify health plus admin reachability:
+## 推荐本地启动
+
+Linux/macOS:
+
+```bash
+mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
+
+./dist/telemetryd \
+  -ingest ./.gateway-runtime/telemetry-ingest.sock \
+  -query ./.gateway-runtime/telemetry-query.sock \
+  -data-dir ./.gateway-runtime/telemetry
+
+./dist/gatewayd \
+  -listen 127.0.0.1:18080 \
+  -control ./.gateway-runtime/gateway-control.sock \
+  -telemetry ./.gateway-runtime/telemetry-ingest.sock \
+  -data-dir ./.gateway-runtime/gateway
+
+./dist/controld \
+  -listen 127.0.0.1:18081 \
+  -gateway ./.gateway-runtime/gateway-control.sock \
+  -telemetry ./.gateway-runtime/telemetry-query.sock \
+  -data-dir ./.gateway-runtime/control \
+  -authoring-config ./configs/config.yaml
+```
+
+Windows:
 
 ```powershell
-.\scripts\verify-default-runtime.ps1
+$gatewayPipe = "aigw-gateway-control-local"
+$ingestPipe = "aigw-telemetry-ingest-local"
+$queryPipe = "aigw-telemetry-query-local"
+
+.\dist\telemetryd.exe -ingest $ingestPipe -query $queryPipe -data-dir .\.gateway-runtime\telemetry
+.\dist\gatewayd.exe -listen 127.0.0.1:18080 -control $gatewayPipe -telemetry $ingestPipe -data-dir .\.gateway-runtime\gateway
+.\dist\controld.exe -listen 127.0.0.1:18081 -gateway $gatewayPipe -telemetry $queryPipe -data-dir .\.gateway-runtime\control -authoring-config .\configs\config.yaml
 ```
 
-The script verifies:
+## 健康检查
 
-- `go build` succeeds for `./cmd/gateway`
-- `GET /-/health` returns `200`
-- `GET /v1/models` returns the smoke model
-- `GET /api/admin/v2/overview` succeeds with a Bearer admin token
-- stderr contains a `[v2]` runtime marker
+- 数据面:
+  - `http://127.0.0.1:18080/-/health`
+  - `http://127.0.0.1:18080/v1/models`
+- 控制面:
+  - `http://127.0.0.1:18081/-/health`
+  - `http://127.0.0.1:18081/admin`
+  - `http://127.0.0.1:18081/api/admin/status`
 
-If you prefer to run the steps manually:
+## 已移除接口
 
-```powershell
-go build -o .\dist\gateway.exe .\cmd\gateway
-.\scripts\verify-default-runtime.ps1 -SkipBuild
-```
+下列 `gateway` 单一入口命令已经移除：
 
-## Admin Paths
-
-Use these paths with the replacement runtime:
-
-- Frontend: `http://127.0.0.1:18080/admin`
-- Login API: `POST /api/admin/v2/auth/login`
-- Logout API: `POST /api/admin/v2/auth/logout`
-- Overview API: `GET /api/admin/v2/overview`
-- Telemetry API: `GET /api/admin/v2/data`
-- Timeseries API: `GET /api/admin/v2/timeseries`
-- Config API: `GET|PUT /api/admin/v2/config`
-- Config export API: `GET /api/admin/v2/config/export`
-- Config history API: `GET /api/admin/v2/config/history`
-- Config diff API: `GET /api/admin/v2/config/history/{version_id}/diff`
-- Config rollback API: `POST /api/admin/v2/config/rollback`
-- Upstream probe API: `POST /api/admin/v2/upstreams/test`
+- `gateway validate`
+- `gateway health`
+- `gateway status`
+- `gateway install`
+- `gateway uninstall`
+- `gateway service-start`
+- `gateway service-stop`
+- `gateway service-status`
+- `gateway version`

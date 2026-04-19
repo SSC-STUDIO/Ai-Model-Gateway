@@ -18,16 +18,17 @@ AI Model Gateway 支持主流国产大模型的快速接入，所有支持的厂
 
 ## 接入方式
 
-### 方式一：通过管理界面编辑 provider
+### 方式一：直接编辑 `configs/config.yaml`
 
-1. 打开管理界面 `http://127.0.0.1:18080/admin`
-2. 登录后切到配置相关 tab
-3. 在 provider 配置中手动补充对应厂商的 `base_url`、`api_key`、`models`
-4. 保存配置并重新验证模型列表
+1. 打开当前运行配置 `configs/config.yaml`
+2. 在 `providers` 下增加对应厂商的 `base_url`、`api_key`、`models`
+3. 如果这是一个全新环境，启动或重启 `controld`，让它从 `config.yaml` 种出初始 revision 并发布 snapshot
+4. 如果控制面数据目录里已经存在 `publisher-state.db`，请通过 Admin API 发布新 revision，或在明确知道后果的前提下清理旧 state 后再重启 `controld`
+5. 打开控制面 `http://127.0.0.1:18081/admin` 检查模型流量、时序和 benchmark
 
-### 方式二：配置文件手动添加
+### 方式二：从现有示例配置扩展
 
-复制 `configs/chinese-models.yaml` 中的配置模板到 `config.v2.yaml` 的 `providers` 部分，填入你的 API Key。
+以 `configs/config.example.yaml` 为基线，把下面的 provider 片段合并进你的 `configs/config.yaml`，再填入真实 API Key。
 
 ## 各厂商接入详情
 
@@ -167,4 +168,4 @@ compat:
 
 ## 参考
 
-- [国产大模型配置模板](../../configs/chinese-models.yaml)
+- [默认配置示例](../../configs/config.example.yaml)

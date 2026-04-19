@@ -81,6 +81,7 @@ server:
 admin:
   enabled: false
   language: en
+  publish_history_limit: 64
 routing:
   strategy: round_robin
   max_retries: 3
@@ -134,6 +135,9 @@ compat:
 	if cfg.Routing.MaxRetries != 3 {
 		t.Errorf("expected max_retries 3, got %d", cfg.Routing.MaxRetries)
 	}
+	if cfg.Admin.PublishHistoryLimit != 64 {
+		t.Errorf("expected publish_history_limit 64, got %d", cfg.Admin.PublishHistoryLimit)
+	}
 	if !cfg.Compat.Bridge.Enabled {
 		t.Error("expected bridge enabled")
 	}
@@ -148,6 +152,75 @@ compat:
 	}
 	if cfg.Telemetry.RetentionDays != 7 {
 		t.Errorf("expected retention_days 7, got %d", cfg.Telemetry.RetentionDays)
+	}
+}
+
+func TestParse_ExpandsEnvironmentVariables(t *testing.T) {
+	t.Setenv("ADMIN_BOOTSTRAP_TOKEN", strings.Repeat("a", 32))
+	t.Setenv("COOKIE_SIGNING_KEY", strings.Repeat("b", 32))
+	t.Setenv("ADMIN_TOKEN", strings.Repeat("c", 32))
+	t.Setenv("PRIMARY_PROVIDER_API_KEY", "sk-live")
+
+	yaml := `
+admin:
+  enabled: true
+  bootstrap_token: "${ADMIN_BOOTSTRAP_TOKEN}"
+  cookie_signing_key: "$COOKIE_SIGNING_KEY"
+  tokens:
+    - name: admin
+      token: "${ADMIN_TOKEN}"
+      role: admin
+providers:
+  - name: openai
+    base_url: https://example.com
+    api_key: "${PRIMARY_PROVIDER_API_KEY}"
+`
+
+	cfg, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Admin.BootstrapToken != strings.Repeat("a", 32) {
+		t.Fatalf("expected expanded bootstrap token, got %q", cfg.Admin.BootstrapToken)
+	}
+	if cfg.Admin.CookieSigningKey != strings.Repeat("b", 32) {
+		t.Fatalf("expected expanded cookie signing key, got %q", cfg.Admin.CookieSigningKey)
+	}
+	if len(cfg.Admin.Tokens) != 1 || cfg.Admin.Tokens[0].Token != strings.Repeat("c", 32) {
+		t.Fatalf("expected expanded admin token, got %#v", cfg.Admin.Tokens)
+	}
+	if cfg.Providers[0].APIKey != "sk-live" {
+		t.Fatalf("expected expanded provider api key, got %q", cfg.Providers[0].APIKey)
+	}
+}
+
+func TestParse_MissingEnvironmentVariable(t *testing.T) {
+	yaml := `
+providers:
+  - name: openai
+    base_url: "${PRIMARY_PROVIDER_BASE_URL}"
+`
+
+	_, err := Parse([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected error for missing env variable")
+	}
+	if !strings.Contains(err.Error(), "PRIMARY_PROVIDER_BASE_URL") {
+		t.Fatalf("expected missing env name in error, got %v", err)
+	}
+}
+
+func TestParse_IgnoresEnvironmentReferencesInComments(t *testing.T) {
+	yaml := `
+# ${UNDEFINED_COMMENT_ENV}
+providers:
+  - name: openai
+    base_url: https://example.com
+`
+
+	if _, err := Parse([]byte(yaml)); err != nil {
+		t.Fatalf("expected comment placeholder to be ignored, got %v", err)
 	}
 }
 
@@ -183,7 +256,47 @@ pricing:
 	}
 }
 
+func TestLoadFromFile_NormalizesWindowsStyleRelativePaths(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	yaml := `
+providers:
+  - name: local
+    base_url: https://example.com
+telemetry:
+  sqlite_path: data\telemetry.db
+pricing:
+  cache_path: cache\pricing.json
+`
+	if err := os.WriteFile(configPath, []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadFromFile(configPath)
+	if err != nil {
+		t.Fatalf("LoadFromFile() error: %v", err)
+	}
+
+	wantTelemetry := filepath.Join(dir, "data", "telemetry.db")
+	if cfg.Telemetry.SQLitePath != wantTelemetry {
+		t.Fatalf("expected normalized telemetry path %q, got %q", wantTelemetry, cfg.Telemetry.SQLitePath)
+	}
+
+	wantPricing := filepath.Join(dir, "cache", "pricing.json")
+	if cfg.Pricing.CachePath != wantPricing {
+		t.Fatalf("expected normalized pricing path %q, got %q", wantPricing, cfg.Pricing.CachePath)
+	}
+}
+
 func TestLoadFromFile_ExampleConfigUsesCutoverSafePaths(t *testing.T) {
+	t.Setenv("ADMIN_BOOTSTRAP_TOKEN", strings.Repeat("a", 32))
+	t.Setenv("COOKIE_SIGNING_KEY", strings.Repeat("b", 32))
+	t.Setenv("ADMIN_TOKEN", strings.Repeat("c", 32))
+	t.Setenv("VIEWER_TOKEN", strings.Repeat("d", 32))
+	t.Setenv("STATION_A_API_KEY", "sk-station-a")
+	t.Setenv("STATION_B_API_KEY", "sk-station-b")
+	t.Setenv("KIMI_OFFICIAL_API_KEY", "sk-kimi")
+
 	configPath := filepath.Join("..", "..", "..", "configs", "config.example.yaml")
 
 	cfg, err := LoadFromFile(configPath)

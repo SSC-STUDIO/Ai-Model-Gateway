@@ -20,11 +20,11 @@ This project is operational software first: changes should improve reliability, 
 Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 ```
 
-2. Fill in your own upstreams and `admin.auth_token`.
-3. Run the gateway:
+2. Fill in your own upstreams and set the environment variables referenced by `configs\config.yaml` such as `ADMIN_BOOTSTRAP_TOKEN`, `COOKIE_SIGNING_KEY`, and provider API keys.
+3. Start the three-daemon stack. The full command examples live in [docs/cli.md](docs/cli.md). For a quick Windows smoke check you can run:
 
 ```powershell
-go run .\cmd\gateway -config .\configs\config.yaml
+.\scripts\verify-default-runtime.ps1
 ```
 
 ## Development workflow
@@ -34,7 +34,7 @@ Before opening a pull request:
 1. Format Go files:
 
 ```powershell
-gofmt -w .\cmd\gateway\main.go .\internal\**\*.go
+git ls-files '*.go' | ForEach-Object { gofmt -w $_ }
 ```
 
 2. Run tests:
@@ -43,13 +43,20 @@ gofmt -w .\cmd\gateway\main.go .\internal\**\*.go
 go test ./...
 ```
 
-3. Verify that no `TODO`/`FIXME` comment markers remain in tracked files:
+3. Build the admin frontend:
+
+```powershell
+npm exec --prefix .\web\admin -- tsc -p .\web\admin\tsconfig.json --noEmit
+npm --prefix .\web\admin run build
+```
+
+4. Verify that no `TODO`/`FIXME` comment markers remain in tracked files:
 
 ```powershell
 .\scripts\check-no-todo.ps1
 ```
 
-4. Verify that no local-only files are staged:
+5. Verify that no local-only files are staged:
 
 ```powershell
 git status --short --ignored

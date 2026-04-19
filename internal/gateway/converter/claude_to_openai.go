@@ -156,9 +156,9 @@ func (c *ClaudeToOpenAIConverter) ConvertResponse(openaiResp *OpenAIResponse) (*
 // mapFinishReason 映射停止原因
 func (c *ClaudeToOpenAIConverter) mapFinishReason(openaiReason string) string {
 	reasonMap := map[string]string{
-		"stop":        "end_turn",
-		"length":      "max_tokens",
-		"tool_calls":  "tool_use",
+		"stop":           "end_turn",
+		"length":         "max_tokens",
+		"tool_calls":     "tool_use",
 		"content_filter": "end_turn",
 	}
 
@@ -182,7 +182,7 @@ func (c *ClaudeToOpenAIConverter) ConvertStreamEvent(openaiEvent []byte) ([]byte
 	case "chat.completion.chunk":
 		if len(openaiChunk.Choices) > 0 {
 			choice := openaiChunk.Choices[0]
-			
+
 			if choice.Delta != nil {
 				// 内容增量
 				if choice.Delta.Content != "" {

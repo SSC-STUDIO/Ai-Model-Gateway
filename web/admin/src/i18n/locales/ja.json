@@ -3,24 +3,15 @@
     "overview": "概要",
     "telemetry": "遥测",
     "timeseries": "时序",
-    "settings": "設定",
     "history": "履歴",
-    "probe": "プローブ",
-    "logs": "ログ",
-    "benchmark": "ベンチマーク",
-    "audit": "監査ログ"
+    "benchmark": "ベンチマーク"
   },
   "header": {
     "title": "AI Model Gateway",
-    "subtitle": "AI モデルルーティングゲートウェイ管理パネル"
-  },
-  "login": {
-    "title": "AI Model Gateway 管理台",
-    "hint": "bootstrap token を入力して同源管理セッションを確立してください",
-    "tokenLabel": "Bootstrap Token",
-    "tokenPlaceholder": "0123456789abcdef...",
-    "signIn": "ログイン",
-    "signingIn": "ログイン中..."
+    "subtitle": "AI モデルルーティングゲートウェイ管理パネル",
+    "gateway": "Gateway",
+    "telemetry": "Telemetry",
+    "statusUnknown": "unknown"
   },
   "overview": {
     "title": "概要",
@@ -90,21 +81,6 @@
     "interval": "自動更新",
     "active": "自動更新中"
   },
-  "settings": {
-    "title": "設定",
-    "editableJson": "編集可能 JSON",
-    "saveConfig": "設定を保存",
-    "structured": "構造化",
-    "advancedJson": "高度な JSON",
-    "confirmTitle": "保存確認",
-    "confirmMessage": "この設定を保存してもよろしいですか？ゲートウェイがリロードされます。",
-    "confirmYes": "保存",
-    "confirmCancel": "キャンセル",
-    "saveSuccess": "設定が正常に保存されました。",
-    "saveError": "設定の保存に失敗しました。",
-    "readOnlyArray": "配列（読み取り専用、JSONエディタで変更してください）",
-    "sensitive": "機密"
-  },
   "history": {
     "title": "設定履歴",
     "versionLabel": "バージョン",
@@ -114,57 +90,24 @@
     "diff": "差分",
     "linesAdded": "行追加",
     "linesRemoved": "行削除",
-    "blocks": "ブロック"
-  },
-  "probe": {
-    "title": "アップストリームプローブ",
-    "name": "名前",
-    "baseUrl": "Base URL",
-    "anthropicBaseUrl": "Anthropic Base URL",
-    "apiKey": "API Key",
-    "providerClass": "Provider Class",
-    "models": "モデル",
-    "timeoutMs": "タイムアウト (ms)",
-    "runProbe": "プローブ実行",
-    "result": "結果"
-  },
-  "logs": {
-    "title": "ログ",
-    "levelFilter": "レベル",
-    "search": "検索",
-    "searchPlaceholder": "ログを検索...",
-    "level": {
-      "debug": "デバッグ",
-      "info": "情報",
-      "warn": "警告",
-      "error": "エラー"
-    },
-    "connected": "接続済み",
-    "disconnected": "切断",
-    "pending": "保留中",
-    "pause": "一時停止",
-    "resume": "再開",
-    "autoScrollOn": "自動スクロールON",
-    "autoScrollOff": "自動スクロールOFF",
-    "clear": "ログをクリア",
-    "export": "エクスポート",
-    "exportError": "ログのエクスポートに失敗",
-    "empty": "ログがありません",
-    "showing": "表示中",
-    "entries": "件",
-    "scrollToBottom": "最下部へスクロール"
-  },
-  "actions": {
-    "logout": "ログアウト"
-  },
-  "settingsMenu": {
-    "language": "言語",
-    "theme": "テーマ"
-  },
-  "sse": {
-    "connected": "接続済み",
-    "reconnecting": "再接続中",
-    "disconnected": "切断"
+    "blocks": "ブロック",
+    "rollbackToSelected": "Rollback to Selected",
+    "publish": "Publish Selected",
+    "current": "Current Active",
+    "selectedRevision": "Selected Revision",
+    "revisionId": "Revision ID",
+    "createdAt": "Created At",
+    "createdBy": "Created By",
+    "description": "Description",
+    "status": "Status",
+    "noDescription": "No description provided.",
+    "activeBadge": "Active",
+    "inactiveBadge": "Inactive",
+    "readOnly": "Read-only session",
+    "publishSuccess": "Revision published.",
+    "publishFailed": "Failed to publish revision.",
+    "rollbackSuccess": "Rollback completed.",
+    "rollbackFailed": "Failed to roll back revision."
   },
   "benchmark": {
     "title": "モデルベンチマーク",
@@ -194,27 +137,54 @@
     "tokens": "トークン数",
     "noData": "選択された時間範囲で利用可能なベンチマークデータがありません"
   },
+  "auth": {
+    "title": "Admin Sign In",
+    "subtitle": "Use an admin or viewer token from config.yaml to open the control plane.",
+    "checking": "Checking current session...",
+    "tokenLabel": "Token",
+    "tokenPlaceholder": "Paste admin or viewer token",
+    "submit": "Sign In",
+    "submitting": "Signing In...",
+    "logout": "Log Out",
+    "loggingOut": "Logging Out...",
+    "disabled": "Authentication disabled",
+    "sessionCurrent": "Session",
+    "roleAdmin": "Admin",
+    "roleViewer": "Viewer",
+    "hint": "The browser session is stored in a signed cookie for this control plane."
+  },
   "empty": {
     "noRequests": "リクエストデータがありません。ゲートウェイはトラフィックを待機中です。",
     "noTelemetry": "テレメトリデータがまだありません。",
     "noBenchmark": "ベンチマークデータがありません。",
     "noTimeseries": "時系列データがありません。",
-    "noAudit": "監査ログエントリーがありません。",
     "noHistory": "設定変更履歴がありません。"
   },
-  "audit": {
-    "title": "監査ログ",
-    "loading": "監査ログを読み込み中...",
-    "empty": "監査エントリーがありません",
-    "time": "時間",
-    "action": "アクション",
-    "actor": "操作者",
-    "role": "ロール",
-    "details": "詳細",
-    "ip": "IPアドレス",
-    "prev": "前へ",
-    "next": "次へ",
-    "page": "ページ",
-    "totalEntries": "件"
+  "charts": {
+    "emptyTitle": "No data available",
+    "emptyHint": "This chart will update automatically once data arrives.",
+    "lineEmpty": "No trend data yet",
+    "lineEmptyHint": "The line chart will render automatically once requests come in.",
+    "donutEmpty": "No distribution data yet",
+    "donutEmptyHint": "Upstream and model distribution will show here once hits occur.",
+    "barEmpty": "No bar data yet",
+    "barEmptyHint": "Comparison bars will generate automatically once enough samples arrive.",
+    "current": "Current",
+    "latest": "Latest",
+    "donutTotal": "Total",
+    "donutOverview": "Overview",
+    "donutItems": "items",
+    "barPeak": "Peak",
+    "emptyAriaLabel": "Empty chart",
+    "scrollHint": "Scroll horizontally for more items"
+  },
+  "theme": {
+    "toggleLabel": "Switch theme"
+  },
+  "language": {
+    "selectorLabel": "Language"
+  },
+  "toast": {
+    "close": "Close"
   }
 }

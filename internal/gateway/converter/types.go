@@ -94,12 +94,12 @@ type ClaudeTool struct {
 }
 
 type ClaudeResponse struct {
-	ID         string                `json:"id"`
-	Type       string                `json:"type"`
-	Model      string                `json:"model"`
-	Content    []ClaudeContentBlock  `json:"content"`
-	StopReason string                `json:"stop_reason,omitempty"`
-	Usage      ClaudeUsage           `json:"usage"`
+	ID         string               `json:"id"`
+	Type       string               `json:"type"`
+	Model      string               `json:"model"`
+	Content    []ClaudeContentBlock `json:"content"`
+	StopReason string               `json:"stop_reason,omitempty"`
+	Usage      ClaudeUsage          `json:"usage"`
 }
 
 type ClaudeContentBlock struct {

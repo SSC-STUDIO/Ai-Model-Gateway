@@ -6,6 +6,7 @@ bin/
 # Config (active config + backups are local-only)
 configs/config.yaml
 configs/config.yaml.bak
+configs/config.yaml.bak-*
 configs/config.manual.yaml
 configs/.config.yaml.history/
 configs/data/
@@ -30,6 +31,7 @@ Thumbs.db
 # Frontend
 web/admin/node_modules/
 web/admin/dist/
+web/admin/test-results/
 
 # Root-level embedded dist (auto-generated)
 /embedded_admin_dist/
@@ -40,3 +42,19 @@ findings.md
 progress.md
 task_plan.md
 nul
+/tmp-*
+
+# Test artifacts
+coverage*.out
+*.py
+kimi_test*.py
+kimi_test*.json
+
+# Build artifacts
+/gateway
+/gatewayd
+/dist/
+
+# IDE
+.idea/
+.vscode/

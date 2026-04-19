@@ -42,7 +42,7 @@ func (f *OutputFormatter) WriteJSON(data interface{}) error {
 // WriteTable 写入表格格式
 func (f *OutputFormatter) WriteTable(headers []string, rows [][]string) error {
 	w := tabwriter.NewWriter(f.writer, 0, 0, 2, ' ', 0)
-	
+
 	// 写入表头
 	for i, h := range headers {
 		if i > 0 {
@@ -51,7 +51,7 @@ func (f *OutputFormatter) WriteTable(headers []string, rows [][]string) error {
 		fmt.Fprint(w, h)
 	}
 	fmt.Fprintln(w)
-	
+
 	// 写入数据行
 	for _, row := range rows {
 		for i, cell := range row {
@@ -62,7 +62,7 @@ func (f *OutputFormatter) WriteTable(headers []string, rows [][]string) error {
 		}
 		fmt.Fprintln(w)
 	}
-	
+
 	return w.Flush()
 }
 

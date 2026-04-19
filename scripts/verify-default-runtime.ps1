@@ -1,5 +1,5 @@
 param(
-    [int]$Port = 18081,
+    [int]$Port = 18080,
     [switch]$SkipBuild,
     [switch]$KeepWorkdir
 )
@@ -13,27 +13,85 @@ if (-not (Test-Path (Join-Path $projectRoot "go.mod") -PathType Leaf)) {
     throw "unable to locate go.mod from $projectRoot"
 }
 
-$workdir = Join-Path $env:TEMP ("aigw-default-runtime-smoke-" + [guid]::NewGuid().ToString("N"))
-$gatewayPath = Join-Path $workdir "gateway.exe"
+$controlPort = $Port + 1
+$runId = [guid]::NewGuid().ToString("N")
+$workdir = Join-Path $env:TEMP ("aigw-three-plane-smoke-" + $runId)
+$runtimeRoot = Join-Path $workdir ".gateway-runtime"
+$gatewaydPath = Join-Path $workdir "gatewayd.exe"
+$controldPath = Join-Path $workdir "controld.exe"
+$telemetrydPath = Join-Path $workdir "telemetryd.exe"
 $configPath = Join-Path $workdir "config.yaml"
-$stdoutPath = Join-Path $workdir "gateway.stdout.log"
-$stderrPath = Join-Path $workdir "gateway.stderr.log"
+$telemetryStdoutPath = Join-Path $workdir "telemetryd.stdout.log"
+$telemetryStderrPath = Join-Path $workdir "telemetryd.stderr.log"
+$gatewaydStdoutPath = Join-Path $workdir "gatewayd.stdout.log"
+$gatewaydStderrPath = Join-Path $workdir "gatewayd.stderr.log"
+$controldStdoutPath = Join-Path $workdir "controld.stdout.log"
+$controldStderrPath = Join-Path $workdir "controld.stderr.log"
 $healthURL = "http://127.0.0.1:$Port/-/health"
 $modelsURL = "http://127.0.0.1:$Port/v1/models"
-$overviewURL = "http://127.0.0.1:$Port/api/admin/v2/overview"
-$bootstrapToken = "0123456789abcdef0123456789abcdef"
+$adminURL = "http://127.0.0.1:$controlPort/admin"
+$statusURL = "http://127.0.0.1:$controlPort/api/admin/status"
+$historyURL = "http://127.0.0.1:$controlPort/api/admin/config/history"
 $smokeModel = "smoke-model"
+$adminToken = "0123456789abcdef0123456789abcdef"
+$gatewaySocket = "aigw-gateway-control-$runId"
+$telemetryIngestSocket = "aigw-telemetry-ingest-$runId"
+$telemetryQuerySocket = "aigw-telemetry-query-$runId"
+$telemetryDataDir = Join-Path $runtimeRoot "telemetry"
+$gatewayDataDir = Join-Path $runtimeRoot "gateway"
+$controlDataDir = Join-Path $runtimeRoot "control"
+$wslProject = $null
+
+function Get-WslContext {
+    param(
+        [string]$Path
+    )
+
+    if ($Path -match '^\\\\wsl\.localhost\\([^\\]+)\\(.+)$') {
+        return [pscustomobject]@{
+            Distro = $matches[1]
+            Path = "/" + (($matches[2] -replace '\\', '/').TrimStart('/'))
+        }
+    }
+
+    return $null
+}
+
+function Convert-ToWslSingleQuotedLiteral {
+    param(
+        [string]$Value
+    )
+
+    return "'" + ($Value -replace "'", "'`"'`"'") + "'"
+}
+
+function Convert-WindowsPathToWslPath {
+    param(
+        [string]$Path
+    )
+
+    if ($Path -match '^([A-Za-z]):\\(.*)$') {
+        $drive = $matches[1].ToLowerInvariant()
+        $rest = $matches[2] -replace '\\', '/'
+        return "/mnt/$drive/$rest"
+    }
+
+    return $null
+}
+
+$wslProject = Get-WslContext -Path $projectRoot
 
 function Wait-ForReady {
     param(
         [string]$URL,
-        [int]$TimeoutSec = 30
+        [int]$TimeoutSec = 30,
+        [hashtable]$Headers = @{}
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         try {
-            $resp = Invoke-WebRequest -UseBasicParsing -Uri $URL -TimeoutSec 3
+            $resp = Invoke-WebRequest -UseBasicParsing -Uri $URL -TimeoutSec 3 -Headers $Headers
             if ($resp.StatusCode -eq 200) {
                 return $resp
             }
@@ -43,6 +101,39 @@ function Wait-ForReady {
     }
 
     throw "timed out waiting for $URL"
+}
+
+function Wait-ForJsonCondition {
+    param(
+        [string]$URL,
+        [scriptblock]$Condition,
+        [string]$Description,
+        [int]$TimeoutSec = 30,
+        [hashtable]$Headers = @{}
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $lastResponse = ""
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $resp = Invoke-WebRequest -UseBasicParsing -Uri $URL -TimeoutSec 3 -Headers $Headers
+            if ($resp.StatusCode -eq 200) {
+                $lastResponse = $resp.Content
+                $body = $resp.Content | ConvertFrom-Json
+                if (& $Condition $body) {
+                    return [pscustomobject]@{
+                        Response = $resp
+                        Body = $body
+                    }
+                }
+            }
+        } catch {
+            $lastResponse = $_.Exception.Message
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    throw "timed out waiting for $Description at $URL. Last response: $lastResponse"
 }
 
 function Assert-ArrayContains {
@@ -58,39 +149,124 @@ function Assert-ArrayContains {
     }
 }
 
-New-Item -ItemType Directory -Force -Path $workdir | Out-Null
-Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+function Publish-Binary {
+    param(
+        [string]$Package,
+        [string]$OutputPath
+    )
 
-if (-not $SkipBuild) {
+    if ($wslProject) {
+        $outputPathWsl = Convert-WindowsPathToWslPath -Path $OutputPath
+        if ([string]::IsNullOrWhiteSpace($outputPathWsl)) {
+            throw "unable to convert Windows output path to WSL path: $OutputPath"
+        }
+
+        $command = "cd $(Convert-ToWslSingleQuotedLiteral $wslProject.Path) && GOOS=windows GOARCH=amd64 go build -o $(Convert-ToWslSingleQuotedLiteral $outputPathWsl) $(Convert-ToWslSingleQuotedLiteral $Package)"
+        & wsl.exe -d $wslProject.Distro bash -lc $command
+        if ($LASTEXITCODE -ne 0) {
+            throw "go build $Package failed with exit code $LASTEXITCODE"
+        }
+        return
+    }
+
     Push-Location $projectRoot
     try {
-        go build -o $gatewayPath ./cmd/gateway
+        go build -o $OutputPath $Package
         if ($LASTEXITCODE -ne 0) {
-            throw "go build ./cmd/gateway failed with exit code $LASTEXITCODE"
+            throw "go build $Package failed with exit code $LASTEXITCODE"
         }
     } finally {
         Pop-Location
     }
-} elseif (-not (Test-Path $gatewayPath -PathType Leaf)) {
-    throw "-SkipBuild was used but $gatewayPath does not exist"
+}
+
+function Copy-ExistingBinary {
+    param(
+        [string]$SourcePath,
+        [string]$OutputPath
+    )
+
+    if (-not (Test-Path $SourcePath -PathType Leaf)) {
+        throw "-SkipBuild was used but $SourcePath does not exist"
+    }
+    Copy-Item $SourcePath $OutputPath -Force
+}
+
+function Start-Plane {
+    param(
+        [string]$BinaryPath,
+        [string[]]$Arguments,
+        [string]$StdoutPath,
+        [string]$StderrPath
+    )
+
+    return Start-Process -FilePath $BinaryPath `
+        -ArgumentList $Arguments `
+        -PassThru `
+        -WindowStyle Hidden `
+        -WorkingDirectory $workdir `
+        -RedirectStandardOutput $StdoutPath `
+        -RedirectStandardError $StderrPath
+}
+
+function Show-Log {
+    param(
+        [string]$Label,
+        [string]$Path
+    )
+
+    if (Test-Path $Path) {
+        Write-Host "--- $Label ---"
+        Get-Content -Path $Path -ErrorAction SilentlyContinue
+    }
+}
+
+New-Item -ItemType Directory -Force -Path $workdir, $runtimeRoot, $telemetryDataDir, $gatewayDataDir, $controlDataDir | Out-Null
+Remove-Item $telemetryStdoutPath, $telemetryStderrPath, $gatewaydStdoutPath, $gatewaydStderrPath, $controldStdoutPath, $controldStderrPath -Force -ErrorAction SilentlyContinue
+
+$binaries = @(
+    @{ Package = "./cmd/gatewayd";   Output = $gatewaydPath;   Dist = Join-Path $projectRoot "dist/gatewayd.exe" },
+    @{ Package = "./cmd/controld";   Output = $controldPath;   Dist = Join-Path $projectRoot "dist/controld.exe" },
+    @{ Package = "./cmd/telemetryd"; Output = $telemetrydPath; Dist = Join-Path $projectRoot "dist/telemetryd.exe" }
+)
+
+foreach ($binary in $binaries) {
+    if (-not $SkipBuild) {
+        Publish-Binary -Package $binary.Package -OutputPath $binary.Output
+    } else {
+        Copy-ExistingBinary -SourcePath $binary.Dist -OutputPath $binary.Output
+    }
 }
 
 $config = @"
-listen: :$Port
-
-router:
-  strategy: round_robin
-
-health:
-  enabled: false
-  interval_sec: 10
-  timeout_ms: 2000
-  path: /v1/models
+server:
+  listen: :$Port
 
 admin:
   enabled: true
-  auth_token: "$bootstrapToken"
+  bootstrap_token: "$adminToken"
+  cookie_signing_key: "abcdef0123456789abcdef0123456789"
   language: en
+
+routing:
+  strategy: health_weighted_rr
+  health:
+    enabled: false
+    interval_sec: 10
+    timeout_ms: 2000
+    path: /v1/models
+
+providers:
+  - name: smoke-provider
+    base_url: https://example.invalid/v1
+    api_key: sk-smoke-local-do-not-use
+    provider_class: quota_limited
+    models:
+      - $smokeModel
+    weight: 1
+    timeout_ms: 10000
+    same_retries: 0
+    enabled: true
 
 telemetry:
   sqlite_path: telemetry.db
@@ -98,95 +274,129 @@ telemetry:
 pricing:
   cache_path: pricing-cache.json
 
-bridge:
-  enabled: false
-  exclude_user_agents: []
-  rules: []
-
-fallback:
-  enabled: false
-  detect_repetition: false
-  models: {}
-
-upstreams:
-  - name: smoke-provider
-    base_url: https://example.invalid/v1
-    api_key: sk-smoke-local-do-not-use
-    provider_class: quota_limited
-    models:
-      - $smokeModel
-    enabled: true
+compat:
+  bridge:
+    enabled: false
+    exclude_user_agents: []
+    rules: []
+  fallback:
+    enabled: false
+    detect_repetition: false
+    models: {}
 "@
 
 Set-Content -Path $configPath -Value $config -Encoding ascii
 
-$proc = $null
+$telemetryProc = $null
+$gatewaydProc = $null
+$controldProc = $null
+
 try {
-    $proc = Start-Process -FilePath $gatewayPath -ArgumentList @("-config", $configPath) -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    $telemetryProc = Start-Plane -BinaryPath $telemetrydPath -Arguments @(
+        "-ingest", $telemetryIngestSocket,
+        "-query", $telemetryQuerySocket,
+        "-data-dir", $telemetryDataDir
+    ) -StdoutPath $telemetryStdoutPath -StderrPath $telemetryStderrPath
 
-    $health = Wait-ForReady -URL $healthURL
-    $models = Invoke-WebRequest -UseBasicParsing -Uri $modelsURL -TimeoutSec 5
-    $overview = Invoke-WebRequest -UseBasicParsing -Uri $overviewURL -Headers @{ Authorization = "Bearer $bootstrapToken" } -TimeoutSec 5
+    $gatewaydProc = Start-Plane -BinaryPath $gatewaydPath -Arguments @(
+        "-listen", "127.0.0.1:$Port",
+        "-control", $gatewaySocket,
+        "-telemetry", $telemetryIngestSocket,
+        "-data-dir", $gatewayDataDir
+    ) -StdoutPath $gatewaydStdoutPath -StderrPath $gatewaydStderrPath
 
-    $healthBody = $health.Content | ConvertFrom-Json
-    $modelsBody = $models.Content | ConvertFrom-Json
-    $overviewBody = $overview.Content | ConvertFrom-Json
+    $controldProc = Start-Plane -BinaryPath $controldPath -Arguments @(
+        "-listen", "127.0.0.1:$controlPort",
+        "-gateway", $gatewaySocket,
+        "-telemetry", $telemetryQuerySocket,
+        "-data-dir", $controlDataDir,
+        "-authoring-config", $configPath
+    ) -StdoutPath $controldStdoutPath -StderrPath $controldStderrPath
 
-    Assert-ArrayContains -Values $healthBody.available_models -Expected $smokeModel -Label "health.available_models"
-    Assert-ArrayContains -Values ($modelsBody.data | ForEach-Object { $_.id }) -Expected $smokeModel -Label "models.data[].id"
-    Assert-ArrayContains -Values $overviewBody.available_models -Expected $smokeModel -Label "overview.available_models"
-
-    if ($null -eq $overviewBody.runtime) {
-        throw "overview response did not include runtime"
+    $authHeaders = @{
+        Authorization = "Bearer $adminToken"
     }
-    if ([int]$overviewBody.runtime.provider_count -lt 1) {
-        throw "overview.runtime.provider_count expected >= 1, got $($overviewBody.runtime.provider_count)"
+
+    $modelsResult = Wait-ForJsonCondition -URL $modelsURL -Description "models list containing $smokeModel" -Condition {
+        param($body)
+        @($body.data | ForEach-Object { $_.id }) -contains $smokeModel
     }
-    if ([int]$overviewBody.runtime.enabled_provider_count -lt 1) {
-        throw "overview.runtime.enabled_provider_count expected >= 1, got $($overviewBody.runtime.enabled_provider_count)"
+    $healthResult = Wait-ForJsonCondition -URL $healthURL -Description "gateway health status healthy" -Condition {
+        param($body)
+        $body.status -eq "healthy"
+    }
+    $statusResult = Wait-ForJsonCondition -URL $statusURL -Headers $authHeaders -Description "control status showing connected planes" -Condition {
+        param($body)
+        $body.gateway_status -eq "connected" -and $body.telemetry_status -eq "connected"
+    }
+    $historyResult = Wait-ForJsonCondition -URL $historyURL -Headers $authHeaders -Description "seeded config history" -Condition {
+        param($body)
+        @($body).Count -ge 1
+    }
+    $admin = Wait-ForReady -URL ($adminURL + "?token=" + $adminToken)
+
+    $health = $healthResult.Response
+    $models = $modelsResult.Response
+    $status = $statusResult.Response
+    $history = $historyResult.Response
+    $healthBody = $healthResult.Body
+    $modelsBody = $modelsResult.Body
+    $statusBody = $statusResult.Body
+    $historyBody = $historyResult.Body
+
+    if ($healthBody.status -ne "healthy") {
+        throw "health status expected 'healthy', got '$($healthBody.status)'"
     }
 
-    $stderrText = ""
-    $deadline = (Get-Date).AddSeconds(5)
-    while ((Get-Date) -lt $deadline) {
-        if (Test-Path $stderrPath) {
-            $stderrText = Get-Content -Path $stderrPath -Raw -ErrorAction SilentlyContinue
-            if ($stderrText -match "\[v2\]") {
-                break
-            }
-        }
-        Start-Sleep -Milliseconds 200
+    Assert-ArrayContains -Values ($modelsBody.data | ForEach-Object { $_.id }) -Expected $smokeModel -Label "models.data"
+
+    if ($statusBody.gateway_status -ne "connected") {
+        throw "status.gateway_status expected 'connected', got '$($statusBody.gateway_status)'"
     }
-    if ($stderrText -notmatch "\[v2\]") {
-        throw "gateway stderr did not show a v2 runtime marker. stderr: $stderrText"
+    if ($statusBody.telemetry_status -ne "connected") {
+        throw "status.telemetry_status expected 'connected', got '$($statusBody.telemetry_status)'"
+    }
+
+    if (@($historyBody).Count -lt 1) {
+        throw "config history expected at least one seeded revision"
+    }
+
+    if ($admin.Content -notmatch 'id="app"' -or $admin.Content -notmatch "/admin/assets/") {
+        throw "/admin did not return the embedded control-plane admin shell"
     }
 
     [pscustomobject]@{
-        GatewayBinary            = $gatewayPath
-        ConfigPath               = $configPath
-        HealthStatus             = [int]$health.StatusCode
-        ModelsStatus             = [int]$models.StatusCode
-        OverviewStatus           = [int]$overview.StatusCode
-        HealthModels             = (@($healthBody.available_models) -join ",")
-        OverviewProviderCount    = [int]$overviewBody.runtime.provider_count
-        OverviewEnabledProviders = [int]$overviewBody.runtime.enabled_provider_count
-        RuntimeLogHasV2Marker    = $true
-        ProcessId                = $proc.Id
+        GatewaydBinary   = $gatewaydPath
+        ControldBinary   = $controldPath
+        TelemetrydBinary = $telemetrydPath
+        ConfigPath       = $configPath
+        HealthStatus     = [int]$health.StatusCode
+        ModelsStatus     = [int]$models.StatusCode
+        ControlStatus    = [int]$status.StatusCode
+        HistoryStatus    = [int]$history.StatusCode
+        AdminStatus      = [int]$admin.StatusCode
+        Models           = (@($modelsBody.data | ForEach-Object { $_.id }) -join ",")
+        HistoryCount     = @($historyBody).Count
+        GatewayStatus    = $statusBody.gateway_status
+        TelemetryStatus  = $statusBody.telemetry_status
+        GatewaydPid      = $gatewaydProc.Id
+        ControldPid      = $controldProc.Id
+        TelemetrydPid    = $telemetryProc.Id
     } | Format-List
 } catch {
-    if (Test-Path $stderrPath) {
-        Write-Host "--- gateway stderr ---"
-        Get-Content -Path $stderrPath -ErrorAction SilentlyContinue
-    }
-    if (Test-Path $stdoutPath) {
-        Write-Host "--- gateway stdout ---"
-        Get-Content -Path $stdoutPath -ErrorAction SilentlyContinue
-    }
+    Show-Log -Label "telemetryd stderr" -Path $telemetryStderrPath
+    Show-Log -Label "telemetryd stdout" -Path $telemetryStdoutPath
+    Show-Log -Label "gatewayd stderr" -Path $gatewaydStderrPath
+    Show-Log -Label "gatewayd stdout" -Path $gatewaydStdoutPath
+    Show-Log -Label "controld stderr" -Path $controldStderrPath
+    Show-Log -Label "controld stdout" -Path $controldStdoutPath
     throw
 } finally {
-    if ($proc -and -not $proc.HasExited) {
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        $proc.WaitForExit()
+    foreach ($proc in @($controldProc, $gatewaydProc, $telemetryProc)) {
+        if ($proc -and -not $proc.HasExited) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            $proc.WaitForExit()
+        }
     }
 
     if (-not $KeepWorkdir) {

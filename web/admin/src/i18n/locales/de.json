@@ -3,24 +3,15 @@
     "overview": "Übersicht",
     "telemetry": "Telemetrie",
     "timeseries": "Zeitreihen",
-    "settings": "Einstellungen",
     "history": "Verlauf",
-    "probe": "Probe",
-    "logs": "Protokolle",
-    "benchmark": "Benchmark",
-    "audit": "Prüfprotokoll"
+    "benchmark": "Benchmark"
   },
   "header": {
     "title": "AI Model Gateway",
-    "subtitle": "AI-Modell-Routing-Gateway Verwaltungspanel"
-  },
-  "login": {
-    "title": "AI Model Gateway Verwaltung",
-    "hint": "Bootstrap-Token eingeben, um Admin-Session gleicher Herkunft zu erstellen",
-    "tokenLabel": "Bootstrap Token",
-    "tokenPlaceholder": "0123456789abcdef...",
-    "signIn": "Anmelden",
-    "signingIn": "Anmelden..."
+    "subtitle": "AI-Modell-Routing-Gateway Verwaltungspanel",
+    "gateway": "Gateway",
+    "telemetry": "Telemetry",
+    "statusUnknown": "unknown"
   },
   "overview": {
     "title": "Übersicht",
@@ -90,21 +81,6 @@
     "interval": "Auto-Aktualisierung",
     "active": "Aktualisiert automatisch"
   },
-  "settings": {
-    "title": "Einstellungen",
-    "editableJson": "Editierbares JSON",
-    "saveConfig": "Konfiguration speichern",
-    "structured": "Strukturiert",
-    "advancedJson": "Erweitertes JSON",
-    "confirmTitle": "Speichern bestätigen",
-    "confirmMessage": "Möchten Sie diese Konfiguration wirklich speichern? Das Gateway wird neu geladen.",
-    "confirmYes": "Speichern",
-    "confirmCancel": "Abbrechen",
-    "saveSuccess": "Konfiguration erfolgreich gespeichert.",
-    "saveError": "Fehler beim Speichern der Konfiguration.",
-    "readOnlyArray": "Array (schreibgeschützt, verwenden Sie den JSON-Editor zum Ändern)",
-    "sensitive": "Sensibel"
-  },
   "history": {
     "title": "Konfigurationsverlauf",
     "versionLabel": "Version",
@@ -114,57 +90,24 @@
     "diff": "Diff",
     "linesAdded": "Zeilen hinzugefügt",
     "linesRemoved": "Zeilen entfernt",
-    "blocks": "Blöcke"
-  },
-  "probe": {
-    "title": "Upstream-Probe",
-    "name": "Name",
-    "baseUrl": "Base URL",
-    "anthropicBaseUrl": "Anthropic Base URL",
-    "apiKey": "API Key",
-    "providerClass": "Provider Class",
-    "models": "Modelle",
-    "timeoutMs": "Timeout (ms)",
-    "runProbe": "Probe ausführen",
-    "result": "Ergebnis"
-  },
-  "logs": {
-    "title": "Protokolle",
-    "levelFilter": "Ebene",
-    "search": "Suchen",
-    "searchPlaceholder": "Protokolle durchsuchen...",
-    "level": {
-      "debug": "Debug",
-      "info": "Info",
-      "warn": "Warnung",
-      "error": "Fehler"
-    },
-    "connected": "Verbunden",
-    "disconnected": "Getrennt",
-    "pending": "ausstehend",
-    "pause": "Pause",
-    "resume": "Fortsetzen",
-    "autoScrollOn": "Auto-Scroll an",
-    "autoScrollOff": "Auto-Scroll aus",
-    "clear": "Protokolle löschen",
-    "export": "Exportieren",
-    "exportError": "Export fehlgeschlagen",
-    "empty": "Keine Protokolle vorhanden",
-    "showing": "Zeige",
-    "entries": "Einträge",
-    "scrollToBottom": "Nach unten scrollen"
-  },
-  "actions": {
-    "logout": "Abmelden"
-  },
-  "settingsMenu": {
-    "language": "Sprache",
-    "theme": "Thema"
-  },
-  "sse": {
-    "connected": "Verbunden",
-    "reconnecting": "Verbindung wird wiederhergestellt",
-    "disconnected": "Getrennt"
+    "blocks": "Blöcke",
+    "rollbackToSelected": "Rollback to Selected",
+    "publish": "Publish Selected",
+    "current": "Current Active",
+    "selectedRevision": "Selected Revision",
+    "revisionId": "Revision ID",
+    "createdAt": "Created At",
+    "createdBy": "Created By",
+    "description": "Description",
+    "status": "Status",
+    "noDescription": "No description provided.",
+    "activeBadge": "Active",
+    "inactiveBadge": "Inactive",
+    "readOnly": "Read-only session",
+    "publishSuccess": "Revision published.",
+    "publishFailed": "Failed to publish revision.",
+    "rollbackSuccess": "Rollback completed.",
+    "rollbackFailed": "Failed to roll back revision."
   },
   "benchmark": {
     "title": "Modell-Benchmark",
@@ -194,27 +137,54 @@
     "tokens": "Tokens",
     "noData": "Keine Benchmark-Daten für den ausgewählten Zeitraum verfügbar"
   },
+  "auth": {
+    "title": "Admin Sign In",
+    "subtitle": "Use an admin or viewer token from config.yaml to open the control plane.",
+    "checking": "Checking current session...",
+    "tokenLabel": "Token",
+    "tokenPlaceholder": "Paste admin or viewer token",
+    "submit": "Sign In",
+    "submitting": "Signing In...",
+    "logout": "Log Out",
+    "loggingOut": "Logging Out...",
+    "disabled": "Authentication disabled",
+    "sessionCurrent": "Session",
+    "roleAdmin": "Admin",
+    "roleViewer": "Viewer",
+    "hint": "The browser session is stored in a signed cookie for this control plane."
+  },
   "empty": {
     "noRequests": "Keine Anfragedaten vorhanden. Das Gateway wartet auf Datenverkehr.",
     "noTelemetry": "Noch keine Telemetriedaten verfügbar.",
     "noBenchmark": "Keine Benchmark-Daten verfügbar.",
     "noTimeseries": "Keine Zeitreihendaten verfügbar.",
-    "noAudit": "Keine Prüfprotokolleinträge.",
     "noHistory": "Kein Konfigurationsänderungsverlauf."
   },
-  "audit": {
-    "title": "Prüfprotokoll",
-    "loading": "Prüfprotokoll wird geladen...",
-    "empty": "Keine Prüfeinträge vorhanden",
-    "time": "Zeit",
-    "action": "Aktion",
-    "actor": "Akteur",
-    "role": "Rolle",
-    "details": "Details",
-    "ip": "IP-Adresse",
-    "prev": "Zurück",
-    "next": "Weiter",
-    "page": "Seite",
-    "totalEntries": "Einträge"
+  "charts": {
+    "emptyTitle": "No data available",
+    "emptyHint": "This chart will update automatically once data arrives.",
+    "lineEmpty": "No trend data yet",
+    "lineEmptyHint": "The line chart will render automatically once requests come in.",
+    "donutEmpty": "No distribution data yet",
+    "donutEmptyHint": "Upstream and model distribution will show here once hits occur.",
+    "barEmpty": "No bar data yet",
+    "barEmptyHint": "Comparison bars will generate automatically once enough samples arrive.",
+    "current": "Current",
+    "latest": "Latest",
+    "donutTotal": "Total",
+    "donutOverview": "Overview",
+    "donutItems": "items",
+    "barPeak": "Peak",
+    "emptyAriaLabel": "Empty chart",
+    "scrollHint": "Scroll horizontally for more items"
+  },
+  "theme": {
+    "toggleLabel": "Switch theme"
+  },
+  "language": {
+    "selectorLabel": "Language"
+  },
+  "toast": {
+    "close": "Close"
   }
 }

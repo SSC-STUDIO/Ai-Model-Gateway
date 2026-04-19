@@ -109,6 +109,7 @@ type WindowMetrics struct {
 type ModelRouteUsage struct {
 	RequestedModel string `json:"requested_model,omitempty"`
 	Model          string `json:"model,omitempty"`
+	Upstream       string `json:"upstream,omitempty"`
 	Usage          Usage  `json:"usage"`
 }
 
@@ -269,7 +270,7 @@ CREATE TABLE IF NOT EXISTS requests (
   upstream TEXT,
   status_code INTEGER NOT NULL,
   attempts INTEGER NOT NULL,
-  duration_ms INTEGER NOT NULL,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
   success INTEGER NOT NULL,
   error_message TEXT,
   prompt_tokens INTEGER NOT NULL,
@@ -651,13 +652,14 @@ func (s *Store) queryModelRouteBreakdown() []ModelRouteUsage {
 SELECT
   COALESCE(requested_model, ''),
   COALESCE(model, ''),
+  COALESCE(upstream, ''),
   COALESCE(SUM(prompt_tokens), 0),
   COALESCE(SUM(cached_prompt_tokens), 0),
   COALESCE(SUM(completion_tokens), 0),
   COALESCE(SUM(total_tokens), 0)
 FROM requests
 WHERE COALESCE(model, '') != '' OR COALESCE(requested_model, '') != ''
-GROUP BY COALESCE(requested_model, ''), COALESCE(model, '')
+GROUP BY COALESCE(requested_model, ''), COALESCE(model, ''), COALESCE(upstream, '')
 ORDER BY COALESCE(SUM(total_tokens), 0) DESC`)
 	if err != nil {
 		return nil
@@ -670,6 +672,7 @@ ORDER BY COALESCE(SUM(total_tokens), 0) DESC`)
 		if err := rows.Scan(
 			&item.RequestedModel,
 			&item.Model,
+			&item.Upstream,
 			&item.Usage.PromptTokens,
 			&item.Usage.CachedPromptTokens,
 			&item.Usage.CompletionTokens,
@@ -1042,6 +1045,11 @@ func (s *Store) persistBatch(batch []telemetryWrite) {
 }
 
 func execRequestWrite(stmt *sql.Stmt, record RequestRecord) error {
+	// Ensure DurationMs has a valid value (minimum 1 to satisfy NOT NULL)
+	durationMs := record.DurationMs
+	if durationMs == 0 {
+		durationMs = 1
+	}
 	_, err := stmt.Exec(
 		record.Timestamp.UTC().Format(time.RFC3339Nano),
 		record.RequestID,
@@ -1052,7 +1060,7 @@ func execRequestWrite(stmt *sql.Stmt, record RequestRecord) error {
 		record.Upstream,
 		record.StatusCode,
 		record.Attempts,
-		record.DurationMs,
+		durationMs,
 		boolToInt(record.Success),
 		record.Error,
 		record.Usage.PromptTokens,

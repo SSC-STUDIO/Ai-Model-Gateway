@@ -37,22 +37,45 @@ jobs:
           fi
           git diff --exit-code
 
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          args: --timeout=5m
+
+      - name: Run govulncheck
+        uses: golang.org/x/vuln/cmd/govulncheck@latest
+        with:
+          args: ./...
+
       - name: Reject TODO and FIXME markers
         shell: pwsh
-        run: .\scripts\check-no-todo.ps1
+        run: .\scripts\check-no-todo.ps1 -RepoRoot .
 
-      - name: Run tests
-        run: go test -timeout 10m ./...
+      - name: Run tests with coverage
+        run: go test -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
 
-      - name: Verify default cutover binaries build
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          if-no-files-found: warn
+
+      - name: Verify plane binaries build
         shell: pwsh
         run: |
-          go build ./cmd/gateway
-          go build ./cmd/gateway-v2
-          go build ./cmd/config-convert
+          go build ./cmd/gatewayd
+          go build ./cmd/controld
+          go build ./cmd/telemetryd
+
+      - name: Smoke test direct three-plane startup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\scripts\verify-default-runtime.ps1
 
   build-windows:
-    name: Build Windows Cutover Artifacts
+    name: Build Windows Runtime Bundle
     runs-on: windows-latest
     needs: test
 
@@ -66,13 +89,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build default runtime and migration helper
+      - name: Build current Windows runtime bundle
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          go build -trimpath -ldflags="-s -w" -o .\dist\gateway.exe .\cmd\gateway
-          go build -trimpath -ldflags="-s -w" -o .\dist\gateway-v2.exe .\cmd\gateway-v2
-          go build -trimpath -ldflags="-s -w" -o .\dist\config-convert.exe .\cmd\config-convert
+          go build -trimpath -ldflags="-s -w" -o .\dist\gatewayd.exe .\cmd\gatewayd
+          go build -trimpath -ldflags="-s -w" -o .\dist\controld.exe .\cmd\controld
+          go build -trimpath -ldflags="-s -w" -o .\dist\telemetryd.exe .\cmd\telemetryd
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

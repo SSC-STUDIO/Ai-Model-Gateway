@@ -550,7 +550,7 @@ func TestOpenAIToClaudeConverter_ModelMapping(t *testing.T) {
 		{"gpt-4", "claude-3-opus-20240229"},
 		{"gpt-4-turbo", "claude-3-sonnet-20240229"},
 		{"gpt-3.5-turbo", "claude-3-haiku-20240307"},
-		{"unknown-model", "unknown-model"}, // unmapped model
+		{"unknown-model", "unknown-model"},                   // unmapped model
 		{"claude-3-opus-20240229", "claude-3-opus-20240229"}, // already Claude
 	}
 

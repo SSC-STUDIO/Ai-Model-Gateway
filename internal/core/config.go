@@ -33,12 +33,13 @@ type ServerConfig struct {
 
 // AdminConfig controls the admin API and frontend.
 type AdminConfig struct {
-	Enabled          bool          `yaml:"enabled"            json:"enabled"`
-	BootstrapToken   string        `yaml:"bootstrap_token"    json:"-"`
-	CookieSigningKey string        `yaml:"cookie_signing_key" json:"-"`
-	Tokens           []TokenConfig `yaml:"tokens"             json:"tokens"`
-	Language         string        `yaml:"language"            json:"language"`
-	RateLimit        struct {
+	Enabled             bool          `yaml:"enabled"            json:"enabled"`
+	BootstrapToken      string        `yaml:"bootstrap_token"    json:"-"`
+	CookieSigningKey    string        `yaml:"cookie_signing_key" json:"-"`
+	PublishHistoryLimit int           `yaml:"publish_history_limit" json:"publish_history_limit"`
+	Tokens              []TokenConfig `yaml:"tokens"             json:"tokens"`
+	Language            string        `yaml:"language"            json:"language"`
+	RateLimit           struct {
 		RequestsPerSecond float64 `yaml:"requests_per_second" json:"requests_per_second"`
 		Burst             int     `yaml:"burst"               json:"burst"`
 	} `yaml:"rate_limit" json:"rate_limit"`
@@ -61,6 +62,11 @@ type RoutingConfig struct {
 	FailurePolicy  FailurePolicyConfig `yaml:"failure_policy"  json:"failure_policy"`
 	Retry          RetryPolicyConfig   `yaml:"retry"           json:"retry"`
 	Intercepts     []InterceptRule     `yaml:"intercepts"      json:"intercepts"`
+	RateLimit      RateLimitConfig     `yaml:"rate_limit"      json:"rate_limit"`
+	Cache          CacheConfig         `yaml:"cache"           json:"cache"`
+	Queue          QueueConfig         `yaml:"queue"           json:"queue"`
+	KeyRotation    KeyRotationConfig   `yaml:"key_rotation"    json:"key_rotation"`
+	Compression    CompressionConfig   `yaml:"compression"     json:"compression"`
 }
 
 // RetryBackoffConfig controls exponential backoff between retries.
@@ -110,6 +116,39 @@ type InterceptRule struct {
 	Action          string   `yaml:"action"           json:"action"`
 }
 
+// RateLimitConfig controls request rate limiting.
+type RateLimitConfig struct {
+	Enabled           bool    `yaml:"enabled"             json:"enabled"`
+	RequestsPerSecond float64 `yaml:"requests_per_second" json:"requests_per_second"`
+	Burst             int     `yaml:"burst"               json:"burst"`
+}
+
+// CacheConfig controls request caching.
+type CacheConfig struct {
+	Enabled   bool `yaml:"enabled"    json:"enabled"`
+	MaxSizeMB int  `yaml:"max_size_mb" json:"max_size_mb"`
+	TTLSec    int  `yaml:"ttl_sec"    json:"ttl_sec"`
+}
+
+// QueueConfig controls request queuing.
+type QueueConfig struct {
+	Enabled         bool `yaml:"enabled"          json:"enabled"`
+	MaxConcurrent   int  `yaml:"max_concurrent"   json:"max_concurrent"`
+	HighPriorityPct int  `yaml:"high_priority_pct" json:"high_priority_pct"`
+}
+
+// KeyRotationConfig controls API key rotation.
+type KeyRotationConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+}
+
+// CompressionConfig controls response compression.
+type CompressionConfig struct {
+	Enabled  bool   `yaml:"enabled"    json:"enabled"`
+	MinBytes int    `yaml:"min_bytes"  json:"min_bytes"`
+	Level    string `yaml:"level"      json:"level"`
+}
+
 // IsEnabled returns whether the intercept rule is enabled (defaults to true).
 func (r *InterceptRule) IsEnabled() bool {
 	if r.Enabled == nil {
@@ -128,9 +167,30 @@ type TelemetryConfig struct {
 
 // PricingConfig controls pricing cache and refresh behaviour.
 type PricingConfig struct {
-	CachePath            string `yaml:"cache_path"             json:"cache_path"`
-	RefreshIntervalHours int    `yaml:"refresh_interval_hours" json:"refresh_interval_hours"`
-	RequestTimeoutMs     int    `yaml:"request_timeout_ms"     json:"request_timeout_ms"`
+	CachePath            string               `yaml:"cache_path"             json:"cache_path"`
+	RefreshIntervalHours int                  `yaml:"refresh_interval_hours" json:"refresh_interval_hours"`
+	RequestTimeoutMs     int                  `yaml:"request_timeout_ms"     json:"request_timeout_ms"`
+	ManualPrices         []PricingManualPrice `yaml:"manual_prices" json:"manual_prices"`
+}
+
+// PricingManualPrice allows operator-defined pricing overrides by model and optional provider.
+type PricingManualPrice struct {
+	Provider         string  `yaml:"provider,omitempty"            json:"provider,omitempty"`
+	Model            string  `yaml:"model"                         json:"model"`
+	Currency         string  `yaml:"currency,omitempty"            json:"currency,omitempty"`
+	InputPer1M       float64 `yaml:"input_per_1m"                json:"input_per_1m"`
+	CachedInputPer1M float64 `yaml:"cached_input_per_1m,omitempty" json:"cached_input_per_1m,omitempty"`
+	OutputPer1M      float64 `yaml:"output_per_1m"               json:"output_per_1m"`
+	Enabled          *bool   `yaml:"enabled,omitempty"            json:"enabled,omitempty"`
+	Source           string  `yaml:"source,omitempty"             json:"source,omitempty"`
+}
+
+// IsEnabled returns whether the manual pricing rule is enabled (defaults to true).
+func (p PricingManualPrice) IsEnabled() bool {
+	if p.Enabled == nil {
+		return true
+	}
+	return *p.Enabled
 }
 
 // CompatConfig controls protocol compatibility (bridge, fallback).
@@ -183,9 +243,6 @@ func (s *ServerConfig) normalize() {
 	if s.ReadTimeoutMs == 0 {
 		s.ReadTimeoutMs = 30000
 	}
-	if s.WriteTimeoutMs == 0 {
-		s.WriteTimeoutMs = 60000
-	}
 	if s.IdleTimeoutMs == 0 {
 		s.IdleTimeoutMs = 120000
 	}
@@ -196,6 +253,9 @@ func (s *ServerConfig) normalize() {
 
 func (a *AdminConfig) normalize() {
 	a.Language = normalizeLanguage(a.Language)
+	if a.PublishHistoryLimit <= 0 {
+		a.PublishHistoryLimit = DefaultAdminPublishHistoryLimit
+	}
 }
 
 func (r *RoutingConfig) normalize() {
@@ -244,6 +304,24 @@ func (r *RoutingConfig) normalize() {
 		if strings.TrimSpace(r.Intercepts[i].Action) == "" {
 			r.Intercepts[i].Action = "fail"
 		}
+		if r.Cache.TTLSec == 0 {
+			r.Cache.TTLSec = 300
+		}
+		if r.Cache.MaxSizeMB == 0 {
+			r.Cache.MaxSizeMB = 256
+		}
+		if r.Queue.MaxConcurrent == 0 {
+			r.Queue.MaxConcurrent = 100
+		}
+		if r.Queue.HighPriorityPct == 0 {
+			r.Queue.HighPriorityPct = 60
+		}
+		if r.Compression.Level == "" {
+			r.Compression.Level = "default"
+		}
+		if r.Compression.MinBytes == 0 {
+			r.Compression.MinBytes = 1024
+		}
 	}
 }
 
@@ -271,6 +349,19 @@ func (p *PricingConfig) normalize() {
 	}
 	if p.RequestTimeoutMs <= 0 {
 		p.RequestTimeoutMs = 15000
+	}
+	for i := range p.ManualPrices {
+		p.ManualPrices[i].Provider = strings.TrimSpace(p.ManualPrices[i].Provider)
+		p.ManualPrices[i].Model = strings.TrimSpace(p.ManualPrices[i].Model)
+		p.ManualPrices[i].Currency = normalizePricingCurrency(p.ManualPrices[i].Currency)
+		p.ManualPrices[i].Source = strings.TrimSpace(p.ManualPrices[i].Source)
+		if p.ManualPrices[i].Source == "" {
+			p.ManualPrices[i].Source = "manual"
+		}
+		if p.ManualPrices[i].Enabled == nil {
+			enabled := true
+			p.ManualPrices[i].Enabled = &enabled
+		}
 	}
 }
 
@@ -310,11 +401,28 @@ func (c *Config) Validate() error {
 			return errors.New("admin.cookie_signing_key must be at least 32 characters")
 		}
 	}
+	if c.Admin.PublishHistoryLimit < 0 {
+		return errors.New("admin.publish_history_limit must be >= 0")
+	}
 	if c.Pricing.RefreshIntervalHours < 0 {
 		return errors.New("pricing.refresh_interval_hours must be >= 0")
 	}
 	if c.Pricing.RequestTimeoutMs < 0 {
 		return errors.New("pricing.request_timeout_ms must be >= 0")
+	}
+	for i, manual := range c.Pricing.ManualPrices {
+		if strings.TrimSpace(manual.Model) == "" {
+			return fmt.Errorf("pricing.manual_prices[%d].model must not be empty", i)
+		}
+		if manual.InputPer1M < 0 {
+			return fmt.Errorf("pricing.manual_prices[%d].input_per_1m must be >= 0", i)
+		}
+		if manual.CachedInputPer1M < 0 {
+			return fmt.Errorf("pricing.manual_prices[%d].cached_input_per_1m must be >= 0", i)
+		}
+		if manual.OutputPer1M < 0 {
+			return fmt.Errorf("pricing.manual_prices[%d].output_per_1m must be >= 0", i)
+		}
 	}
 	if len(c.Providers) == 0 {
 		return errors.New("at least one provider must be configured")
@@ -338,6 +446,8 @@ const (
 	StrategyHealthWeightedRR = "health_weighted_rr"
 	StrategyRoundRobin       = "round_robin"
 	StrategyWeightedRR       = "weighted_rr"
+
+	DefaultAdminPublishHistoryLimit = 256
 
 	LangZH = "zh"
 	LangEN = "en"
@@ -378,6 +488,14 @@ func normalizeLanguage(lang string) string {
 	default:
 		return LangZH
 	}
+}
+
+func normalizePricingCurrency(currency string) string {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if currency == "" {
+		return "USD"
+	}
+	return currency
 }
 
 // NormalizeProviderClass normalises a provider class string.

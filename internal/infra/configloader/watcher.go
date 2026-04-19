@@ -10,8 +10,14 @@ import (
 	"ai-model-gateway/internal/core"
 )
 
+var (
+	watcherSettleInterval = 25 * time.Millisecond
+	watcherSettleChecks   = 3
+)
+
 // Watcher polls a config file for changes and notifies subscribers.
-// It uses SHA-256 content hashing to avoid spurious reloads.
+// It uses SHA-256 content hashing and briefly re-reads changed files so
+// transient in-place rewrites do not spuriously trigger reloads.
 type Watcher struct {
 	path     string
 	interval time.Duration
@@ -27,12 +33,12 @@ type Watcher struct {
 // NewWatcher creates a config file watcher that checks for changes
 // at the given polling interval.
 func NewWatcher(path string, interval time.Duration) (*Watcher, error) {
-	cfg, err := LoadFromFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
+	cfg, err := loadFromBytes(path, data)
 	if err != nil {
 		return nil, err
 	}
@@ -91,21 +97,43 @@ func (w *Watcher) pollLoop() {
 }
 
 func (w *Watcher) check() {
-	data, err := os.ReadFile(w.path)
+	lastHash := w.currentHash()
+
+	data, hash, err := readHashedFile(w.path)
 	if err != nil {
 		log.Printf("[config] watch read error: %v", err)
 		return
 	}
-
-	hash := sha256.Sum256(data)
-	w.mu.RLock()
-	same := hash == w.lastHash
-	w.mu.RUnlock()
-	if same {
+	if hash == lastHash {
 		return
 	}
 
-	cfg, err := LoadFromFile(w.path)
+	for i := 0; i < watcherSettleChecks; i++ {
+		time.Sleep(watcherSettleInterval)
+
+		nextData, nextHash, err := readHashedFile(w.path)
+		if err != nil {
+			log.Printf("[config] watch read error: %v", err)
+			return
+		}
+		if nextHash == lastHash {
+			return
+		}
+		if nextHash == hash {
+			data = nextData
+			hash = nextHash
+			break
+		}
+
+		data = nextData
+		hash = nextHash
+
+		if i == watcherSettleChecks-1 {
+			return
+		}
+	}
+
+	cfg, err := loadFromBytes(w.path, data)
 	if err != nil {
 		log.Printf("[config] watch reload error (keeping old config): %v", err)
 		return
@@ -123,4 +151,18 @@ func (w *Watcher) check() {
 	for _, fn := range callbacks {
 		fn(cfg)
 	}
+}
+
+func (w *Watcher) currentHash() [32]byte {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.lastHash
+}
+
+func readHashedFile(path string) ([]byte, [32]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+	return data, sha256.Sum256(data), nil
 }

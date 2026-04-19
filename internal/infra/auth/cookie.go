@@ -52,6 +52,7 @@ type Authenticator struct {
 	bootstrapToken   string
 	cookieSigningKey []byte
 	tokens           []TokenEntry
+	cookieSecure     bool
 }
 
 // New creates an Authenticator with the given bootstrap token and signing key.
@@ -59,12 +60,18 @@ func New(bootstrapToken string, cookieSigningKey string) *Authenticator {
 	return &Authenticator{
 		bootstrapToken:   bootstrapToken,
 		cookieSigningKey: []byte(cookieSigningKey),
+		cookieSecure:     true,
 	}
 }
 
 // SetTokens configures the additional named tokens.
 func (a *Authenticator) SetTokens(tokens []TokenEntry) {
 	a.tokens = tokens
+}
+
+// SetCookieSecure controls the Secure attribute of issued auth cookies.
+func (a *Authenticator) SetCookieSecure(secure bool) {
+	a.cookieSecure = secure
 }
 
 // Login validates the provided token against bootstrap_token and the tokens
@@ -83,7 +90,7 @@ func (a *Authenticator) Login(w http.ResponseWriter, token string) error {
 		Path:     "/",
 		MaxAge:   int(cookieMaxAge.Seconds()),
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   a.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	return nil
@@ -103,7 +110,7 @@ func (a *Authenticator) Logout(w http.ResponseWriter) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   a.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 }

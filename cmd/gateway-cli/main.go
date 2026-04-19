@@ -11,7 +11,7 @@ import (
 	"ai-model-gateway/internal/cli"
 )
 
-const Version = "1.0.0"
+const Version = "1.1.1"
 
 func main() {
 	os.Exit(runCLI(os.Args, os.Stdout, os.Stderr))

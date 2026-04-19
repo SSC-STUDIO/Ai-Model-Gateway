@@ -35,28 +35,31 @@ func (c *ControlPlaneClient) SetHTTPClient(client *http.Client) {
 	c.httpClient = client
 }
 
-// ConfigResponse represents config API response
+// ConfigResponse represents config API response (matches server CurrentConfigView)
 type ConfigResponse struct {
-	RevisionID string                 `json:"revision_id"`
-	Config     map[string]interface{} `json:"config"`
-	CreatedAt  time.Time              `json:"created_at"`
-	CreatedBy  string                 `json:"created_by"`
-	IsActive   bool                   `json:"is_active"`
-}
-
-// ConfigView represents full config view with history
-type ConfigView struct {
-	Current   ConfigResponse `json:"current"`
-	Revisions []RevisionInfo `json:"revisions"`
+	Revision *RevisionInfo   `json:"revision"`
+	Policy   PublisherPolicy `json:"policy"`
 }
 
 // RevisionInfo represents a config revision
 type RevisionInfo struct {
-	RevisionID  string    `json:"revision_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	CreatedBy   string    `json:"created_by"`
-	Description string    `json:"description"`
-	IsActive    bool      `json:"is_active"`
+	RevisionID  string                 `json:"revision_id"`
+	CreatedAt   time.Time              `json:"created_at"`
+	CreatedBy   string                 `json:"created_by"`
+	Description string                 `json:"description"`
+	IsActive    bool                   `json:"is_active"`
+	Config      map[string]interface{} `json:"config,omitempty"`
+}
+
+// PublisherPolicy represents the publisher policy
+type PublisherPolicy struct {
+	AutoPublish bool `json:"auto_publish"`
+}
+
+// ConfigView represents full config view with history (for backward compatibility)
+type ConfigView struct {
+	Current   ConfigResponse `json:"current"`
+	Revisions []RevisionInfo `json:"revisions"`
 }
 
 // PublishResult represents publish operation result
@@ -161,23 +164,37 @@ type ModelBenchmark struct {
 	TotalCost       float64 `json:"total_cost"`
 }
 
-// SystemStatus represents system status response
+// SystemStatus represents system status response (matches server response)
 type SystemStatus struct {
-	Status          string         `json:"status"`
-	Version         string         `json:"version"`
-	StartedAt       time.Time      `json:"started_at"`
-	Uptime          string         `json:"uptime"`
-	GatewayStatus   string         `json:"gateway_status"`
-	Gateway         *GatewayStatus `json:"gateway,omitempty"`
-	TelemetryStatus string         `json:"telemetry_status"`
+	Version         string                 `json:"version"`
+	StartedAt       string                 `json:"startedAt"`
+	Uptime          string                 `json:"uptime"`
+	GatewayStatus   string                 `json:"gateway_status"`
+	Gateway         *GatewayStatusResponse `json:"gateway,omitempty"`
+	GatewayError    string                 `json:"gateway_error,omitempty"`
+	TelemetryStatus string                 `json:"telemetry_status"`
 }
 
-// GatewayStatus represents gateway status details
-type GatewayStatus struct {
-	Status           string           `json:"status"`
-	ActiveRequests   int64            `json:"active_requests"`
-	HealthyUpstreams map[string]bool  `json:"healthy_upstreams"`
-	Models           []string         `json:"models"`
+// GatewayStatusResponse matches gatewaycontrol.GetStatusResponse
+type GatewayStatusResponse struct {
+	ActiveSnapshotID string                    `json:"active_snapshot_id"`
+	Readiness        string                    `json:"readiness"`
+	ActiveRequests   int                       `json:"active_requests"`
+	Listener         string                    `json:"listener"`
+	ProviderHealth   map[string]ProviderHealth `json:"provider_health"`
+	Uptime           string                    `json:"uptime"`
+	StartedAt        time.Time                 `json:"started_at"`
+}
+
+// ProviderHealth represents provider health status
+type ProviderHealth struct {
+	Name                string    `json:"name"`
+	Healthy             bool      `json:"healthy"`
+	LastCheck           time.Time `json:"last_check"`
+	LastSuccess         time.Time `json:"last_success"`
+	ConsecutiveFailures int       `json:"consecutive_failures"`
+	CooldownUntil       time.Time `json:"cooldown_until"`
+	LatencyMs           int64     `json:"latency_ms"`
 }
 
 // ProviderStatus represents provider status
@@ -194,12 +211,12 @@ type ProviderStatus struct {
 }
 
 // GetConfig fetches current config
-func (c *ControlPlaneClient) GetConfig(ctx context.Context) (*ConfigView, error) {
-	var view ConfigView
-	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/config", nil, &view); err != nil {
+func (c *ControlPlaneClient) GetConfig(ctx context.Context) (*ConfigResponse, error) {
+	var resp ConfigResponse
+	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/config", nil, &resp); err != nil {
 		return nil, err
 	}
-	return &view, nil
+	return &resp, nil
 }
 
 // GetConfigHistory fetches config history
@@ -217,7 +234,9 @@ func (c *ControlPlaneClient) GetConfigHistory(ctx context.Context, limit int) ([
 
 // PublishConfig publishes a config revision
 func (c *ControlPlaneClient) PublishConfig(ctx context.Context, revisionID string) (*PublishResult, error) {
-	req := struct{ RevisionID string `json:"revision_id"` }{RevisionID: revisionID}
+	req := struct {
+		RevisionID string `json:"revision_id"`
+	}{RevisionID: revisionID}
 	var result PublishResult
 	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/config/publish", req, &result); err != nil {
 		return nil, err
@@ -227,7 +246,9 @@ func (c *ControlPlaneClient) PublishConfig(ctx context.Context, revisionID strin
 
 // RollbackConfig rolls back to a config revision
 func (c *ControlPlaneClient) RollbackConfig(ctx context.Context, revisionID string) (*PublishResult, error) {
-	req := struct{ RevisionID string `json:"revision_id"` }{RevisionID: revisionID}
+	req := struct {
+		RevisionID string `json:"revision_id"`
+	}{RevisionID: revisionID}
 	var result PublishResult
 	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/config/rollback", req, &result); err != nil {
 		return nil, err
@@ -316,7 +337,7 @@ func (c *ControlPlaneClient) GetStatus(ctx context.Context) (*SystemStatus, erro
 	return &status, nil
 }
 
-// ListProviders lists all providers
+// ListProviders lists all providers from gateway status
 func (c *ControlPlaneClient) ListProviders(ctx context.Context) ([]ProviderStatus, error) {
 	status, err := c.GetStatus(ctx)
 	if err != nil {
@@ -324,13 +345,15 @@ func (c *ControlPlaneClient) ListProviders(ctx context.Context) ([]ProviderStatu
 	}
 	providers := make([]ProviderStatus, 0)
 	if status.Gateway != nil {
-		for name, healthy := range status.Gateway.HealthyUpstreams {
+		for name, health := range status.Gateway.ProviderHealth {
 			ps := ProviderStatus{
-				Name:    name,
-				Healthy: healthy,
-				Status:  "healthy",
+				Name:      name,
+				Healthy:   health.Healthy,
+				LatencyMs: health.LatencyMs,
 			}
-			if !healthy {
+			if health.Healthy {
+				ps.Status = "healthy"
+			} else {
 				ps.Status = "unhealthy"
 			}
 			providers = append(providers, ps)
@@ -350,12 +373,16 @@ func (c *ControlPlaneClient) TestProvider(ctx context.Context, providerName stri
 		Status: "unknown",
 	}
 	if status.Gateway != nil {
-		if healthy, ok := status.Gateway.HealthyUpstreams[providerName]; ok {
-			providerStatus.Healthy = healthy
-			if healthy {
+		if health, ok := status.Gateway.ProviderHealth[providerName]; ok {
+			providerStatus.Healthy = health.Healthy
+			providerStatus.LatencyMs = health.LatencyMs
+			if health.Healthy {
 				providerStatus.Status = "healthy"
 			} else {
 				providerStatus.Status = "unhealthy"
+				if health.ConsecutiveFailures > 0 {
+					providerStatus.ErrorCount = int64(health.ConsecutiveFailures)
+				}
 			}
 		}
 	}
@@ -399,7 +426,9 @@ func (c *ControlPlaneClient) doRequest(ctx context.Context, method, path string,
 	}
 
 	if resp.StatusCode >= 400 {
-		var errResp struct{ Error string `json:"error"` }
+		var errResp struct {
+			Error string `json:"error"`
+		}
 		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error != "" {
 			return fmt.Errorf("API error (%d): %s", resp.StatusCode, errResp.Error)
 		}

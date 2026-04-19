@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"ai-model-gateway/internal/core"
@@ -27,10 +28,21 @@ type Server struct {
 // Use Mount* methods to attach route groups before calling ListenAndServe.
 func New(cfg core.ServerConfig) *Server {
 	r := chi.NewRouter()
+	r.Use(securityHeaders)
 	return &Server{
 		cfg:    cfg,
 		router: r,
 	}
+}
+
+// securityHeaders adds standard security headers to all responses.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Router returns the underlying chi.Router for mounting routes.
@@ -42,23 +54,17 @@ func (s *Server) Router() chi.Router {
 // On context cancellation it performs a graceful shutdown.
 func (s *Server) ListenAndServe(ctx context.Context) error {
 	var err error
-	s.listener, err = net.Listen("tcp", s.cfg.Listen)
+	network, bindAddr := resolveListenTarget(s.cfg.Listen)
+	s.listener, err = net.Listen(network, bindAddr)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", s.cfg.Listen, err)
+		return fmt.Errorf("listen on %s: %w", bindAddr, err)
 	}
 
-	s.srv = &http.Server{
-		Addr:           s.cfg.Listen,
-		Handler:        withBodyLimit(s.router, s.cfg.MaxBodyBytes),
-		ReadTimeout:    time.Duration(s.cfg.ReadTimeoutMs) * time.Millisecond,
-		WriteTimeout:   time.Duration(s.cfg.WriteTimeoutMs) * time.Millisecond,
-		IdleTimeout:    time.Duration(s.cfg.IdleTimeoutMs) * time.Millisecond,
-		MaxHeaderBytes: 1 << 20, // 1 MB
-	}
+	s.srv = newHTTPServer(s.cfg, withBodyLimit(s.router, s.cfg.MaxBodyBytes))
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("[gateway] listening on %s", s.cfg.Listen)
+		log.Printf("[gateway] listening on %s", bindAddr)
 		if err := s.srv.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
@@ -77,6 +83,25 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	}
 }
 
+func newHTTPServer(cfg core.ServerConfig, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:           cfg.Listen,
+		Handler:        handler,
+		ReadTimeout:    core.MillisecondsToDuration(cfg.ReadTimeoutMs, 30*time.Second),
+		WriteTimeout:   serverWriteTimeout(cfg),
+		IdleTimeout:    core.MillisecondsToDuration(cfg.IdleTimeoutMs, 120*time.Second),
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+}
+
+func serverWriteTimeout(cfg core.ServerConfig) time.Duration {
+	if cfg.WriteTimeoutMs <= 0 {
+		// SSE and long-running buffered fallbacks need an unlimited write window.
+		return 0
+	}
+	return core.MillisecondsToDuration(cfg.WriteTimeoutMs, 0)
+}
+
 // withBodyLimit wraps a handler with a request body size limit.
 func withBodyLimit(h http.Handler, maxBytes int64) http.Handler {
 	if maxBytes <= 0 {
@@ -86,4 +111,12 @@ func withBodyLimit(h http.Handler, maxBytes int64) http.Handler {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 		h.ServeHTTP(w, r)
 	})
+}
+
+func resolveListenTarget(listen string) (network string, bindAddr string) {
+	trimmed := strings.TrimSpace(listen)
+	if strings.HasPrefix(trimmed, ":") {
+		return "tcp4", "0.0.0.0" + trimmed
+	}
+	return "tcp", trimmed
 }

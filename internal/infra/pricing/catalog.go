@@ -15,9 +15,14 @@ type Catalog struct {
 
 // Price is a model price entry.
 type Price struct {
-	InputPer1MUsd       float64 `json:"input_per_1m_usd"`
+	Currency            string  `json:"currency,omitempty"`
+	InputPer1M          float64 `json:"input_per_1m"`
+	CachedInputPer1M    float64 `json:"cached_input_per_1m,omitempty"`
+	OutputPer1M         float64 `json:"output_per_1m"`
+	InputPer1MUsd       float64 `json:"input_per_1m_usd,omitempty"`
 	CachedInputPer1MUsd float64 `json:"cached_input_per_1m_usd,omitempty"`
-	OutputPer1MUsd      float64 `json:"output_per_1m_usd"`
+	OutputPer1MUsd      float64 `json:"output_per_1m_usd,omitempty"`
+	Source              string  `json:"source,omitempty"`
 }
 
 // Snapshot is the pricing catalog state used by admin/economics endpoints.
@@ -64,9 +69,14 @@ func fromLegacySnapshot(snapshot telemetry.PricingCatalogSnapshot) Snapshot {
 	catalog := make(map[string]Price, len(snapshot.Catalog))
 	for key, value := range snapshot.Catalog {
 		catalog[key] = Price{
+			Currency:            value.Currency,
+			InputPer1M:          value.InputPer1M,
+			CachedInputPer1M:    value.CachedInputPer1M,
+			OutputPer1M:         value.OutputPer1M,
 			InputPer1MUsd:       value.InputPer1MUsd,
 			CachedInputPer1MUsd: value.CachedInputPer1MUsd,
 			OutputPer1MUsd:      value.OutputPer1MUsd,
+			Source:              value.Source,
 		}
 	}
 

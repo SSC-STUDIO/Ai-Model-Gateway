@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks'
+import { useI18n } from '../i18n'
 
 const STORAGE_KEY = 'admin-theme'
 type Theme = 'light' | 'dark'
@@ -31,6 +32,7 @@ export function applyTheme(theme: Theme) {
 }
 
 export function ThemeToggle() {
+  const { t } = useI18n()
   const [theme, setTheme] = useState<Theme>(() => getInitialTheme())
 
   useEffect(() => {
@@ -48,8 +50,8 @@ export function ThemeToggle() {
       type="button"
       class="icon-btn"
       onClick={toggle}
-      aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
-      title={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+      aria-label={t('theme.toggleLabel')}
+      title={t('theme.toggleLabel')}
     >
       {theme === 'light' ? '\u2600\uFE0F' : '\uD83C\udf19'}
     </button>

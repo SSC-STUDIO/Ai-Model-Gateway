@@ -78,3 +78,68 @@ func TestLanguageSwitching(t *testing.T) {
 		t.Errorf("English translation failed: %s", msg)
 	}
 }
+
+func TestNormalizeLang_AllCases(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"zh", "zh"},
+		{"zh-CN", "zh"},
+		{"zh-TW", "zh"},
+		{"ZH", "zh"},
+		{"en", "en"},
+		{"en-US", "en"},
+		{"en-GB", "en"},
+		{"EN", "en"},
+		{"ja", "ja"},
+		{"JA", "ja"},
+		{"ko", "ko"},
+		{"KO", "ko"},
+		{"es", "es"},
+		{"ES", "es"},
+		{"fr", "fr"},
+		{"FR", "fr"},
+		{"de", "de"},
+		{"DE", "de"},
+		{"unknown", "zh"},
+		{"", "zh"},
+		{"pt", "zh"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := normalizeLang(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizeLang(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetLanguageFromEnv(t *testing.T) {
+	// Test with LANG set
+	t.Setenv("LANG", "en_US.UTF-8")
+	lang := GetLanguageFromEnv()
+	if lang != "en" {
+		t.Errorf("expected 'en' for LANG=en_US.UTF-8, got %q", lang)
+	}
+}
+
+func TestGetLanguageFromEnv_Empty(t *testing.T) {
+	// Test with empty LANG
+	t.Setenv("LANG", "")
+	lang := GetLanguageFromEnv()
+	if lang != "zh" {
+		t.Errorf("expected 'zh' for empty LANG, got %q", lang)
+	}
+}
+
+func TestGetLanguageFromEnv_NoUnderscore(t *testing.T) {
+	// Test with LANG without underscore
+	t.Setenv("LANG", "en")
+	lang := GetLanguageFromEnv()
+	if lang != "en" {
+		t.Errorf("expected 'en' for LANG=en, got %q", lang)
+	}
+}

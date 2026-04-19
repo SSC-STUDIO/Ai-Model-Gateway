@@ -1,0 +1,411 @@
+/* ====== charts.css ====== */
+
+/* === Charts === */
+
+.chart-container {
+  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-color-strong);
+  border-radius: 22px;
+  padding: 20px;
+  min-width: 0;
+  box-shadow: var(--card-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: box-shadow 0.2s ease;
+}
+
+.chart-container:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--config-title-color);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chart-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
+  border: 1px solid var(--border-color);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.chart-summary-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chart-summary-value {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-family: "Bahnschrift", "Aptos Display", "Segoe UI Variable Display", sans-serif;
+}
+
+.chart-body {
+  position: relative;
+  width: 100%;
+  height: 250px;
+}
+
+.chart-body.scrollable-y {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+
+.chart-body.scrollable-y::-webkit-scrollbar {
+  width: 10px;
+}
+
+.chart-body.scrollable-y::-webkit-scrollbar-thumb {
+  background: rgba(108, 128, 151, 0.36);
+  border-radius: 999px;
+}
+
+.chart-body.interactive {
+  outline: none;
+  touch-action: manipulation;
+}
+
+.chart-body.interactive:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-color);
+  border-radius: 18px;
+}
+
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+  color: var(--text-muted);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, transparent 100%),
+    linear-gradient(135deg, rgba(43, 79, 124, 0.06) 0%, transparent 55%);
+  border: 1px dashed var(--border-color);
+  border-radius: 18px;
+}
+
+.chart-empty-title {
+  color: var(--text-primary);
+  font-size: 0.94rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.chart-empty-hint {
+  max-width: 280px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.donut-svg {
+  width: 200px;
+  height: 200px;
+  margin: 0 auto;
+}
+
+.chart-container.donut.wide .donut-body {
+  min-height: 300px;
+}
+
+.chart-container.donut.wide .donut-svg {
+  width: min(100%, 320px);
+  height: 280px;
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
+  border: 1px solid var(--border-color-strong);
+  border-radius: 12px;
+  padding: 10px 14px;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  margin-top: -10px;
+  z-index: 10;
+  box-shadow: var(--card-shadow-hover), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.tooltip-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.tooltip-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-feature-settings: 'tnum';
+}
+
+.tooltip-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.chart-focus-guide {
+  stroke: var(--accent-color);
+  stroke-width: 1.5;
+  stroke-opacity: 0.28;
+  stroke-dasharray: 5 5;
+}
+
+.chart-focus-dot,
+.chart-focus-dot-inner {
+  pointer-events: none;
+}
+
+.chart-event-layer {
+  cursor: crosshair;
+}
+
+.chart-zero-line {
+  stroke: var(--border-color-strong);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+}
+/* === Chart Legends === */
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.donut-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 12px;
+  padding: 0 8px;
+  min-width: 0;
+}
+
+.donut-legend.single-row {
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.donut-legend.single-row::-webkit-scrollbar {
+  height: 8px;
+}
+
+.donut-legend.single-row::-webkit-scrollbar-thumb {
+  background: rgba(108, 128, 151, 0.36);
+  border-radius: 999px;
+}
+
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  border-radius: 12px;
+  padding-inline: 8px;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+  cursor: pointer;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.donut-legend.single-row .donut-legend-item {
+  flex: 0 0 auto;
+  max-width: min(180px, 44vw);
+}
+
+.donut-legend-item:hover,
+.donut-legend-item:focus-visible,
+.donut-legend-item.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.donut-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.donut-legend-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-legend-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.donut-legend-pct {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.donut-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.donut-center-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.donut-center-value {
+  fill: var(--text-primary);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.donut-center-meta {
+  fill: var(--config-title-color);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.charts-grid-single {
+  grid-template-columns: 1fr;
+}
+
+.chart-grid-span-2 {
+  grid-column: span 2;
+  min-width: 0;
+}
+.bar-value-label {
+  fill: var(--text-primary);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* === Chart Container Shimmer on Load === */
+.chart-skeleton {
+  min-height: 250px;
+  border-radius: 22px;
+  background:
+    linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-secondary) 50%, var(--bg-tertiary) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s infinite linear;
+}
+
+/* === Chart Empty Icon === */
+.chart-empty .empty-state-icon {
+  margin-bottom: 4px;
+}
+/* === Donut Chart Center Glow === */
+.donut-center-value {
+  transition: filter 0.3s ease;
+}
+.donut-svg:hover .donut-center-value {
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+/* === Legend Item Hover === */
+.legend-item {
+  transition: transform 0.15s ease;
+}
+.legend-item:hover {
+  transform: translateX(2px);
+}
+
+/* === Bar Chart Bar Hover === */
+.bar-rect {
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+.bar-rect:hover {
+  filter: brightness(1.15);
+}
+
+/* === Tooltip Enhanced === */
+.chart-tooltip {
+  animation: tooltip-pop 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes tooltip-pop {
+  from { opacity: 0; transform: translate(-50%, -90%); }
+  to { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+/* === History Chart Navigation === */
+.history-chart .chart-header {
+  margin-bottom: 12px;
+}
+

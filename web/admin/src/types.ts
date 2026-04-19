@@ -1,11 +1,15 @@
-// Shared TypeScript types for AI Model Gateway Admin UI
+// Shared TypeScript types for the controld admin UI.
 
-export type TabKey = 'overview' | 'telemetry' | 'timeseries' | 'settings' | 'history' | 'probe' | 'logs' | 'benchmark' | 'audit'
+export type ControlTabKey = 'overview' | 'telemetry' | 'timeseries' | 'history' | 'benchmark'
+export type AdminRole = 'admin' | 'viewer'
+
 export type AnyRecord = Record<string, unknown>
 
-export interface TimeSeriesPoint {
-  timestamp: number
-  value: number
+export interface AdminSession {
+  enabled: boolean
+  authenticated: boolean
+  name?: string
+  role?: AdminRole | string
 }
 
 export interface DonutEntry {
@@ -31,7 +35,6 @@ export interface TimeSeriesResponse {
 }
 
 export interface RequestEntry {
-  // Backend returns PascalCase, support both
   time?: string
   Timestamp?: string
   method?: string
@@ -56,35 +59,61 @@ export interface RequestEntry {
 }
 
 export interface ErrorEntry {
-  time: string
-  upstream: string
-  model: string
-  status: number
-  message: string
-  count: number
+  time?: string
+  Timestamp?: string
+  upstream?: string
+  Upstream?: string
+  model?: string
+  Model?: string
+  status?: number
+  StatusCode?: number
+  message?: string
+  Message?: string
+  count?: number
+  Attempts?: number
 }
 
 export interface PricingCost {
-  prompt_usd: number
-  completion_usd: number
-  total_usd: number
+  currency?: string
+  prompt?: number
+  completion?: number
+  total?: number
+  prompt_usd?: number
+  completion_usd?: number
+  total_usd?: number
+}
+
+export interface PricingCurrencySummary {
+  currency: string
+  prompt: number
+  completion: number
+  total: number
+  cache_savings: number
+  priced_models: number
 }
 
 export interface PricingSummary {
   currency: string
-  prompt_usd: number
-  completion_usd: number
-  total_usd: number
+  prompt?: number
+  completion?: number
+  total?: number
+  prompt_usd?: number
+  completion_usd?: number
+  total_usd?: number
   cached_prompt_tokens: number
-  cache_savings_usd: number
+  cache_savings?: number
+  cache_savings_usd?: number
   priced_models: number
   unpriced_models: number
+  totals_by_currency?: PricingCurrencySummary[]
 }
 
 export interface PricingModelSummary {
   display_model: string
   requested_model?: string
   effective_model?: string
+  upstream?: string
+  provider?: string
   pricing_model?: string
   usage: {
     prompt_tokens: number
@@ -93,9 +122,14 @@ export interface PricingModelSummary {
     total_tokens: number
   }
   pricing?: {
-    input_per_1m_usd: number
+    currency?: string
+    input_per_1m?: number
+    cached_input_per_1m?: number
+    output_per_1m?: number
+    input_per_1m_usd?: number
     cached_input_per_1m_usd?: number
-    output_per_1m_usd: number
+    output_per_1m_usd?: number
+    source?: string
   }
   cost: PricingCost
 }
@@ -126,13 +160,16 @@ export interface BenchmarkModel {
 }
 
 export interface BenchmarkResponse {
-  start_time: string
-  end_time: string
-  hours: number
-  models: BenchmarkModel[]
+  window_hours: number
+  start_time?: string
+  end_time?: string
+  hours?: number
+  benchmarks: BenchmarkModel[]
 }
 
 export interface DataResponse {
+  window_hours?: number
+  window_label?: string
   summary?: {
     requests?: number
     successes?: number
@@ -162,28 +199,43 @@ export interface DataResponse {
   pricing_economics?: PricingSnapshot
 }
 
-export interface ProbeProvider {
+export interface ConfigVersionSummary {
+  id: string
+  filename: string
+  created_at: string
+  size: number
+  created_by?: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface ConfigHistoryResponse {
+  versions: ConfigVersionSummary[]
+}
+
+export interface PublisherPolicyView {
+  publish_history_limit: number
+}
+
+export interface ControlConfigView {
+  revision: ConfigVersionSummary | null
+  policy: PublisherPolicyView
+}
+
+export interface ProviderHealthView {
   name: string
-  base_url: string
-  anthropic_base_url: string
-  api_key: string
-  provider_class: string
-  models: string
-  timeout_ms: string
+  healthy: boolean
+  status: 'healthy' | 'cooldown' | 'unhealthy'
+  last_check?: string
+  last_success?: string
+  consecutive_failures: number
+  cooldown_until?: string
+  latency_ms?: number
+}
+
+export interface AdminSessionView {
   enabled: boolean
-}
-
-export interface AuditEntry {
-  id: number
-  timestamp: string
-  action: string
-  actor: string
-  role: string
-  details: string
-  source_ip: string
-}
-
-export interface AuditLogResponse {
-  items: AuditEntry[]
-  total: number
+  authenticated: boolean
+  name?: string
+  role?: string
 }

@@ -3,24 +3,15 @@
     "overview": "Vue d'ensemble",
     "telemetry": "Télémesure",
     "timeseries": "Séries temporelles",
-    "settings": "Réglages",
     "history": "Historique",
-    "probe": "Sonde",
-    "logs": "Journaux",
-    "benchmark": "Benchmark",
-    "audit": "Journal d'audit"
+    "benchmark": "Benchmark"
   },
   "header": {
     "title": "AI Model Gateway",
-    "subtitle": "Panneau d'administration de la passerelle de routage de modèles AI"
-  },
-  "login": {
-    "title": "Admin AI Model Gateway",
-    "hint": "Entrez bootstrap token pour établir une session admin de même origine",
-    "tokenLabel": "Bootstrap Token",
-    "tokenPlaceholder": "0123456789abcdef...",
-    "signIn": "Connexion",
-    "signingIn": "Connexion en cours..."
+    "subtitle": "Panneau d'administration de la passerelle de routage de modèles AI",
+    "gateway": "Gateway",
+    "telemetry": "Telemetry",
+    "statusUnknown": "unknown"
   },
   "overview": {
     "title": "Vue d'ensemble",
@@ -90,21 +81,6 @@
     "interval": "Actualisation auto",
     "active": "Actualisation en cours"
   },
-  "settings": {
-    "title": "Réglages",
-    "editableJson": "JSON éditable",
-    "saveConfig": "Enregistrer config",
-    "structured": "Structuré",
-    "advancedJson": "JSON avancé",
-    "confirmTitle": "Confirmer l'enregistrement",
-    "confirmMessage": "Êtes-vous sûr de vouloir enregistrer cette configuration ? Le gateway sera rechargé.",
-    "confirmYes": "Enregistrer",
-    "confirmCancel": "Annuler",
-    "saveSuccess": "Configuration enregistrée avec succès.",
-    "saveError": "Échec de l'enregistrement de la configuration.",
-    "readOnlyArray": "Tableau (lecture seule, utilisez l'éditeur JSON pour modifier)",
-    "sensitive": "Sensible"
-  },
   "history": {
     "title": "Historique de configuration",
     "versionLabel": "Version",
@@ -114,57 +90,24 @@
     "diff": "Différence",
     "linesAdded": "lignes ajoutées",
     "linesRemoved": "lignes supprimées",
-    "blocks": "blocs"
-  },
-  "probe": {
-    "title": "Sonde upstream",
-    "name": "Nom",
-    "baseUrl": "Base URL",
-    "anthropicBaseUrl": "Anthropic Base URL",
-    "apiKey": "API Key",
-    "providerClass": "Provider Class",
-    "models": "Modèles",
-    "timeoutMs": "Timeout (ms)",
-    "runProbe": "Exécuter sonde",
-    "result": "Résultat"
-  },
-  "logs": {
-    "title": "Journaux",
-    "levelFilter": "Niveau",
-    "search": "Rechercher",
-    "searchPlaceholder": "Rechercher dans les journaux...",
-    "level": {
-      "debug": "Débogage",
-      "info": "Info",
-      "warn": "Avertissement",
-      "error": "Erreur"
-    },
-    "connected": "Connecté",
-    "disconnected": "Déconnecté",
-    "pending": "en attente",
-    "pause": "Pause",
-    "resume": "Reprendre",
-    "autoScrollOn": "Défilement auto activé",
-    "autoScrollOff": "Défilement auto désactivé",
-    "clear": "Effacer les journaux",
-    "export": "Exporter",
-    "exportError": "Échec de l'exportation",
-    "empty": "Aucun journal à afficher",
-    "showing": "Affichage de",
-    "entries": "entrées",
-    "scrollToBottom": "Défiler vers le bas"
-  },
-  "actions": {
-    "logout": "Déconnexion"
-  },
-  "settingsMenu": {
-    "language": "Langue",
-    "theme": "Thème"
-  },
-  "sse": {
-    "connected": "Connect\u00e9",
-    "reconnecting": "Reconnexion",
-    "disconnected": "D\u00e9connect\u00e9"
+    "blocks": "blocs",
+    "rollbackToSelected": "Rollback to Selected",
+    "publish": "Publish Selected",
+    "current": "Current Active",
+    "selectedRevision": "Selected Revision",
+    "revisionId": "Revision ID",
+    "createdAt": "Created At",
+    "createdBy": "Created By",
+    "description": "Description",
+    "status": "Status",
+    "noDescription": "No description provided.",
+    "activeBadge": "Active",
+    "inactiveBadge": "Inactive",
+    "readOnly": "Read-only session",
+    "publishSuccess": "Revision published.",
+    "publishFailed": "Failed to publish revision.",
+    "rollbackSuccess": "Rollback completed.",
+    "rollbackFailed": "Failed to roll back revision."
   },
   "benchmark": {
     "title": "Benchmark des Modèles",
@@ -194,27 +137,54 @@
     "tokens": "Tokens",
     "noData": "Aucune donnée de benchmark disponible pour la plage de temps sélectionnée"
   },
+  "auth": {
+    "title": "Admin Sign In",
+    "subtitle": "Use an admin or viewer token from config.yaml to open the control plane.",
+    "checking": "Checking current session...",
+    "tokenLabel": "Token",
+    "tokenPlaceholder": "Paste admin or viewer token",
+    "submit": "Sign In",
+    "submitting": "Signing In...",
+    "logout": "Log Out",
+    "loggingOut": "Logging Out...",
+    "disabled": "Authentication disabled",
+    "sessionCurrent": "Session",
+    "roleAdmin": "Admin",
+    "roleViewer": "Viewer",
+    "hint": "The browser session is stored in a signed cookie for this control plane."
+  },
   "empty": {
     "noRequests": "Aucune donnée de requête. La passerelle attend du trafic.",
     "noTelemetry": "Aucune donnée de télémesure disponible.",
     "noBenchmark": "Aucune donnée de benchmark disponible.",
     "noTimeseries": "Aucune donnée de séries temporelles disponible.",
-    "noAudit": "Aucune entrée de journal d'audit.",
     "noHistory": "Aucun historique de modification de configuration."
   },
-  "audit": {
-    "title": "Journal d'audit",
-    "loading": "Chargement du journal d'audit...",
-    "empty": "Aucune entrée d'audit",
-    "time": "Heure",
-    "action": "Action",
-    "actor": "Acteur",
-    "role": "Rôle",
-    "details": "Détails",
-    "ip": "Adresse IP",
-    "prev": "Précédent",
-    "next": "Suivant",
-    "page": "Page",
-    "totalEntries": "entrées"
+  "charts": {
+    "emptyTitle": "No data available",
+    "emptyHint": "This chart will update automatically once data arrives.",
+    "lineEmpty": "No trend data yet",
+    "lineEmptyHint": "The line chart will render automatically once requests come in.",
+    "donutEmpty": "No distribution data yet",
+    "donutEmptyHint": "Upstream and model distribution will show here once hits occur.",
+    "barEmpty": "No bar data yet",
+    "barEmptyHint": "Comparison bars will generate automatically once enough samples arrive.",
+    "current": "Current",
+    "latest": "Latest",
+    "donutTotal": "Total",
+    "donutOverview": "Overview",
+    "donutItems": "items",
+    "barPeak": "Peak",
+    "emptyAriaLabel": "Empty chart",
+    "scrollHint": "Scroll horizontally for more items"
+  },
+  "theme": {
+    "toggleLabel": "Switch theme"
+  },
+  "language": {
+    "selectorLabel": "Language"
+  },
+  "toast": {
+    "close": "Close"
   }
 }

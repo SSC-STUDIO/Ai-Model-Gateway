@@ -1,5 +1,27 @@
-import { memo, useEffect, useRef, useState, useMemo } from 'preact/compat'
+import { memo, useCallback, useEffect, useMemo, useState } from 'preact/compat'
+import { useI18n } from '../i18n'
 import { lttbSampling, type DataPoint } from '../utils/dataSampling'
+import { useChartInteraction } from '../hooks/useChartInteraction'
+import { useChartTooltip } from '../hooks/useChartTooltip'
+import { ChartFrame } from './ChartFrame'
+import {
+  buildAreaPath,
+  buildLinePath,
+  buildTooltipState,
+  clampActiveIndex,
+  clamp,
+  describeDonutArc,
+  formatPointLabel,
+  formatTimestamp,
+  formatTooltipValue,
+  getBarDomain,
+  getLineDomain,
+  MAX_POINT_LABELS,
+  pickLabelIndices,
+  sanitizeDataPoints,
+  sanitizeLabeledValues,
+  truncateLabel,
+} from '../utils/charting'
 
 type ChartProps = {
   data: DataPoint[]
@@ -8,186 +30,258 @@ type ChartProps = {
   unit?: string
 }
 
+type BarDatum = { label: string; value: number; color?: string }
+
 const MAX_POINTS = 150
+const LINE_VIEWBOX_WIDTH = 400
+const LINE_VIEWBOX_HEIGHT = 220
+const LINE_PADDING = { top: 32, right: 20, bottom: 30, left: 50 }
+const DONUT_VIEWBOX_SIZE = 240
+
+function EmptyChart({
+  title,
+  message = 'No data available',
+  hint = 'This chart will update automatically once data arrives.',
+}: {
+  title: string
+  message?: string
+  hint?: string
+}) {
+  const { t } = useI18n()
+  return (
+    <div class="chart-container" role="img" aria-label={t('charts.emptyAriaLabel')}>
+      <div class="chart-header">
+        <h3>{title}</h3>
+      </div>
+      <div class="chart-body chart-empty">
+        <div class="empty-state-icon" style={{ width: '56px', height: '56px', fontSize: '1.5rem' }}>📈</div>
+        <div class="chart-empty-title">{message}</div>
+        <div class="chart-empty-hint">{hint}</div>
+      </div>
+    </div>
+  )
+}
 
 const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: ChartProps) => {
-  const svgRef = useRef<SVGSVGElement>(null)
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; value: number; time: string } | null>(null)
-  const prevDataRef = useRef<DataPoint[]>([])
-  const renderedRef = useRef(false)
+  const { t, locale } = useI18n()
+  const normalizedData = useMemo(() => sanitizeDataPoints(data), [data])
+  const sampledData = useMemo(() => lttbSampling(normalizedData, MAX_POINTS), [normalizedData])
+  const labelIndices = useMemo(() => pickLabelIndices(sampledData.length, MAX_POINT_LABELS), [sampledData.length])
+  const gradientId = useMemo(() => `gradient-${title.replace(/\s+/g, '-')}-${color.replace(/[^a-z0-9]/gi, '')}`, [title, color])
+  const chartWidth = LINE_VIEWBOX_WIDTH - LINE_PADDING.left - LINE_PADDING.right
+  const chartHeight = LINE_VIEWBOX_HEIGHT - LINE_PADDING.top - LINE_PADDING.bottom
+  const domain = useMemo(() => getLineDomain(sampledData.map((point) => point.value)), [sampledData])
+  const spanMs = sampledData.length > 1
+    ? sampledData[sampledData.length - 1].timestamp - sampledData[0].timestamp
+    : 0
 
-  const sampledData = useMemo(() => {
-    return lttbSampling(data, MAX_POINTS)
-  }, [data])
+  const xScale = useCallback((index: number) => {
+    if (sampledData.length <= 1) return LINE_PADDING.left + chartWidth / 2
+    return LINE_PADDING.left + (index / (sampledData.length - 1)) * chartWidth
+  }, [chartWidth, sampledData.length])
 
-  const gradientId = useMemo(() => `gradient-${title.replace(/\s+/g, '-')}-${Math.random().toString(36).slice(2, 8)}`, [title])
+  const yScale = useCallback((value: number) => {
+    const range = domain.max - domain.min || 1
+    return LINE_PADDING.top + chartHeight - ((value - domain.min) / range) * chartHeight
+  }, [chartHeight, domain.max, domain.min])
 
-  const shouldRedraw = useMemo(() => {
-    if (!renderedRef.current) return true
-    if (sampledData.length !== prevDataRef.current.length) return true
-    if (sampledData.length === 0) return false
+  const { tooltip, show, hide } = useChartTooltip()
 
-    const lastIdx = sampledData.length - 1
-    const prevLastIdx = prevDataRef.current.length - 1
+  const interaction = useChartInteraction({
+    dataLength: sampledData.length,
+    onPointChange: (index) => {
+      const point = sampledData[index]
+      if (point) {
+        const ts = buildTooltipState(
+          xScale(index),
+          yScale(point.value),
+          LINE_VIEWBOX_WIDTH,
+          LINE_VIEWBOX_HEIGHT,
+          formatTooltipValue(point.value, unit),
+          formatTimestamp(point.timestamp, spanMs, locale)
+        )
+        show(ts.xPct, ts.yPct, ts.value, ts.meta)
+      }
+    },
+    onClear: hide,
+  })
 
-    if (sampledData[lastIdx].timestamp !== prevDataRef.current[prevLastIdx]?.timestamp) return true
-    if (sampledData[lastIdx].value !== prevDataRef.current[prevLastIdx]?.value) return true
+  const activePoint = interaction.activeIndex !== null ? sampledData[interaction.activeIndex] : null
+  const latestPoint = sampledData[sampledData.length - 1]
 
-    return false
-  }, [sampledData])
-
-  useEffect(() => {
-    if (!svgRef.current || sampledData.length === 0) return
-    if (!shouldRedraw) return
-
-    const svg = svgRef.current
-    const width = svg.clientWidth || 400
-    const height = svg.clientHeight || 200
-    const padding = { top: 20, right: 20, bottom: 30, left: 50 }
-    const chartWidth = Math.max(0, width - padding.left - padding.right)
-    const chartHeight = Math.max(0, height - padding.top - padding.bottom)
-
-    if (chartWidth <= 0 || chartHeight <= 0) return
-
-    while (svg.firstChild) {
-      svg.removeChild(svg.firstChild)
-    }
-
-    const values = sampledData.map(d => d.value)
-    const minVal = Math.min(...values)
-    const maxVal = Math.max(...values)
-    const range = maxVal - minVal || 1
-
-    const xScale = (i: number) => padding.left + (i / (sampledData.length - 1 || 1)) * chartWidth
-    const yScale = (v: number) => padding.top + chartHeight - ((v - minVal) / range) * chartHeight
-
-    const fragment = document.createDocumentFragment()
-
-    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs')
-    const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient')
-    gradient.setAttribute('id', gradientId)
-    gradient.setAttribute('x1', '0%')
-    gradient.setAttribute('y1', '0%')
-    gradient.setAttribute('x2', '0%')
-    gradient.setAttribute('y2', '100%')
-
-    const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop')
-    stop1.setAttribute('offset', '0%')
-    stop1.setAttribute('stop-color', color)
-    stop1.setAttribute('stop-opacity', '0.3')
-
-    const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop')
-    stop2.setAttribute('offset', '100%')
-    stop2.setAttribute('stop-color', color)
-    stop2.setAttribute('stop-opacity', '0.05')
-
-    gradient.appendChild(stop1)
-    gradient.appendChild(stop2)
-    defs.appendChild(gradient)
-    fragment.appendChild(defs)
-
-    const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    gridGroup.setAttribute('class', 'grid-lines')
-
-    for (let i = 0; i <= 4; i++) {
-      const y = padding.top + (chartHeight / 4) * i
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
-      line.setAttribute('x1', String(padding.left))
-      line.setAttribute('y1', String(y))
-      line.setAttribute('x2', String(width - padding.right))
-      line.setAttribute('y2', String(y))
-      line.setAttribute('stroke', 'var(--border-color)')
-      line.setAttribute('stroke-opacity', '0.3')
-      line.setAttribute('stroke-dasharray', '4,4')
-      gridGroup.appendChild(line)
-    }
-    fragment.appendChild(gridGroup)
-
-    const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    let areaD = `M ${xScale(0)} ${yScale(sampledData[0].value)}`
-    for (let i = 1; i < sampledData.length; i++) {
-      areaD += ` L ${xScale(i)} ${yScale(sampledData[i].value)}`
-    }
-    areaD += ` L ${xScale(sampledData.length - 1)} ${padding.top + chartHeight}`
-    areaD += ` L ${xScale(0)} ${padding.top + chartHeight} Z`
-    areaPath.setAttribute('d', areaD)
-    areaPath.setAttribute('fill', `url(#${gradientId})`)
-    fragment.appendChild(areaPath)
-
-    const linePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    let lineD = `M ${xScale(0)} ${yScale(sampledData[0].value)}`
-    for (let i = 1; i < sampledData.length; i++) {
-      lineD += ` L ${xScale(i)} ${yScale(sampledData[i].value)}`
-    }
-    linePath.setAttribute('d', lineD)
-    linePath.setAttribute('fill', 'none')
-    linePath.setAttribute('stroke', color)
-    linePath.setAttribute('stroke-width', '2')
-    linePath.setAttribute('stroke-linecap', 'round')
-    linePath.setAttribute('stroke-linejoin', 'round')
-    fragment.appendChild(linePath)
-
-    const pointsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    pointsGroup.setAttribute('class', 'data-points')
-
-    const step = Math.ceil(sampledData.length / 50)
-
-    sampledData.forEach((point, i) => {
-      if (i % step !== 0 && i !== sampledData.length - 1) return
-
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
-      circle.setAttribute('cx', String(xScale(i)))
-      circle.setAttribute('cy', String(yScale(point.value)))
-      circle.setAttribute('r', '3')
-      circle.setAttribute('fill', color)
-      circle.setAttribute('stroke', 'var(--bg-primary)')
-      circle.setAttribute('stroke-width', '2')
-      circle.setAttribute('style', 'cursor: pointer')
-      circle.setAttribute('data-index', i.toString())
-
-      circle.addEventListener('mouseenter', () => {
-        setTooltip({
-          x: xScale(i),
-          y: yScale(point.value),
-          value: point.value,
-          time: new Date(point.timestamp).toLocaleTimeString(),
-        })
-      })
-
-      circle.addEventListener('mouseleave', () => {
-        setTooltip(null)
-      })
-
-      pointsGroup.appendChild(circle)
-    })
-
-    fragment.appendChild(pointsGroup)
-    svg.appendChild(fragment)
-
-    prevDataRef.current = sampledData
-    renderedRef.current = true
-  }, [sampledData, color, gradientId, shouldRedraw])
+  if (sampledData.length === 0) {
+    return <EmptyChart title={title} message={t('charts.lineEmpty')} hint={t('charts.lineEmptyHint')} />
+  }
 
   return (
     <div class="chart-container">
       <div class="chart-header">
         <h3>{title}</h3>
+        <div class="chart-summary">
+          <span class="chart-summary-label">{activePoint ? t('charts.current') : t('charts.latest')}</span>
+          <strong class="chart-summary-value">{formatPointLabel((activePoint ?? latestPoint).value)}{unit}</strong>
+        </div>
       </div>
-      <div class="chart-body">
-        <svg ref={svgRef} class="chart-svg" />
-        {tooltip && (
+      <div
+        class="chart-body interactive"
+        tabIndex={0}
+        onFocus={interaction.handleFocus}
+        onBlur={interaction.handleBlur}
+        onKeyDown={interaction.handleKeyDown}
+      >
+        <ChartFrame width={LINE_VIEWBOX_WIDTH} height={LINE_VIEWBOX_HEIGHT} ariaLabel={title ? `${title} chart` : 'Data chart'}>
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color={color} stop-opacity="0.38" />
+              <stop offset="55%" stop-color={color} stop-opacity="0.12" />
+              <stop offset="100%" stop-color={color} stop-opacity="0.02" />
+            </linearGradient>
+            <filter id={`glow-${gradientId}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="2.5" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          <g class="grid-lines">
+            {Array.from({ length: 5 }).map((_, index) => {
+              const y = LINE_PADDING.top + (chartHeight / 4) * index
+              return (
+                <line
+                  key={index}
+                  x1={LINE_PADDING.left}
+                  y1={y}
+                  x2={LINE_VIEWBOX_WIDTH - LINE_PADDING.right}
+                  y2={y}
+                  stroke="var(--border-color)"
+                  stroke-opacity="0.3"
+                  stroke-dasharray="4 4"
+                />
+              )
+            })}
+          </g>
+
+          {sampledData.length > 1 && (
+            <path
+              d={buildAreaPath(sampledData, xScale, yScale, LINE_PADDING.top + chartHeight)}
+              fill={`url(#${gradientId})`}
+            />
+          )}
+          {sampledData.length > 1 && (
+            <path
+              d={buildLinePath(sampledData, xScale, yScale)}
+              fill="none"
+              stroke={color}
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              filter={`url(#glow-${gradientId})`}
+            />
+          )}
+
+          {activePoint && interaction.activeIndex !== null && (
+            <line
+              class="chart-focus-guide"
+              x1={xScale(interaction.activeIndex)}
+              y1={LINE_PADDING.top}
+              x2={xScale(interaction.activeIndex)}
+              y2={LINE_PADDING.top + chartHeight}
+            />
+          )}
+
+          <g class="data-points">
+            {sampledData.map((point, index) => {
+              const x = xScale(index)
+              const y = yScale(point.value)
+              const highlighted = index === interaction.activeIndex
+              return (
+                <circle
+                  key={`${point.timestamp}-${index}`}
+                  cx={x}
+                  cy={y}
+                  r={highlighted ? 5.4 : labelIndices.has(index) ? 3.2 : 2.4}
+                  fill={color}
+                  opacity={highlighted || labelIndices.has(index) ? 1 : 0.45}
+                  stroke="var(--bg-primary)"
+                  stroke-width={highlighted ? 2.6 : 1.6}
+                />
+              )
+            })}
+          </g>
+
+          <g class="data-labels">
+            {sampledData.map((point, index) => {
+              if (!labelIndices.has(index)) return null
+              const x = xScale(index)
+              const y = yScale(point.value)
+              const placeBelow = y <= LINE_PADDING.top + 14
+              return (
+                <text
+                  key={`label-${point.timestamp}-${index}`}
+                  x={x}
+                  y={placeBelow ? y + 10 : y - 10}
+                  text-anchor="middle"
+                  dominant-baseline={placeBelow ? 'hanging' : 'auto'}
+                  fill="var(--text-primary)"
+                  stroke="var(--bg-primary)"
+                  stroke-width={index === interaction.activeIndex ? 3.8 : 3}
+                  paint-order="stroke"
+                  font-size="11"
+                  font-weight={index === interaction.activeIndex ? '700' : '600'}
+                >
+                  {`${formatPointLabel(point.value)}${unit}`}
+                </text>
+              )
+            })}
+          </g>
+
+          {activePoint && interaction.activeIndex !== null && (
+            <>
+              <circle
+                class="chart-focus-dot"
+                cx={xScale(interaction.activeIndex)}
+                cy={yScale(activePoint.value)}
+                r="7"
+                fill={color}
+                opacity="0.18"
+              />
+              <circle
+                class="chart-focus-dot-inner"
+                cx={xScale(interaction.activeIndex)}
+                cy={yScale(activePoint.value)}
+                r="4.5"
+                fill={color}
+                stroke="var(--bg-primary)"
+                stroke-width="2"
+              />
+            </>
+          )}
+
+          <rect
+            class="chart-event-layer"
+            x={LINE_PADDING.left}
+            y={LINE_PADDING.top}
+            width={chartWidth}
+            height={chartHeight}
+            fill="transparent"
+            onPointerMove={(event) => interaction.handleMouseMove(event, event.currentTarget.getBoundingClientRect())}
+            onPointerDown={(event) => interaction.handleMouseMove(event, event.currentTarget.getBoundingClientRect())}
+            onPointerLeave={(event) => {
+              if (event.pointerType === 'mouse') interaction.handleMouseLeave()
+            }}
+            onPointerCancel={() => interaction.handleMouseLeave()}
+          />
+        </ChartFrame>
+
+        {tooltip.visible && (
           <div
             class="chart-tooltip"
             style={{
-              left: tooltip.x + 'px',
-              top: tooltip.y + 'px',
+              left: `${tooltip.x}%`,
+              top: `${tooltip.y}%`,
             }}
           >
-            <div class="tooltip-value">
-              {tooltip.value.toFixed(2)}
-              {unit}
-            </div>
-            <div class="tooltip-time">{tooltip.time}</div>
+            <div class="tooltip-value">{tooltip.content}</div>
+            {tooltip.meta && <div class="tooltip-time">{tooltip.meta}</div>}
           </div>
         )}
       </div>
@@ -195,290 +289,454 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
   )
 }
 
-export const LineChart = memo(LineChartComponent, (prev, next) => {
-  if (prev.title !== next.title) return false
-  if (prev.color !== next.color) return false
-  if (prev.unit !== next.unit) return false
-  if (prev.data.length !== next.data.length) return false
-  if (prev.data.length === 0) return true
-
-  const lastIdx = prev.data.length - 1
-  return (
-    prev.data[lastIdx].timestamp === next.data[lastIdx].timestamp &&
-    prev.data[lastIdx].value === next.data[lastIdx].value
-  )
-})
+export const LineChart = memo(LineChartComponent)
 
 interface DonutChartProps {
   data: { label: string; value: number; color: string }[]
   title: string
+  singleRowLegend?: boolean
 }
 
-const DonutChartComponent = ({ data, title }: DonutChartProps) => {
-  const svgRef = useRef<SVGSVGElement>(null)
-  const prevDataRef = useRef<DonutChartProps['data']>([])
-  const renderedRef = useRef(false)
+const DonutChartComponent = ({ data, title, singleRowLegend = false }: DonutChartProps) => {
+  const { t } = useI18n()
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
-  const total = useMemo(() => data.reduce((sum, d) => sum + d.value, 0), [data])
+  const segments = useMemo(
+    () => sanitizeLabeledValues(data).filter((segment) => segment.value > 0),
+    [data]
+  )
+  const total = useMemo(() => segments.reduce((sum, segment) => sum + segment.value, 0), [segments])
 
-  const shouldRedraw = useMemo(() => {
-    if (!renderedRef.current) return true
-    if (data.length !== prevDataRef.current.length) return true
-    return data.some((d, i) =>
-      d.label !== prevDataRef.current[i]?.label ||
-      d.value !== prevDataRef.current[i]?.value ||
-      d.color !== prevDataRef.current[i]?.color
-    )
-  }, [data])
+  const arcs = useMemo(() => {
+    let currentAngle = -Math.PI / 2
+    return segments.map((segment) => {
+      const angle = total > 0 ? (segment.value / total) * Math.PI * 2 : 0
+      const startAngle = currentAngle
+      const endAngle = currentAngle + angle
+      currentAngle = endAngle
+      return {
+        ...segment,
+        pct: total > 0 ? (segment.value / total) * 100 : 0,
+        startAngle,
+        endAngle,
+        midAngle: startAngle + angle / 2,
+      }
+    })
+  }, [segments, total])
+
+  const activeSegment = activeIndex !== null ? arcs[activeIndex] : null
 
   useEffect(() => {
-    if (!svgRef.current || data.length === 0) return
-    if (!shouldRedraw) return
+    setActiveIndex((prev) => clampActiveIndex(prev, arcs.length))
+  }, [arcs.length])
 
-    const svg = svgRef.current
-    const size = Math.min(svg.clientWidth || 200, svg.clientHeight || 200)
-    const centerX = size / 2
-    const centerY = size / 2
-    const radius = size / 2 - 20
-    const innerRadius = radius * 0.6
-
-    while (svg.firstChild) {
-      svg.removeChild(svg.firstChild)
+  const handleKeyboard = useCallback((event: KeyboardEvent) => {
+    if (arcs.length === 0) return
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex((prev) => clamp((prev ?? arcs.length) - 1, 0, arcs.length - 1))
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveIndex((prev) => clamp((prev ?? -1) + 1, 0, arcs.length - 1))
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setActiveIndex(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setActiveIndex(arcs.length - 1)
     }
+  }, [arcs.length])
 
-    const fragment = document.createDocumentFragment()
-    let currentAngle = -Math.PI / 2
-
-    data.forEach((segment) => {
-      if (segment.value <= 0) return
-
-      const angle = (segment.value / total) * Math.PI * 2
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-
-      const x1 = centerX + Math.cos(currentAngle) * radius
-      const y1 = centerY + Math.sin(currentAngle) * radius
-      const x2 = centerX + Math.cos(currentAngle + angle) * radius
-      const y2 = centerY + Math.sin(currentAngle + angle) * radius
-      const x3 = centerX + Math.cos(currentAngle + angle) * innerRadius
-      const y3 = centerY + Math.sin(currentAngle + angle) * innerRadius
-      const x4 = centerX + Math.cos(currentAngle) * innerRadius
-      const y4 = centerY + Math.sin(currentAngle) * innerRadius
-
-      const largeArc = angle > Math.PI ? 1 : 0
-
-      const d = [
-        `M ${x1} ${y1}`,
-        `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
-        `L ${x3} ${y3}`,
-        `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${x4} ${y4}`,
-        'Z',
-      ].join(' ')
-
-      path.setAttribute('d', d)
-      path.setAttribute('fill', segment.color)
-      path.setAttribute('stroke', 'var(--bg-primary)')
-      path.setAttribute('stroke-width', '2')
-
-      fragment.appendChild(path)
-      currentAngle += angle
-    })
-
-    svg.appendChild(fragment)
-
-    prevDataRef.current = data
-    renderedRef.current = true
-  }, [data, total, shouldRedraw])
+  if (arcs.length === 0 || total <= 0) {
+    return <EmptyChart title={title} message={t('charts.donutEmpty')} hint={t('charts.donutEmptyHint')} />
+  }
 
   return (
     <div class="chart-container donut">
       <div class="chart-header">
         <h3>{title}</h3>
+        <div class="chart-summary">
+          <span class="chart-summary-label">{t('charts.donutTotal')}</span>
+          <strong class="chart-summary-value">{formatPointLabel(total)}</strong>
+        </div>
       </div>
-      <div class="chart-body">
-        <svg ref={svgRef} class="chart-svg donut-svg" />
-      </div>
-      {data.length > 0 && (
-        <div class="donut-legend">
-          {data.map((segment) => {
-            const pct = total > 0 ? ((segment.value / total) * 100).toFixed(1) : '0.0'
+
+      <div
+        class="chart-body interactive donut-body"
+        tabIndex={0}
+        onFocus={() => setActiveIndex((prev) => prev ?? 0)}
+        onBlur={() => setActiveIndex(null)}
+        onKeyDown={handleKeyboard}
+      >
+        <ChartFrame
+          width={DONUT_VIEWBOX_SIZE}
+          height={DONUT_VIEWBOX_SIZE}
+          className="donut-svg"
+          ariaLabel={title ? `${title} chart` : 'Distribution chart'}
+          onMouseLeave={() => setActiveIndex(null)}
+        >
+          {arcs.map((segment, index) => {
+            const active = index === activeIndex
+            const offset = active ? 6 : 0
+            const dx = Math.cos(segment.midAngle) * offset
+            const dy = Math.sin(segment.midAngle) * offset
             return (
-              <div class="donut-legend-item" key={segment.label}>
-                <span class="donut-legend-swatch" style={{ backgroundColor: segment.color }} />
-                <span class="donut-legend-label">{segment.label}</span>
-                <span class="donut-legend-value">{segment.value}</span>
-                <span class="donut-legend-pct">({pct}%)</span>
-              </div>
+              <path
+                key={`${segment.label}-${index}`}
+                d={describeDonutArc(120, 120, 52, active ? 88 : 82, segment.startAngle, segment.endAngle)}
+                fill={segment.color}
+                stroke="var(--bg-primary)"
+                stroke-width={active ? 3 : 2}
+                opacity={activeIndex === null || active ? 1 : 0.52}
+                transform={`translate(${dx} ${dy})`}
+                onPointerEnter={() => setActiveIndex(index)}
+                onPointerDown={() => setActiveIndex(index)}
+              />
             )
           })}
-        </div>
-      )}
+          <circle cx="120" cy="120" r="46" fill="var(--bg-primary)" opacity="0.92" />
+          <text x="120" y="104" text-anchor="middle" class="donut-center-label">
+            {activeSegment ? truncateLabel(activeSegment.label, 16) : t('charts.donutOverview')}
+          </text>
+          <text x="120" y="128" text-anchor="middle" class="donut-center-value">
+            {formatPointLabel((activeSegment ?? { value: total }).value)}
+          </text>
+          <text x="120" y="148" text-anchor="middle" class="donut-center-meta">
+            {activeSegment ? `${activeSegment.pct.toFixed(1)}%` : `${arcs.length} ${t('charts.donutItems')}`}
+          </text>
+        </ChartFrame>
+      </div>
+
+      <div
+        class={`donut-legend${singleRowLegend ? ' single-row' : ''}`}
+        title={singleRowLegend ? t('charts.scrollHint') : undefined}
+      >
+        {arcs.map((segment, index) => {
+          const active = index === activeIndex
+          return (
+            <div
+              key={segment.label}
+              class={`donut-legend-item${active ? ' active' : ''}`}
+              role="button"
+              tabIndex={0}
+              title={`${segment.label}: ${formatPointLabel(segment.value)} (${segment.pct.toFixed(1)}%)`}
+              onPointerEnter={() => setActiveIndex(index)}
+              onPointerDown={() => setActiveIndex(index)}
+              onFocus={() => setActiveIndex(index)}
+              onBlur={() => setActiveIndex(null)}
+              onPointerLeave={(event) => {
+                if (event.pointerType === 'mouse') setActiveIndex(null)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  setActiveIndex(index)
+                }
+              }}
+            >
+              <span class="donut-legend-swatch" style={{ backgroundColor: segment.color }} />
+              <span class="donut-legend-label">{segment.label}</span>
+              <span class="donut-legend-value">{formatPointLabel(segment.value)}</span>
+              <span class="donut-legend-pct">({segment.pct.toFixed(1)}%)</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-export const DonutChart = memo(DonutChartComponent, (prev, next) => {
-  if (prev.title !== next.title) return false
-  if (prev.data.length !== next.data.length) return false
-  return prev.data.every((d, i) =>
-    d.label === next.data[i]?.label &&
-    d.value === next.data[i]?.value &&
-    d.color === next.data[i]?.color
-  )
-})
+export const DonutChart = memo(DonutChartComponent)
 
 interface BarChartProps {
-  data: { label: string; value: number; color?: string }[]
+  data: BarDatum[]
   title: string
   unit?: string
   horizontal?: boolean
 }
 
 const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarChartProps) => {
-  const svgRef = useRef<SVGSVGElement>(null)
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string; value: number } | null>(null)
-  const prevDataRef = useRef<BarChartProps['data']>([])
-  const renderedRef = useRef(false)
-
-  const colors = useMemo(() => {
-    const defaultColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b']
-    return data.map((d, i) => d.color || defaultColors[i % defaultColors.length])
-  }, [data])
-
-  const shouldRedraw = useMemo(() => {
-    if (!renderedRef.current) return true
-    if (data.length !== prevDataRef.current.length) return true
-    return data.some((d, i) =>
-      d.label !== prevDataRef.current[i]?.label ||
-      d.value !== prevDataRef.current[i]?.value
+  const { t } = useI18n()
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const palette = useMemo(
+    () => ['#2b4f7c', '#2f7b5b', '#a5622a', '#c24a3d', '#8661c5', '#0f8b8d', '#b3477a', '#64748b'],
+    []
+  )
+  const chartData = useMemo(() => sanitizeLabeledValues(data), [data])
+  const colors = useMemo(
+    () => chartData.map((item, index) => item.color || palette[index % palette.length]),
+    [chartData, palette]
+  )
+  const domain = useMemo(() => getBarDomain(chartData.map((item) => item.value)), [chartData])
+  const chartWidth = horizontal ? 460 : 460
+  const chartHeight = horizontal ? Math.max(240, 52 + chartData.length * 34) : 240
+  const padding = horizontal
+    ? { top: 24, right: 28, bottom: 24, left: 128 }
+    : { top: 24, right: 24, bottom: 64, left: 56 }
+  const drawableWidth = chartWidth - padding.left - padding.right
+  const drawableHeight = chartHeight - padding.top - padding.bottom
+  const range = domain.max - domain.min || 1
+  const zeroRatio = clamp((0 - domain.min) / range, 0, 1)
+  const zeroX = padding.left + zeroRatio * drawableWidth
+  const zeroY = padding.top + drawableHeight - zeroRatio * drawableHeight
+  const peakItem = useMemo(() => {
+    if (chartData.length === 0) return null
+    return chartData.reduce((best, item) =>
+      Math.abs(item.value) > Math.abs(best.value) ? item : best
     )
-  }, [data])
+  }, [chartData])
 
   useEffect(() => {
-    if (!svgRef.current || data.length === 0) return
-    if (!shouldRedraw) return
+    setActiveIndex((prev) => clampActiveIndex(prev, chartData.length))
+  }, [chartData.length])
 
-    const svg = svgRef.current
-    const width = svg.clientWidth || 400
-    const height = svg.clientHeight || 200
-    const padding = { top: 20, right: 30, bottom: horizontal ? 30 : 60, left: horizontal ? 100 : 50 }
-    const chartWidth = Math.max(0, width - padding.left - padding.right)
-    const chartHeight = Math.max(0, height - padding.top - padding.bottom)
+  const { tooltip, show, hide } = useChartTooltip()
 
-    if (chartWidth <= 0 || chartHeight <= 0) return
-
-    while (svg.firstChild) {
-      svg.removeChild(svg.firstChild)
+  useEffect(() => {
+    if (activeIndex === null || !chartData[activeIndex]) {
+      hide()
+      return
     }
-
-    const maxVal = Math.max(...data.map(d => d.value), 1)
-    const fragment = document.createDocumentFragment()
-
+    const item = chartData[activeIndex]
+    const valueText = formatTooltipValue(item.value, unit)
     if (horizontal) {
-      // Horizontal bar chart
-      const barHeight = chartHeight / data.length * 0.7
-      const barSpacing = chartHeight / data.length * 0.3
-
-      data.forEach((item, i) => {
-        const y = padding.top + i * (barHeight + barSpacing)
-        const barWidth = (item.value / maxVal) * chartWidth
-
-        // Bar
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-        rect.setAttribute('x', String(padding.left))
-        rect.setAttribute('y', String(y))
-        rect.setAttribute('width', String(barWidth))
-        rect.setAttribute('height', String(barHeight))
-        rect.setAttribute('fill', colors[i])
-        rect.setAttribute('rx', '4')
-        rect.setAttribute('style', 'cursor: pointer')
-
-        rect.addEventListener('mouseenter', () => {
-          setTooltip({ x: padding.left + barWidth + 5, y: y + barHeight / 2, label: item.label, value: item.value })
-        })
-        rect.addEventListener('mouseleave', () => {
-          setTooltip(null)
-        })
-
-        fragment.appendChild(rect)
-
-        // Label
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-        text.setAttribute('x', String(padding.left - 5))
-        text.setAttribute('y', String(y + barHeight / 2))
-        text.setAttribute('text-anchor', 'end')
-        text.setAttribute('dominant-baseline', 'middle')
-        text.setAttribute('fill', 'var(--text-primary)')
-        text.setAttribute('font-size', '12')
-        text.textContent = item.label.length > 15 ? item.label.slice(0, 15) + '...' : item.label
-        fragment.appendChild(text)
-      })
+      const barSlot = drawableHeight / Math.max(1, chartData.length)
+      const barHeight = barSlot * 0.72
+      const y = padding.top + activeIndex * barSlot + barHeight / 2
+      const valueWidth = (Math.abs(item.value) / range) * drawableWidth
+      const x = item.value >= 0 ? zeroX + valueWidth : zeroX - valueWidth
+      const ts = buildTooltipState(
+        clamp(x, padding.left, chartWidth - padding.right),
+        y,
+        chartWidth,
+        chartHeight,
+        valueText,
+        truncateLabel(item.label, 22),
+        item.label
+      )
+      show(ts.xPct, ts.yPct, ts.value, ts.meta)
     } else {
-      // Vertical bar chart
-      const barWidth = chartWidth / data.length * 0.7
-      const barSpacing = chartWidth / data.length * 0.3
-
-      data.forEach((item, i) => {
-        const x = padding.left + i * (barWidth + barSpacing)
-        const barHeight = (item.value / maxVal) * chartHeight
-        const y = padding.top + chartHeight - barHeight
-
-        // Bar
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-        rect.setAttribute('x', String(x))
-        rect.setAttribute('y', String(y))
-        rect.setAttribute('width', String(barWidth))
-        rect.setAttribute('height', String(barHeight))
-        rect.setAttribute('fill', colors[i])
-        rect.setAttribute('rx', '4')
-        rect.setAttribute('style', 'cursor: pointer')
-
-        rect.addEventListener('mouseenter', () => {
-          setTooltip({ x: x + barWidth / 2, y: y - 10, label: item.label, value: item.value })
-        })
-        rect.addEventListener('mouseleave', () => {
-          setTooltip(null)
-        })
-
-        fragment.appendChild(rect)
-
-        // Label
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-        text.setAttribute('x', String(x + barWidth / 2))
-        text.setAttribute('y', String(height - 5))
-        text.setAttribute('text-anchor', 'middle')
-        text.setAttribute('fill', 'var(--text-primary)')
-        text.setAttribute('font-size', '10')
-        text.textContent = item.label.length > 8 ? item.label.slice(0, 8) + '...' : item.label
-        fragment.appendChild(text)
-      })
+      const barSlot = drawableWidth / Math.max(1, chartData.length)
+      const barWidth = barSlot * 0.7
+      const x = padding.left + activeIndex * barSlot + barWidth / 2
+      const valueHeight = (Math.abs(item.value) / range) * drawableHeight
+      const y = item.value >= 0 ? zeroY - valueHeight : zeroY + valueHeight
+      const ts = buildTooltipState(
+        x,
+        clamp(y, padding.top, chartHeight - padding.bottom),
+        chartWidth,
+        chartHeight,
+        valueText,
+        truncateLabel(item.label, 22),
+        item.label
+      )
+      show(ts.xPct, ts.yPct, ts.value, ts.meta)
     }
+  }, [
+    activeIndex,
+    chartData,
+    chartHeight,
+    chartWidth,
+    drawableHeight,
+    drawableWidth,
+    hide,
+    horizontal,
+    padding.bottom,
+    padding.left,
+    padding.right,
+    padding.top,
+    range,
+    show,
+    unit,
+    zeroX,
+    zeroY,
+  ])
 
-    svg.appendChild(fragment)
+  const handleKeyboard = useCallback((event: KeyboardEvent) => {
+    if (chartData.length === 0) return
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex((prev) => clamp((prev ?? chartData.length - 1) - 1, 0, chartData.length - 1))
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveIndex((prev) => clamp((prev ?? -1) + 1, 0, chartData.length - 1))
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setActiveIndex(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setActiveIndex(chartData.length - 1)
+    }
+  }, [chartData.length])
 
-    prevDataRef.current = data
-    renderedRef.current = true
-  }, [data, colors, horizontal, shouldRedraw])
+  if (chartData.length === 0) {
+    return <EmptyChart title={title} message={t('charts.barEmpty')} hint={t('charts.barEmptyHint')} />
+  }
 
   return (
     <div class="chart-container">
       <div class="chart-header">
         <h3>{title}</h3>
+        <div class="chart-summary">
+          <span class="chart-summary-label">{t('charts.barPeak')}</span>
+          <strong class="chart-summary-value">
+            {peakItem ? `${formatPointLabel(peakItem.value)}${unit}` : `0${unit}`}
+          </strong>
+        </div>
       </div>
-      <div class="chart-body">
-        <svg ref={svgRef} class="chart-svg" />
-        {tooltip && (
+
+      <div
+        class="chart-body interactive"
+        tabIndex={0}
+        onFocus={() => setActiveIndex((prev) => prev ?? 0)}
+        onBlur={() => setActiveIndex(null)}
+        onKeyDown={handleKeyboard}
+        onPointerLeave={(event) => {
+          if (event.pointerType === 'mouse') setActiveIndex(null)
+        }}
+      >
+        <ChartFrame width={chartWidth} height={chartHeight} ariaLabel={title ? `${title} chart` : 'Bar chart'}>
+          <g class="grid-lines">
+            {Array.from({ length: 5 }).map((_, index) => {
+              if (horizontal) {
+                const x = padding.left + (drawableWidth / 4) * index
+                return (
+                  <line
+                    key={index}
+                    x1={x}
+                    y1={padding.top}
+                    x2={x}
+                    y2={chartHeight - padding.bottom}
+                    stroke="var(--border-color)"
+                    stroke-opacity="0.3"
+                    stroke-dasharray="4 4"
+                  />
+                )
+              }
+              const y = padding.top + (drawableHeight / 4) * index
+              return (
+                <line
+                  key={index}
+                  x1={padding.left}
+                  y1={y}
+                  x2={chartWidth - padding.right}
+                  y2={y}
+                  stroke="var(--border-color)"
+                  stroke-opacity="0.3"
+                  stroke-dasharray="4 4"
+                />
+              )
+            })}
+          </g>
+
+          {horizontal ? (
+            <line class="chart-zero-line" x1={zeroX} y1={padding.top} x2={zeroX} y2={chartHeight - padding.bottom} />
+          ) : (
+            <line class="chart-zero-line" x1={padding.left} y1={zeroY} x2={chartWidth - padding.right} y2={zeroY} />
+          )}
+
+          {chartData.map((item, index) => {
+            const active = index === activeIndex
+            if (horizontal) {
+              const barSlot = drawableHeight / Math.max(1, chartData.length)
+              const barHeight = barSlot * 0.72
+              const y = padding.top + index * barSlot + (barSlot - barHeight) / 2
+              const barWidth = (Math.abs(item.value) / range) * drawableWidth
+              const x = item.value >= 0 ? zeroX : zeroX - barWidth
+              return (
+                <g key={`${item.label}-${index}`}>
+                  <text
+                    x={padding.left - 8}
+                    y={y + barHeight / 2}
+                    text-anchor="end"
+                    dominant-baseline="middle"
+                    fill="var(--text-primary)"
+                    font-size="11"
+                    font-weight={active ? '700' : '600'}
+                  >
+                    {truncateLabel(item.label, 16)}
+                  </text>
+                  <rect
+                    x={x}
+                    y={y}
+                    width={Math.max(barWidth, 2)}
+                    height={barHeight}
+                    rx="10"
+                    fill={colors[index]}
+                    opacity={activeIndex === null || active ? 0.96 : 0.58}
+                    stroke={active ? 'var(--bg-primary)' : 'transparent'}
+                    stroke-width={active ? 2 : 0}
+                    onPointerEnter={() => setActiveIndex(index)}
+                    onPointerDown={() => setActiveIndex(index)}
+                  />
+                  <text
+                    class="bar-value-label"
+                    x={item.value >= 0 ? x + Math.max(barWidth, 2) + 8 : x - 8}
+                    y={y + barHeight / 2}
+                    text-anchor={item.value >= 0 ? 'start' : 'end'}
+                    dominant-baseline="middle"
+                  >
+                    {formatPointLabel(item.value)}
+                    {unit}
+                  </text>
+                </g>
+              )
+            }
+
+            const barSlot = drawableWidth / Math.max(1, chartData.length)
+            const barWidth = barSlot * 0.7
+            const x = padding.left + index * barSlot + (barSlot - barWidth) / 2
+            const valueHeight = (Math.abs(item.value) / range) * drawableHeight
+            const y = item.value >= 0 ? zeroY - valueHeight : zeroY
+            return (
+              <g key={`${item.label}-${index}`}>
+                <rect
+                  x={x}
+                  y={y}
+                  width={barWidth}
+                  height={Math.max(valueHeight, 2)}
+                  rx="10"
+                  fill={colors[index]}
+                  opacity={activeIndex === null || active ? 0.96 : 0.58}
+                  stroke={active ? 'var(--bg-primary)' : 'transparent'}
+                  stroke-width={active ? 2 : 0}
+                  onPointerEnter={() => setActiveIndex(index)}
+                  onPointerDown={() => setActiveIndex(index)}
+                />
+                <text
+                  class="bar-value-label"
+                  x={x + barWidth / 2}
+                  y={item.value >= 0 ? y - 8 : y + valueHeight + 14}
+                  text-anchor="middle"
+                >
+                  {formatPointLabel(item.value)}
+                  {unit}
+                </text>
+                <text
+                  x={x + barWidth / 2}
+                  y={chartHeight - 10}
+                  text-anchor="middle"
+                  fill="var(--text-primary)"
+                  font-size="10"
+                  font-weight={active ? '700' : '600'}
+                >
+                  {truncateLabel(item.label, 9)}
+                </text>
+              </g>
+            )
+          })}
+        </ChartFrame>
+
+        {tooltip.visible && (
           <div
             class="chart-tooltip"
             style={{
-              left: tooltip.x + 'px',
-              top: tooltip.y + 'px',
+              left: `${tooltip.x}%`,
+              top: `${tooltip.y}%`,
             }}
           >
-            <div class="tooltip-label">{tooltip.label}</div>
-            <div class="tooltip-value">
-              {tooltip.value.toFixed(2)}
-              {unit}
-            </div>
+            {tooltip.meta && <div class="tooltip-label">{tooltip.meta}</div>}
+            <div class="tooltip-value">{tooltip.content}</div>
           </div>
         )}
       </div>
@@ -486,14 +744,6 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
   )
 }
 
-export const BarChart = memo(BarChartComponent, (prev, next) => {
-  if (prev.title !== next.title) return false
-  if (prev.unit !== next.unit) return false
-  if (prev.horizontal !== next.horizontal) return false
-  if (prev.data.length !== next.data.length) return false
-  return prev.data.every((d, i) =>
-    d.label === next.data[i]?.label &&
-    d.value === next.data[i]?.value &&
-    d.color === next.data[i]?.color
-  )
-})
+export const BarChart = memo(BarChartComponent)
+
+export { HistoryChart } from './HistoryChart'

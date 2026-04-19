@@ -1,503 +1,350 @@
-import { useEffect, useMemo, useState, useCallback } from 'preact/compat'
+import { useCallback, useEffect, useMemo, useState } from 'preact/compat'
 import { useI18n } from './i18n'
 import { ThemeToggle } from './theme/ThemeToggle'
 import { LanguageSelector } from './theme/LanguageSelector'
-import { LogViewer } from './components/LogViewer'
-import { useCachedFetch, invalidateCache, useSSE } from './hooks'
-import type { TabKey, AnyRecord, DataResponse, TimeSeriesResponse, BenchmarkResponse, ProbeProvider } from './types'
-import { OverviewTab, TelemetryTab, SettingsTab, HistoryTab, ProbeTab, TimeSeriesTab, BenchmarkTab, AuditTab } from './components/tabs'
+import { ToastContainer } from './components/ToastContainer'
+import {
+  primeCache,
+  useAdminSession,
+  useUrlState,
+  usePersistentState,
+  usePageVisibility,
+  useToast,
+  useControlData,
+  useHistoryActions,
+  useAutoRefresh,
+} from './hooks'
+import type { ControlTabKey } from './types'
+import { OverviewTab, TelemetryTab, TimeSeriesTab, HistoryTab, BenchmarkTab } from './components/tabs'
+import {
+  benchmarkURL,
+  historyTimeseriesURL,
+  telemetryTimeseriesURL,
+  telemetryURL,
+} from './utils/controlApi'
 
-const tabPaths: Record<TabKey, string> = {
+const DEFAULT_ADMIN_PATH = '/admin'
+const LOGIN_PATH = '/admin/login'
+
+const tabPaths: Record<ControlTabKey, string> = {
   overview: '/admin',
   telemetry: '/admin/telemetry',
   timeseries: '/admin/timeseries',
-  settings: '/admin/settings',
   history: '/admin/history',
-  probe: '/admin/probe',
-  logs: '/admin/logs',
   benchmark: '/admin/benchmark',
-  audit: '/admin/audit',
 }
 
-function inferTab(pathname: string): TabKey {
+const TAB_ICONS: Record<ControlTabKey, string> = {
+  overview: '\u{1F4CA}',
+  telemetry: '\u{1F4C8}',
+  timeseries: '\u{1F4C9}',
+  history: '\u{1F4CB}',
+  benchmark: '\u26A1',
+}
+
+function inferTab(pathname: string): ControlTabKey {
   if (pathname.endsWith('/telemetry')) return 'telemetry'
   if (pathname.endsWith('/timeseries')) return 'timeseries'
-  if (pathname.endsWith('/settings')) return 'settings'
   if (pathname.endsWith('/history')) return 'history'
-  if (pathname.endsWith('/probe')) return 'probe'
-  if (pathname.endsWith('/logs')) return 'logs'
   if (pathname.endsWith('/benchmark')) return 'benchmark'
-  if (pathname.endsWith('/audit')) return 'audit'
   return 'overview'
 }
 
-async function readJSON<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const resp = await fetch(input, {
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  })
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new Error(text || `${resp.status} ${resp.statusText}`)
+function defaultAdminNext(next: string | null | undefined): string {
+  const value = (next ?? '').trim()
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith(LOGIN_PATH)) {
+    return DEFAULT_ADMIN_PATH
   }
-  return (await resp.json()) as T
+  return value
 }
 
-function pretty(value: unknown): string {
-  return JSON.stringify(value, null, 2)
+function roleLabel(role: string | undefined, t: (key: string) => string): string {
+  return role === 'viewer' ? t('auth.roleViewer') : t('auth.roleAdmin')
 }
 
-function versionIdOf(item: unknown): string {
-  if (!item || typeof item !== 'object') return ''
-  const record = item as AnyRecord
-  const raw = record.version_id ?? record.versionId ?? record.id
-  return typeof raw === 'string' ? raw : ''
-}
-
-function firstHistoryVersion(payload: unknown): string {
-  if (Array.isArray(payload)) return versionIdOf(payload[0])
-  if (payload && typeof payload === 'object') {
-    const items = (payload as AnyRecord).items
-    if (Array.isArray(items)) return versionIdOf(items[0])
-  }
-  return ''
+function BrandMark() {
+  return (
+    <svg width="36" height="36" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect width="96" height="96" rx="24" fill="#0B0C0C" />
+      <path d="M24 68V28H38L48 52L58 28H72V68H62V46L54 66H42L34 46V68H24Z" fill="#7EE7D6" />
+      <circle cx="73" cy="24" r="8" fill="#F1B866" />
+    </svg>
+  )
 }
 
 export function App() {
   const { t } = useI18n()
+  const { toasts, removeToast } = useToast()
+  const {
+    session,
+    loading: sessionLoading,
+    loginBusy,
+    logoutBusy,
+    error: sessionError,
+    clearError,
+    refreshSession,
+    login,
+    logout,
+  } = useAdminSession()
 
-  const tabIcons: Record<TabKey, string> = {
-    overview: '\u{1F4CA}',
-    telemetry: '\u{1F4C8}',
-    benchmark: '\u26A1',
-    timeseries: '\u{1F4C9}',
-    settings: '\u2699\uFE0F',
-    history: '\u{1F4CB}',
-    probe: '\u{1F50D}',
-    logs: '\u{1F4DD}',
-    audit: '\u{1F512}',
-  }
+  const [tab, setTab] = useState<ControlTabKey>(() => inferTab(window.location.pathname))
+  const [loginToken, setLoginToken] = useState('')
+  const [refreshInterval, setRefreshInterval] = usePersistentState<number>('admin-refresh-interval', 30000)
+  const [telemetryHours, setTelemetryHours] = useUrlState<string>('hours', '168')
+  const [benchmarkHours, setBenchmarkHours] = useUrlState<number>('benchmarkHours', 168)
+  const [benchmarkModels, setBenchmarkModels] = useUrlState<string[]>('models', [])
+  const [selectedRevision, setSelectedRevision] = useState('')
+  const isPageVisible = usePageVisibility()
+
+  const routeKey = `${window.location.pathname}${window.location.search}`
+  const isLoginRoute = window.location.pathname === LOGIN_PATH
+  const nextAdminPath = isLoginRoute
+    ? defaultAdminNext(new URLSearchParams(window.location.search).get('next'))
+    : defaultAdminNext(routeKey)
+  const authEnabled = session?.enabled ?? true
+  const isAuthenticated = Boolean(session?.authenticated)
+  const canAccessAdmin = !authEnabled || isAuthenticated
+  const canWrite = !authEnabled || session?.role !== 'viewer'
+
+  const navigate = useCallback((target: string, mode: 'push' | 'replace' = 'push') => {
+    const url = new URL(target, window.location.origin)
+    const href = `${url.pathname}${url.search}${url.hash}`
+    const state = { tab: inferTab(url.pathname) }
+    if (mode === 'replace') {
+      window.history.replaceState(state, '', href)
+    } else {
+      window.history.pushState(state, '', href)
+    }
+    setTab(inferTab(url.pathname))
+  }, [])
+
+  const handleUnauthorized = useCallback(() => {
+    void refreshSession()
+  }, [refreshSession])
+
+  const {
+    status,
+    overview,
+    telemetry,
+    telemetryTimeseries,
+    controlConfig,
+    historyPayload,
+    benchmark,
+    benchmarkLoading,
+    configError,
+    overviewError,
+    statusError,
+    telemetryError,
+    telemetryTimeseriesError,
+    historyError,
+    benchmarkError,
+    refetchOverview,
+    refetchStatus,
+    refetchTelemetry,
+    refetchTelemetryTimeseries,
+    refetchConfig,
+    refetchHistory,
+    refetchBenchmark,
+  } = useControlData(tab, telemetryHours, benchmarkHours, benchmarkModels, canAccessAdmin, handleUnauthorized)
 
   const tabLabels = useMemo(
     () => [
-      { key: 'overview' as TabKey, label: t('tabs.overview') },
-      { key: 'telemetry' as TabKey, label: t('tabs.telemetry') },
-      { key: 'benchmark' as TabKey, label: t('tabs.benchmark') },
-      { key: 'timeseries' as TabKey, label: t('tabs.timeseries') },
-      { key: 'settings' as TabKey, label: t('tabs.settings') },
-      { key: 'history' as TabKey, label: t('tabs.history') },
-      { key: 'probe' as TabKey, label: t('tabs.probe') },
-      { key: 'logs' as TabKey, label: t('tabs.logs') },
-      { key: 'audit' as TabKey, label: t('tabs.audit') },
+      { key: 'overview' as ControlTabKey, label: t('tabs.overview') },
+      { key: 'telemetry' as ControlTabKey, label: t('tabs.telemetry') },
+      { key: 'timeseries' as ControlTabKey, label: t('tabs.timeseries') },
+      { key: 'history' as ControlTabKey, label: t('tabs.history') },
+      { key: 'benchmark' as ControlTabKey, label: t('tabs.benchmark') },
     ],
     [t]
   )
 
-  const [tab, setTab] = useState<TabKey>(() => inferTab(window.location.pathname))
-  const [authed, setAuthed] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const [token, setToken] = useState('')
-  const [refreshInterval, setRefreshInterval] = useState(0)
-
-  // SSE-pushed overview override (bypasses cache)
-  const [sseOverview, setSseOverview] = useState<AnyRecord | null>(null)
-
-  // Use cached fetch for data that can be cached
-  const { data: fetchedOverview, refetch: refetchOverview } = useCachedFetch<AnyRecord>('/api/admin/overview', {
-    ttl: 30000,
-    enabled: authed,
-  })
-
-  // SSE data takes priority over cached fetch
-  const overview = sseOverview ?? fetchedOverview
-
-  const { data: telemetry, refetch: refetchTelemetry } = useCachedFetch<DataResponse>('/api/admin/data', {
-    ttl: 30000,
-    enabled: authed && (tab === 'telemetry' || tab === 'overview'),
-  })
-
-  const { data: timeseries, refetch: refetchTimeseries } = useCachedFetch<TimeSeriesResponse>('/api/admin/timeseries', {
-    ttl: 30000,
-    enabled: authed && (tab === 'telemetry' || tab === 'timeseries'),
-  })
-
-  const { data: configView, refetch: refetchConfig } = useCachedFetch<AnyRecord>('/api/admin/config', {
-    ttl: 60000,
-    enabled: authed && tab === 'settings',
-  })
-
-  const { data: historyPayload, refetch: refetchHistory } = useCachedFetch<unknown>('/api/admin/config/history', {
-    ttl: 60000,
-    enabled: authed && tab === 'history',
-  })
-
-  const [configText, setConfigText] = useState('')
-  const [selectedVersion, setSelectedVersion] = useState('')
-  const [historyDiff, setHistoryDiff] = useState<unknown>(null)
-
-  const [probeProvider, setProbeProvider] = useState<ProbeProvider>({
-    name: 'manual-probe',
-    base_url: '',
-    anthropic_base_url: '',
-    api_key: '',
-    provider_class: 'quota_limited',
-    models: 'gpt-4o',
-    timeout_ms: '10000',
-    enabled: true,
-  })
-  const [probeResult, setProbeResult] = useState<unknown>(null)
-
-  const [benchmark, setBenchmark] = useState<BenchmarkResponse | null>(null)
-  const [benchmarkHours, setBenchmarkHours] = useState(24)
-  const [benchmarkModels, setBenchmarkModels] = useState<string[]>([])
-  const [benchmarkLoading, setBenchmarkLoading] = useState(false)
-
-  // SSE real-time updates
-  const handleSSEEvent = useCallback((type: string, data: string) => {
-    if (type === 'metrics_update') {
-      try {
-        const parsed = JSON.parse(data) as AnyRecord
-        setSseOverview(parsed)
-      } catch { /* ignore malformed data */ }
-    } else if (type === 'config_changed') {
-      invalidateCache(/\/api\/admin\/config/)
-      void refetchConfig()
+  const prefetchTabResources = useCallback((targetTab: ControlTabKey) => {
+    switch (targetTab) {
+      case 'overview':
+        void primeCache('/api/admin/overview', { ttl: 30000 })
+        void primeCache('/api/admin/status', { ttl: 30000 })
+        break
+      case 'telemetry':
+        void primeCache(telemetryURL(telemetryHours), { ttl: 30000 })
+        void primeCache(telemetryTimeseriesURL(telemetryHours), { ttl: 30000 })
+        break
+      case 'timeseries':
+        void primeCache('/api/admin/timeseries?hours=168&bucket=5', { ttl: 30000 })
+        void primeCache(historyTimeseriesURL(), { ttl: 60000 })
+        break
+      case 'history':
+        void primeCache('/api/admin/config', { ttl: 60000 })
+        void primeCache('/api/admin/config/history', { ttl: 60000 })
+        break
+      case 'benchmark':
+        void primeCache(benchmarkURL(benchmarkHours, benchmarkModels), { ttl: 30000 })
+        break
     }
-  }, [refetchConfig])
+  }, [telemetryHours, benchmarkHours, benchmarkModels])
 
-  const { connected: sseConnected, reconnecting: sseReconnecting } = useSSE(
-    authed ? '/api/admin/events' : '',
-    handleSSEEvent
-  )
+  const handleTabChange = useCallback((nextTab: ControlTabKey) => {
+    navigate(tabPaths[nextTab] + window.location.search, 'push')
+    prefetchTabResources(nextTab)
+  }, [navigate, prefetchTabResources])
 
-  // Update URL when tab changes
   useEffect(() => {
-    window.history.replaceState(null, '', tabPaths[tab])
-  }, [tab])
-
-  // Bootstrap authentication check
-  useEffect(() => {
-    void bootstrap()
-  }, [])
-
-  // Load initial config text when config view changes
-  useEffect(() => {
-    if (configView) {
-      setConfigText(pretty(configView))
-    }
-  }, [configView])
-
-  // Load history diff when history payload changes
-  useEffect(() => {
-    if (historyPayload && tab === 'history') {
-      const firstVersion = firstHistoryVersion(historyPayload)
-      if (firstVersion) {
-        setSelectedVersion(firstVersion)
-        void loadHistoryDiff(firstVersion)
-      } else {
-        setSelectedVersion('')
-        setHistoryDiff(null)
-      }
-    }
-  }, [historyPayload, tab])
-
-  // Debounced tab change handler
-  const handleTabChange = useCallback((newTab: TabKey) => {
-    setTab(newTab)
-    // Invalidate relevant caches when switching tabs to get fresh data
-    if (newTab === 'overview') {
-      invalidateCache(/\/api\/admin\/overview/)
-      void refetchOverview()
-    } else if (newTab === 'telemetry') {
-      invalidateCache(/\/api\/admin\/(data|timeseries)/)
-      void refetchTelemetry()
-      void refetchTimeseries()
-    } else if (newTab === 'timeseries') {
-      invalidateCache(/\/api\/admin\/timeseries/)
-      void refetchTimeseries()
-    } else if (newTab === 'settings') {
-      invalidateCache(/\/api\/admin\/config$/)
-      void refetchConfig()
-    } else if (newTab === 'history') {
-      invalidateCache(/\/api\/admin\/config\/history/)
-      void refetchHistory()
-    }
-  }, [refetchOverview, refetchTelemetry, refetchTimeseries, refetchConfig, refetchHistory])
-
-  async function bootstrap() {
-    try {
-      await readJSON<AnyRecord>('/api/admin/overview')
-      setAuthed(true)
-    } catch {
-      setAuthed(false)
-    }
-  }
-
-  async function loadBenchmark() {
-    setBenchmarkLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.append('hours', String(benchmarkHours))
-      if (benchmarkModels.length > 0) {
-        benchmarkModels.forEach((m) => params.append('models', m))
-      }
-      const data = await readJSON<BenchmarkResponse>(`/api/admin/models/benchmark?${params.toString()}`)
-      setBenchmark(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBenchmarkLoading(false)
-    }
-  }
-
-  // Load benchmark when tab is activated
-  useEffect(() => {
-    if (tab === 'benchmark' && authed) {
-      void loadBenchmark()
-    }
-  }, [tab, authed, benchmarkHours, benchmarkModels])
-
-  // Auto-refresh for Overview and Telemetry tabs (paused when SSE is connected)
-  useEffect(() => {
-    if (!authed || refreshInterval === 0 || sseConnected) return
-    const id = setInterval(() => {
-      if (tab === 'overview') {
-        void refetchOverview()
-        void refetchTelemetry()
-      } else if (tab === 'telemetry') {
-        void refetchTelemetry()
-        void refetchTimeseries()
-      }
-    }, refreshInterval)
-    return () => clearInterval(id)
-  }, [authed, refreshInterval, tab, sseConnected, refetchOverview, refetchTelemetry, refetchTimeseries])
-
-  async function submitLogin(event: Event) {
-    event.preventDefault()
-    setBusy(true)
-    setError('')
-    try {
-      await readJSON('/api/admin/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      })
-      setAuthed(true)
-      setToken('')
-      // Invalidate all caches on login
-      invalidateCache()
-      await refetchOverview()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const logout = useCallback(async () => {
-    setBusy(true)
-    try {
-      await readJSON('/api/admin/auth/logout', { method: 'POST' })
-      setAuthed(false)
-      setBenchmark(null)
-      setProbeResult(null)
-      setSseOverview(null)
-      setError('')
-      // Clear all caches on logout
-      invalidateCache()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  async function saveConfig(): Promise<boolean> {
-    setBusy(true)
-    setError('')
-    try {
-      const payload = JSON.parse(configText) as AnyRecord
-      const updated = await readJSON<AnyRecord>('/api/admin/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      invalidateCache(/\/api\/admin\/config/)
-      await refetchConfig()
-      setConfigText(pretty(updated))
-      handleTabChange('history')
-      return true
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function loadHistoryDiff(versionId: string) {
-    setSelectedVersion(versionId)
-    if (!versionId) {
-      setHistoryDiff(null)
+    if (!historyPayload.versions.length) {
+      setSelectedRevision('')
       return
     }
-    try {
-      setHistoryDiff(await readJSON(`/api/admin/config/history/${encodeURIComponent(versionId)}/diff`))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+    if (historyPayload.versions.some((entry) => entry.id === selectedRevision)) {
+      return
     }
-  }
+    const active = historyPayload.versions.find((entry) => entry.is_active)
+    setSelectedRevision(active?.id ?? historyPayload.versions[0].id)
+  }, [historyPayload, selectedRevision])
 
-  const handleVersionChange = useCallback((versionId: string) => {
-    void loadHistoryDiff(versionId)
+  useEffect(() => {
+    const title = canAccessAdmin
+      ? tabLabels.find((entry) => entry.key === tab)?.label ?? t('header.title')
+      : t('auth.title')
+    document.title = `${title} - AI-Model-Gateway Admin`
+  }, [canAccessAdmin, tab, tabLabels, t])
+
+  useEffect(() => {
+    const handler = () => {
+      setTab(inferTab(window.location.pathname))
+    }
+    window.addEventListener('popstate', handler)
+    return () => window.removeEventListener('popstate', handler)
   }, [])
 
-  async function rollbackConfig() {
-    if (!selectedVersion) return
-    setBusy(true)
-    setError('')
-    try {
-      const updated = await readJSON<AnyRecord>('/api/admin/config/rollback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version_id: selectedVersion }),
-      })
-      invalidateCache(/\/api\/admin\/config/)
-      await refetchConfig()
-      setConfigText(pretty(updated))
-      handleTabChange('history')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
+  useEffect(() => {
+    if (sessionLoading) return
+    if (canAccessAdmin && isLoginRoute) {
+      navigate(nextAdminPath, 'replace')
     }
-  }
+  }, [canAccessAdmin, isLoginRoute, navigate, nextAdminPath, routeKey, sessionLoading])
 
-  const handleRollback = useCallback(() => {
-    void rollbackConfig()
-  }, [selectedVersion])
+  useAutoRefresh(refreshInterval, isPageVisible && canAccessAdmin, tab, {
+    refetchOverview,
+    refetchStatus,
+    refetchTelemetry,
+    refetchTelemetryTimeseries,
+    refetchConfig,
+    refetchHistory,
+    refetchBenchmark,
+  })
 
-  async function runProbe(event: Event) {
-    event.preventDefault()
-    setBusy(true)
-    setError('')
-    setProbeResult(null)
-    try {
-      const result = await readJSON('/api/admin/upstreams/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          upstream: {
-            name: probeProvider.name,
-            base_url: probeProvider.base_url,
-            anthropic_base_url: probeProvider.anthropic_base_url || undefined,
-            api_key: probeProvider.api_key,
-            provider_class: probeProvider.provider_class,
-            models: probeProvider.models
-              .split(',')
-              .map((item) => item.trim())
-              .filter(Boolean),
-            timeout_ms: Number(probeProvider.timeout_ms) || 10000,
-            enabled: probeProvider.enabled,
-          },
-        }),
-      })
-      setProbeResult(result)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const handleRunProbe = useCallback((e: Event) => {
-    void runProbe(e)
-  }, [probeProvider])
+  const {
+    action: historyAction,
+    actionLabel: historyActionLabel,
+    currentEntry: currentHistoryEntry,
+    apply: applySelectedRevision,
+    busy: actionBusy,
+    error: actionError,
+  } = useHistoryActions(
+    selectedRevision,
+    historyPayload,
+    refetchOverview,
+    refetchStatus,
+    refetchHistory,
+    handleUnauthorized
+  )
 
   const handleBenchmarkRefresh = useCallback(() => {
-    void loadBenchmark()
-  }, [benchmarkHours, benchmarkModels])
+    void refetchBenchmark()
+  }, [refetchBenchmark])
 
-  const handleBenchmarkHoursChange = useCallback((hours: number) => {
-    setBenchmarkHours(hours)
-  }, [])
+  const handleLoginSubmit = useCallback(async (event: Event) => {
+    event.preventDefault()
+    const result = await login(loginToken)
+    if (result?.authenticated) {
+      setLoginToken('')
+    }
+  }, [login, loginToken])
 
-  const handleBenchmarkModelsChange = useCallback((models: string[]) => {
-    setBenchmarkModels(models)
-  }, [])
+  const handleLogout = useCallback(() => {
+    clearError()
+    void logout()
+  }, [clearError, logout])
 
-  // Tab content renderer with Suspense
-  const renderTabContent = () => {
-    const refreshControls = (
-      <div class="auto-refresh-controls">
-        <span class="auto-refresh-label">{t('autoRefresh.interval')}:</span>
-        {([0, 10000, 30000, 60000] as const).map((ms) => (
-          <button
-            key={ms}
-            type="button"
-            class={`auto-refresh-btn${refreshInterval === ms ? ' active' : ''}`}
-            onClick={() => setRefreshInterval(ms)}
-          >
-            {ms === 0 ? t('autoRefresh.off') : `${ms / 1000}s`}
-          </button>
-        ))}
-        {refreshInterval > 0 && (
-          <span class="auto-refresh-indicator">{t('autoRefresh.active')}</span>
-        )}
-      </div>
-    )
+  const activeError = useMemo(() => {
+    if (!canAccessAdmin) return ''
+    if (sessionError) return sessionError
+    if (tab === 'overview') return overviewError?.message ?? statusError?.message ?? ''
+    if (tab === 'telemetry') return telemetryError?.message ?? telemetryTimeseriesError?.message ?? ''
+    if (tab === 'history') return configError?.message ?? historyError?.message ?? actionError
+    if (tab === 'benchmark') return benchmarkError?.message ?? ''
+    return ''
+  }, [
+    actionError,
+    benchmarkError,
+    canAccessAdmin,
+    configError?.message,
+    historyError?.message,
+    overviewError?.message,
+    sessionError,
+    statusError?.message,
+    tab,
+    telemetryError?.message,
+    telemetryTimeseriesError?.message,
+  ])
 
+  const gatewayTone = status?.gateway_status === 'connected'
+    ? status.gateway_readiness === 'ready' ? 'success' : 'warning'
+    : status?.gateway_status === 'error' ? 'error' : 'neutral'
+  const telemetryTone = status?.telemetry_status === 'connected' ? 'success' : 'neutral'
+
+  const refreshControls = (
+    <div class="auto-refresh-controls">
+      <span class="auto-refresh-label">{t('autoRefresh.interval')}:</span>
+      {([0, 10000, 30000, 60000] as const).map((ms) => (
+        <button
+          key={ms}
+          type="button"
+          class={`auto-refresh-btn${refreshInterval === ms ? ' active' : ''}`}
+          onClick={() => setRefreshInterval(ms)}
+        >
+          {ms === 0 ? t('autoRefresh.off') : `${ms / 1000}s`}
+        </button>
+      ))}
+      {refreshInterval > 0 && (
+        <span class="auto-refresh-indicator">{t('autoRefresh.active')}</span>
+      )}
+    </div>
+  )
+
+  const tabContent = useMemo(() => {
     switch (tab) {
       case 'overview':
         return (
           <>
             {refreshControls}
-            <OverviewTab overview={overview ?? null} />
+            <OverviewTab overview={overview} />
           </>
         )
       case 'telemetry':
         return (
           <>
             {refreshControls}
-            <TelemetryTab telemetry={telemetry ?? null} timeseries={timeseries ?? null} />
+            <TelemetryTab
+              telemetry={telemetry}
+              timeseries={telemetryTimeseries}
+              hours={telemetryHours}
+              onHoursChange={setTelemetryHours}
+            />
           </>
         )
       case 'timeseries':
-        return <TimeSeriesTab timeseries={timeseries ?? null} />
-      case 'settings':
-        return (
-          <SettingsTab
-            configView={configView ?? null}
-            configText={configText}
-            setConfigText={setConfigText}
-            onSave={saveConfig}
-            busy={busy}
-          />
-        )
+        return <TimeSeriesTab />
       case 'history':
         return (
           <HistoryTab
-            historyPayload={historyPayload ?? null}
-            selectedVersion={selectedVersion}
-            historyDiff={historyDiff}
-            onVersionChange={handleVersionChange}
-            onRollback={handleRollback}
-            busy={busy}
-          />
-        )
-      case 'probe':
-        return (
-          <ProbeTab
-            probeProvider={probeProvider}
-            setProbeProvider={setProbeProvider}
-            probeResult={probeResult}
-            onRunProbe={handleRunProbe}
-            busy={busy}
+            controlConfig={controlConfig}
+            historyPayload={historyPayload}
+            selectedVersion={selectedRevision}
+            selectedEntry={currentHistoryEntry}
+            actionLabel={canWrite ? historyActionLabel : t('history.readOnly')}
+            actionDisabled={!canWrite || !historyAction || actionBusy}
+            onVersionChange={setSelectedRevision}
+            onApplySelection={applySelectedRevision}
+            busy={actionBusy}
           />
         )
       case 'benchmark':
@@ -507,98 +354,173 @@ export function App() {
             benchmarkHours={benchmarkHours}
             benchmarkModels={benchmarkModels}
             benchmarkLoading={benchmarkLoading}
-            onHoursChange={handleBenchmarkHoursChange}
-            onModelsChange={handleBenchmarkModelsChange}
+            onHoursChange={setBenchmarkHours}
+            onModelsChange={setBenchmarkModels}
             onRefresh={handleBenchmarkRefresh}
           />
         )
-      case 'logs':
-        return (
-          <section class="panel">
-            <h2>{t('logs.title')}</h2>
-            <LogViewer maxEntries={1000} />
-          </section>
-        )
-      case 'audit':
-        return <AuditTab enabled={authed} />
-      default:
-        return null
     }
-  }
+  }, [
+    actionBusy,
+    applySelectedRevision,
+    benchmark,
+    benchmarkHours,
+    benchmarkLoading,
+    benchmarkModels,
+    canWrite,
+    controlConfig,
+    currentHistoryEntry,
+    handleBenchmarkRefresh,
+    historyAction,
+    historyActionLabel,
+    historyPayload,
+    overview,
+    refreshControls,
+    selectedRevision,
+    setTelemetryHours,
+    setBenchmarkHours,
+    setBenchmarkModels,
+    t,
+    tab,
+    telemetry,
+    telemetryHours,
+    telemetryTimeseries,
+  ])
 
-  if (!authed) {
+  const bgOrbs = (
+    <>
+      <div class="bg-orb bg-orb-1" aria-hidden="true" />
+      <div class="bg-orb bg-orb-2" aria-hidden="true" />
+      <div class="bg-orb bg-orb-3" aria-hidden="true" />
+    </>
+  )
+
+  if (sessionLoading || !canAccessAdmin) {
     return (
-      <main class="app-shell login-shell">
-        <section class="panel login-panel">
-          <h1>{t('login.title')}</h1>
-          <p class="muted">{t('login.hint')}</p>
-          <form class="login-form" onSubmit={submitLogin}>
-            <label>
-              {t('login.tokenLabel')}
-              <input
-                type="password"
-                value={token}
-                onInput={(event) => setToken((event.currentTarget as HTMLInputElement).value)}
-                placeholder={t('login.tokenPlaceholder')}
-              />
-            </label>
-            <button type="submit" disabled={busy || token.trim() === ''}>
-              {busy ? t('login.signingIn') : t('login.signIn')}
-            </button>
-          </form>
-          {error && <p class="error">{error}</p>}
-        </section>
-      </main>
+      <>
+        {bgOrbs}
+        <main class="app-shell login-shell">
+          <section class="login-panel">
+            <div class="login-panel-toolbar">
+              <LanguageSelector />
+              <ThemeToggle />
+            </div>
+            <div class="login-brand">
+              <BrandMark />
+              <div>
+                <div class="login-eyebrow">{t('header.title')}</div>
+                <h1>{t('auth.title')}</h1>
+              </div>
+            </div>
+
+            <p class="muted">
+              {sessionLoading ? t('auth.checking') : t('auth.subtitle')}
+            </p>
+
+            {!sessionLoading && (
+              <form class="login-form" onSubmit={handleLoginSubmit}>
+                <label>
+                  {t('auth.tokenLabel')}
+                  <input
+                    type="password"
+                    value={loginToken}
+                    placeholder={t('auth.tokenPlaceholder')}
+                    autoComplete="current-password"
+                    autoFocus
+                    disabled={loginBusy}
+                    onInput={(event) => {
+                      clearError()
+                      setLoginToken((event.currentTarget as HTMLInputElement).value)
+                    }}
+                  />
+                </label>
+
+                <button type="submit" disabled={loginBusy || !loginToken.trim()}>
+                  {loginBusy ? t('auth.submitting') : t('auth.submit')}
+                </button>
+              </form>
+            )}
+
+            {sessionError && <p class="error">{sessionError}</p>}
+            {!sessionLoading && <p class="muted login-help">{t('auth.hint')}</p>}
+          </section>
+        </main>
+
+        <ToastContainer toasts={toasts} onClose={removeToast} />
+      </>
     )
   }
 
   return (
-    <main class="app-shell">
-      <header class="topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <svg width="36" height="36" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <rect width="96" height="96" rx="24" fill="#0B0C0C"/>
-            <path d="M24 68V28H38L48 52L58 28H72V68H62V46L54 66H42L34 46V68H24Z" fill="#7EE7D6"/>
-            <circle cx="73" cy="24" r="8" fill="#F1B866"/>
-          </svg>
-          <div>
-            <h1>{t('header.title')}</h1>
+    <>
+      {bgOrbs}
+      <main class="app-shell">
+        <header class="topbar">
+          <div class="topbar-brand">
+            <BrandMark />
+            <div>
+              <h1>{t('header.title')}</h1>
+              <p class="muted">{status?.version ? `${status.version} · ${status.uptime ?? '-'}` : t('header.subtitle')}</p>
+            </div>
           </div>
-        </div>
-        <div class="topbar-actions">
-          <div class="tabbar">
-            {tabLabels.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                class={`tab${tab === item.key ? ' active' : ''}`}
-                onClick={() => handleTabChange(item.key)}
-              >
-                {tabIcons[item.key]} {item.label}
-              </button>
-            ))}
-          </div>
-          <span class={`sse-status ${sseConnected ? 'connected' : sseReconnecting ? 'reconnecting' : 'disconnected'}`}>
-            <span class="sse-dot" />
-            {sseConnected ? t('sse.connected') : sseReconnecting ? t('sse.reconnecting') : t('sse.disconnected')}
-          </span>
-          <div class="header-controls">
-            <LanguageSelector />
-            <ThemeToggle />
-          </div>
-          <button type="button" onClick={logout} disabled={busy}>
-            {t('actions.logout')}
-          </button>
-        </div>
-      </header>
 
-      {error && (
-        <section class="panel">
-          <p class="error">{error}</p>
-        </section>
-      )}
+          <div class="topbar-actions">
+            <div class="tabbar">
+              {tabLabels.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  class={`tab${tab === item.key ? ' active' : ''}`}
+                  onClick={() => handleTabChange(item.key)}
+                  onMouseEnter={() => prefetchTabResources(item.key)}
+                  onFocus={() => prefetchTabResources(item.key)}
+                >
+                  {TAB_ICONS[item.key]} {item.label}
+                </button>
+              ))}
+            </div>
 
-      {renderTabContent()}
-    </main>
+            <span class={`status-badge ${gatewayTone}`}>
+              {t('header.gateway')}: {status?.gateway_readiness ?? status?.gateway_status ?? t('header.statusUnknown')}
+            </span>
+            <span class={`status-badge ${telemetryTone}`}>
+              {t('header.telemetry')}: {status?.telemetry_status ?? t('header.statusUnknown')}
+            </span>
+
+            <div class="header-controls">
+              <LanguageSelector />
+              <ThemeToggle />
+            </div>
+
+            <div class="session-controls">
+              {authEnabled ? (
+                <>
+                  <span class="status-badge neutral">
+                    {session?.name ?? t('auth.sessionCurrent')} · {roleLabel(session?.role, t)}
+                  </span>
+                  <button type="button" class="secondary" onClick={handleLogout} disabled={logoutBusy}>
+                    {logoutBusy ? t('auth.loggingOut') : t('auth.logout')}
+                  </button>
+                </>
+              ) : (
+                <span class="status-badge neutral">{t('auth.disabled')}</span>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {activeError && (
+          <section class="panel">
+            <p class="error">{activeError}</p>
+          </section>
+        )}
+
+        <div key={tab} class="tab-content-wrapper">
+          {tabContent}
+        </div>
+      </main>
+
+      <ToastContainer toasts={toasts} onClose={removeToast} />
+    </>
   )
 }

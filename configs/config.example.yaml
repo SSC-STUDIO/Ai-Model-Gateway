@@ -1,28 +1,29 @@
 # AI-Model-Gateway Configuration
-# Top-level structure: server, admin, routing, providers, telemetry, pricing, compat
+# Copy this file to configs/config.yaml and replace placeholder values.
 
 server:
   listen: :18080
   read_timeout_ms: 30000
-  write_timeout_ms: 60000
+  write_timeout_ms: 0
   idle_timeout_ms: 120000
-  max_body_bytes: 104857600  # 100 MB
+  max_body_bytes: 104857600
 
 admin:
-  enabled: true                    # Enable admin for testing
-  bootstrap_token: "12345678901234567890123456789012"  # 32 chars
-  cookie_signing_key: "abcdef1234567890abcdef1234567890"  # 32 chars
+  enabled: true
+  bootstrap_token: "${ADMIN_BOOTSTRAP_TOKEN}"
+  cookie_signing_key: "${COOKIE_SIGNING_KEY}"
+  publish_history_limit: 256
   language: zh
   tokens:
-    - name: alice-admin
-      token: "your-admin-token-at-least-32-chars-long"
+    - name: admin
+      token: "${ADMIN_TOKEN}"
       role: admin
-    - name: bob-viewer
-      token: "your-viewer-token-at-least-32-chars-long"
+    - name: viewer
+      token: "${VIEWER_TOKEN}"
       role: viewer
   rate_limit:
-    requests_per_second: 10        # Token refill rate (default: 10)
-    burst: 20                      # Max burst size (default: 20)
+    requests_per_second: 10
+    burst: 20
 
 routing:
   strategy: health_weighted_rr
@@ -34,7 +35,7 @@ routing:
     enabled: true
     interval_sec: 10
     timeout_ms: 2000
-    path: /v1/models          # Provider probe path
+    path: /v1/models
   sticky_sessions:
     enabled: true
     ttl_sec: 1800
@@ -44,7 +45,7 @@ routing:
     passthrough_after_sec: 600
     quota_recovery_interval_min: 0
   retry:
-    infinite_on_error: true
+    infinite_on_error: false
     status_codes:
       - 408
       - 429
@@ -65,11 +66,10 @@ routing:
       - service unavailable
   intercepts: []
 
-# Providers (renamed from upstreams in v1)
 providers:
   - name: station-a
     base_url: https://example-a.com
-    api_key: sk-xxxx
+    api_key: "${STATION_A_API_KEY}"
     provider_class: free
     models:
       - gpt-4o-mini
@@ -81,7 +81,7 @@ providers:
 
   - name: station-b
     base_url: https://example-b.com
-    api_key: sk-yyyy
+    api_key: "${STATION_B_API_KEY}"
     provider_class: quota_limited
     models:
       - gpt-4o-mini
@@ -90,10 +90,13 @@ providers:
     same_retries: 0
     enabled: true
 
+  # Example: Provider supporting Anthropic Messages API format
+  # When anthropic_base_url is set, /v1/messages requests use this URL
+  # and authenticate with x-api-key header instead of Bearer token
   - name: kimi-official
     base_url: https://api.moonshot.cn
     anthropic_base_url: https://api.moonshot.cn/anthropic
-    api_key: sk-your-kimi-key
+    api_key: "${KIMI_OFFICIAL_API_KEY}"
     provider_class: quota_limited
     models:
       - kimi-k2.5
@@ -113,16 +116,25 @@ pricing:
   cache_path: data/pricing-cache.json
   refresh_interval_hours: 12
   request_timeout_ms: 15000
+  manual_prices:
+    - provider: kimi-official
+      model: glm-5.1
+      currency: CNY
+      input_per_1m: 0
+      cached_input_per_1m: 0
+      output_per_1m: 0
+      enabled: false
+      source: manual
 
 compat:
   bridge:
     enabled: false
     exclude_user_agents:
-      - '*Codex Desktop*'
+      - "*Codex Desktop*"
     rules:
       - from: gpt-5.2*
         to: gpt-5.4
   fallback:
-    enabled: false            # Optional compatibility fallback layer
+    enabled: false
     detect_repetition: false
     models: {}

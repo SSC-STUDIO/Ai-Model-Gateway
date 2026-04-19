@@ -1,14 +1,14 @@
 import { useI18n, type LocaleKey } from '../i18n'
 
 export function LanguageSelector() {
-  const { locale, setLocale } = useI18n()
+  const { t, locale, setLocale } = useI18n()
 
   return (
     <select
       class="lang-select"
       value={locale}
       onChange={(e) => setLocale((e.currentTarget as HTMLSelectElement).value as LocaleKey)}
-      aria-label="Language"
+      aria-label={t('language.selectorLabel')}
     >
       <option value="zh">中文</option>
       <option value="en">EN</option>

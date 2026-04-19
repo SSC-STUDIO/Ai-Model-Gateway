@@ -187,9 +187,9 @@ func (c *OpenAIToClaudeConverter) mapStopReason(claudeReason string) string {
 func (c *OpenAIToClaudeConverter) ConvertStreamEvent(claudeEvent []byte) ([]byte, error) {
 	// 解析 Claude 事件
 	var event struct {
-		Type  string          `json:"type"`
-		Index int             `json:"index,omitempty"`
-		Delta *ClaudeDelta    `json:"delta,omitempty"`
+		Type    string          `json:"type"`
+		Index   int             `json:"index,omitempty"`
+		Delta   *ClaudeDelta    `json:"delta,omitempty"`
 		Message *ClaudeResponse `json:"message,omitempty"`
 	}
 

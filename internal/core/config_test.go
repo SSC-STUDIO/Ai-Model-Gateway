@@ -15,8 +15,8 @@ func TestConfig_Normalize_Defaults(t *testing.T) {
 	if cfg.Server.ReadTimeoutMs != 30000 {
 		t.Errorf("expected read_timeout_ms 30000, got %d", cfg.Server.ReadTimeoutMs)
 	}
-	if cfg.Server.WriteTimeoutMs != 60000 {
-		t.Errorf("expected write_timeout_ms 60000, got %d", cfg.Server.WriteTimeoutMs)
+	if cfg.Server.WriteTimeoutMs != 0 {
+		t.Errorf("expected write_timeout_ms 0, got %d", cfg.Server.WriteTimeoutMs)
 	}
 	if cfg.Server.MaxBodyBytes != 100<<20 {
 		t.Errorf("expected max_body_bytes 100MB, got %d", cfg.Server.MaxBodyBytes)
@@ -51,8 +51,14 @@ func TestConfig_Normalize_Defaults(t *testing.T) {
 	if cfg.Pricing.RequestTimeoutMs != 15000 {
 		t.Errorf("expected pricing.request_timeout_ms 15000, got %d", cfg.Pricing.RequestTimeoutMs)
 	}
+	if len(cfg.Pricing.ManualPrices) != 0 {
+		t.Errorf("expected no default manual prices, got %d", len(cfg.Pricing.ManualPrices))
+	}
 	if cfg.Admin.Language != LangZH {
 		t.Errorf("expected language zh, got %s", cfg.Admin.Language)
+	}
+	if cfg.Admin.PublishHistoryLimit != DefaultAdminPublishHistoryLimit {
+		t.Errorf("expected publish_history_limit %d, got %d", DefaultAdminPublishHistoryLimit, cfg.Admin.PublishHistoryLimit)
 	}
 }
 
@@ -63,7 +69,7 @@ func TestConfig_Normalize_PreservesExplicitValues(t *testing.T) {
 			Strategy:   StrategyRoundRobin,
 			MaxRetries: 5,
 		},
-		Admin: AdminConfig{Language: "en"},
+		Admin: AdminConfig{Language: "en", PublishHistoryLimit: 64},
 	}
 	cfg.Normalize()
 
@@ -81,6 +87,9 @@ func TestConfig_Normalize_PreservesExplicitValues(t *testing.T) {
 	}
 	if cfg.Admin.Language != LangEN {
 		t.Errorf("expected language en, got %s", cfg.Admin.Language)
+	}
+	if cfg.Admin.PublishHistoryLimit != 64 {
+		t.Errorf("expected publish_history_limit 64, got %d", cfg.Admin.PublishHistoryLimit)
 	}
 }
 
@@ -135,6 +144,11 @@ func TestConfig_Validate_AdminRequiresTokens(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
+
+	cfg.Admin.PublishHistoryLimit = -1
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "admin.publish_history_limit must be >= 0") {
+		t.Fatalf("expected publish_history_limit validation error, got %v", err)
+	}
 }
 
 func TestConfig_Validate_ValidMinimal(t *testing.T) {
@@ -167,6 +181,40 @@ func TestConfig_Validate_PricingMustBeNonNegative(t *testing.T) {
 	cfg.Pricing.RequestTimeoutMs = -1
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "pricing.request_timeout_ms must be >= 0") {
 		t.Fatalf("expected request_timeout_ms validation error, got %v", err)
+	}
+
+	cfg = base
+	cfg.Pricing.ManualPrices = []PricingManualPrice{{
+		Model:      "glm-5.1",
+		InputPer1M: -1,
+	}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "pricing.manual_prices[0].input_per_1m must be >= 0") {
+		t.Fatalf("expected manual input_per_1m validation error, got %v", err)
+	}
+
+	cfg = base
+	cfg.Pricing.ManualPrices = []PricingManualPrice{{
+		Currency: "cny",
+	}}
+	cfg.Normalize()
+	if cfg.Pricing.ManualPrices[0].Currency != "CNY" {
+		t.Fatalf("expected manual price currency to normalize to CNY, got %q", cfg.Pricing.ManualPrices[0].Currency)
+	}
+	if cfg.Pricing.ManualPrices[0].Source != "manual" {
+		t.Fatalf("expected manual price source default manual, got %q", cfg.Pricing.ManualPrices[0].Source)
+	}
+	if !cfg.Pricing.ManualPrices[0].IsEnabled() {
+		t.Fatalf("expected manual price enabled by default")
+	}
+
+	cfg = base
+	cfg.Pricing.ManualPrices = []PricingManualPrice{{
+		Model:       "",
+		InputPer1M:  1,
+		OutputPer1M: 2,
+	}}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "pricing.manual_prices[0].model must not be empty") {
+		t.Fatalf("expected manual model validation error, got %v", err)
 	}
 }
 

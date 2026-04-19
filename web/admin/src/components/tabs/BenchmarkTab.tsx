@@ -1,7 +1,8 @@
-import { memo, useMemo, useCallback } from 'preact/compat'
+import { memo, useMemo, useCallback, useState } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import { BarChart } from '../Charts'
 import type { BenchmarkResponse } from '../../types'
+import { formatUsd } from '../../utils/formatting'
 
 interface BenchmarkTabProps {
   benchmark: BenchmarkResponse | null
@@ -13,22 +14,17 @@ interface BenchmarkTabProps {
   onRefresh: () => void
 }
 
-function formatUsd(value: number): string {
-  if (value < 0.01 && value > 0) return '<$0.01'
-  if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`
-  return `$${value.toFixed(2)}`
-}
-
 const BenchmarkTabComponent = ({
   benchmark,
   benchmarkHours,
-  benchmarkModels: _benchmarkModels,
+  benchmarkModels,
   benchmarkLoading,
   onHoursChange,
   onModelsChange,
   onRefresh,
 }: BenchmarkTabProps) => {
   const { t } = useI18n()
+  const [modelInput, setModelInput] = useState(() => benchmarkModels.join(', '))
 
   const handleHoursChange = useCallback(
     (e: Event) => {
@@ -41,6 +37,7 @@ const BenchmarkTabComponent = ({
   const handleModelsChange = useCallback(
     (e: Event) => {
       const value = (e.currentTarget as HTMLInputElement).value
+      setModelInput(value)
       const models = value
         .split(',')
         .map((m) => m.trim())
@@ -63,51 +60,53 @@ const BenchmarkTabComponent = ({
   }, [benchmark])
 
   const avgLatencyData = useMemo(() => {
-    if (!benchmark?.models) return []
-    return benchmark.models.map((m) => ({
+    if (!benchmark?.benchmarks) return []
+    return benchmark.benchmarks.map((m) => ({
       label: m.model,
       value: m.avg_latency_ms,
       color: '#3b82f6',
     }))
-  }, [benchmark?.models])
+  }, [benchmark?.benchmarks])
 
   const p50LatencyData = useMemo(() => {
-    if (!benchmark?.models) return []
-    return benchmark.models.map((m) => ({
+    if (!benchmark?.benchmarks) return []
+    return benchmark.benchmarks.map((m) => ({
       label: m.model,
       value: m.p50_latency_ms,
       color: '#22c55e',
     }))
-  }, [benchmark?.models])
+  }, [benchmark?.benchmarks])
 
   const p95LatencyData = useMemo(() => {
-    if (!benchmark?.models) return []
-    return benchmark.models.map((m) => ({
+    if (!benchmark?.benchmarks) return []
+    return benchmark.benchmarks.map((m) => ({
       label: m.model,
       value: m.p95_latency_ms,
       color: '#f59e0b',
     }))
-  }, [benchmark?.models])
+  }, [benchmark?.benchmarks])
 
   const successRateData = useMemo(() => {
-    if (!benchmark?.models) return []
-    return benchmark.models.map((m) => ({
+    if (!benchmark?.benchmarks) return []
+    return benchmark.benchmarks.map((m) => ({
       label: m.model,
       value: m.success_rate * 100,
       color: m.success_rate >= 0.99 ? '#22c55e' : m.success_rate >= 0.95 ? '#f59e0b' : '#ef4444',
     }))
-  }, [benchmark?.models])
+  }, [benchmark?.benchmarks])
 
   const costData = useMemo(() => {
-    if (!benchmark?.models) return []
-    return benchmark.models
+    if (!benchmark?.benchmarks) return []
+    return benchmark.benchmarks
       .filter((m) => m.estimated_cost_usd > 0)
       .map((m) => ({
         label: m.model,
         value: m.estimated_cost_usd,
         color: '#8b5cf6',
       }))
-  }, [benchmark?.models])
+  }, [benchmark?.benchmarks])
+
+  const hasCostChart = costData.length > 0
 
   return (
     <section class="panel">
@@ -137,8 +136,9 @@ const BenchmarkTabComponent = ({
             {t('benchmark.modelFilter')}
             <input
               type="text"
+              value={modelInput}
               placeholder={t('benchmark.modelFilterPlaceholder')}
-              onChange={handleModelsChange}
+              onInput={handleModelsChange}
             />
           </label>
 
@@ -154,18 +154,36 @@ const BenchmarkTabComponent = ({
 
       {benchmarkLoading && (
         <div class="panel-subsection">
-          <p class="muted"><span class="loading-dots"></span> {t('benchmark.loading')}</p>
+          <div class="skeleton-grid-auto">
+            <div class="skeleton chart-skeleton" />
+            <div class="skeleton chart-skeleton" />
+            <div class="skeleton chart-skeleton" />
+            <div class="skeleton chart-skeleton" />
+          </div>
         </div>
       )}
 
-      {benchmark && benchmark.models.length > 0 && (
+      {!benchmark && !benchmarkLoading && (
+        <div class="panel-subsection">
+          <div class="empty-state-box">
+            <div class="empty-state-icon">📊</div>
+            <p class="empty-state-title">{t('benchmark.noData')}</p>
+          </div>
+        </div>
+      )}
+      
+      {benchmark && benchmark.benchmarks && benchmark.benchmarks.length > 0 && (
         <>
           <div class="panel-subsection">
-            <h3>{t('benchmark.latencyComparison')}</h3>
-            <div class="charts-grid charts-grid-single">
+            <div
+              style={{
+                display: 'grid',
+                gap: '16px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              }}
+            >
               <BarChart data={avgLatencyData} title={t('benchmark.avgLatency')} unit=" ms" />
-            </div>
-            <div class="charts-grid" style={{ marginTop: '16px' }}>
+              <BarChart data={successRateData} title={t('benchmark.successRate')} unit="%" />
               <BarChart
                 data={p50LatencyData}
                 title={t('benchmark.p50Latency')}
@@ -178,20 +196,11 @@ const BenchmarkTabComponent = ({
                 unit=" ms"
                 horizontal
               />
-            </div>
-          </div>
-
-          <div class="panel-subsection">
-            <h3>{t('benchmark.successRateComparison')}</h3>
-            <div class="charts-grid charts-grid-single">
-              <BarChart data={successRateData} title={t('benchmark.successRate')} unit="%" />
-            </div>
-          </div>
-
-          <div class="panel-subsection">
-            <h3>{t('benchmark.costComparison')}</h3>
-            <div class="charts-grid charts-grid-single">
-              <BarChart data={costData} title={t('benchmark.estimatedCost')} unit=" USD" />
+              {hasCostChart && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <BarChart data={costData} title={t('benchmark.estimatedCost')} unit=" USD" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -214,7 +223,7 @@ const BenchmarkTabComponent = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {benchmark.models.map((m) => (
+                  {benchmark.benchmarks.map((m) => (
                     <tr key={m.model}>
                       <td>{m.model}</td>
                       <td>{(m.requests ?? 0).toLocaleString()}</td>
@@ -245,9 +254,12 @@ const BenchmarkTabComponent = ({
         </>
       )}
 
-      {benchmark && benchmark.models.length === 0 && !benchmarkLoading && (
+      {benchmark && (!benchmark.benchmarks || benchmark.benchmarks.length === 0) && !benchmarkLoading && (
         <div class="panel-subsection">
-          <p class="empty-state">{t('empty.noBenchmark')}</p>
+          <div class="empty-state-box">
+            <div class="empty-state-icon">📊</div>
+            <p class="empty-state-title">{t('empty.noBenchmark')}</p>
+          </div>
         </div>
       )}
     </section>

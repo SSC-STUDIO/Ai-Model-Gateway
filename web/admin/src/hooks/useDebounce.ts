@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'preact/hooks'
+import { useEffect, useRef, useCallback, useState } from 'preact/hooks'
 
 export function useDebounce<T extends (...args: unknown[]) => unknown>(
   callback: T,
@@ -112,4 +112,20 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
       }, limit - (now - lastRun))
     }
   }
+}
+
+export function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+
+    return () => {
+      clearTimeout(timeoutId)
+    }
+  }, [delay, value])
+
+  return debouncedValue
 }

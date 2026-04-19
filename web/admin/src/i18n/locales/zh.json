@@ -3,24 +3,15 @@
     "overview": "概览",
     "telemetry": "遥测",
     "timeseries": "时序",
-    "settings": "设置",
     "history": "历史",
-    "probe": "探测",
-    "logs": "日志",
-    "benchmark": "基准测试",
-    "audit": "审计日志"
+    "benchmark": "基准测试"
   },
   "header": {
     "title": "AI Model Gateway",
-    "subtitle": "AI 模型路由网关管理面板"
-  },
-  "login": {
-    "title": "AI Model Gateway 管理后台",
-    "hint": "输入 bootstrap token 建立同源管理会话。",
-    "tokenLabel": "Bootstrap Token",
-    "tokenPlaceholder": "0123456789abcdef...",
-    "signIn": "登录",
-    "signingIn": "登录中..."
+    "subtitle": "AI 模型路由网关管理面板",
+    "gateway": "网关",
+    "telemetry": "遥测",
+    "statusUnknown": "未知"
   },
   "overview": {
     "title": "概览",
@@ -35,6 +26,22 @@
     "failures": "失败数",
     "avgLatency": "平均延迟",
     "runtime": "运行状态",
+    "providerHealth": "Provider 健康状态",
+    "providersTotal": "Provider 总数",
+    "providersHealthy": "健康 Provider",
+    "providersBlocked": "阻断 Provider",
+    "providersCooldown": "冷却中",
+    "providerName": "Provider",
+    "providerStatus": "状态",
+    "providerFailures": "连续失败",
+    "providerLatency": "最近延迟",
+    "providerLastCheck": "最近检查",
+    "providerLastSuccess": "最近成功",
+    "providerCooldownUntil": "冷却结束",
+    "providerNoData": "暂时还没有 provider 健康数据。",
+    "statusHealthy": "健康",
+    "statusCooldown": "冷却中",
+    "statusUnhealthy": "已阻断",
     "availableModels": "可用模型",
     "model": "模型",
     "noModels": "没有可用模型"
@@ -83,88 +90,59 @@
     "successRate": "成功率",
     "bucketSize": "桶大小",
     "timeRange": "时间范围",
-    "noData": "暂无时序数据"
+    "noData": "暂无时序数据",
+    "standardView": "标准视图",
+    "historyView": "历史视图",
+    "historyInfo": "按周聚合显示所有历史数据",
+    "historyLoading": "正在加载历史数据...",
+    "historyEmpty": "暂无历史数据",
+    "historyRequests": "请求量历史趋势（周）",
+    "historyLatency": "平均延迟历史趋势（周）",
+    "historySuccessRate": "成功率历史趋势（周）",
+    "earlier": "← 更早",
+    "later": "更近 →",
+    "weeksTotal": "共 {count} 周",
+    "latest": "最新",
+    "resetView": "回到最新窗口",
+    "dragHint": "拖拽滑动窗口，滚轮缩放，双击或按 Home 回到最新，方向键可切换时间窗口。",
+    "emptyHistoryTitle": "暂无历史数据",
+    "emptyHistoryHint": "累计样本后这里会自动切换为可拖拽时间视图。"
   },
   "autoRefresh": {
     "off": "关闭",
     "interval": "自动刷新",
     "active": "自动刷新中"
   },
-  "settings": {
-    "title": "设置",
-    "editableJson": "可编辑 JSON",
-    "saveConfig": "保存配置",
-    "structured": "结构化",
-    "advancedJson": "高级 JSON",
-    "confirmTitle": "确认保存",
-    "confirmMessage": "确定要保存此配置吗？网关将重新加载。",
-    "confirmYes": "保存",
-    "confirmCancel": "取消",
-    "saveSuccess": "配置保存成功。",
-    "saveError": "配置保存失败。",
-    "readOnlyArray": "数组（只读，请使用 JSON 编辑器修改）",
-    "sensitive": "敏感"
-  },
   "history": {
     "title": "配置历史",
     "versionLabel": "版本",
     "selectVersion": "选择一个版本",
     "rollback": "回滚",
+    "rollbackToSelected": "回滚到所选修订",
+    "publish": "发布所选修订",
+    "current": "当前生效版本",
     "entries": "条目",
     "diff": "差异",
     "linesAdded": "行新增",
     "linesRemoved": "行删除",
-    "blocks": "个变更块"
-  },
-  "probe": {
-    "title": "上游探测",
-    "name": "名称",
-    "baseUrl": "Base URL",
-    "anthropicBaseUrl": "Anthropic Base URL",
-    "apiKey": "API Key",
-    "providerClass": "Provider Class",
-    "models": "模型",
-    "timeoutMs": "超时 (毫秒)",
-    "runProbe": "运行探测",
-    "result": "结果"
-  },
-  "logs": {
-    "title": "日志",
-    "levelFilter": "级别",
-    "search": "搜索",
-    "searchPlaceholder": "搜索日志...",
-    "level": {
-      "debug": "调试",
-      "info": "信息",
-      "warn": "警告",
-      "error": "错误"
-    },
-    "connected": "已连接",
-    "disconnected": "已断开",
-    "pending": "待处理",
-    "pause": "暂停",
-    "resume": "继续",
-    "autoScrollOn": "自动滚动开启",
-    "autoScrollOff": "自动滚动关闭",
-    "clear": "清空日志",
-    "export": "导出",
-    "exportError": "导出日志失败",
-    "empty": "暂无日志",
-    "showing": "显示",
-    "entries": "条记录",
-    "scrollToBottom": "滚动到底部"
-  },
-  "actions": {
-    "logout": "退出登录"
-  },
-  "settingsMenu": {
-    "language": "语言",
-    "theme": "主题"
-  },
-  "sse": {
-    "connected": "已连接",
-    "reconnecting": "重连中",
-    "disconnected": "已断开"
+    "blocks": "个变更块",
+    "selectedRevision": "已选修订",
+    "currentPolicy": "当前控制策略",
+    "currentActiveRevision": "当前生效修订",
+    "publishHistoryLimit": "发布历史保留上限",
+    "revisionId": "修订 ID",
+    "createdAt": "创建时间",
+    "createdBy": "创建者",
+    "description": "描述",
+    "status": "状态",
+    "noDescription": "未提供描述。",
+    "activeBadge": "生效中",
+    "inactiveBadge": "未生效",
+    "readOnly": "只读会话",
+    "publishSuccess": "修订已发布。",
+    "publishFailed": "发布修订失败。",
+    "rollbackSuccess": "回滚已完成。",
+    "rollbackFailed": "回滚修订失败。"
   },
   "benchmark": {
     "title": "模型基准测试",
@@ -194,27 +172,51 @@
     "tokens": "Token数",
     "noData": "所选时间范围内没有可用的基准测试数据"
   },
+  "auth": {
+    "title": "管理员登录",
+    "subtitle": "使用 config.yaml 中的管理员或只读 token 进入控制台。",
+    "checking": "正在检查当前会话...",
+    "tokenLabel": "Token",
+    "tokenPlaceholder": "粘贴管理员或只读 token",
+    "submit": "登录",
+    "submitting": "登录中...",
+    "logout": "退出登录",
+    "loggingOut": "正在退出...",
+    "disabled": "鉴权已关闭",
+    "sessionCurrent": "当前会话",
+    "roleAdmin": "管理员",
+    "roleViewer": "只读",
+    "hint": "浏览器会话会以当前控制面的签名 Cookie 形式保存。"
+  },
+  "theme": {
+    "toggleLabel": "切换主题"
+  },
+  "language": {
+    "selectorLabel": "语言"
+  },
+  "charts": {
+    "emptyTitle": "暂无可展示数据",
+    "emptyHint": "收到数据后这里会自动更新。",
+    "lineEmpty": "暂无趋势数据",
+    "lineEmptyHint": "收到请求后这里会自动绘制折线。",
+    "donutEmpty": "暂无分布数据",
+    "donutEmptyHint": "上游和模型命中后这里会显示占比。",
+    "barEmpty": "暂无柱状数据",
+    "barEmptyHint": "样本达到后这里会自动生成对比柱图。",
+    "current": "当前",
+    "latest": "最新",
+    "donutTotal": "总计",
+    "donutOverview": "总览",
+    "donutItems": "项",
+    "barPeak": "峰值",
+    "emptyAriaLabel": "空图表",
+    "scrollHint": "水平滚动查看更多项目"
+  },
   "empty": {
     "noRequests": "暂无请求数据，网关正在等待流量",
     "noTelemetry": "暂无遥测数据",
     "noBenchmark": "暂无基准测试数据",
     "noTimeseries": "暂无时序数据",
-    "noAudit": "暂无审计记录",
     "noHistory": "暂无配置变更历史"
-  },
-  "audit": {
-    "title": "审计日志",
-    "loading": "正在加载审计日志...",
-    "empty": "暂无审计记录",
-    "time": "时间",
-    "action": "操作",
-    "actor": "操作者",
-    "role": "角色",
-    "details": "详情",
-    "ip": "IP 地址",
-    "prev": "上一页",
-    "next": "下一页",
-    "page": "页",
-    "totalEntries": "条记录"
   }
 }

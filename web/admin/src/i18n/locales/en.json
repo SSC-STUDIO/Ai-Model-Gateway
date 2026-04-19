@@ -3,24 +3,15 @@
     "overview": "Overview",
     "telemetry": "Telemetry",
     "timeseries": "Timeseries",
-    "settings": "Settings",
     "history": "History",
-    "probe": "Probe",
-    "logs": "Logs",
-    "benchmark": "Benchmark",
-    "audit": "Audit Log"
+    "benchmark": "Benchmark"
   },
   "header": {
     "title": "AI Model Gateway",
-    "subtitle": "AI Model Routing Gateway Admin Panel"
-  },
-  "login": {
-    "title": "AI Model Gateway Admin",
-    "hint": "Enter bootstrap token to establish same-origin admin session",
-    "tokenLabel": "Bootstrap Token",
-    "tokenPlaceholder": "0123456789abcdef...",
-    "signIn": "Sign In",
-    "signingIn": "Signing In..."
+    "subtitle": "AI Model Routing Gateway Admin Panel",
+    "gateway": "Gateway",
+    "telemetry": "Telemetry",
+    "statusUnknown": "unknown"
   },
   "overview": {
     "title": "Overview",
@@ -35,6 +26,22 @@
     "failures": "Failures",
     "avgLatency": "Avg Latency",
     "runtime": "Runtime Status",
+    "providerHealth": "Provider Health",
+    "providersTotal": "Total Providers",
+    "providersHealthy": "Healthy Providers",
+    "providersBlocked": "Blocked Providers",
+    "providersCooldown": "Cooling Down",
+    "providerName": "Provider",
+    "providerStatus": "Status",
+    "providerFailures": "Consecutive Failures",
+    "providerLatency": "Last Latency",
+    "providerLastCheck": "Last Check",
+    "providerLastSuccess": "Last Success",
+    "providerCooldownUntil": "Cooldown Until",
+    "providerNoData": "No provider health data available yet.",
+    "statusHealthy": "Healthy",
+    "statusCooldown": "Cooldown",
+    "statusUnhealthy": "Blocked",
     "availableModels": "Available Models",
     "model": "Model",
     "noModels": "No models available"
@@ -83,88 +90,59 @@
     "successRate": "Success Rate",
     "bucketSize": "Bucket Size",
     "timeRange": "Time Range",
-    "noData": "No timeseries data available"
+    "noData": "No timeseries data available",
+    "standardView": "Standard View",
+    "historyView": "History View",
+    "historyInfo": "Aggregated weekly historical data",
+    "historyLoading": "Loading historical data...",
+    "historyEmpty": "No historical data available",
+    "historyRequests": "Request History Trend (Weekly)",
+    "historyLatency": "Avg Latency History Trend (Weekly)",
+    "historySuccessRate": "Success Rate History Trend (Weekly)",
+    "earlier": "← Earlier",
+    "later": "Later →",
+    "weeksTotal": "{count} weeks total",
+    "latest": "Latest",
+    "resetView": "Reset to Latest",
+    "dragHint": "Drag to pan, scroll to zoom, double-click or press Home to reset to latest. Arrow keys switch time windows.",
+    "emptyHistoryTitle": "No historical data",
+    "emptyHistoryHint": "Data will appear here once enough samples are collected."
   },
   "autoRefresh": {
     "off": "Off",
     "interval": "Auto-refresh",
     "active": "Auto-refreshing"
   },
-  "settings": {
-    "title": "Settings",
-    "editableJson": "Editable JSON",
-    "saveConfig": "Save Config",
-    "structured": "Structured",
-    "advancedJson": "Advanced JSON",
-    "confirmTitle": "Confirm Save",
-    "confirmMessage": "Are you sure you want to save this configuration? The gateway will reload.",
-    "confirmYes": "Save",
-    "confirmCancel": "Cancel",
-    "saveSuccess": "Configuration saved successfully.",
-    "saveError": "Failed to save configuration.",
-    "readOnlyArray": "Array (read-only, use JSON editor to modify)",
-    "sensitive": "Sensitive"
-  },
   "history": {
     "title": "Config History",
     "versionLabel": "Version",
     "selectVersion": "Select a version",
     "rollback": "Rollback",
+    "rollbackToSelected": "Rollback to Selected",
+    "publish": "Publish Selected",
+    "current": "Current Active",
     "entries": "Entries",
     "diff": "Diff",
     "linesAdded": "lines added",
     "linesRemoved": "lines removed",
-    "blocks": "blocks"
-  },
-  "probe": {
-    "title": "Upstream Probe",
-    "name": "Name",
-    "baseUrl": "Base URL",
-    "anthropicBaseUrl": "Anthropic Base URL",
-    "apiKey": "API Key",
-    "providerClass": "Provider Class",
-    "models": "Models",
-    "timeoutMs": "Timeout MS",
-    "runProbe": "Run Probe",
-    "result": "Result"
-  },
-  "logs": {
-    "title": "Logs",
-    "levelFilter": "Level",
-    "search": "Search",
-    "searchPlaceholder": "Search logs...",
-    "level": {
-      "debug": "Debug",
-      "info": "Info",
-      "warn": "Warning",
-      "error": "Error"
-    },
-    "connected": "Connected",
-    "disconnected": "Disconnected",
-    "pending": "pending",
-    "pause": "Pause",
-    "resume": "Resume",
-    "autoScrollOn": "Auto-scroll on",
-    "autoScrollOff": "Auto-scroll off",
-    "clear": "Clear logs",
-    "export": "Export",
-    "exportError": "Failed to export logs",
-    "empty": "No logs to display",
-    "showing": "Showing",
-    "entries": "entries",
-    "scrollToBottom": "Scroll to bottom"
-  },
-  "actions": {
-    "logout": "Logout"
-  },
-  "settingsMenu": {
-    "language": "Language",
-    "theme": "Theme"
-  },
-  "sse": {
-    "connected": "Connected",
-    "reconnecting": "Reconnecting",
-    "disconnected": "Disconnected"
+    "blocks": "blocks",
+    "selectedRevision": "Selected Revision",
+    "currentPolicy": "Current Control Policy",
+    "currentActiveRevision": "Current Active Revision",
+    "publishHistoryLimit": "Publish History Limit",
+    "revisionId": "Revision ID",
+    "createdAt": "Created At",
+    "createdBy": "Created By",
+    "description": "Description",
+    "status": "Status",
+    "noDescription": "No description provided.",
+    "activeBadge": "Active",
+    "inactiveBadge": "Inactive",
+    "readOnly": "Read-only session",
+    "publishSuccess": "Revision published.",
+    "publishFailed": "Failed to publish revision.",
+    "rollbackSuccess": "Rollback completed.",
+    "rollbackFailed": "Failed to roll back revision."
   },
   "benchmark": {
     "title": "Model Benchmark",
@@ -194,27 +172,51 @@
     "tokens": "Tokens",
     "noData": "No benchmark data available for the selected time range"
   },
+  "auth": {
+    "title": "Admin Sign In",
+    "subtitle": "Use an admin or viewer token from config.yaml to open the control plane.",
+    "checking": "Checking current session...",
+    "tokenLabel": "Token",
+    "tokenPlaceholder": "Paste admin or viewer token",
+    "submit": "Sign In",
+    "submitting": "Signing In...",
+    "logout": "Log Out",
+    "loggingOut": "Logging Out...",
+    "disabled": "Authentication disabled",
+    "sessionCurrent": "Session",
+    "roleAdmin": "Admin",
+    "roleViewer": "Viewer",
+    "hint": "The browser session is stored in a signed cookie for this control plane."
+  },
+  "theme": {
+    "toggleLabel": "Switch theme"
+  },
+  "language": {
+    "selectorLabel": "Language"
+  },
+  "charts": {
+    "emptyTitle": "No data available",
+    "emptyHint": "This chart will update automatically once data arrives.",
+    "lineEmpty": "No trend data yet",
+    "lineEmptyHint": "The line chart will render automatically once requests come in.",
+    "donutEmpty": "No distribution data yet",
+    "donutEmptyHint": "Upstream and model distribution will show here once hits occur.",
+    "barEmpty": "No bar data yet",
+    "barEmptyHint": "Comparison bars will generate automatically once enough samples arrive.",
+    "current": "Current",
+    "latest": "Latest",
+    "donutTotal": "Total",
+    "donutOverview": "Overview",
+    "donutItems": "items",
+    "barPeak": "Peak",
+    "emptyAriaLabel": "Empty chart",
+    "scrollHint": "Scroll horizontally for more items"
+  },
   "empty": {
     "noRequests": "No request data yet. The gateway is waiting for traffic.",
     "noTelemetry": "No telemetry data available yet.",
     "noBenchmark": "No benchmark data available.",
     "noTimeseries": "No timeseries data available.",
-    "noAudit": "No audit log entries.",
     "noHistory": "No configuration change history."
-  },
-  "audit": {
-    "title": "Audit Log",
-    "loading": "Loading audit log...",
-    "empty": "No audit log entries",
-    "time": "Time",
-    "action": "Action",
-    "actor": "Actor",
-    "role": "Role",
-    "details": "Details",
-    "ip": "Source IP",
-    "prev": "Previous",
-    "next": "Next",
-    "page": "Page",
-    "totalEntries": "entries"
   }
 }

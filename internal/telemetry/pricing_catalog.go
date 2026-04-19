@@ -40,13 +40,7 @@ var (
 func NewPricingCatalog(cfg core.PricingConfig) *PricingCatalog {
 	catalog := &PricingCatalog{}
 	catalog.cfg.Store(cfg)
-	state := BootstrapPricingSnapshot()
-	if cached, err := loadPricingCatalogCache(cfg.CachePath); err == nil {
-		state = mergePricingSnapshots(state, cached)
-	} else if cfg.CachePath != "" {
-		state.LastError = err.Error()
-	}
-	catalog.state.Store(state)
+	catalog.state.Store(pricingSnapshotFromConfig(cfg))
 	return catalog
 }
 
@@ -88,28 +82,9 @@ func (c *PricingCatalog) UpdateConfig(cfg core.PricingConfig) {
 	if c == nil {
 		return
 	}
-
-	previous := c.currentConfig()
+	current := stripPricingManualOverrides(c.Snapshot(), c.currentConfig())
 	c.cfg.Store(cfg)
-
-	if strings.TrimSpace(previous.CachePath) == strings.TrimSpace(cfg.CachePath) {
-		return
-	}
-
-	current := c.Snapshot()
-	switch {
-	case strings.TrimSpace(cfg.CachePath) == "":
-		current.LastError = ""
-	case true:
-		cached, err := loadPricingCatalogCache(cfg.CachePath)
-		if err != nil {
-			current.LastError = err.Error()
-			break
-		}
-		current = mergePricingSnapshots(current, cached)
-		current.LastError = ""
-	}
-	c.state.Store(current)
+	c.state.Store(pricingSnapshotForUpdate(current, cfg))
 }
 
 func (c *PricingCatalog) refresh(parent context.Context) error {
@@ -118,10 +93,7 @@ func (c *PricingCatalog) refresh(parent context.Context) error {
 	}
 
 	cfg := c.currentConfig()
-	timeout := time.Duration(cfg.RequestTimeoutMs) * time.Millisecond
-	if timeout <= 0 {
-		timeout = 15 * time.Second
-	}
+	timeout := core.MillisecondsToDuration(cfg.RequestTimeoutMs, 15*time.Second)
 
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
@@ -142,14 +114,15 @@ func (c *PricingCatalog) refresh(parent context.Context) error {
 		fetched.SourceURL = OfficialPricingURL
 	}
 	fetched.Catalog = mergePricingCatalogs(BootstrapPricingCatalog(), fetched.Catalog)
-	c.state.Store(fetched)
 
 	if err := savePricingCatalogCache(cfg.CachePath, fetched); err != nil {
-		current = fetched
+		current = applyPricingConfigToSnapshot(fetched, cfg)
 		current.LastError = fmt.Sprintf("save pricing cache: %v", err)
 		c.state.Store(current)
 		return err
 	}
+
+	c.state.Store(applyPricingConfigToSnapshot(fetched, cfg))
 
 	return nil
 }
@@ -234,7 +207,7 @@ func parseAPIPricingPage(body string) map[string]Pricing {
 			continue
 		}
 
-		price := Pricing{}
+		price := pricing(0, 0, 0)
 		for _, valueMatch := range priceValuePattern.FindAllStringSubmatch(match[2], -1) {
 			if len(valueMatch) < 3 {
 				continue
@@ -245,19 +218,22 @@ func parseAPIPricingPage(body string) map[string]Pricing {
 			}
 			switch strings.ToLower(strings.TrimSpace(valueMatch[1])) {
 			case "input":
+				price.InputPer1M = value
 				price.InputPer1MUsd = value
 			case "cached input":
+				price.CachedInputPer1M = value
 				price.CachedInputPer1MUsd = value
 			case "output":
+				price.OutputPer1M = value
 				price.OutputPer1MUsd = value
 			}
 		}
 
-		if price.InputPer1MUsd == 0 && price.OutputPer1MUsd == 0 {
+		if price.InputPer1M == 0 && price.OutputPer1M == 0 {
 			continue
 		}
 		for _, model := range models {
-			result[model] = price
+			result[model] = normalizePricing(price)
 		}
 	}
 
@@ -283,11 +259,7 @@ func parseGPT52PricingPage(body string) map[string]Pricing {
 			continue
 		}
 
-		price := Pricing{
-			InputPer1MUsd:       input,
-			CachedInputPer1MUsd: cachedInput,
-			OutputPer1MUsd:      output,
-		}
+		price := pricing(input, cachedInput, output)
 		for _, model := range splitModelAliases(modelCell) {
 			result[model] = price
 		}
@@ -317,7 +289,14 @@ func mergePricingSnapshots(base PricingCatalogSnapshot, overlay PricingCatalogSn
 func mergePricingCatalogs(base map[string]Pricing, overlay map[string]Pricing) map[string]Pricing {
 	merged := clonePricingCatalog(base)
 	for key, value := range overlay {
-		merged[strings.ToLower(strings.TrimSpace(key))] = value
+		normalizedKey := normalizePricingAlias(key)
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "provider::") {
+			normalizedKey = strings.ToLower(strings.TrimSpace(key))
+		}
+		if normalizedKey == "" {
+			continue
+		}
+		merged[normalizedKey] = normalizePricing(value)
 	}
 	return merged
 }
@@ -361,16 +340,104 @@ func savePricingCatalogCache(path string, snapshot PricingCatalogSnapshot) error
 }
 
 func canonicalModelNames(value string) []string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "gpt-5.4":
-		return []string{"gpt-5.4"}
-	case "gpt-5 mini":
-		return []string{"gpt-5-mini"}
-	case "gpt-5 nano":
-		return []string{"gpt-5-nano"}
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return nil
+	}
+	value = strings.NewReplacer("—", "-", "–", "-", "_", " ").Replace(value)
+	value = strings.Join(strings.Fields(value), " ")
+	if value == "" {
+		return nil
+	}
+
+	slug := strings.ReplaceAll(value, " ", "-")
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+	slug = strings.Trim(slug, "-")
+
+	switch {
+	case strings.HasPrefix(slug, "gpt-"),
+		strings.HasPrefix(slug, "o1"),
+		strings.HasPrefix(slug, "o3"),
+		strings.HasPrefix(slug, "o4"),
+		strings.HasPrefix(slug, "claude-"),
+		strings.HasPrefix(slug, "gemini-"),
+		strings.HasPrefix(slug, "deepseek-"),
+		strings.HasPrefix(slug, "kimi-"),
+		strings.HasPrefix(slug, "glm-"):
+		return []string{slug}
 	default:
 		return nil
 	}
+}
+
+func pricingSnapshotFromConfig(cfg core.PricingConfig) PricingCatalogSnapshot {
+	snapshot := BootstrapPricingSnapshot()
+	if cached, err := loadPricingCatalogCache(cfg.CachePath); err == nil {
+		snapshot = mergePricingSnapshots(snapshot, cached)
+	} else if strings.TrimSpace(cfg.CachePath) != "" {
+		snapshot.LastError = err.Error()
+	}
+	return applyPricingConfigToSnapshot(snapshot, cfg)
+}
+
+func pricingSnapshotForUpdate(current PricingCatalogSnapshot, cfg core.PricingConfig) PricingCatalogSnapshot {
+	snapshot := BootstrapPricingSnapshot()
+	if cached, err := loadPricingCatalogCache(cfg.CachePath); err == nil {
+		snapshot = mergePricingSnapshots(snapshot, cached)
+	} else if strings.TrimSpace(cfg.CachePath) != "" {
+		snapshot.LastError = err.Error()
+	}
+	snapshot = mergePricingSnapshots(snapshot, current)
+	return applyPricingConfigToSnapshot(snapshot, cfg)
+}
+
+func stripPricingManualOverrides(snapshot PricingCatalogSnapshot, cfg core.PricingConfig) PricingCatalogSnapshot {
+	snapshot.Catalog = clonePricingCatalog(snapshot.Catalog)
+	for _, manual := range cfg.ManualPrices {
+		if !manual.IsEnabled() {
+			continue
+		}
+		modelKey := normalizePricingAlias(manual.Model)
+		if modelKey == "" {
+			continue
+		}
+		delete(snapshot.Catalog, modelKey)
+		if provider := strings.TrimSpace(manual.Provider); provider != "" {
+			if scopedKey := providerScopedPricingKey(provider, modelKey); scopedKey != "" {
+				delete(snapshot.Catalog, scopedKey)
+			}
+		}
+	}
+	return snapshot
+}
+
+func applyPricingConfigToSnapshot(snapshot PricingCatalogSnapshot, cfg core.PricingConfig) PricingCatalogSnapshot {
+	snapshot.Catalog = clonePricingCatalog(snapshot.Catalog)
+	for _, manual := range cfg.ManualPrices {
+		if !manual.IsEnabled() {
+			continue
+		}
+		modelKey := normalizePricingAlias(manual.Model)
+		if modelKey == "" {
+			continue
+		}
+		key := modelKey
+		if provider := strings.TrimSpace(manual.Provider); provider != "" {
+			scopedKey := providerScopedPricingKey(provider, modelKey)
+			if scopedKey != "" {
+				key = scopedKey
+			}
+		}
+		price := priced(manual.Currency, manual.InputPer1M, manual.CachedInputPer1M, manual.OutputPer1M)
+		price.Source = strings.TrimSpace(manual.Source)
+		if price.Source == "" {
+			price.Source = "manual"
+		}
+		snapshot.Catalog[key] = normalizePricing(price)
+	}
+	return snapshot
 }
 
 func splitModelAliases(value string) []string {

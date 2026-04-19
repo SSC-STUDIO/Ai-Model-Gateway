@@ -97,6 +97,15 @@ providers:
 }
 
 func TestWatcher_IgnoresSameContent(t *testing.T) {
+	previousSettleInterval := watcherSettleInterval
+	previousSettleChecks := watcherSettleChecks
+	watcherSettleInterval = 20 * time.Millisecond
+	watcherSettleChecks = 2
+	t.Cleanup(func() {
+		watcherSettleInterval = previousSettleInterval
+		watcherSettleChecks = previousSettleChecks
+	})
+
 	dir := t.TempDir()
 	path := writeTestConfig(t, dir, minimalConfig)
 
@@ -111,15 +120,38 @@ func TestWatcher_IgnoresSameContent(t *testing.T) {
 		callCount++
 	})
 
-	w.Start()
+	transientConfig := `
+server:
+  listen: ":19090"
+admin:
+  enabled: false
+providers:
+  - name: test
+    base_url: https://api.test.com
+`
 
-	// Rewrite file with same content.
-	time.Sleep(100 * time.Millisecond)
-	os.WriteFile(path, []byte(minimalConfig), 0o644)
-	time.Sleep(200 * time.Millisecond)
+	// Simulate a Linux-style in-place rewrite where the watcher can observe a
+	// transient but valid partial file before the original content is fully
+	// written back.
+	if err := os.WriteFile(path, []byte(transientConfig), 0o644); err != nil {
+		t.Fatalf("write transient config: %v", err)
+	}
+	rewriteDone := make(chan struct{})
+	time.AfterFunc(watcherSettleInterval/4, func() {
+		if err := os.WriteFile(path, []byte(minimalConfig), 0o644); err != nil {
+			t.Errorf("rewrite same config: %v", err)
+		}
+		close(rewriteDone)
+	})
+	w.check()
+	<-rewriteDone
+	w.check()
 
 	if callCount != 0 {
 		t.Errorf("expected 0 change callbacks for same content, got %d", callCount)
+	}
+	if got := w.Config().Server.Listen; got != ":18080" {
+		t.Errorf("expected original config preserved, got listen=%s", got)
 	}
 }
 

@@ -1,171 +1,138 @@
-# Installation Guide
+# 安装指南
 
-This guide documents the default runtime: `gateway.exe` comes from `./cmd/gateway` and runs the v2 runtime directly.
+本仓库当前只交付三个 daemon：
 
-## Runtime Defaults
+- `gatewayd`
+- `controld`
+- `telemetryd`
 
-- Default runtime binary: `gateway.exe` built from `./cmd/gateway`
-- Default config file: `configs/config.yaml`
-- Default health endpoint: `GET /-/health`
-- Default admin frontend: `GET /admin`
-- Default admin API: `/api/admin/v2/*`
-- Migration helper: `config-convert.exe` built from `./cmd/config-convert`
+不再提供 `gateway` / `gateway.exe` launcher。
 
-## System Requirements
+## 构建
 
-- Windows 10/11, Linux, or macOS
-- Go 1.26+ if building from source
-- Network access to your upstream model providers
-
-## Install From Source
+Windows:
 
 ```powershell
-git clone https://github.com/SSC-STUDIO/ai-model-gateway.git
-cd ai-model-gateway
-
-go build -o .\gateway.exe .\cmd\gateway
-go build -o .\config-convert.exe .\cmd\config-convert
+go build -o .\dist\gatewayd.exe .\cmd\gatewayd
+go build -o .\dist\controld.exe .\cmd\controld
+go build -o .\dist\telemetryd.exe .\cmd\telemetryd
 ```
 
-On non-Windows platforms, omit the `.exe` suffix.
+Linux/macOS:
 
-## Create a Config
+```bash
+go build -o ./dist/gatewayd ./cmd/gatewayd
+go build -o ./dist/controld ./cmd/controld
+go build -o ./dist/telemetryd ./cmd/telemetryd
+```
 
-### Option 1: Keep the stable `config.yaml` contract
+## 配置
+
+仍然使用 `configs/config.yaml` 作为 operator authoring config：
 
 ```powershell
 Copy-Item .\configs\config.example.yaml .\configs\config.yaml
+$env:ADMIN_BOOTSTRAP_TOKEN = "<32+ chars>"
+$env:COOKIE_SIGNING_KEY = "<32+ chars>"
+$env:ADMIN_TOKEN = "<admin token>"
+$env:VIEWER_TOKEN = "<viewer token>"
 ```
 
-`gateway.exe` 会在启动时自动识别 `config.yaml` 的 v1 结构，并转换到稳定的 managed sidecar v2 配置后运行。之后 admin 的 save/history/rollback 也会持久化到这个 sidecar。
+`controld` 会通过 `-authoring-config` 读取这个 YAML。`gatewayd` 和 `telemetryd` 不会直接读取它。
 
-### Option 2: Migrate explicitly to `config.v2.yaml`
+## 本地运行目录建议
+
+推荐为三个 daemon 准备同一个共享运行目录，例如：
+
+```text
+.gateway-runtime/
+├── telemetry/
+├── gateway/
+└── control/
+```
+
+Linux/macOS 下把 Unix socket 放到这个目录中；Windows 下使用显式 named pipe 名称，并把数据目录放到这个目录中。
+
+## 启动
+
+Linux/macOS:
+
+```bash
+mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
+
+./dist/telemetryd \
+  -ingest ./.gateway-runtime/telemetry-ingest.sock \
+  -query ./.gateway-runtime/telemetry-query.sock \
+  -data-dir ./.gateway-runtime/telemetry
+
+./dist/gatewayd \
+  -listen 127.0.0.1:18080 \
+  -control ./.gateway-runtime/gateway-control.sock \
+  -telemetry ./.gateway-runtime/telemetry-ingest.sock \
+  -data-dir ./.gateway-runtime/gateway
+
+./dist/controld \
+  -listen 127.0.0.1:18081 \
+  -gateway ./.gateway-runtime/gateway-control.sock \
+  -telemetry ./.gateway-runtime/telemetry-query.sock \
+  -data-dir ./.gateway-runtime/control \
+  -authoring-config ./configs/config.yaml
+```
+
+Windows PowerShell:
 
 ```powershell
-.\config-convert.exe -in .\configs\config.yaml -out .\configs\config.v2.yaml
+$runtimeRoot = Join-Path $PWD ".gateway-runtime"
+New-Item -ItemType Directory -Force -Path `
+  (Join-Path $runtimeRoot "telemetry"), `
+  (Join-Path $runtimeRoot "gateway"), `
+  (Join-Path $runtimeRoot "control") | Out-Null
+
+$gatewayPipe = "aigw-gateway-control-local"
+$ingestPipe = "aigw-telemetry-ingest-local"
+$queryPipe = "aigw-telemetry-query-local"
+
+Start-Process .\dist\telemetryd.exe -ArgumentList @(
+  "-ingest", $ingestPipe,
+  "-query", $queryPipe,
+  "-data-dir", (Join-Path $runtimeRoot "telemetry")
+)
+
+Start-Process .\dist\gatewayd.exe -ArgumentList @(
+  "-listen", "127.0.0.1:18080",
+  "-control", $gatewayPipe,
+  "-telemetry", $ingestPipe,
+  "-data-dir", (Join-Path $runtimeRoot "gateway")
+)
+
+Start-Process .\dist\controld.exe -ArgumentList @(
+  "-listen", "127.0.0.1:18081",
+  "-gateway", $gatewayPipe,
+  "-telemetry", $queryPipe,
+  "-data-dir", (Join-Path $runtimeRoot "control"),
+  "-authoring-config", ".\configs\config.yaml"
+)
 ```
 
-### Option 3: Start from a minimal v2 config
-
-Create `configs/config.v2.yaml`:
-
-```yaml
-server:
-  listen: :18080
-
-admin:
-  enabled: true
-  bootstrap_token: "0123456789abcdef0123456789abcdef"
-  cookie_signing_key: "abcdef0123456789abcdef0123456789"
-  language: zh
-
-routing:
-  strategy: health_weighted_rr
-  health:
-    enabled: true
-    interval_sec: 10
-    timeout_ms: 2000
-    path: /v1/models
-
-providers:
-  - name: example-provider
-    base_url: https://api.openai.com/v1
-    api_key: sk-your-api-key
-    provider_class: quota_limited
-    models:
-      - gpt-4o-mini
-    enabled: true
-
-telemetry:
-  sqlite_path: data/telemetry.db
-
-pricing:
-  cache_path: data/pricing-cache.json
-
-compat:
-  bridge:
-    enabled: false
-    exclude_user_agents: []
-    rules: []
-  fallback:
-    enabled: false
-    detect_repetition: false
-    models: {}
-```
-
-Notes:
-
-- `admin.bootstrap_token` must be at least 32 characters when admin is enabled.
-- `admin.cookie_signing_key` must be at least 32 characters when admin is enabled.
-- The v2 runtime requires at least one configured provider.
-
-## Run the Default Runtime
+## 验证
 
 ```powershell
-.\gateway.exe -config .\configs\config.yaml
+curl.exe http://127.0.0.1:18080/-/health
+curl.exe http://127.0.0.1:18080/v1/models
+curl.exe http://127.0.0.1:18081/admin
+curl.exe http://127.0.0.1:18081/api/admin/status
+curl.exe http://127.0.0.1:18081/api/admin/config/history
 ```
 
-For development without building:
-
-```powershell
-go run .\cmd\gateway -config .\configs\config.yaml
-```
-
-## Verify the Default Path
-
-### Recommended
+Windows 下可以直接运行：
 
 ```powershell
 .\scripts\verify-default-runtime.ps1
 ```
 
-### Manual checks
+## 说明
 
-Start the runtime, then verify:
-
-```powershell
-curl.exe http://127.0.0.1:18080/-/health
-curl.exe http://127.0.0.1:18080/v1/models
-curl.exe http://127.0.0.1:18080/admin
-curl.exe -H "Authorization: Bearer 0123456789abcdef0123456789abcdef" http://127.0.0.1:18080/api/admin/v2/overview
-```
-
-Expected results:
-
-- `/-/health` returns `200`
-- `/v1/models` returns the configured smoke model
-- `/admin` returns HTML
-- `/api/admin/v2/overview` returns JSON when called with a valid Bearer bootstrap token
-
-## Admin Access
-
-Open the admin frontend in your browser:
-
-```text
-http://127.0.0.1:18080/admin
-```
-
-The v2 frontend presents a single app shell with tabs for overview, telemetry, timeseries, config, history, and upstream probe.
-
-For browser login, use the bootstrap token in the `/admin` login form.
-
-For automation, prefer Bearer authentication against `/api/admin/v2/*`.
-
-## Packaging and Release Expectations
-
-The default cutover artifacts should include:
-
-- `gateway.exe` / `gateway` built from `./cmd/gateway`
-- `config-convert.exe` / `config-convert` built from `./cmd/config-convert`
-
-Those are the binaries referenced by the repository workflows and verification guidance.
-
-## Compatibility Notes
-
-The same `./cmd/gateway` binary still exposes:
-
-- `validate`
-- `health`
-- Windows service install/start/stop/status commands
-
-So from the operator point of view, the binary name and CLI surface stay stable while the runtime core has already moved to v2.
+- `publisher-state.db` 位于 `controld` 的 `-data-dir`
+- 当 `publisher-state.db` 不存在时，`controld` 会从 `-authoring-config` 种出初始 revision
+- 当 `publisher-state.db` 已存在时，`controld` 会优先恢复已有 revision/history
+- 仓库不再提供单一 Windows 服务。请用你自己的 supervisor 管理三个 daemon

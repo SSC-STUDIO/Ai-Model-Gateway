@@ -1,112 +1,39 @@
-import { memo, useMemo, useCallback } from 'preact/compat'
+import { memo, useCallback, useMemo } from 'preact/compat'
 import { useI18n } from '../../i18n'
-import type { AnyRecord } from '../../types'
+import type { ConfigHistoryResponse, ConfigVersionSummary, ControlConfigView } from '../../types'
 
 interface HistoryTabProps {
-  historyPayload: unknown
+  controlConfig: ControlConfigView | null
+  historyPayload: ConfigHistoryResponse | null
   selectedVersion: string
-  historyDiff: unknown
+  selectedEntry: ConfigVersionSummary | null
+  actionLabel: string
+  actionDisabled: boolean
   onVersionChange: (version: string) => void
-  onRollback: () => void
+  onApplySelection: () => void
   busy: boolean
 }
 
-interface DiffLine {
-  kind: 'context' | 'add' | 'remove'
-  text: string
-}
-
-interface DiffResponse {
-  version?: { id: string; filename: string; created_at: string; size: number }
-  summary?: { added_lines: number; removed_lines: number; changed_blocks: number }
-  lines?: DiffLine[]
-}
-
-function pretty(value: unknown): string {
-  return JSON.stringify(value, null, 2)
-}
-
-function versionIdOf(item: unknown): string {
-  if (!item || typeof item !== 'object') return ''
-  const record = item as AnyRecord
-  const raw = record.version_id ?? record.versionId ?? record.id
-  return typeof raw === 'string' ? raw : ''
-}
-
-function parseDiffResponse(raw: unknown): DiffResponse | null {
-  if (!raw || typeof raw !== 'object') return null
-  const obj = raw as AnyRecord
-  if (!Array.isArray(obj.lines)) return null
-  return obj as unknown as DiffResponse
-}
-
-function DiffViewer({ diff }: { diff: DiffResponse }) {
-  const { t } = useI18n()
-  const lines = diff.lines ?? []
-  const summary = diff.summary
-
-  let addNum = 0
-  let removeNum = 0
-
-  return (
-    <div>
-      {summary && (
-        <div class="diff-summary">
-          <span class="diff-stat diff-stat-add">+{summary.added_lines} {t('history.linesAdded')}</span>
-          <span class="diff-stat diff-stat-remove">-{summary.removed_lines} {t('history.linesRemoved')}</span>
-          <span class="diff-stat">{summary.changed_blocks} {t('history.blocks')}</span>
-        </div>
-      )}
-      <div class="diff-container">
-        {lines.map((line, i) => {
-          let leftNum = ''
-          let rightNum = ''
-          if (line.kind === 'context') {
-            removeNum++
-            addNum++
-            leftNum = String(removeNum)
-            rightNum = String(addNum)
-          } else if (line.kind === 'remove') {
-            removeNum++
-            leftNum = String(removeNum)
-          } else if (line.kind === 'add') {
-            addNum++
-            rightNum = String(addNum)
-          }
-          return (
-            <div key={i} class={`diff-line diff-line-${line.kind}`}>
-              <span class="diff-line-num diff-line-num-old">{leftNum}</span>
-              <span class="diff-line-num diff-line-num-new">{rightNum}</span>
-              <span class="diff-line-prefix">{line.kind === 'add' ? '+' : line.kind === 'remove' ? '-' : ' '}</span>
-              <span class="diff-line-text">{line.text}</span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
+function formatDate(value: string | undefined): string {
+  if (!value) return '-'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
 const HistoryTabComponent = ({
+  controlConfig,
   historyPayload,
   selectedVersion,
-  historyDiff,
+  selectedEntry,
+  actionLabel,
+  actionDisabled,
   onVersionChange,
-  onRollback,
+  onApplySelection,
   busy,
 }: HistoryTabProps) => {
   const { t } = useI18n()
 
-  const historyEntries = useMemo(() => {
-    if (Array.isArray(historyPayload)) return historyPayload
-    if (historyPayload && typeof historyPayload === 'object') {
-      const items = (historyPayload as AnyRecord).items
-      if (Array.isArray(items)) return items
-    }
-    return [] as unknown[]
-  }, [historyPayload])
-
-  const parsedDiff = useMemo(() => parseDiffResponse(historyDiff), [historyDiff])
+  const historyEntries = useMemo(() => historyPayload?.versions ?? [], [historyPayload])
 
   const handleVersionChange = useCallback(
     (e: Event) => {
@@ -115,15 +42,18 @@ const HistoryTabComponent = ({
     [onVersionChange]
   )
 
-  const handleRollback = useCallback(() => {
-    onRollback()
-  }, [onRollback])
+  const handleApplySelection = useCallback(() => {
+    onApplySelection()
+  }, [onApplySelection])
 
   if (historyEntries.length === 0) {
     return (
       <section class="panel">
         <h2>{t('history.title')}</h2>
-        <p class="empty-state">{t('empty.noHistory')}</p>
+        <div class="empty-state-box">
+          <div class="empty-state-icon">📋</div>
+          <p class="empty-state-title">{t('empty.noHistory')}</p>
+        </div>
       </section>
     )
   }
@@ -131,33 +61,128 @@ const HistoryTabComponent = ({
   return (
     <section class="panel">
       <h2>{t('history.title')}</h2>
+
       <div class="history-toolbar">
         <label>
           {t('history.versionLabel')}
           <select value={selectedVersion} onChange={handleVersionChange}>
             <option value="">{t('history.selectVersion')}</option>
-            {historyEntries.map((entry) => {
-              const versionId = versionIdOf(entry)
-              return (
-                <option key={versionId || pretty(entry)} value={versionId}>
-                  {versionId || pretty(entry)}
-                </option>
-              )
-            })}
+            {historyEntries.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.id}
+              </option>
+            ))}
           </select>
         </label>
-        <button type="button" onClick={handleRollback} disabled={busy || selectedVersion === ''}>
-          {t('history.rollback')}
+
+        <button type="button" onClick={handleApplySelection} disabled={busy || actionDisabled}>
+          {actionLabel}
         </button>
       </div>
+
       <div class="panel-subsection split">
         <div>
           <h3>{t('history.entries')}</h3>
-          <pre>{pretty(historyPayload)}</pre>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('history.revisionId')}</th>
+                  <th>{t('history.createdAt')}</th>
+                  <th>{t('history.createdBy')}</th>
+                  <th>{t('history.status')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyEntries.map((entry) => (
+                  <tr
+                    key={entry.id}
+                    class={`data-row${entry.id === selectedVersion ? ' active' : ''}`}
+                    tabIndex={0}
+                    role="button"
+                    aria-pressed={entry.id === selectedVersion}
+                    onClick={() => onVersionChange(entry.id)}
+                    onKeyDown={(e: KeyboardEvent) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        onVersionChange(entry.id)
+                      }
+                    }}
+                  >
+                    <td>{entry.id}</td>
+                    <td>{formatDate(entry.created_at)}</td>
+                    <td>{entry.created_by ?? '-'}</td>
+                    <td>
+                      <span class={`status-badge ${entry.is_active ? 'success' : 'neutral'}`}>
+                        {entry.is_active ? t('history.activeBadge') : t('history.inactiveBadge')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
+
         <div>
-          <h3>{t('history.diff')}</h3>
-          {parsedDiff ? <DiffViewer diff={parsedDiff} /> : <pre>{pretty(historyDiff)}</pre>}
+          <h3>{t('history.currentPolicy')}</h3>
+          <div class="metrics-grid" style={{ marginBottom: '16px' }}>
+            <article class="metric-card">
+              <div class="metric-label">{t('history.currentActiveRevision')}</div>
+              <div class="metric-value" style={{ fontSize: '0.95rem', wordBreak: 'break-word' }}>
+                {controlConfig?.revision?.id ?? '-'}
+              </div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-label">{t('history.publishHistoryLimit')}</div>
+              <div class="metric-value" style={{ fontSize: '1rem' }}>
+                {typeof controlConfig?.policy.publish_history_limit === 'number'
+                  ? controlConfig.policy.publish_history_limit.toLocaleString()
+                  : '-'}
+              </div>
+            </article>
+          </div>
+
+          <h3>{t('history.selectedRevision')}</h3>
+          {selectedEntry ? (
+            <div class="metrics-grid">
+              <article class="metric-card">
+                <div class="metric-label">{t('history.revisionId')}</div>
+                <div class="metric-value" style={{ fontSize: '0.95rem', wordBreak: 'break-word' }}>
+                  {selectedEntry.id}
+                </div>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label">{t('history.createdAt')}</div>
+                <div class="metric-value" style={{ fontSize: '1rem' }}>
+                  {formatDate(selectedEntry.created_at)}
+                </div>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label">{t('history.createdBy')}</div>
+                <div class="metric-value" style={{ fontSize: '1rem' }}>
+                  {selectedEntry.created_by ?? '-'}
+                </div>
+              </article>
+              <article class="metric-card">
+                <div class="metric-label">{t('history.status')}</div>
+                <div class="metric-value" style={{ fontSize: '1rem' }}>
+                  {selectedEntry.is_active ? t('history.activeBadge') : t('history.inactiveBadge')}
+                </div>
+              </article>
+              <article class="metric-card" style={{ gridColumn: '1 / -1' }}>
+                <div class="metric-label">{t('history.description')}</div>
+                <div class="metric-value" style={{ fontSize: '1rem' }}>
+                  {selectedEntry.description?.trim() || t('history.noDescription')}
+                </div>
+              </article>
+            </div>
+          ) : (
+            <div class="empty-state-box">
+              <div class="empty-state-icon">🧭</div>
+              <p class="empty-state-title">{t('history.selectVersion')}</p>
+            </div>
+          )}
         </div>
       </div>
     </section>

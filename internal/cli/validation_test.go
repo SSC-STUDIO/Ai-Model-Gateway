@@ -155,3 +155,45 @@ func TestValidateToken(t *testing.T) {
 		})
 	}
 }
+
+func TestValidationError_Error(t *testing.T) {
+	err := &ValidationError{
+		Field:   "test_field",
+		Message: "test message",
+	}
+	expected := "test_field: test message"
+	if err.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, err.Error())
+	}
+}
+
+func TestValidatePositiveInt(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   int
+		field   string
+		wantErr bool
+	}{
+		{"positive value", 10, "limit", false},
+		{"zero value", 0, "limit", true},
+		{"negative value", -5, "limit", true},
+		{"one", 1, "count", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePositiveInt(tt.value, tt.field)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidatePositiveInt(%d, %q) error = %v, wantErr %v", tt.value, tt.field, err, tt.wantErr)
+			}
+			if err != nil {
+				ve, ok := err.(*ValidationError)
+				if !ok {
+					t.Errorf("expected ValidationError, got %T", err)
+				} else if ve.Field != tt.field {
+					t.Errorf("expected field %q, got %q", tt.field, ve.Field)
+				}
+			}
+		})
+	}
+}

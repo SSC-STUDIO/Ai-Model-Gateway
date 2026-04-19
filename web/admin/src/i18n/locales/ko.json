@@ -3,24 +3,15 @@
     "overview": "개요",
     "telemetry": "遥测",
     "timeseries": "시계열",
-    "settings": "설정",
     "history": "이력",
-    "probe": "프로브",
-    "logs": "로그",
-    "benchmark": "벤치마크",
-    "audit": "감사 로그"
+    "benchmark": "벤치마크"
   },
   "header": {
     "title": "AI Model Gateway",
-    "subtitle": "AI 모델 라우팅 게이트웨이 관리 패널"
-  },
-  "login": {
-    "title": "AI Model Gateway 관리",
-    "hint": "bootstrap token을 입력하여 동일 출처 관리 세션을 설정하세요",
-    "tokenLabel": "Bootstrap Token",
-    "tokenPlaceholder": "0123456789abcdef...",
-    "signIn": "로그인",
-    "signingIn": "로그인 중..."
+    "subtitle": "AI 모델 라우팅 게이트웨이 관리 패널",
+    "gateway": "Gateway",
+    "telemetry": "Telemetry",
+    "statusUnknown": "unknown"
   },
   "overview": {
     "title": "개요",
@@ -90,21 +81,6 @@
     "interval": "자동 새로고침",
     "active": "자동 새로고침 중"
   },
-  "settings": {
-    "title": "설정",
-    "editableJson": "편집 가능 JSON",
-    "saveConfig": "설정 저장",
-    "structured": "구조화",
-    "advancedJson": "고급 JSON",
-    "confirmTitle": "저장 확인",
-    "confirmMessage": "이 설정을 저장하시겠습니까? 게이트웨이가 다시 로드됩니다.",
-    "confirmYes": "저장",
-    "confirmCancel": "취소",
-    "saveSuccess": "설정이 성공적으로 저장되었습니다.",
-    "saveError": "설정 저장에 실패했습니다.",
-    "readOnlyArray": "배열 (읽기 전용, JSON 편집기에서 수정하세요)",
-    "sensitive": "민감"
-  },
   "history": {
     "title": "설정 이력",
     "versionLabel": "버전",
@@ -114,57 +90,24 @@
     "diff": "차이",
     "linesAdded": "줄 추가",
     "linesRemoved": "줄 삭제",
-    "blocks": "블록"
-  },
-  "probe": {
-    "title": "업스트림 프로브",
-    "name": "이름",
-    "baseUrl": "Base URL",
-    "anthropicBaseUrl": "Anthropic Base URL",
-    "apiKey": "API Key",
-    "providerClass": "Provider Class",
-    "models": "모델",
-    "timeoutMs": "타임아웃 (ms)",
-    "runProbe": "프로브 실행",
-    "result": "결과"
-  },
-  "logs": {
-    "title": "로그",
-    "levelFilter": "레벨",
-    "search": "검색",
-    "searchPlaceholder": "로그 검색...",
-    "level": {
-      "debug": "디버그",
-      "info": "정보",
-      "warn": "경고",
-      "error": "오류"
-    },
-    "connected": "연결됨",
-    "disconnected": "연결 끊김",
-    "pending": "대기 중",
-    "pause": "일시정지",
-    "resume": "계속",
-    "autoScrollOn": "자동 스크롤 켜짐",
-    "autoScrollOff": "자동 스크롤 꺼짐",
-    "clear": "로그 지우기",
-    "export": "내보내기",
-    "exportError": "로그 내보내기 실패",
-    "empty": "표시할 로그 없음",
-    "showing": "표시 중",
-    "entries": "개 항목",
-    "scrollToBottom": "맨 아래로 스크롤"
-  },
-  "actions": {
-    "logout": "로그아웃"
-  },
-  "settingsMenu": {
-    "language": "언어",
-    "theme": "테마"
-  },
-  "sse": {
-    "connected": "연결됨",
-    "reconnecting": "재연결 중",
-    "disconnected": "연결 끊김"
+    "blocks": "블록",
+    "rollbackToSelected": "Rollback to Selected",
+    "publish": "Publish Selected",
+    "current": "Current Active",
+    "selectedRevision": "Selected Revision",
+    "revisionId": "Revision ID",
+    "createdAt": "Created At",
+    "createdBy": "Created By",
+    "description": "Description",
+    "status": "Status",
+    "noDescription": "No description provided.",
+    "activeBadge": "Active",
+    "inactiveBadge": "Inactive",
+    "readOnly": "Read-only session",
+    "publishSuccess": "Revision published.",
+    "publishFailed": "Failed to publish revision.",
+    "rollbackSuccess": "Rollback completed.",
+    "rollbackFailed": "Failed to roll back revision."
   },
   "benchmark": {
     "title": "모델 벤치마크",
@@ -194,27 +137,54 @@
     "tokens": "토큰 수",
     "noData": "선택된 시간 범위에 사용 가능한 벤치마크 데이터가 없습니다"
   },
+  "auth": {
+    "title": "Admin Sign In",
+    "subtitle": "Use an admin or viewer token from config.yaml to open the control plane.",
+    "checking": "Checking current session...",
+    "tokenLabel": "Token",
+    "tokenPlaceholder": "Paste admin or viewer token",
+    "submit": "Sign In",
+    "submitting": "Signing In...",
+    "logout": "Log Out",
+    "loggingOut": "Logging Out...",
+    "disabled": "Authentication disabled",
+    "sessionCurrent": "Session",
+    "roleAdmin": "Admin",
+    "roleViewer": "Viewer",
+    "hint": "The browser session is stored in a signed cookie for this control plane."
+  },
   "empty": {
     "noRequests": "요청 데이터가 없습니다. 게이트웨이가 트래픽을 기다리고 있습니다.",
     "noTelemetry": "텔레메트리 데이터가 아직 없습니다.",
     "noBenchmark": "벤치마크 데이터가 없습니다.",
     "noTimeseries": "시계열 데이터가 없습니다.",
-    "noAudit": "감사 로그 항목이 없습니다.",
     "noHistory": "설정 변경 이력이 없습니다."
   },
-  "audit": {
-    "title": "감사 로그",
-    "loading": "감사 로그 로딩 중...",
-    "empty": "감사 항목이 없습니다",
-    "time": "시간",
-    "action": "작업",
-    "actor": "수행자",
-    "role": "역할",
-    "details": "상세",
-    "ip": "IP 주소",
-    "prev": "이전",
-    "next": "다음",
-    "page": "페이지",
-    "totalEntries": "개 항목"
+  "charts": {
+    "emptyTitle": "No data available",
+    "emptyHint": "This chart will update automatically once data arrives.",
+    "lineEmpty": "No trend data yet",
+    "lineEmptyHint": "The line chart will render automatically once requests come in.",
+    "donutEmpty": "No distribution data yet",
+    "donutEmptyHint": "Upstream and model distribution will show here once hits occur.",
+    "barEmpty": "No bar data yet",
+    "barEmptyHint": "Comparison bars will generate automatically once enough samples arrive.",
+    "current": "Current",
+    "latest": "Latest",
+    "donutTotal": "Total",
+    "donutOverview": "Overview",
+    "donutItems": "items",
+    "barPeak": "Peak",
+    "emptyAriaLabel": "Empty chart",
+    "scrollHint": "Scroll horizontally for more items"
+  },
+  "theme": {
+    "toggleLabel": "Switch theme"
+  },
+  "language": {
+    "selectorLabel": "Language"
+  },
+  "toast": {
+    "close": "Close"
   }
 }

@@ -81,11 +81,26 @@ export function I18nProvider({ children }: { children: preact.ComponentChildren 
   }
 
   useEffect(() => {
-    document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en'
+    const langMap: Record<LocaleKey, string> = {
+      en: 'en',
+      zh: 'zh-CN',
+      ja: 'ja-JP',
+      ko: 'ko-KR',
+      es: 'es-ES',
+      fr: 'fr-FR',
+      de: 'de-DE',
+    }
+    document.documentElement.lang = langMap[locale]
   }, [locale])
 
   const t = useMemo(() => {
-    return (key: string) => getString(locales[locale], key)
+    return (key: string) => {
+      const localized = getString(locales[locale], key)
+      if (localized !== key) {
+        return localized
+      }
+      return getString(locales.en, key)
+    }
   }, [locale])
 
   const value = useMemo(() => ({ locale, t, setLocale }), [locale, t])

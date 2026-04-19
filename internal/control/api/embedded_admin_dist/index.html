@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0B0C0C" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="icon" type="image/svg+xml" href="/admin/icon.svg">
+    <link rel="manifest" href="/admin/manifest.json">
+    <title>AI-Model-Gateway Admin</title>
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('admin-theme')
+          if (!theme) {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+          }
+          document.documentElement.setAttribute('data-theme', theme)
+        } catch (e) {}
+      })()
+    </script>
+    <script type="module" crossorigin src="/admin/assets/index-DyXRKRU8.js"></script>
+    <link rel="modulepreload" crossorigin href="/admin/assets/vendor-dFasNT4X.js">
+    <link rel="stylesheet" crossorigin href="/admin/assets/index-sV7KPJs_.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
