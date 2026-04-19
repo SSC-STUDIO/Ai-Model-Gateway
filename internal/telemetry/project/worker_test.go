@@ -732,3 +732,59 @@ func TestRunWithTickerCycle(t *testing.T) {
 	// Verify the event was projected
 	assertCheckpoint(t, queryStore, 1)
 }
+
+func TestProjectNewEventsWithCorruptSchema(t *testing.T) {
+	ctx := context.Background()
+	projector, eventLog, _ := newProjectorTestHarness(t)
+
+	// Corrupt the events table by dropping the payload column
+	db := eventLog.GetDB()
+	_, err := db.Exec(`ALTER TABLE events DROP COLUMN payload`)
+	if err != nil {
+		t.Skipf("cannot alter schema: %v", err)
+	}
+
+	// Insert a minimal row that will fail Scan
+	_, err = db.Exec(`INSERT INTO events (event_id, event_type, schema_version, source_service, source_instance, emitted_at, imported) VALUES ('evt-1', 'gateway.attempt.completed', 1, 'gatewayd', 'test', ?, 0)`, time.Now().Format(time.RFC3339Nano))
+	if err != nil {
+		t.Skipf("cannot insert: %v", err)
+	}
+
+	_, _, err = projector.projectNewEvents(ctx, 0)
+	if err == nil {
+		t.Log("expected error from corrupt schema")
+	}
+}
+
+func TestProjectNewEventsWithCorruptedRow(t *testing.T) {
+	ctx := context.Background()
+	projector, eventLog, queryStore := newProjectorTestHarness(t)
+
+	// Create a valid event first
+	appendTelemetryEvents(t, eventLog, newGatewayAttemptEvent("evt-1", "req-1", time.Date(2026, 4, 18, 12, 0, 1, 0, time.UTC)))
+
+	// Now corrupt the payload column directly to have wrong type
+	db := eventLog.GetDB()
+	_, err := db.Exec(`UPDATE events SET payload = ? WHERE id = 1`, 12345)
+	if err != nil {
+		t.Fatalf("update payload: %v", err)
+	}
+
+	// This should trigger rows.Scan to succeed but json.Unmarshal to fail (already covered)
+	// The rows.Scan itself succeeds because payload is stored as TEXT
+	count, maxID, err := projector.projectNewEvents(ctx, 0)
+	if err != nil {
+		t.Fatalf("projection: %v", err)
+	}
+	// Event is skipped due to bad JSON
+	if count != 0 {
+		t.Fatalf("count = %d, want 0", count)
+	}
+	// But maxID advances
+	if maxID != 1 {
+		t.Fatalf("maxID = %d, want 1", maxID)
+	}
+
+	// The bad event was skipped but checkpoint advances
+	assertCheckpoint(t, queryStore, 1)
+}

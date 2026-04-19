@@ -1291,3 +1291,314 @@ func TestNewStoreDirectoryCreation(t *testing.T) {
 		t.Fatal("expected parent directory to be created")
 	}
 }
+
+// --- Additional coverage tests ---
+
+func TestBuildCostEntriesModelAggregation(t *testing.T) {
+	// Test the model aggregation path in buildCostEntries
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Multiple providers for same model - should aggregate by model
+	insertRequestFact(t, store, testRequestFact{
+		EventID:        "evt-1",
+		RequestID:      "req-1",
+		Timestamp:      now.Add(-1 * time.Minute),
+		EffectiveModel: "gpt-4o",
+		ProviderID:     "openai-primary",
+		StatusCode:     200,
+		LatencyMs:      100,
+		PromptTokens:   1000,
+		OutputTokens:   500,
+	})
+	insertRequestFact(t, store, testRequestFact{
+		EventID:        "evt-2",
+		RequestID:      "req-2",
+		Timestamp:      now.Add(-2 * time.Minute),
+		EffectiveModel: "gpt-4o",
+		ProviderID:     "openai-backup",
+		StatusCode:     200,
+		LatencyMs:      150,
+		PromptTokens:   800,
+		OutputTokens:   400,
+	})
+
+	cq := NewCostQuery(store.GetDB())
+	start := now.Add(-5 * time.Minute)
+	end := now.Add(5 * time.Minute)
+
+	entries, err := cq.ByModel(context.Background(), start, end)
+	if err != nil {
+		t.Fatalf("ByModel returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 model entry (aggregated), got %d", len(entries))
+	}
+	// Should have combined tokens from both providers
+	if entries[0].PromptTokens != 1800 {
+		t.Fatalf("expected combined prompt tokens 1800, got %d", entries[0].PromptTokens)
+	}
+}
+
+func TestCostQueryWithCachedTokens(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertRequestFact(t, store, testRequestFact{
+		EventID:            "evt-1",
+		RequestID:          "req-1",
+		Timestamp:          now.Add(-1 * time.Minute),
+		EffectiveModel:     "gpt-4o",
+		ProviderID:         "openai",
+		StatusCode:         200,
+		LatencyMs:          100,
+		PromptTokens:       1000,
+		CachedPromptTokens: 500,
+		OutputTokens:       500,
+	})
+
+	cq := NewCostQuery(store.GetDB())
+	start := now.Add(-5 * time.Minute)
+	end := now.Add(5 * time.Minute)
+
+	entries, err := cq.ByModel(context.Background(), start, end)
+	if err != nil {
+		t.Fatalf("ByModel returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].CachedTokens != 500 {
+		t.Fatalf("expected cached tokens 500, got %d", entries[0].CachedTokens)
+	}
+}
+
+func TestApplyProjectionBatchMultipleModels(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Minute)
+	bucket := now.Truncate(5 * time.Minute)
+
+	facts := []ProjectionFact{
+		{
+			EventID:        "evt-1",
+			RequestID:      "req-1",
+			Timestamp:      now.Format(time.RFC3339Nano),
+			Bucket:         bucket.Format(time.RFC3339Nano),
+			EffectiveModel: "gpt-4o",
+			ProviderID:     "openai",
+			StatusCode:     200,
+			LatencyMs:      100,
+			Attempts:       1,
+			PromptTokens:   1000,
+			CompletionTokens: 500,
+		},
+		{
+			EventID:        "evt-2",
+			RequestID:      "req-2",
+			Timestamp:      now.Add(-1 * time.Minute).Format(time.RFC3339Nano),
+			Bucket:         bucket.Format(time.RFC3339Nano),
+			EffectiveModel: "claude-sonnet-4-5",
+			ProviderID:     "anthropic",
+			StatusCode:     200,
+			LatencyMs:      200,
+			Attempts:       1,
+			PromptTokens:   2000,
+			CompletionTokens: 600,
+		},
+	}
+
+	count, err := store.ApplyProjectionBatch(context.Background(), "test-projection", 5, facts)
+	if err != nil {
+		t.Fatalf("ApplyProjectionBatch returned error: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 inserted, got %d", count)
+	}
+
+	// Check aggregates for both models
+	var buckets []string
+	rows, err := store.GetDB().Query("SELECT DISTINCT model FROM agg_buckets ORDER BY model")
+	if err != nil {
+		t.Fatalf("query agg_buckets: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var model string
+		if err := rows.Scan(&model); err != nil {
+			t.Fatalf("scan model: %v", err)
+		}
+		buckets = append(buckets, model)
+	}
+	if len(buckets) != 2 {
+		t.Fatalf("expected 2 models in agg_buckets, got %d", len(buckets))
+	}
+}
+
+func TestApplyProjectionBatchWithCachedTokens(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Minute)
+	bucket := now.Truncate(5 * time.Minute)
+
+	facts := []ProjectionFact{
+		{
+			EventID:            "evt-1",
+			RequestID:          "req-1",
+			Timestamp:          now.Format(time.RFC3339Nano),
+			Bucket:             bucket.Format(time.RFC3339Nano),
+			EffectiveModel:     "gpt-4o",
+			ProviderID:         "openai",
+			StatusCode:         200,
+			LatencyMs:          100,
+			Attempts:           1,
+			PromptTokens:       1000,
+			CachedPromptTokens: 200,
+			CompletionTokens:   500,
+		},
+	}
+
+	count, err := store.ApplyProjectionBatch(context.Background(), "test-projection", 1, facts)
+	if err != nil {
+		t.Fatalf("ApplyProjectionBatch returned error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 inserted, got %d", count)
+	}
+
+	var cachedTokens int64
+	err = store.GetDB().QueryRow("SELECT cached_prompt_tokens FROM agg_buckets WHERE model = 'gpt-4o'").Scan(&cachedTokens)
+	if err != nil {
+		t.Fatalf("query cached tokens: %v", err)
+	}
+	if cachedTokens != 200 {
+		t.Fatalf("expected cached_prompt_tokens 200, got %d", cachedTokens)
+	}
+}
+
+func TestQueryTelemetryWithNegativeAttempts(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertRequestFact(t, store, testRequestFact{
+		EventID:        "evt-1",
+		RequestID:      "req-1",
+		Timestamp:      now.Add(-1 * time.Minute),
+		EffectiveModel: "gpt-4o",
+		ProviderID:     "openai",
+		StatusCode:     200,
+		LatencyMs:      100,
+		Attempts:       -5, // Should be normalized to 0 in the query result
+	})
+
+	events, _, _, err := store.QueryTelemetry(telemetryquery.TelemetryRequest{
+		WindowHours: 24,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("QueryTelemetry returned error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Attempts != 0 {
+		t.Fatalf("expected attempts normalized to 0, got %d", events[0].Attempts)
+	}
+}
+
+func TestLoadProjectionCheckpointExisting(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Minute)
+	bucket := now.Truncate(5 * time.Minute)
+
+	// Insert facts to create a checkpoint
+	facts := []ProjectionFact{
+		{
+			EventID:        "evt-1",
+			RequestID:      "req-1",
+			Timestamp:      now.Format(time.RFC3339Nano),
+			Bucket:         bucket.Format(time.RFC3339Nano),
+			EffectiveModel: "gpt-4o",
+			ProviderID:     "openai",
+			StatusCode:     200,
+			LatencyMs:      100,
+		},
+	}
+
+	_, err := store.ApplyProjectionBatch(context.Background(), "my-projection", 42, facts)
+	if err != nil {
+		t.Fatalf("ApplyProjectionBatch returned error: %v", err)
+	}
+
+	// Load the checkpoint
+	id, err := store.LoadProjectionCheckpoint(context.Background(), "my-projection")
+	if err != nil {
+		t.Fatalf("LoadProjectionCheckpoint returned error: %v", err)
+	}
+	if id != 42 {
+		t.Fatalf("expected checkpoint 42, got %d", id)
+	}
+}
+
+func TestApplyProjectionBatchCheckpointUpdate(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Minute)
+	bucket := now.Truncate(5 * time.Minute)
+
+	fact := ProjectionFact{
+		EventID:        "evt-1",
+		RequestID:      "req-1",
+		Timestamp:      now.Format(time.RFC3339Nano),
+		Bucket:         bucket.Format(time.RFC3339Nano),
+		EffectiveModel: "gpt-4o",
+		ProviderID:     "openai",
+		StatusCode:     200,
+		LatencyMs:      100,
+	}
+
+	// First batch with checkpoint 10
+	_, err := store.ApplyProjectionBatch(context.Background(), "test", 10, []ProjectionFact{fact})
+	if err != nil {
+		t.Fatalf("first batch: %v", err)
+	}
+
+	// Second batch with checkpoint 20 (higher)
+	fact.EventID = "evt-2"
+	fact.RequestID = "req-2"
+	_, err = store.ApplyProjectionBatch(context.Background(), "test", 20, []ProjectionFact{fact})
+	if err != nil {
+		t.Fatalf("second batch: %v", err)
+	}
+
+	// Checkpoint should be 20
+	id, err := store.LoadProjectionCheckpoint(context.Background(), "test")
+	if err != nil {
+		t.Fatalf("LoadProjectionCheckpoint: %v", err)
+	}
+	if id != 20 {
+		t.Fatalf("expected checkpoint 20, got %d", id)
+	}
+}
+
+func TestNewStoreInvalidPath(t *testing.T) {
+	// Test creating a store at an invalid path
+	_, err := NewStore("/nonexistent/path/that/cannot/be/created/query.db")
+	if err == nil {
+		t.Fatal("expected error for invalid path")
+	}
+}
+
+func TestNewStoreExistingDirectory(t *testing.T) {
+	// Test that NewStore works when directory already exists
+	dir := t.TempDir()
+	path := filepath.Join(dir, "query.db")
+
+	// Create directory first
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	store, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore returned error: %v", err)
+	}
+	defer store.Close()
+}

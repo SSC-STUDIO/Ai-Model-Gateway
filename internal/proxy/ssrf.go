@@ -7,38 +7,56 @@ import (
 	"strings"
 )
 
+// SSRFConfig provides configuration for SSRF protection checker
+type SSRFConfig struct {
+	// AllowLocalhost enables localhost connections (useful for testing)
+	AllowLocalhost bool
+	// AllowPrivateIP enables private IP connections (useful for testing)
+	AllowPrivateIP bool
+}
+
 // SSRFChecker provides protection against Server-Side Request Forgery attacks
 type SSRFChecker struct {
 	// BlockedIPRanges contains private IP ranges that should not be accessible
 	blockedRanges []*net.IPNet
 	// AllowedSchemes restricts which URL schemes are permitted
 	allowedSchemes map[string]bool
+	// config holds the checker configuration
+	config SSRFConfig
 }
 
-// NewSSRFChecker creates a new SSRF protection checker
+// NewSSRFChecker creates a new SSRF protection checker with default settings
 func NewSSRFChecker() *SSRFChecker {
+	return NewSSRFCheckerWithConfig(SSRFConfig{})
+}
+
+// NewSSRFCheckerWithConfig creates a new SSRF protection checker with custom configuration
+func NewSSRFCheckerWithConfig(config SSRFConfig) *SSRFChecker {
 	checker := &SSRFChecker{
 		blockedRanges:  make([]*net.IPNet, 0),
-		allowedSchemes: map[string]bool{"https": true, "http": true},
+		allowedSchemes: map[string]bool{"https": true, "http": true, "wss": true, "ws": true},
+		config:         config,
 	}
 
-	// Block private IP ranges
-	ranges := []string{
-		"10.0.0.0/8",     // Private network
-		"172.16.0.0/12",  // Private network
-		"192.168.0.0/16", // Private network
-		"127.0.0.0/8",    // Loopback
-		"169.254.0.0/16", // Link-local
-		"0.0.0.0/8",      // Current network
-		"::1/128",        // IPv6 loopback
-		"fc00::/7",       // IPv6 unique local
-		"fe80::/10",      // IPv6 link-local
-	}
+	// Block private IP ranges (unless explicitly allowed)
+	if !config.AllowPrivateIP {
+		ranges := []string{
+			"10.0.0.0/8",     // Private network
+			"172.16.0.0/12",  // Private network
+			"192.168.0.0/16", // Private network
+			"127.0.0.0/8",    // Loopback
+			"169.254.0.0/16", // Link-local
+			"0.0.0.0/8",      // Current network
+			"::1/128",        // IPv6 loopback
+			"fc00::/7",       // IPv6 unique local
+			"fe80::/10",      // IPv6 link-local
+		}
 
-	for _, r := range ranges {
-		_, ipNet, err := net.ParseCIDR(r)
-		if err == nil {
-			checker.blockedRanges = append(checker.blockedRanges, ipNet)
+		for _, r := range ranges {
+			_, ipNet, err := net.ParseCIDR(r)
+			if err == nil {
+				checker.blockedRanges = append(checker.blockedRanges, ipNet)
+			}
 		}
 	}
 
@@ -68,13 +86,16 @@ func (s *SSRFChecker) ValidateURL(rawURL string) error {
 		return fmt.Errorf("URL scheme not allowed: %s", scheme)
 	}
 
-	// Check for localhost variations
-	host := strings.ToLower(parsedURL.Hostname())
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
-		return fmt.Errorf("localhost access not allowed")
+	// Check for localhost variations (unless explicitly allowed)
+	if !s.config.AllowLocalhost {
+		host := strings.ToLower(parsedURL.Hostname())
+		if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			return fmt.Errorf("localhost access not allowed")
+		}
 	}
 
 	// Check host for metadata service hostnames
+	host := strings.ToLower(parsedURL.Hostname())
 	metadataHosts := []string{
 		"169.254.169.254", // AWS, GCP, Azure metadata
 		"metadata.google.internal",
@@ -86,16 +107,18 @@ func (s *SSRFChecker) ValidateURL(rawURL string) error {
 		}
 	}
 
-	// Resolve IP and check if it's private
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		// If DNS resolution fails, block the request to prevent DNS rebinding
-		return fmt.Errorf("DNS resolution failed for %s: %w", host, err)
-	}
+	// Resolve IP and check if it's private (skip if private IPs are allowed)
+	if len(s.blockedRanges) > 0 {
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			// If DNS resolution fails, block the request to prevent DNS rebinding
+			return fmt.Errorf("DNS resolution failed for %s: %w", host, err)
+		}
 
-	for _, ip := range ips {
-		if s.IsPrivateIP(ip) {
-			return fmt.Errorf("private IP access not allowed: %s", ip.String())
+		for _, ip := range ips {
+			if s.IsPrivateIP(ip) {
+				return fmt.Errorf("private IP access not allowed: %s", ip.String())
+			}
 		}
 	}
 

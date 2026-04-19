@@ -149,6 +149,13 @@ select optgroup {
   color: var(--text-primary);
 }
 
+/* Dark mode fix: ensure option text is readable */
+[data-theme="dark"] select option,
+[data-theme="dark"] select optgroup {
+  background: #162232;
+  color: #edf2f7;
+}
+
 select {
   cursor: pointer;
   appearance: none;
