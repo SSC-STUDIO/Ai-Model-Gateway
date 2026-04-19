@@ -39,7 +39,7 @@ export function useAutoRefresh(
       } else if (tab === 'telemetry') {
         void refetchTelemetry()
         void refetchTelemetryTimeseries()
-      } else if (tab === 'history') {
+      } else if (tab === 'config') {
         void refetchConfig()
         void refetchHistory()
       } else if (tab === 'benchmark') {

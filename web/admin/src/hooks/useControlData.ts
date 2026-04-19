@@ -81,11 +81,11 @@ export function useControlData(
     useCachedFetch<unknown>(telemetryChartURL, { ttl: 30000, enabled: enabled && tab === 'telemetry', onUnauthorized })
   const { data: rawConfig, error: configError, refetch: refetchConfig } = useCachedFetch<unknown>(
     '/api/admin/config',
-    { ttl: 60000, enabled: enabled && tab === 'history', onUnauthorized }
+    { ttl: 60000, enabled: enabled && tab === 'config', onUnauthorized }
   )
   const { data: rawHistory, error: historyError, refetch: refetchHistory } = useCachedFetch<unknown>(
     '/api/admin/config/history',
-    { ttl: 60000, enabled: enabled && tab === 'history', onUnauthorized }
+    { ttl: 60000, enabled: enabled && tab === 'config', onUnauthorized }
   )
 
   const benchmarkDataURL = useMemo(() => benchmarkURL(benchmarkHours, benchmarkModels), [benchmarkHours, benchmarkModels])

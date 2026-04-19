@@ -4,8 +4,7 @@
     "telemetry": "Telemetry",
     "timeseries": "Timeseries",
     "benchmark": "Benchmark",
-    "config": "Config",
-    "history": "History"
+    "config": "Config"
   },
   "header": {
     "title": "AI Model Gateway",
@@ -137,7 +136,20 @@
     "providerName": "Provider",
     "healthStatus": "Health Status",
     "latency": "Latency",
-    "failures": "Failures"
+    "failures": "Failures",
+    "subTab": {
+      "current": "Current",
+      "editor": "JSON",
+      "visual": "Visual",
+      "history": "History"
+    },
+    "jsonEditor": "JSON Editor",
+    "jsonPlaceholder": "Paste JSON configuration here...",
+    "applyChanges": "Apply Changes",
+    "validate": "Validate",
+    "visualEditor": "Visual Editor",
+    "visualEditorComingSoon": "Visual Editor Coming Soon",
+    "visualEditorHint": "Use visual interface to edit routing rules, provider configs and model mappings"
   },
   "common": {
     "enabled": "Enabled",

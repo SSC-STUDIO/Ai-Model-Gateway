@@ -15,7 +15,7 @@ import {
   useAutoRefresh,
 } from './hooks'
 import type { ControlTabKey } from './types'
-import { OverviewTab, TelemetryTab, TimeSeriesTab, HistoryTab, BenchmarkTab, ConfigTab } from './components/tabs'
+import { OverviewTab, TelemetryTab, TimeSeriesTab, BenchmarkTab, ConfigTab } from './components/tabs'
 import {
   benchmarkURL,
   historyTimeseriesURL,
@@ -32,7 +32,6 @@ const tabPaths: Record<ControlTabKey, string> = {
   timeseries: '/admin/timeseries',
   benchmark: '/admin/benchmark',
   config: '/admin/config',
-  history: '/admin/history',
 }
 
 const TAB_ICONS: Record<ControlTabKey, string> = {
@@ -41,7 +40,6 @@ const TAB_ICONS: Record<ControlTabKey, string> = {
   timeseries: '\u{1F4C9}',
   benchmark: '\u26A1',
   config: '\u2699\uFE0F',
-  history: '\u{1F4CB}',
 }
 
 function inferTab(pathname: string): ControlTabKey {
@@ -49,7 +47,6 @@ function inferTab(pathname: string): ControlTabKey {
   if (pathname.endsWith('/timeseries')) return 'timeseries'
   if (pathname.endsWith('/benchmark')) return 'benchmark'
   if (pathname.endsWith('/config')) return 'config'
-  if (pathname.endsWith('/history')) return 'history'
   return 'overview'
 }
 
@@ -157,7 +154,6 @@ export function App() {
       { key: 'timeseries' as ControlTabKey, label: t('tabs.timeseries') },
       { key: 'benchmark' as ControlTabKey, label: t('tabs.benchmark') },
       { key: 'config' as ControlTabKey, label: t('tabs.config') },
-      { key: 'history' as ControlTabKey, label: t('tabs.history') },
     ],
     [t]
   )
@@ -179,9 +175,6 @@ export function App() {
       case 'config':
         void primeCache('/api/admin/config', { ttl: 60000 })
         void primeCache('/api/admin/status', { ttl: 30000 })
-        break
-      case 'history':
-        void primeCache('/api/admin/config', { ttl: 60000 })
         void primeCache('/api/admin/config/history', { ttl: 60000 })
         break
       case 'benchmark':
@@ -277,8 +270,7 @@ export function App() {
     if (sessionError) return sessionError
     if (tab === 'overview') return overviewError?.message ?? statusError?.message ?? ''
     if (tab === 'telemetry') return telemetryError?.message ?? telemetryTimeseriesError?.message ?? ''
-    if (tab === 'config') return configError?.message ?? statusError?.message ?? ''
-    if (tab === 'history') return configError?.message ?? historyError?.message ?? actionError
+    if (tab === 'config') return configError?.message ?? statusError?.message ?? historyError?.message ?? actionError
     if (tab === 'benchmark') return benchmarkError?.message ?? ''
     return ''
   }, [
@@ -346,6 +338,7 @@ export function App() {
         return (
           <ConfigTab
             controlConfig={controlConfig}
+            historyPayload={historyPayload}
             providerHealth={status?.provider_health ?? []}
             snapshotInfo={{
               active_snapshot_id: status?.active_snapshot_id,
@@ -354,13 +347,6 @@ export function App() {
               unhealthy_provider_count: status?.unhealthy_provider_count,
               cooldown_provider_count: status?.cooldown_provider_count,
             }}
-          />
-        )
-      case 'history':
-        return (
-          <HistoryTab
-            controlConfig={controlConfig}
-            historyPayload={historyPayload}
             selectedVersion={selectedRevision}
             selectedEntry={currentHistoryEntry}
             actionLabel={canWrite ? historyActionLabel : t('history.readOnly')}
@@ -488,7 +474,7 @@ export function App() {
             </div>
           </div>
 
-          <div class="topbar-actions">
+          <div class="topbar-nav">
             <div class="tabbar">
               {tabLabels.map((item) => (
                 <button
@@ -503,7 +489,9 @@ export function App() {
                 </button>
               ))}
             </div>
+          </div>
 
+          <div class="topbar-right">
             <span class={`status-badge ${gatewayTone}`}>
               {t('header.gateway')}: {status?.gateway_readiness ?? status?.gateway_status ?? t('header.statusUnknown')}
             </span>
