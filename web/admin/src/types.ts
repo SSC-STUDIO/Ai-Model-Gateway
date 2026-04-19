@@ -1,6 +1,6 @@
 // Shared TypeScript types for the controld admin UI.
 
-export type ControlTabKey = 'overview' | 'telemetry' | 'timeseries' | 'history' | 'benchmark'
+export type ControlTabKey = 'overview' | 'telemetry' | 'timeseries' | 'benchmark' | 'config' | 'history'
 export type AdminRole = 'admin' | 'viewer'
 
 export type AnyRecord = Record<string, unknown>

@@ -15,10 +15,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// SSRFChecker is the interface for SSRF validation.
+type SSRFChecker interface {
+	ValidateURL(rawURL string) error
+}
+
 // Proxy handles WebSocket upgrade and proxying to upstream providers.
 type Proxy struct {
-	upgrader websocket.Upgrader
-	dialer   websocket.Dialer
+	upgrader    websocket.Upgrader
+	dialer      websocket.Dialer
+	ssrfChecker SSRFChecker
 }
 
 // NewProxy creates a new WebSocket proxy.
@@ -34,7 +40,15 @@ func NewProxy() *Proxy {
 		dialer: websocket.Dialer{
 			HandshakeTimeout: 10 * time.Second,
 		},
+		ssrfChecker: proxy.NewSSRFChecker(),
 	}
+}
+
+// NewProxyWithSSRFChecker creates a new WebSocket proxy with a custom SSRF checker.
+func NewProxyWithSSRFChecker(checker SSRFChecker) *Proxy {
+	p := NewProxy()
+	p.ssrfChecker = checker
+	return p
 }
 
 // ServeHTTP handles WebSocket upgrade and proxying.
@@ -78,8 +92,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 		upstreamURL := buildUpstreamURL(candidate.provider, r.URL.Path, model, candidate.upstreamModel)
 
 		// SSRF check
-		ssrfChecker := proxy.NewSSRFChecker()
-		if err := ssrfChecker.ValidateURL(upstreamURL); err != nil {
+		if err := p.ssrfChecker.ValidateURL(upstreamURL); err != nil {
 			log.Printf("[websocket] SSRF validation failed for %s: %v", candidate.provider.ProviderID, err)
 			continue
 		}

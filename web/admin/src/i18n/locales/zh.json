@@ -3,8 +3,9 @@
     "overview": "概览",
     "telemetry": "遥测",
     "timeseries": "时序",
-    "history": "历史",
-    "benchmark": "基准测试"
+    "benchmark": "基准测试",
+    "config": "配置",
+    "history": "历史"
   },
   "header": {
     "title": "AI Model Gateway",
@@ -112,6 +113,35 @@
     "off": "关闭",
     "interval": "自动刷新",
     "active": "自动刷新中"
+  },
+  "config": {
+    "title": "配置",
+    "currentRevision": "当前修订",
+    "noRevision": "暂无生效的配置修订",
+    "revisionId": "修订 ID",
+    "createdAt": "创建时间",
+    "createdBy": "创建者",
+    "description": "描述",
+    "status": "状态",
+    "active": "生效中",
+    "runtimeInfo": "运行时信息",
+    "activeSnapshot": "活动快照",
+    "providerCount": "Provider 数量",
+    "enabledProviders": "启用的 Provider",
+    "routerStrategy": "路由策略",
+    "healthChecks": "健康检查",
+    "stickySessions": "粘性会话",
+    "policy": "策略配置",
+    "publishHistoryLimit": "发布历史保留上限",
+    "providerHealth": "Provider 健康状态",
+    "providerName": "Provider",
+    "healthStatus": "健康状态",
+    "latency": "延迟",
+    "failures": "失败次数"
+  },
+  "common": {
+    "enabled": "已启用",
+    "disabled": "已禁用"
   },
   "history": {
     "title": "配置历史",

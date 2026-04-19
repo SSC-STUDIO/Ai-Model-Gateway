@@ -15,7 +15,7 @@ import {
   useAutoRefresh,
 } from './hooks'
 import type { ControlTabKey } from './types'
-import { OverviewTab, TelemetryTab, TimeSeriesTab, HistoryTab, BenchmarkTab } from './components/tabs'
+import { OverviewTab, TelemetryTab, TimeSeriesTab, HistoryTab, BenchmarkTab, ConfigTab } from './components/tabs'
 import {
   benchmarkURL,
   historyTimeseriesURL,
@@ -30,23 +30,26 @@ const tabPaths: Record<ControlTabKey, string> = {
   overview: '/admin',
   telemetry: '/admin/telemetry',
   timeseries: '/admin/timeseries',
-  history: '/admin/history',
   benchmark: '/admin/benchmark',
+  config: '/admin/config',
+  history: '/admin/history',
 }
 
 const TAB_ICONS: Record<ControlTabKey, string> = {
   overview: '\u{1F4CA}',
   telemetry: '\u{1F4C8}',
   timeseries: '\u{1F4C9}',
-  history: '\u{1F4CB}',
   benchmark: '\u26A1',
+  config: '\u2699\uFE0F',
+  history: '\u{1F4CB}',
 }
 
 function inferTab(pathname: string): ControlTabKey {
   if (pathname.endsWith('/telemetry')) return 'telemetry'
   if (pathname.endsWith('/timeseries')) return 'timeseries'
-  if (pathname.endsWith('/history')) return 'history'
   if (pathname.endsWith('/benchmark')) return 'benchmark'
+  if (pathname.endsWith('/config')) return 'config'
+  if (pathname.endsWith('/history')) return 'history'
   return 'overview'
 }
 
@@ -152,8 +155,9 @@ export function App() {
       { key: 'overview' as ControlTabKey, label: t('tabs.overview') },
       { key: 'telemetry' as ControlTabKey, label: t('tabs.telemetry') },
       { key: 'timeseries' as ControlTabKey, label: t('tabs.timeseries') },
-      { key: 'history' as ControlTabKey, label: t('tabs.history') },
       { key: 'benchmark' as ControlTabKey, label: t('tabs.benchmark') },
+      { key: 'config' as ControlTabKey, label: t('tabs.config') },
+      { key: 'history' as ControlTabKey, label: t('tabs.history') },
     ],
     [t]
   )
@@ -171,6 +175,10 @@ export function App() {
       case 'timeseries':
         void primeCache('/api/admin/timeseries?hours=168&bucket=5', { ttl: 30000 })
         void primeCache(historyTimeseriesURL(), { ttl: 60000 })
+        break
+      case 'config':
+        void primeCache('/api/admin/config', { ttl: 60000 })
+        void primeCache('/api/admin/status', { ttl: 30000 })
         break
       case 'history':
         void primeCache('/api/admin/config', { ttl: 60000 })
@@ -269,6 +277,7 @@ export function App() {
     if (sessionError) return sessionError
     if (tab === 'overview') return overviewError?.message ?? statusError?.message ?? ''
     if (tab === 'telemetry') return telemetryError?.message ?? telemetryTimeseriesError?.message ?? ''
+    if (tab === 'config') return configError?.message ?? statusError?.message ?? ''
     if (tab === 'history') return configError?.message ?? historyError?.message ?? actionError
     if (tab === 'benchmark') return benchmarkError?.message ?? ''
     return ''
@@ -333,6 +342,20 @@ export function App() {
         )
       case 'timeseries':
         return <TimeSeriesTab />
+      case 'config':
+        return (
+          <ConfigTab
+            controlConfig={controlConfig}
+            providerHealth={status?.provider_health ?? []}
+            snapshotInfo={{
+              active_snapshot_id: status?.active_snapshot_id,
+              provider_count: status?.provider_health_count,
+              enabled_provider_count: status?.healthy_provider_count,
+              unhealthy_provider_count: status?.unhealthy_provider_count,
+              cooldown_provider_count: status?.cooldown_provider_count,
+            }}
+          />
+        )
       case 'history':
         return (
           <HistoryTab
@@ -380,6 +403,7 @@ export function App() {
     setTelemetryHours,
     setBenchmarkHours,
     setBenchmarkModels,
+    status,
     t,
     tab,
     telemetry,

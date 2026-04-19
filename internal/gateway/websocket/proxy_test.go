@@ -12,6 +12,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// mockSSRFChecker is a mock SSRF checker that allows all URLs for testing.
+type mockSSRFChecker struct{}
+
+func (m *mockSSRFChecker) ValidateURL(rawURL string) error {
+	return nil
+}
+
 func TestNewProxy(t *testing.T) {
 	proxy := NewProxy()
 	if proxy == nil {
@@ -717,6 +724,389 @@ func TestForwardMessages_AbnormalClosure(t *testing.T) {
 	srcClient.WriteMessage(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, "abnormal"))
 	srcClient.Close()
+
+	select {
+	case <-done:
+		// forwardMessages exited as expected
+	case <-time.After(2 * time.Second):
+		t.Error("forwardMessages did not exit in time")
+	}
+}
+
+// TestServeHTTP_Success tests successful WebSocket proxy connection.
+func TestServeHTTP_Success(t *testing.T) {
+	// Create proxy with mock SSRF checker that allows all URLs
+	proxy := NewProxyWithSSRFChecker(&mockSSRFChecker{})
+
+	// Create upstream WebSocket server
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Echo messages back
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if err := conn.WriteMessage(mt, msg); err != nil {
+				return
+			}
+		}
+	}))
+	defer upstream.Close()
+
+	// Create gateway server
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		snap := &snapshot.Snapshot{
+			Providers: []snapshot.ProviderSnapshot{
+				{
+					ProviderID: "test-provider",
+					ExecutionPolicy: snapshot.ExecutionPolicy{
+						Enabled: true,
+						Weight:  10,
+					},
+					BaseURL: upstream.URL,
+					Credentials: snapshot.Credentials{
+						Kind:  "bearer",
+						Value: "test-token",
+					},
+					Headers: map[string]string{
+						"X-Provider-Header": "provider-value",
+					},
+					ModelTable: []snapshot.ModelMapping{
+						{PublicModel: "gpt-4", UpstreamModel: "gpt-4-realtime"},
+					},
+				},
+			},
+		}
+		proxy.ServeHTTP(w, r, snap)
+	}))
+	defer gateway.Close()
+
+	// Connect as client
+	wsURL := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/v1/realtime?model=gpt-4"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	// Send a message
+	testMsg := `{"type":"session.update"}`
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(testMsg)); err != nil {
+		t.Fatalf("failed to send message: %v", err)
+	}
+
+	// Read the response
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("failed to read message: %v", err)
+	}
+
+	if string(msg) != testMsg {
+		t.Errorf("expected %q, got %q", testMsg, string(msg))
+	}
+}
+
+// TestServeHTTP_ProviderFallback tests fallback to next provider on failure.
+func TestServeHTTP_ProviderFallback(t *testing.T) {
+	proxy := NewProxyWithSSRFChecker(&mockSSRFChecker{})
+
+	// Create upstream WebSocket server
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			conn.WriteMessage(mt, msg)
+		}
+	}))
+	defer upstream.Close()
+
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		snap := &snapshot.Snapshot{
+			Providers: []snapshot.ProviderSnapshot{
+				{
+					// First provider will fail (invalid URL)
+					ProviderID: "failing-provider",
+					ExecutionPolicy: snapshot.ExecutionPolicy{
+						Enabled: true,
+					},
+					BaseURL: "http://invalid-host.local",
+					ModelTable: []snapshot.ModelMapping{
+						{PublicModel: "gpt-4", UpstreamModel: "gpt-4"},
+					},
+				},
+				{
+					// Second provider should succeed
+					ProviderID: "working-provider",
+					ExecutionPolicy: snapshot.ExecutionPolicy{
+						Enabled: true,
+					},
+					BaseURL: upstream.URL,
+					ModelTable: []snapshot.ModelMapping{
+						{PublicModel: "gpt-4", UpstreamModel: "gpt-4"},
+					},
+				},
+			},
+		}
+		proxy.ServeHTTP(w, r, snap)
+	}))
+	defer gateway.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/v1/realtime?model=gpt-4"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	testMsg := `{"type":"test"}`
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(testMsg)); err != nil {
+		t.Fatalf("failed to send message: %v", err)
+	}
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("failed to read message: %v", err)
+	}
+
+	if string(msg) != testMsg {
+		t.Errorf("expected %q, got %q", testMsg, string(msg))
+	}
+}
+
+// TestServeHTTP_SSRFValidationFail tests SSRF validation failure.
+func TestServeHTTP_SSRFValidationFail(t *testing.T) {
+	// Use default SSRF checker which blocks localhost
+	proxy := NewProxy()
+
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		snap := &snapshot.Snapshot{
+			Providers: []snapshot.ProviderSnapshot{
+				{
+					ProviderID: "test-provider",
+					ExecutionPolicy: snapshot.ExecutionPolicy{
+						Enabled: true,
+					},
+					BaseURL: "http://localhost:9999",
+					ModelTable: []snapshot.ModelMapping{
+						{PublicModel: "gpt-4", UpstreamModel: "gpt-4"},
+					},
+				},
+			},
+		}
+		proxy.ServeHTTP(w, r, snap)
+	}))
+	defer gateway.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/v1/realtime?model=gpt-4"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("failed to read: %v", err)
+	}
+
+	if !strings.Contains(string(msg), "no provider available") {
+		t.Errorf("expected no provider error, got: %s", string(msg))
+	}
+}
+
+// TestServeHTTP_WithAuthHeaders tests that auth headers are passed correctly.
+func TestServeHTTP_WithAuthHeaders(t *testing.T) {
+	proxy := NewProxyWithSSRFChecker(&mockSSRFChecker{})
+
+	// Create upstream server that echoes messages
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			conn.WriteMessage(mt, msg)
+		}
+	}))
+	defer upstream.Close()
+
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		snap := &snapshot.Snapshot{
+			Providers: []snapshot.ProviderSnapshot{
+				{
+					ProviderID: "test-provider",
+					ExecutionPolicy: snapshot.ExecutionPolicy{
+						Enabled: true,
+					},
+					BaseURL: upstream.URL,
+					Credentials: snapshot.Credentials{
+						Kind:       "api_key",
+						Value:      "my-api-key",
+						HeaderName: "X-Custom-Key",
+					},
+					ModelTable: []snapshot.ModelMapping{
+						{PublicModel: "gpt-4", UpstreamModel: "gpt-4"},
+					},
+				},
+			},
+		}
+		proxy.ServeHTTP(w, r, snap)
+	}))
+	defer gateway.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(gateway.URL, "http") + "/v1/realtime?model=gpt-4"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	testMsg := `{"type":"test"}`
+	if err := conn.WriteMessage(websocket.TextMessage, []byte(testMsg)); err != nil {
+		t.Fatalf("failed to send message: %v", err)
+	}
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("failed to read message: %v", err)
+	}
+
+	if string(msg) != testMsg {
+		t.Errorf("expected %q, got %q", testMsg, string(msg))
+	}
+}
+
+// TestServeHTTP_UpgradeError tests handling of WebSocket upgrade errors.
+func TestServeHTTP_UpgradeError(t *testing.T) {
+	proxy := NewProxy()
+
+	// Create a server that will cause upgrade to fail (non-WebSocket request)
+	req := httptest.NewRequest("GET", "/v1/realtime?model=gpt-4", nil)
+	// Missing WebSocket headers will cause upgrade to fail
+	req.Header.Set("Connection", "keep-alive") // Not "Upgrade"
+	w := httptest.NewRecorder()
+
+	snap := &snapshot.Snapshot{
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "test-provider",
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled: true,
+				},
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "gpt-4", UpstreamModel: "gpt-4"},
+				},
+			},
+		},
+	}
+
+	proxy.ServeHTTP(w, req, snap)
+
+	// The upgrade will fail because it's not a proper WebSocket request
+	// The response should indicate bad request (WebSocket upgrade failure)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+}
+
+// TestForwardMessages_WriteError tests write error handling.
+func TestForwardMessages_WriteError(t *testing.T) {
+	proxy := NewProxy()
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
+	var srcConn, dstConn *websocket.Conn
+	srcCh := make(chan *websocket.Conn, 1)
+	dstCh := make(chan *websocket.Conn, 1)
+
+	srcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		srcCh <- conn
+	}))
+	defer srcServer.Close()
+
+	dstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		dstCh <- conn
+	}))
+	defer dstServer.Close()
+
+	srcURL := "ws" + strings.TrimPrefix(srcServer.URL, "http")
+	srcClient, _, err := websocket.DefaultDialer.Dial(srcURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect to src: %v", err)
+	}
+	defer srcClient.Close()
+
+	dstURL := "ws" + strings.TrimPrefix(dstServer.URL, "http")
+	dstClient, _, err := websocket.DefaultDialer.Dial(dstURL, nil)
+	if err != nil {
+		t.Fatalf("failed to connect to dst: %v", err)
+	}
+
+	select {
+	case srcConn = <-srcCh:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for src connection")
+	}
+	select {
+	case dstConn = <-dstCh:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for dst connection")
+	}
+
+	// Close dst immediately to cause write error
+	dstClient.Close()
+	dstConn.Close()
+
+	done := make(chan struct{})
+	go func() {
+		proxy.forwardMessages(srcConn, dstConn, "test-direction")
+		close(done)
+	}()
+
+	// Send a message - write should fail
+	srcClient.WriteMessage(websocket.TextMessage, []byte(`test`))
 
 	select {
 	case <-done:

@@ -1,5 +1,6 @@
 export { OverviewTab } from './OverviewTab'
 export { TelemetryTab } from './TelemetryTab'
-export { HistoryTab } from './HistoryTab'
 export { TimeSeriesTab } from './TimeSeriesTab'
 export { BenchmarkTab } from './BenchmarkTab'
+export { ConfigTab } from './ConfigTab'
+export { HistoryTab } from './HistoryTab'

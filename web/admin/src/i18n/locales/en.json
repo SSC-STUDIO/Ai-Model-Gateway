@@ -3,8 +3,9 @@
     "overview": "Overview",
     "telemetry": "Telemetry",
     "timeseries": "Timeseries",
-    "history": "History",
-    "benchmark": "Benchmark"
+    "benchmark": "Benchmark",
+    "config": "Config",
+    "history": "History"
   },
   "header": {
     "title": "AI Model Gateway",
@@ -112,6 +113,35 @@
     "off": "Off",
     "interval": "Auto-refresh",
     "active": "Auto-refreshing"
+  },
+  "config": {
+    "title": "Configuration",
+    "currentRevision": "Current Revision",
+    "noRevision": "No active configuration revision",
+    "revisionId": "Revision ID",
+    "createdAt": "Created At",
+    "createdBy": "Created By",
+    "description": "Description",
+    "status": "Status",
+    "active": "Active",
+    "runtimeInfo": "Runtime Info",
+    "activeSnapshot": "Active Snapshot",
+    "providerCount": "Provider Count",
+    "enabledProviders": "Enabled Providers",
+    "routerStrategy": "Router Strategy",
+    "healthChecks": "Health Checks",
+    "stickySessions": "Sticky Sessions",
+    "policy": "Policy",
+    "publishHistoryLimit": "Publish History Limit",
+    "providerHealth": "Provider Health Status",
+    "providerName": "Provider",
+    "healthStatus": "Health Status",
+    "latency": "Latency",
+    "failures": "Failures"
+  },
+  "common": {
+    "enabled": "Enabled",
+    "disabled": "Disabled"
   },
   "history": {
     "title": "Config History",

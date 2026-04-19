@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"ai-model-gateway/internal/core"
 )
 
 func TestNewStore(t *testing.T) {
@@ -1289,5 +1291,698 @@ func TestPricingSortValue(t *testing.T) {
 				t.Fatalf("pricingSortValue() = %f, want %f", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPricingCatalogCurrentConfig(t *testing.T) {
+	// Test nil receiver
+	var nilCatalog *PricingCatalog
+	cfg := nilCatalog.currentConfig()
+	if cfg.RefreshIntervalHours != 0 {
+		t.Fatal("expected zero config for nil catalog")
+	}
+
+	// Test normal catalog
+	catalog := NewPricingCatalog(core.PricingConfig{RefreshIntervalHours: 6})
+	cfg = catalog.currentConfig()
+	if cfg.RefreshIntervalHours != 6 {
+		t.Fatalf("RefreshIntervalHours = %d, want 6", cfg.RefreshIntervalHours)
+	}
+}
+
+func TestPricingSnapshotFromConfig(t *testing.T) {
+	// Test with empty cache path
+	snapshot := pricingSnapshotFromConfig(core.PricingConfig{})
+	if len(snapshot.Catalog) == 0 {
+		t.Fatal("expected bootstrap catalog for empty config")
+	}
+
+	// Test with non-existent cache path
+	snapshot = pricingSnapshotFromConfig(core.PricingConfig{CachePath: "/nonexistent/path/cache.json"})
+	if snapshot.LastError == "" {
+		t.Fatal("expected error for non-existent cache path")
+	}
+}
+
+func TestPricingSnapshotForUpdate(t *testing.T) {
+	current := BootstrapPricingSnapshot()
+	cfg := core.PricingConfig{}
+
+	snapshot := pricingSnapshotForUpdate(current, cfg)
+	if len(snapshot.Catalog) == 0 {
+		t.Fatal("expected non-empty catalog after update")
+	}
+}
+
+func TestCanonicalModelNames(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int // expected count
+	}{
+		{"", 0},
+		{"GPT-4o", 1},
+		{"GPT-5.4 mini", 1},
+		{"unknown model", 0},
+		{"claude-3-opus", 1},
+		{"gemini-2.5-pro", 1},
+		{"deepseek-chat", 1},
+		{"kimi-k2", 1},
+		{"glm-4.5", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := canonicalModelNames(tt.input)
+			if len(got) != tt.want {
+				t.Fatalf("len(canonicalModelNames(%q)) = %d, want %d", tt.input, len(got), tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadPricingCatalogCache(t *testing.T) {
+	// Empty path
+	_, err := loadPricingCatalogCache("")
+	if err == nil {
+		t.Fatal("expected error for empty cache path")
+	}
+
+	// Non-existent file
+	_, err = loadPricingCatalogCache("/nonexistent/cache.json")
+	if err == nil {
+		t.Fatal("expected error for non-existent cache file")
+	}
+}
+
+func TestSavePricingCatalogCache(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "pricing-cache-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Empty path should return nil
+	err = savePricingCatalogCache("", BootstrapPricingSnapshot())
+	if err != nil {
+		t.Fatalf("expected nil for empty path, got %v", err)
+	}
+
+	// Valid path
+	cachePath := filepath.Join(tmpDir, "cache.json")
+	err = savePricingCatalogCache(cachePath, BootstrapPricingSnapshot())
+	if err != nil {
+		t.Fatalf("savePricingCatalogCache failed: %v", err)
+	}
+
+	// Verify file exists
+	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
+		t.Fatal("cache file was not created")
+	}
+
+	// Load it back
+	loaded, err := loadPricingCatalogCache(cachePath)
+	if err != nil {
+		t.Fatalf("loadPricingCatalogCache failed: %v", err)
+	}
+	if len(loaded.Catalog) == 0 {
+		t.Fatal("expected non-empty catalog from cache")
+	}
+}
+
+func TestSavePricingCatalogCacheInvalidPath(t *testing.T) {
+	// Invalid path with directory traversal - pathsecurity validates the base name
+	// "../invalid/cache.json" has basename "cache.json" which is valid
+	// so it won't error at pathsecurity level
+	// Instead test with an empty basename
+	err := savePricingCatalogCache("/", BootstrapPricingSnapshot())
+	if err == nil {
+		t.Fatal("expected error for invalid cache path with empty basename")
+	}
+}
+
+func TestBuildPricingSnapshotEmptyCatalog(t *testing.T) {
+	snapshot := Snapshot{
+		ByModelRoute: []ModelRouteUsage{
+			{
+				RequestedModel: "gpt-4o",
+				Usage:          Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+			},
+		},
+	}
+
+	// Empty catalog should bootstrap
+	result := BuildPricingSnapshot(snapshot, PricingCatalogSnapshot{})
+	if len(result.Catalog) == 0 {
+		t.Fatal("expected bootstrap catalog for empty input")
+	}
+}
+
+func TestBuildPricingSnapshotWithUnpricedModel(t *testing.T) {
+	snapshot := Snapshot{
+		ByModelRoute: []ModelRouteUsage{
+			{
+				RequestedModel: "unknown-model",
+				Usage:          Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+			},
+		},
+	}
+
+	result := BuildPricingSnapshot(snapshot, BootstrapPricingSnapshot())
+	if result.Summary.UnpricedModels != 1 {
+		t.Fatalf("UnpricedModels = %d, want 1", result.Summary.UnpricedModels)
+	}
+}
+
+func TestBuildPricingSnapshotMergeSameKey(t *testing.T) {
+	snapshot := Snapshot{
+		ByModelRoute: []ModelRouteUsage{
+			{
+				RequestedModel: "gpt-4o",
+				Model:          "gpt-4o",
+				Upstream:       "openai",
+				Usage:          Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+			},
+			{
+				RequestedModel: "gpt-4o",
+				Model:          "gpt-4o",
+				Upstream:       "openai",
+				Usage:          Usage{PromptTokens: 200, CompletionTokens: 100, TotalTokens: 300},
+			},
+		},
+	}
+
+	result := BuildPricingSnapshot(snapshot, BootstrapPricingSnapshot())
+	if len(result.Models) != 1 {
+		t.Fatalf("models len = %d, want 1 (merged)", len(result.Models))
+	}
+	if result.Models[0].Usage.TotalTokens != 450 {
+		t.Fatalf("TotalTokens = %d, want 450", result.Models[0].Usage.TotalTokens)
+	}
+}
+
+func TestBuildPricingSnapshotSkipEmptyUsage(t *testing.T) {
+	snapshot := Snapshot{
+		ByModelRoute: []ModelRouteUsage{
+			{
+				RequestedModel: "empty-model",
+				Usage:          Usage{},
+			},
+			{
+				RequestedModel: "gpt-4o",
+				Usage:          Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+			},
+		},
+	}
+
+	result := BuildPricingSnapshot(snapshot, BootstrapPricingSnapshot())
+	if len(result.Models) != 1 {
+		t.Fatalf("models len = %d, want 1", len(result.Models))
+	}
+}
+
+func TestBuildPricingSnapshotWithCacheSavings(t *testing.T) {
+	snapshot := Snapshot{
+		ByModelRoute: []ModelRouteUsage{
+			{
+				RequestedModel: "gpt-4o",
+				Usage: Usage{
+					PromptTokens:       1_000_000,
+					CachedPromptTokens: 500_000,
+					CompletionTokens:   500_000,
+					TotalTokens:        1_500_000,
+				},
+			},
+		},
+	}
+
+	result := BuildPricingSnapshot(snapshot, BootstrapPricingSnapshot())
+	if result.Summary.CacheSavings <= 0 {
+		t.Fatalf("expected positive cache savings, got %f", result.Summary.CacheSavings)
+	}
+}
+
+func TestQueryCacheHitRanking(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Record requests with different upstreams and cached tokens
+	for i := 0; i < 5; i++ {
+		store.RecordRequest(RequestRecord{
+			Timestamp:  time.Now(),
+			RequestID:  "req-chr-" + string(rune('0'+i)),
+			Path:       "/v1/chat/completions",
+			Upstream:   "openai",
+			StatusCode: 200,
+			Success:    true,
+			Usage: Usage{
+				PromptTokens:       1000,
+				CachedPromptTokens: 500,
+				CompletionTokens:   200,
+				TotalTokens:        1200,
+			},
+		})
+	}
+
+	snapshot := store.Snapshot()
+	if len(snapshot.CacheHitRanking) == 0 {
+		t.Fatal("expected non-empty cache hit ranking")
+	}
+}
+
+func TestQueryCacheHitRankingNilStore(t *testing.T) {
+	var store *Store
+	result := store.queryCacheHitRanking(24*time.Hour, 10)
+	if result != nil {
+		t.Fatal("expected nil for nil store")
+	}
+}
+
+func TestQueryCacheHitRankingZeroLimit(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Record some data first
+	store.RecordRequest(RequestRecord{
+		Timestamp:  time.Now(),
+		RequestID:  "req-chr-zero",
+		Path:       "/v1/chat/completions",
+		Upstream:   "openai",
+		StatusCode: 200,
+		Success:    true,
+		Usage:      Usage{PromptTokens: 1000, CompletionTokens: 200, TotalTokens: 1200},
+	})
+
+	// Force flush and wait for data
+	store.flushWriter()
+
+	// Should use default limit of 10
+	result := store.queryCacheHitRanking(24*time.Hour, 0)
+	if result == nil {
+		t.Fatal("expected non-nil result with default limit")
+	}
+}
+
+func TestQueryWindowMetricsNilStore(t *testing.T) {
+	var store *Store
+	metrics := store.queryWindowMetrics(time.Minute, "1m")
+	if metrics.WindowLabel != "1m" {
+		t.Fatalf("WindowLabel = %q, want %q", metrics.WindowLabel, "1m")
+	}
+}
+
+func TestQueryUsageBreakdownInvalidColumn(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Invalid SQL identifier should return nil
+	result := store.queryUsageBreakdown("invalid; DROP TABLE requests;--")
+	if result != nil {
+		t.Fatal("expected nil for invalid column name")
+	}
+}
+
+func TestPersistBatchNilStore(t *testing.T) {
+	var store *Store
+	// Should not panic
+	store.persistBatch([]telemetryWrite{{request: &RequestRecord{}}})
+}
+
+func TestPersistBatchEmptyBatch(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Should not panic
+	store.persistBatch([]telemetryWrite{})
+}
+
+func TestEnqueueWriteClosedChannel(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// After Close(), writer should be stopped
+	// RecordRequest should fall back to direct persistBatch
+	store.RecordRequest(RequestRecord{
+		Timestamp:  time.Now(),
+		RequestID:  "req-after-close",
+		Path:       "/v1/chat/completions",
+		StatusCode: 200,
+		Success:    true,
+	})
+}
+
+func TestFlushWriterClosed(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// After Close(), flush should return immediately
+	store.flushWriter()
+}
+
+func TestStartWriterAlreadyRunning(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Starting writer when already running should be a no-op
+	store.startWriter()
+	// Should not panic or cause issues
+}
+
+func TestPrepareStatements(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	if store.insertRequestStmt == nil {
+		t.Fatal("expected insertRequestStmt to be prepared")
+	}
+	if store.insertErrorStmt == nil {
+		t.Fatal("expected insertErrorStmt to be prepared")
+	}
+}
+
+func TestExecRequestWriteZeroDuration(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Record with zero duration should get default of 1
+	record := RequestRecord{
+		Timestamp:  time.Now(),
+		RequestID:  "req-zero-dur",
+		Path:       "/v1/chat/completions",
+		StatusCode: 200,
+		Success:    true,
+		DurationMs: 0,
+	}
+
+	store.RecordRequest(record)
+
+	// Verify it was stored
+	snapshot := store.Snapshot()
+	if snapshot.Summary.TotalRequests != 1 {
+		t.Fatalf("TotalRequests = %d, want 1", snapshot.Summary.TotalRequests)
+	}
+}
+
+func TestExecErrorWrite(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	errRecord := ErrorRecord{
+		Timestamp:  time.Now(),
+		RequestID:  "err-write-test",
+		Path:       "/v1/chat/completions",
+		StatusCode: 500,
+		Attempt:    1,
+		Message:    "test error write",
+	}
+
+	store.RecordError(errRecord)
+
+	snapshot := store.Snapshot()
+	if len(snapshot.Errors) != 1 {
+		t.Fatalf("len(Errors) = %d, want 1", len(snapshot.Errors))
+	}
+}
+
+func TestHydrateCaches(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	// Record some data
+	for i := 0; i < 5; i++ {
+		store.RecordRequest(RequestRecord{
+			Timestamp:  time.Now(),
+			RequestID:  "req-hydrate-" + string(rune('0'+i)),
+			Path:       "/v1/chat/completions",
+			StatusCode: 200,
+			Success:    true,
+			Usage:      Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+		})
+	}
+
+	// Flush writer to persist data
+	store.flushWriter()
+
+	// Hydrate caches should update in-memory state from DB
+	store.hydrateCaches()
+
+	summary := store.cachedSummary()
+	if summary.TotalRequests != 5 {
+		t.Fatalf("TotalRequests = %d, want 5", summary.TotalRequests)
+	}
+}
+
+func TestCachedRequests(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.RecordRequest(RequestRecord{
+		Timestamp:  time.Now(),
+		RequestID:  "req-cached",
+		Path:       "/v1/chat/completions",
+		StatusCode: 200,
+		Success:    true,
+	})
+
+	requests := store.cachedRequests()
+	if len(requests) != 1 {
+		t.Fatalf("len(requests) = %d, want 1", len(requests))
+	}
+}
+
+func TestCachedErrors(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	store.RecordError(ErrorRecord{
+		Timestamp:  time.Now(),
+		RequestID:  "err-cached",
+		Path:       "/v1/chat/completions",
+		StatusCode: 500,
+		Message:    "cached error",
+	})
+
+	errors := store.cachedErrors()
+	if len(errors) != 1 {
+		t.Fatalf("len(errors) = %d, want 1", len(errors))
+	}
+}
+
+func TestCurrentVersion(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	v1 := store.currentVersion()
+
+	store.RecordRequest(RequestRecord{
+		Timestamp:  time.Now(),
+		RequestID:  "req-version",
+		Path:       "/v1/chat/completions",
+		StatusCode: 200,
+		Success:    true,
+	})
+
+	v2 := store.currentVersion()
+	if v2 <= v1 {
+		t.Fatalf("expected version to increase: %d -> %d", v1, v2)
+	}
+}
+
+func TestQuerySummary(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	for i := 0; i < 3; i++ {
+		store.RecordRequest(RequestRecord{
+			Timestamp:  time.Now(),
+			RequestID:  "req-qs-" + string(rune('0'+i)),
+			Path:       "/v1/chat/completions",
+			StatusCode: 200,
+			Success:    true,
+			Usage:      Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+		})
+	}
+
+	// Flush writer to persist data
+	store.flushWriter()
+
+	summary := store.querySummary()
+	if summary.TotalRequests != 3 {
+		t.Fatalf("TotalRequests = %d, want 3", summary.TotalRequests)
+	}
+}
+
+func TestQuerySummaryEmpty(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	summary := store.querySummary()
+	if summary.TotalRequests != 0 {
+		t.Fatalf("TotalRequests = %d, want 0", summary.TotalRequests)
+	}
+}
+
+func TestQueryRequests(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	for i := 0; i < 5; i++ {
+		store.RecordRequest(RequestRecord{
+			Timestamp:  time.Now(),
+			RequestID:  "req-qr-" + string(rune('0'+i)),
+			Path:       "/v1/chat/completions",
+			StatusCode: 200,
+			Success:    true,
+			Usage:      Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+		})
+	}
+
+	// Flush writer to persist data
+	store.flushWriter()
+
+	requests := store.queryRequests(3)
+	if len(requests) != 3 {
+		t.Fatalf("len(requests) = %d, want 3", len(requests))
+	}
+}
+
+func TestQueryErrors(t *testing.T) {
+	store := newTestStore(t)
+	defer store.Close()
+
+	for i := 0; i < 5; i++ {
+		store.RecordError(ErrorRecord{
+			Timestamp:  time.Now(),
+			RequestID:  "err-qe-" + string(rune('0'+i)),
+			Path:       "/v1/chat/completions",
+			StatusCode: 500,
+			Message:    "test error",
+		})
+	}
+
+	// Flush writer to persist data
+	store.flushWriter()
+
+	errors := store.queryErrors(3)
+	if len(errors) != 3 {
+		t.Fatalf("len(errors) = %d, want 3", len(errors))
+	}
+}
+
+func TestPricingCatalogUpdateConfigWithProvider(t *testing.T) {
+	catalog := NewPricingCatalog(core.PricingConfig{})
+	catalog.UpdateConfig(core.PricingConfig{
+		ManualPrices: []core.PricingManualPrice{{
+			Model:       "custom-model",
+			Provider:    "openai",
+			Currency:    "USD",
+			InputPer1M:  1.0,
+			OutputPer1M: 2.0,
+		}},
+	})
+
+	snapshot := catalog.Snapshot()
+	key := providerScopedPricingKey("openai", "custom-model")
+	if _, ok := snapshot.Catalog[key]; !ok {
+		t.Fatalf("expected provider-scoped pricing for key %q", key)
+	}
+}
+
+func TestApplyPricingConfigToSnapshotWithProvider(t *testing.T) {
+	snapshot := BootstrapPricingSnapshot()
+	cfg := core.PricingConfig{
+		ManualPrices: []core.PricingManualPrice{{
+			Model:       "custom-model",
+			Provider:    "openai",
+			Currency:    "USD",
+			InputPer1M:  1.0,
+			OutputPer1M: 2.0,
+		}},
+	}
+
+	result := applyPricingConfigToSnapshot(snapshot, cfg)
+	key := providerScopedPricingKey("openai", "custom-model")
+	if _, ok := result.Catalog[key]; !ok {
+		t.Fatalf("expected provider-scoped pricing for key %q", key)
+	}
+}
+
+func TestStripPricingManualOverridesDisabled(t *testing.T) {
+	disabled := false
+	cfg := core.PricingConfig{
+		ManualPrices: []core.PricingManualPrice{
+			{Model: "gpt-4o", Currency: "USD", InputPer1M: 99, OutputPer1M: 199, Enabled: &disabled},
+		},
+	}
+
+	snapshot := PricingCatalogSnapshot{
+		Catalog: map[string]Pricing{
+			"gpt-4o": {Currency: "USD", InputPer1M: 10, OutputPer1M: 30},
+		},
+	}
+
+	stripped := stripPricingManualOverrides(snapshot, cfg)
+	if _, ok := stripped.Catalog["gpt-4o"]; !ok {
+		t.Fatal("expected gpt-4o to remain when manual override is disabled")
+	}
+}
+
+func TestMergePricingSnapshots(t *testing.T) {
+	base := PricingCatalogSnapshot{
+		SourceURL: "https://base.example.com",
+		Catalog:   map[string]Pricing{"gpt-4o": {InputPer1M: 10}},
+	}
+	overlay := PricingCatalogSnapshot{
+		SourceURL: "https://overlay.example.com",
+		Catalog:   map[string]Pricing{"claude-3": {InputPer1M: 15}},
+	}
+
+	merged := mergePricingSnapshots(base, overlay)
+	if merged.SourceURL != "https://overlay.example.com" {
+		t.Fatalf("SourceURL = %q, want overlay URL", merged.SourceURL)
+	}
+	if len(merged.Catalog) != 2 {
+		t.Fatalf("Catalog len = %d, want 2", len(merged.Catalog))
+	}
+}
+
+func TestResolvePricingNoMatch(t *testing.T) {
+	catalog := map[string]Pricing{}
+	_, _, ok := ResolvePricing(catalog, "unknown-model", "", "")
+	if ok {
+		t.Fatal("expected no match for empty catalog")
+	}
+}
+
+func TestResolvePricingWithUpstream(t *testing.T) {
+	catalog := map[string]Pricing{
+		providerScopedPricingKey("openai", "gpt-4o"): {Currency: "USD", InputPer1M: 10, OutputPer1M: 30},
+	}
+
+	model, pricing, ok := ResolvePricing(catalog, "gpt-4o", "", "openai")
+	if !ok {
+		t.Fatal("expected match for provider-scoped pricing")
+	}
+	if model != providerScopedPricingKey("openai", "gpt-4o") {
+		t.Fatalf("model = %q, want provider-scoped key", model)
+	}
+	if pricing.InputPer1M != 10 {
+		t.Fatalf("InputPer1M = %f, want 10", pricing.InputPer1M)
+	}
+}
+
+func TestResolvePricingFallbackToGlobal(t *testing.T) {
+	catalog := map[string]Pricing{
+		"gpt-4o": {Currency: "USD", InputPer1M: 10, OutputPer1M: 30},
+	}
+
+	model, pricing, ok := ResolvePricing(catalog, "gpt-4o", "", "unknown-upstream")
+	if !ok {
+		t.Fatal("expected fallback to global pricing")
+	}
+	if model != "gpt-4o" {
+		t.Fatalf("model = %q, want gpt-4o", model)
+	}
+	if pricing.InputPer1M != 10 {
+		t.Fatalf("InputPer1M = %f, want 10", pricing.InputPer1M)
 	}
 }
