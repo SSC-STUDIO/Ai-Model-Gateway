@@ -19,8 +19,10 @@
 
 - 人类可编辑配置仍然是 `configs/config.yaml`
 - `controld` 通过 `-authoring-config <path>` 读取 YAML，并把它编译/持久化为 revision
+- daemon bootstrap JSON 是独立文件：`configs/gatewayd.json`、`configs/controld.json`、`configs/telemetryd.json`
 - `gatewayd` 不读取 YAML，只执行 `controld` 发布的 snapshot
 - `telemetryd` 仍是唯一 telemetry append/query owner
+- `telemetryd` JSON 字段使用 `ingest_socket` / `query_socket`
 - 推荐继续使用共享运行目录，例如 `.gateway-runtime/`，集中放置：
   - IPC socket / named pipe 名称
   - telemetry 数据目录

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'preact/compat'
 import { invalidateCache } from './useCachedFetch'
 import { useI18n } from '../i18n'
 import { useToast } from './useToast'
+import { fetchJSON } from '../utils/fetch'
 import type { ConfigHistoryResponse, ConfigVersionSummary } from '../types'
 
 function selectedRevisionAction(
@@ -25,28 +26,7 @@ function getActionLabel(action: 'publish' | 'rollback' | null, t: (key: string) 
   return t('history.current')
 }
 
-async function readJSON<T>(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-  onUnauthorized?: () => void
-): Promise<T> {
-  const resp = await fetch(input, {
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  })
-  if (!resp.ok) {
-    const text = await resp.text()
-    if (resp.status === 401) {
-      onUnauthorized?.()
-    }
-    throw new Error(text || `${resp.status} ${resp.statusText}`)
-  }
-  return (await resp.json()) as T
-}
+
 
 export interface HistoryActionsResult {
   action: 'publish' | 'rollback' | null
@@ -102,14 +82,14 @@ export function useHistoryActions(
     setActionBusy(true)
     setActionError('')
     try {
-      await readJSON(
+      await fetchJSON(
         historyAction === 'publish' ? '/api/admin/config/publish' : '/api/admin/config/rollback',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ revision_id: selectedRevision }),
-        },
-        onUnauthorized
+          onUnauthorized,
+        }
       )
       invalidateCache(/\/api\/admin\/(overview|status|config\/history)/)
       await Promise.all([refetchOverview(), refetchStatus(), refetchHistory()])

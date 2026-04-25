@@ -413,6 +413,18 @@ func TestCompileCredentials_AnthropicBaseURL(t *testing.T) {
 			expectedHeader: "x-api-key",
 			expectedValue:  "sk-ant-test",
 		},
+		{
+			name: "api_key with x-api-key header when anthropic protocol adapter is explicit",
+			provider: core.Provider{
+				Name:            "test",
+				BaseURL:         "https://api.example.com",
+				ProtocolAdapter: core.ProtocolAdapterAnthropicMessages,
+				APIKey:          "sk-ant-explicit",
+			},
+			expectedKind:   "api_key",
+			expectedHeader: "x-api-key",
+			expectedValue:  "sk-ant-explicit",
+		},
 	}
 
 	for _, tt := range tests {
@@ -479,5 +491,31 @@ func TestCompileProvider_AnthropicBaseURLValidation(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestCompileProvider_AnthropicProtocolAdapterCapabilities(t *testing.T) {
+	provider, err := compileProvider(core.Provider{
+		Name:            "anthropic",
+		BaseURL:         "https://api.example.com",
+		ProtocolAdapter: core.ProtocolAdapterAnthropicMessages,
+		APIKey:          "sk-ant",
+		Models:          []string{"claude-3-7-sonnet"},
+	}, 0)
+	if err != nil {
+		t.Fatalf("compileProvider() error = %v", err)
+	}
+
+	if provider.ProtocolAdapter != core.ProtocolAdapterAnthropicMessages {
+		t.Fatalf("protocol_adapter = %q, want %q", provider.ProtocolAdapter, core.ProtocolAdapterAnthropicMessages)
+	}
+	if provider.Credentials.Kind != credentialKindAPIKey || provider.Credentials.HeaderName != "x-api-key" {
+		t.Fatalf("unexpected anthropic credentials: %+v", provider.Credentials)
+	}
+	if provider.CapabilityTable.UsageAccounting != usageAccountingAnthropic {
+		t.Fatalf("usage_accounting = %q, want %q", provider.CapabilityTable.UsageAccounting, usageAccountingAnthropic)
+	}
+	if provider.CapabilityTable.ErrorClassifier != errorClassifierAnthropic {
+		t.Fatalf("error_classifier = %q, want %q", provider.CapabilityTable.ErrorClassifier, errorClassifierAnthropic)
 	}
 }

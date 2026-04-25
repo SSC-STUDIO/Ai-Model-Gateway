@@ -14,22 +14,37 @@ import (
 )
 
 type testRequestFact struct {
-	EventID            string
-	RequestID          string
-	Timestamp          time.Time
-	Path               string
-	RequestedModel     string
-	EffectiveModel     string
-	ProviderID         string
-	RouteMode          string
-	StatusCode         int
-	LatencyMs          int64
-	Attempts           int
-	PromptTokens       int64
-	CachedPromptTokens int64
-	OutputTokens       int64
-	Stream             bool
-	ErrorMessage       string
+	EventID                  string
+	RequestID                string
+	Timestamp                time.Time
+	Path                     string
+	RequestedModel           string
+	EffectiveModel           string
+	ProviderID               string
+	RouteMode                string
+	StatusCode               int
+	LatencyMs                int64
+	Attempts                 int
+	PromptTokens             int64
+	CachedPromptTokens       int64
+	OutputTokens             int64
+	PricingStatus            string
+	PricingSourceID          string
+	PricingCurrency          string
+	PricingInputPer1M        float64
+	PricingCachedInputPer1M  float64
+	PricingPromptCost        float64
+	PricingCompletionCost    float64
+	PricingTotalCost         float64
+	PricingPromptCostUSD     float64
+	PricingCompletionCostUSD float64
+	PricingTotalCostUSD      float64
+	SyntheticKind            string
+	BenchmarkRunID           string
+	BenchmarkTargetID        string
+	BenchmarkCaseID          string
+	Stream                   bool
+	ErrorMessage             string
 }
 
 type testAggBucket struct {
@@ -379,8 +394,12 @@ func insertRequestFact(t *testing.T, store *Store, fact testRequestFact) {
 INSERT INTO request_facts (
   event_id, request_id, timestamp, path, requested_model, effective_model,
   provider_id, route_mode, status_code, latency_ms, attempts,
-  prompt_tokens, cached_prompt_tokens, completion_tokens, stream, error_message
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  prompt_tokens, cached_prompt_tokens, completion_tokens,
+  pricing_status, pricing_source_id, pricing_currency, pricing_input_per_1m, pricing_cached_input_per_1m,
+  pricing_prompt_cost, pricing_completion_cost, pricing_total_cost,
+  pricing_prompt_cost_usd, pricing_completion_cost_usd, pricing_total_cost_usd,
+  synthetic_kind, benchmark_run_id, benchmark_target_id, benchmark_case_id, stream, error_message
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		fact.EventID,
 		fact.RequestID,
 		fact.Timestamp.UTC().Format(time.RFC3339Nano),
@@ -395,6 +414,21 @@ INSERT INTO request_facts (
 		fact.PromptTokens,
 		fact.CachedPromptTokens,
 		fact.OutputTokens,
+		fact.PricingStatus,
+		fact.PricingSourceID,
+		fact.PricingCurrency,
+		fact.PricingInputPer1M,
+		fact.PricingCachedInputPer1M,
+		fact.PricingPromptCost,
+		fact.PricingCompletionCost,
+		fact.PricingTotalCost,
+		fact.PricingPromptCostUSD,
+		fact.PricingCompletionCostUSD,
+		fact.PricingTotalCostUSD,
+		fact.SyntheticKind,
+		fact.BenchmarkRunID,
+		fact.BenchmarkTargetID,
+		fact.BenchmarkCaseID,
 		streamInt,
 		fact.ErrorMessage,
 	)
@@ -464,6 +498,87 @@ func TestQueryWindowMetricsDefaultWindow(t *testing.T) {
 	}
 	if metrics.Requests != 3 {
 		t.Fatalf("expected 3 requests with default window, got %d", metrics.Requests)
+	}
+}
+
+func TestQueryPricingEconomicsCountsDistinctPricedModelsAndPerCurrencyTotals(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertRequestFact(t, store, testRequestFact{
+		EventID:                  "evt-fixed-usd",
+		RequestID:                "req-fixed-usd",
+		Timestamp:                now.Add(-1 * time.Minute),
+		RequestedModel:           "router-alpha",
+		EffectiveModel:           "model-alpha",
+		ProviderID:               "provider-a",
+		StatusCode:               200,
+		PromptTokens:             1000,
+		CachedPromptTokens:       100,
+		OutputTokens:             500,
+		PricingStatus:            PricingStatusFixed,
+		PricingSourceID:          "official-openai",
+		PricingCurrency:          "USD",
+		PricingInputPer1M:        10,
+		PricingCachedInputPer1M:  1,
+		PricingPromptCost:        0.01,
+		PricingCompletionCost:    0.02,
+		PricingTotalCost:         0.03,
+		PricingPromptCostUSD:     0.01,
+		PricingCompletionCostUSD: 0.02,
+		PricingTotalCostUSD:      0.03,
+	})
+	insertRequestFact(t, store, testRequestFact{
+		EventID:             "evt-legacy-alpha",
+		RequestID:           "req-legacy-alpha",
+		Timestamp:           now.Add(-2 * time.Minute),
+		RequestedModel:      "router-alpha",
+		EffectiveModel:      "model-alpha",
+		ProviderID:          "provider-a",
+		StatusCode:          200,
+		PromptTokens:        800,
+		OutputTokens:        200,
+		PricingStatus:       PricingStatusEstimatedLegacy,
+		PricingTotalCostUSD: 0.05,
+	})
+	insertRequestFact(t, store, testRequestFact{
+		EventID:                  "evt-fixed-cny",
+		RequestID:                "req-fixed-cny",
+		Timestamp:                now.Add(-3 * time.Minute),
+		RequestedModel:           "router-beta",
+		EffectiveModel:           "model-beta",
+		ProviderID:               "provider-b",
+		StatusCode:               200,
+		PromptTokens:             1500,
+		OutputTokens:             600,
+		PricingStatus:            PricingStatusFixed,
+		PricingSourceID:          "official-zhipu",
+		PricingCurrency:          "CNY",
+		PricingPromptCost:        0.20,
+		PricingCompletionCost:    0.10,
+		PricingTotalCost:         0.30,
+		PricingPromptCostUSD:     0.027,
+		PricingCompletionCostUSD: 0.0135,
+		PricingTotalCostUSD:      0.0405,
+	})
+
+	economics := store.QueryPricingEconomics(24)
+	if economics.Summary.ExactModels != 2 {
+		t.Fatalf("ExactModels = %d, want 2", economics.Summary.ExactModels)
+	}
+	if economics.Summary.EstimatedModels != 1 {
+		t.Fatalf("EstimatedModels = %d, want 1", economics.Summary.EstimatedModels)
+	}
+	if economics.Summary.PricedModels != 2 {
+		t.Fatalf("PricedModels = %d, want distinct union count 2", economics.Summary.PricedModels)
+	}
+	if len(economics.Summary.TotalsByCurrency) != 2 {
+		t.Fatalf("TotalsByCurrency len = %d, want 2", len(economics.Summary.TotalsByCurrency))
+	}
+	for _, total := range economics.Summary.TotalsByCurrency {
+		if total.PricedModels != 1 {
+			t.Fatalf("currency %s priced_models = %d, want 1", total.Currency, total.PricedModels)
+		}
 	}
 }
 
@@ -588,6 +703,100 @@ func TestQueryTelemetryStreamFlag(t *testing.T) {
 	}
 	if events[1].Stream {
 		t.Fatalf("expected second event Stream=false, got true")
+	}
+}
+
+func TestQueryTelemetrySyntheticBenchmarkFilters(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertRequestFact(t, store, testRequestFact{
+		EventID:             "evt-normal",
+		RequestID:           "req-normal",
+		Timestamp:           now.Add(-1 * time.Minute),
+		RequestedModel:      "gpt-4o",
+		EffectiveModel:      "gpt-4o",
+		ProviderID:          "openai",
+		StatusCode:          200,
+		LatencyMs:           100,
+		PromptTokens:        100,
+		OutputTokens:        50,
+		PricingStatus:       PricingStatusFixed,
+		PricingTotalCostUSD: 0.01,
+	})
+	insertRequestFact(t, store, testRequestFact{
+		EventID:             "evt-benchmark",
+		RequestID:           "req-benchmark",
+		Timestamp:           now.Add(-2 * time.Minute),
+		RequestedModel:      "gpt-4o",
+		EffectiveModel:      "gpt-4o-upstream",
+		ProviderID:          "provider-a",
+		RouteMode:           "bridged",
+		StatusCode:          200,
+		LatencyMs:           180,
+		PromptTokens:        120,
+		OutputTokens:        60,
+		PricingStatus:       PricingStatusFixed,
+		PricingTotalCostUSD: 0.02,
+		SyntheticKind:       "benchmark",
+		BenchmarkRunID:      "run-1",
+		BenchmarkTargetID:   "target-1",
+		BenchmarkCaseID:     "reasoning_exact",
+	})
+
+	events, total, _, err := store.QueryTelemetry(telemetryquery.TelemetryRequest{
+		WindowHours: 24,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("QueryTelemetry(default) returned error: %v", err)
+	}
+	if total != 1 || len(events) != 1 || events[0].EventID != "evt-normal" {
+		t.Fatalf("default telemetry should exclude synthetic benchmark event, got total=%d events=%#v", total, events)
+	}
+
+	events, total, _, err = store.QueryTelemetry(telemetryquery.TelemetryRequest{
+		WindowHours: 24,
+		Limit:       10,
+		Filters: telemetryquery.TelemetryFilters{
+			SyntheticKind:  "benchmark",
+			BenchmarkRunID: "run-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("QueryTelemetry(synthetic) returned error: %v", err)
+	}
+	if total != 1 || len(events) != 1 {
+		t.Fatalf("synthetic telemetry total=%d len=%d, want 1", total, len(events))
+	}
+	if events[0].BenchmarkCaseID != "reasoning_exact" {
+		t.Fatalf("BenchmarkCaseID = %q, want reasoning_exact", events[0].BenchmarkCaseID)
+	}
+	if events[0].BenchmarkTargetID != "target-1" {
+		t.Fatalf("BenchmarkTargetID = %q, want target-1", events[0].BenchmarkTargetID)
+	}
+	if events[0].SyntheticKind != "benchmark" {
+		t.Fatalf("SyntheticKind = %q, want benchmark", events[0].SyntheticKind)
+	}
+	if events[0].PricingTotalCostUSD != 0.02 {
+		t.Fatalf("PricingTotalCostUSD = %v, want 0.02", events[0].PricingTotalCostUSD)
+	}
+
+	events, total, _, err = store.QueryTelemetry(telemetryquery.TelemetryRequest{
+		WindowHours: 24,
+		Limit:       10,
+		Filters: telemetryquery.TelemetryFilters{
+			SyntheticKind:     "benchmark",
+			BenchmarkRunID:    "run-1",
+			BenchmarkTargetID: "target-1",
+			BenchmarkCaseID:   "reasoning_exact",
+		},
+	})
+	if err != nil {
+		t.Fatalf("QueryTelemetry(target-filtered) returned error: %v", err)
+	}
+	if total != 1 || len(events) != 1 || events[0].EventID != "evt-benchmark" {
+		t.Fatalf("target-filtered telemetry total=%d events=%#v, want evt-benchmark", total, events)
 	}
 }
 
@@ -1173,37 +1382,37 @@ func TestApplyProjectionBatchWithFacts(t *testing.T) {
 
 	facts := []ProjectionFact{
 		{
-			EventID:        "evt-1",
-			RequestID:      "req-1",
-			Timestamp:      now.Format(time.RFC3339Nano),
-			Bucket:         bucket.Format(time.RFC3339Nano),
-			Path:           "/v1/chat/completions",
-			EffectiveModel: "gpt-4o",
-			ProviderID:     "openai",
-			RouteMode:      "direct",
-			StatusCode:     200,
-			LatencyMs:      100,
-			Attempts:       1,
-			PromptTokens:   1000,
+			EventID:          "evt-1",
+			RequestID:        "req-1",
+			Timestamp:        now.Format(time.RFC3339Nano),
+			Bucket:           bucket.Format(time.RFC3339Nano),
+			Path:             "/v1/chat/completions",
+			EffectiveModel:   "gpt-4o",
+			ProviderID:       "openai",
+			RouteMode:        "direct",
+			StatusCode:       200,
+			LatencyMs:        100,
+			Attempts:         1,
+			PromptTokens:     1000,
 			CompletionTokens: 500,
-			Stream:         true,
+			Stream:           true,
 		},
 		{
-			EventID:        "evt-2",
-			RequestID:      "req-2",
-			Timestamp:      now.Add(-1 * time.Minute).Format(time.RFC3339Nano),
-			Bucket:         bucket.Format(time.RFC3339Nano),
-			Path:           "/v1/chat/completions",
-			EffectiveModel: "gpt-4o",
-			ProviderID:     "openai",
-			RouteMode:      "direct",
-			StatusCode:     500,
-			LatencyMs:      200,
-			Attempts:       1,
-			PromptTokens:   800,
+			EventID:          "evt-2",
+			RequestID:        "req-2",
+			Timestamp:        now.Add(-1 * time.Minute).Format(time.RFC3339Nano),
+			Bucket:           bucket.Format(time.RFC3339Nano),
+			Path:             "/v1/chat/completions",
+			EffectiveModel:   "gpt-4o",
+			ProviderID:       "openai",
+			RouteMode:        "direct",
+			StatusCode:       500,
+			LatencyMs:        200,
+			Attempts:         1,
+			PromptTokens:     800,
 			CompletionTokens: 0,
-			Stream:         false,
-			ErrorMessage:   "upstream error",
+			Stream:           false,
+			ErrorMessage:     "upstream error",
 		},
 	}
 
@@ -1241,18 +1450,18 @@ func TestApplyProjectionBatchDuplicate(t *testing.T) {
 	bucket := now.Truncate(5 * time.Minute)
 
 	fact := ProjectionFact{
-		EventID:        "evt-dup",
-		RequestID:      "req-1",
-		Timestamp:      now.Format(time.RFC3339Nano),
-		Bucket:         bucket.Format(time.RFC3339Nano),
-		Path:           "/v1/chat/completions",
-		EffectiveModel: "gpt-4o",
-		ProviderID:     "openai",
-		RouteMode:      "direct",
-		StatusCode:     200,
-		LatencyMs:      100,
-		Attempts:       1,
-		PromptTokens:   1000,
+		EventID:          "evt-dup",
+		RequestID:        "req-1",
+		Timestamp:        now.Format(time.RFC3339Nano),
+		Bucket:           bucket.Format(time.RFC3339Nano),
+		Path:             "/v1/chat/completions",
+		EffectiveModel:   "gpt-4o",
+		ProviderID:       "openai",
+		RouteMode:        "direct",
+		StatusCode:       200,
+		LatencyMs:        100,
+		Attempts:         1,
+		PromptTokens:     1000,
 		CompletionTokens: 500,
 	}
 
@@ -1380,29 +1589,29 @@ func TestApplyProjectionBatchMultipleModels(t *testing.T) {
 
 	facts := []ProjectionFact{
 		{
-			EventID:        "evt-1",
-			RequestID:      "req-1",
-			Timestamp:      now.Format(time.RFC3339Nano),
-			Bucket:         bucket.Format(time.RFC3339Nano),
-			EffectiveModel: "gpt-4o",
-			ProviderID:     "openai",
-			StatusCode:     200,
-			LatencyMs:      100,
-			Attempts:       1,
-			PromptTokens:   1000,
+			EventID:          "evt-1",
+			RequestID:        "req-1",
+			Timestamp:        now.Format(time.RFC3339Nano),
+			Bucket:           bucket.Format(time.RFC3339Nano),
+			EffectiveModel:   "gpt-4o",
+			ProviderID:       "openai",
+			StatusCode:       200,
+			LatencyMs:        100,
+			Attempts:         1,
+			PromptTokens:     1000,
 			CompletionTokens: 500,
 		},
 		{
-			EventID:        "evt-2",
-			RequestID:      "req-2",
-			Timestamp:      now.Add(-1 * time.Minute).Format(time.RFC3339Nano),
-			Bucket:         bucket.Format(time.RFC3339Nano),
-			EffectiveModel: "claude-sonnet-4-5",
-			ProviderID:     "anthropic",
-			StatusCode:     200,
-			LatencyMs:      200,
-			Attempts:       1,
-			PromptTokens:   2000,
+			EventID:          "evt-2",
+			RequestID:        "req-2",
+			Timestamp:        now.Add(-1 * time.Minute).Format(time.RFC3339Nano),
+			Bucket:           bucket.Format(time.RFC3339Nano),
+			EffectiveModel:   "claude-sonnet-4-5",
+			ProviderID:       "anthropic",
+			StatusCode:       200,
+			LatencyMs:        200,
+			Attempts:         1,
+			PromptTokens:     2000,
 			CompletionTokens: 600,
 		},
 	}

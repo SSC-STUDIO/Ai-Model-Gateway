@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks'
 import { useI18n } from '../i18n'
+import { Icon } from '../components/Icon'
 
 const STORAGE_KEY = 'admin-theme'
 type Theme = 'light' | 'dark'
@@ -39,6 +40,17 @@ export function ThemeToggle() {
     applyTheme(theme)
   }, [theme])
 
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent) => {
+      if (!getStoredTheme()) {
+        setTheme(e.matches ? 'dark' : 'light')
+      }
+    }
+    media.addEventListener('change', handler)
+    return () => media.removeEventListener('change', handler)
+  }, [])
+
   const toggle = () => {
     const next = theme === 'light' ? 'dark' : 'light'
     setTheme(next)
@@ -48,12 +60,13 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      class="icon-btn"
+      class="icon-btn theme-toggle-btn"
       onClick={toggle}
+      aria-pressed={theme === 'dark'}
       aria-label={t('theme.toggleLabel')}
       title={t('theme.toggleLabel')}
     >
-      {theme === 'light' ? '\u2600\uFE0F' : '\uD83C\udf19'}
+      <Icon name={theme === 'light' ? 'sun' : 'moon'} size={17} />
     </button>
   )
 }

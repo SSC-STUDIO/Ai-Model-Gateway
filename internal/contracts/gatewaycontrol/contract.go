@@ -19,6 +19,15 @@ type GatewayControlRPC interface {
 	// Drain signals gatewayd to stop accepting new requests and wait for
 	// in-flight requests to complete. Used for graceful shutdown.
 	Drain(req DrainRequest, resp *DrainResponse) error
+
+	// GetPricingStatus returns the current live pricing refresh state.
+	GetPricingStatus(req GetPricingStatusRequest, resp *GetPricingStatusResponse) error
+
+	// RefreshPricing forces a live pricing refresh.
+	RefreshPricing(req RefreshPricingRequest, resp *RefreshPricingResponse) error
+
+	// RunBenchmarkCase executes a synthetic benchmark case through the live request pipeline.
+	RunBenchmarkCase(req RunBenchmarkCaseRequest, resp *RunBenchmarkCaseResponse) error
 }
 
 // ApplySnapshotRequest contains the compiled runtime snapshot to apply.
@@ -90,6 +99,64 @@ type GetStatusResponse struct {
 	StartedAt time.Time
 }
 
+// GetPricingStatusRequest requests the current pricing state.
+type GetPricingStatusRequest struct{}
+
+// GetPricingStatusResponse contains the live pricing state.
+type GetPricingStatusResponse struct {
+	SourceURL     string               `json:"source_url,omitempty"`
+	UpdatedAt     time.Time            `json:"updated_at,omitempty"`
+	LastAttemptAt time.Time            `json:"last_attempt_at,omitempty"`
+	LastError     string               `json:"last_error,omitempty"`
+	CatalogSize   int                  `json:"catalog_size"`
+	Sources       []PricingSourceState `json:"sources,omitempty"`
+	FX            PricingFXSnapshot    `json:"fx,omitempty"`
+}
+
+// RefreshPricingRequest triggers an immediate refresh.
+type RefreshPricingRequest struct{}
+
+// RefreshPricingResponse contains the post-refresh state.
+type RefreshPricingResponse struct {
+	Refreshed bool                     `json:"refreshed"`
+	Error     string                   `json:"error,omitempty"`
+	Status    GetPricingStatusResponse `json:"status"`
+}
+
+// RunBenchmarkCaseRequest describes one synthetic benchmark request execution.
+type RunBenchmarkCaseRequest struct {
+	RunID             string            `json:"run_id"`
+	CaseID            string            `json:"case_id"`
+	BenchmarkTargetID string            `json:"benchmark_target_id,omitempty"`
+	ProviderID        string            `json:"provider_id"`
+	PublicModel       string            `json:"public_model"`
+	Protocol          string            `json:"protocol"`
+	RequestBody       []byte            `json:"request_body"`
+	Headers           map[string]string `json:"headers,omitempty"`
+	TimeoutMs         int               `json:"timeout_ms"`
+	SyntheticKind     string            `json:"synthetic_kind,omitempty"`
+	DisableCache      bool              `json:"disable_cache,omitempty"`
+	DisableFallback   bool              `json:"disable_fallback,omitempty"`
+	DisableRetries    bool              `json:"disable_retries,omitempty"`
+}
+
+// RunBenchmarkCaseResponse captures the synthetic benchmark execution result.
+type RunBenchmarkCaseResponse struct {
+	StatusCode          int                 `json:"status_code"`
+	Headers             map[string][]string `json:"headers,omitempty"`
+	ResponseBody        []byte              `json:"response_body,omitempty"`
+	ContentType         string              `json:"content_type,omitempty"`
+	LatencyMs           int64               `json:"latency_ms"`
+	PromptTokens        int64               `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens  int64               `json:"cached_prompt_tokens,omitempty"`
+	CompletionTokens    int64               `json:"completion_tokens,omitempty"`
+	ProviderID          string              `json:"provider_id,omitempty"`
+	EffectiveModel      string              `json:"effective_model,omitempty"`
+	RouteMode           string              `json:"route_mode,omitempty"`
+	PricingTotalCostUSD float64             `json:"pricing_total_cost_usd,omitempty"`
+	Error               string              `json:"error,omitempty"`
+}
+
 // ReadinessState represents the readiness of gatewayd.
 type ReadinessState int
 
@@ -138,6 +205,30 @@ type ProviderHealth struct {
 
 	// LatencyMs is the average latency over recent requests.
 	LatencyMs int64
+}
+
+// PricingSourceState contains one pricing source refresh state.
+type PricingSourceState struct {
+	ID            string    `json:"id"`
+	Vendor        string    `json:"vendor"`
+	URL           string    `json:"url,omitempty"`
+	Enabled       bool      `json:"enabled"`
+	Status        string    `json:"status,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+	LastAttemptAt time.Time `json:"last_attempt_at,omitempty"`
+	LastError     string    `json:"last_error,omitempty"`
+	ModelCount    int       `json:"model_count,omitempty"`
+}
+
+// PricingFXSnapshot contains FX refresh state.
+type PricingFXSnapshot struct {
+	Enabled       bool               `json:"enabled"`
+	SourceURL     string             `json:"source_url,omitempty"`
+	BaseCurrency  string             `json:"base_currency,omitempty"`
+	UpdatedAt     time.Time          `json:"updated_at,omitempty"`
+	LastAttemptAt time.Time          `json:"last_attempt_at,omitempty"`
+	LastError     string             `json:"last_error,omitempty"`
+	RatesToUSD    map[string]float64 `json:"rates_to_usd,omitempty"`
 }
 
 // DrainRequest signals gatewayd to drain connections.

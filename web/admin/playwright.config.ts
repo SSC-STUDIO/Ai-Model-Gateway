@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const previewPort = Number(process.env.ADMIN_PREVIEW_PORT || 4174)
+const previewURL = process.env.ADMIN_BASE_URL || `http://127.0.0.1:${previewPort}`
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -8,7 +11,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
   use: {
-    baseURL: process.env.ADMIN_BASE_URL || 'http://localhost:4173',
+    baseURL: previewURL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,9 +21,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx vite preview --port 4173 --outDir dist',
-    url: 'http://localhost:4173',
-    reuseExistingServer: !process.env.CI,
+    command: `npx vite preview --host 127.0.0.1 --port ${previewPort} --outDir dist`,
+    url: previewURL,
+    reuseExistingServer: false,
     timeout: 120 * 1000,
   },
 })

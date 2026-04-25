@@ -1,0 +1,5 @@
+{
+  "listen": ":18083",
+  "control_socket": "/run/user/1000/test-gateway-control.sock",
+  "telemetry_socket": "/run/user/1000/test-telemetry-ingest.sock"
+}

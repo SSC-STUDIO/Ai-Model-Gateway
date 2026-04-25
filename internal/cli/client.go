@@ -30,6 +30,11 @@ func NewControlPlaneClient(baseURL, token string) *ControlPlaneClient {
 	}
 }
 
+// BaseURL returns the configured control-plane base URL.
+func (c *ControlPlaneClient) BaseURL() string {
+	return c.baseURL
+}
+
 // SetHTTPClient sets a custom HTTP client
 func (c *ControlPlaneClient) SetHTTPClient(client *http.Client) {
 	c.httpClient = client
@@ -97,6 +102,16 @@ type TelemetryQuery struct {
 	EndTime     *time.Time `json:"end_time,omitempty"`
 }
 
+type VerificationRunTelemetryQuery struct {
+	WindowHours int      `json:"window_hours,omitempty"`
+	Limit       int      `json:"limit,omitempty"`
+	Offset      int      `json:"offset,omitempty"`
+	Models      []string `json:"models,omitempty"`
+	Providers   []string `json:"providers,omitempty"`
+	TargetID    string   `json:"target_id,omitempty"`
+	CaseID      string   `json:"case_id,omitempty"`
+}
+
 // TelemetryResult represents telemetry query result
 type TelemetryResult struct {
 	Events []EventRecord `json:"events"`
@@ -105,17 +120,29 @@ type TelemetryResult struct {
 
 // EventRecord represents a telemetry event
 type EventRecord struct {
-	RequestID    string                 `json:"request_id"`
-	Timestamp    time.Time              `json:"timestamp"`
-	Model        string                 `json:"model"`
-	Provider     string                 `json:"provider"`
-	StatusCode   int                    `json:"status_code"`
-	LatencyMs    int64                  `json:"latency_ms"`
-	InputTokens  int64                  `json:"input_tokens"`
-	OutputTokens int64                  `json:"output_tokens"`
-	Cost         float64                `json:"cost"`
-	Error        string                 `json:"error,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	EventID            string                 `json:"event_id,omitempty"`
+	RequestID          string                 `json:"request_id"`
+	Timestamp          time.Time              `json:"timestamp"`
+	Path               string                 `json:"path,omitempty"`
+	RequestedModel     string                 `json:"requested_model,omitempty"`
+	EffectiveModel     string                 `json:"effective_model,omitempty"`
+	Model              string                 `json:"model,omitempty"`
+	Provider           string                 `json:"provider"`
+	RouteMode          string                 `json:"route_mode,omitempty"`
+	StatusCode         int                    `json:"status_code"`
+	LatencyMs          int64                  `json:"latency_ms"`
+	InputTokens        int64                  `json:"input_tokens"`
+	CachedPromptTokens int64                  `json:"cached_prompt_tokens,omitempty"`
+	OutputTokens       int64                  `json:"output_tokens"`
+	PricingStatus      string                 `json:"pricing_status,omitempty"`
+	TotalCostUSD       float64                `json:"pricing_total_cost_usd,omitempty"`
+	SyntheticKind      string                 `json:"synthetic_kind,omitempty"`
+	BenchmarkRunID     string                 `json:"benchmark_run_id,omitempty"`
+	BenchmarkTargetID  string                 `json:"benchmark_target_id,omitempty"`
+	BenchmarkCaseID    string                 `json:"benchmark_case_id,omitempty"`
+	Cost               float64                `json:"cost"`
+	Error              string                 `json:"error,omitempty"`
+	Metadata           map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // TimeSeriesQuery represents time series query parameters
@@ -147,6 +174,117 @@ type BenchmarkQuery struct {
 // BenchmarkResult represents benchmark query result
 type BenchmarkResult struct {
 	Models []ModelBenchmark `json:"models"`
+}
+
+type VerificationBaselineSnapshot struct {
+	SnapshotID string    `json:"snapshot_id"`
+	Kind       string    `json:"kind"`
+	SourceName string    `json:"source_name"`
+	SourceURL  string    `json:"source_url,omitempty"`
+	CapturedAt time.Time `json:"captured_at"`
+	ImportedAt time.Time `json:"imported_at"`
+	RowCount   int       `json:"row_count"`
+}
+
+type VerificationBaselineList struct {
+	Snapshots []VerificationBaselineSnapshot `json:"snapshots"`
+}
+
+type VerificationBaselineImportRequest struct {
+	Kind       string     `json:"kind"`
+	SourceName string     `json:"source_name"`
+	SourceURL  string     `json:"source_url,omitempty"`
+	CapturedAt *time.Time `json:"captured_at,omitempty"`
+	FileName   string     `json:"file_name"`
+	Contents   string     `json:"contents"`
+}
+
+type VerificationRunRequest struct {
+	ProviderID       string `json:"provider_id,omitempty"`
+	PublicModel      string `json:"public_model,omitempty"`
+	Protocol         string `json:"protocol,omitempty"`
+	AllActive        bool   `json:"all_active,omitempty"`
+	Suite            string `json:"suite,omitempty"`
+	PublicSnapshotID string `json:"public_snapshot_id,omitempty"`
+	VendorSnapshotID string `json:"vendor_snapshot_id,omitempty"`
+}
+
+type VerificationRunSummary struct {
+	RunID            string    `json:"run_id"`
+	Status           string    `json:"status"`
+	SuiteVersion     string    `json:"suite_version"`
+	Protocol         string    `json:"protocol"`
+	PublicSnapshotID string    `json:"public_snapshot_id,omitempty"`
+	VendorSnapshotID string    `json:"vendor_snapshot_id,omitempty"`
+	StartedAt        time.Time `json:"started_at"`
+	CompletedAt      time.Time `json:"completed_at,omitempty"`
+	TargetCount      int       `json:"target_count"`
+	CompletedTargets int       `json:"completed_targets"`
+	Error            string    `json:"error,omitempty"`
+}
+
+type VerificationRunList struct {
+	Runs []VerificationRunSummary `json:"runs"`
+}
+
+type VerificationRunCase struct {
+	CaseID             string                 `json:"case_id"`
+	Dimension          string                 `json:"dimension"`
+	Kind               string                 `json:"kind"`
+	Critical           bool                   `json:"critical"`
+	Completed          bool                   `json:"completed"`
+	Success            bool                   `json:"success"`
+	Score              float64                `json:"score"`
+	Reason             string                 `json:"reason,omitempty"`
+	StatusCode         int                    `json:"status_code,omitempty"`
+	LatencyMs          int64                  `json:"latency_ms,omitempty"`
+	PromptTokens       int64                  `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens int64                  `json:"cached_prompt_tokens,omitempty"`
+	CompletionTokens   int64                  `json:"completion_tokens,omitempty"`
+	CostUSD            float64                `json:"cost_usd,omitempty"`
+	ProviderID         string                 `json:"provider_id,omitempty"`
+	EffectiveModel     string                 `json:"effective_model,omitempty"`
+	RouteMode          string                 `json:"route_mode,omitempty"`
+	ResponseExcerpt    string                 `json:"response_excerpt,omitempty"`
+	Error              string                 `json:"error,omitempty"`
+	Meta               map[string]interface{} `json:"meta,omitempty"`
+}
+
+type VerificationRunTarget struct {
+	TargetID                 string                `json:"target_id"`
+	RunID                    string                `json:"run_id"`
+	Status                   string                `json:"status"`
+	ProviderID               string                `json:"provider_id"`
+	PublicModel              string                `json:"public_model"`
+	EffectiveModel           string                `json:"effective_model,omitempty"`
+	CanonicalModelID         string                `json:"canonical_model_id,omitempty"`
+	Protocol                 string                `json:"protocol"`
+	ProtocolAdapter          string                `json:"protocol_adapter,omitempty"`
+	SuiteVersion             string                `json:"suite_version"`
+	JudgeModel               string                `json:"judge_model,omitempty"`
+	PublicSnapshotID         string                `json:"public_snapshot_id,omitempty"`
+	VendorSnapshotID         string                `json:"vendor_snapshot_id,omitempty"`
+	Verdict                  string                `json:"verdict,omitempty"`
+	SuspicionScore           float64               `json:"suspicion_score,omitempty"`
+	PublicGap                float64               `json:"public_gap,omitempty"`
+	VendorGap                float64               `json:"vendor_gap,omitempty"`
+	CompletionRate           float64               `json:"completion_rate,omitempty"`
+	CriticalProtocolFailures int                   `json:"critical_protocol_failures,omitempty"`
+	ReasonCodes              []string              `json:"reason_codes,omitempty"`
+	DimensionScores          map[string]float64    `json:"dimension_scores,omitempty"`
+	PromptTokens             int64                 `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens       int64                 `json:"cached_prompt_tokens,omitempty"`
+	CompletionTokens         int64                 `json:"completion_tokens,omitempty"`
+	EstimatedCostUSD         float64               `json:"estimated_cost_usd,omitempty"`
+	Cases                    []VerificationRunCase `json:"cases,omitempty"`
+	StartedAt                time.Time             `json:"started_at"`
+	CompletedAt              time.Time             `json:"completed_at,omitempty"`
+	Error                    string                `json:"error,omitempty"`
+}
+
+type VerificationRunDetail struct {
+	VerificationRunSummary
+	Targets []VerificationRunTarget `json:"targets"`
 }
 
 // ModelBenchmark represents model benchmark data
@@ -244,6 +382,15 @@ func (c *ControlPlaneClient) PublishConfig(ctx context.Context, revisionID strin
 	return &result, nil
 }
 
+// ReloadConfig reloads the authoring config source and republishes the resulting revision.
+func (c *ControlPlaneClient) ReloadConfig(ctx context.Context) (*PublishResult, error) {
+	var result PublishResult
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/config/reload", nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // RollbackConfig rolls back to a config revision
 func (c *ControlPlaneClient) RollbackConfig(ctx context.Context, revisionID string) (*PublishResult, error) {
 	req := struct {
@@ -328,6 +475,97 @@ func (c *ControlPlaneClient) GetBenchmark(ctx context.Context, query *BenchmarkQ
 	return &result, nil
 }
 
+func (c *ControlPlaneClient) ListVerificationBaselines(ctx context.Context) (*VerificationBaselineList, error) {
+	var result VerificationBaselineList
+	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/benchmark/baselines", nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *ControlPlaneClient) ImportVerificationBaseline(ctx context.Context, req *VerificationBaselineImportRequest) (*VerificationBaselineSnapshot, error) {
+	if req == nil {
+		return nil, fmt.Errorf("verification baseline import request is required")
+	}
+	var result VerificationBaselineSnapshot
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/benchmark/baselines/import", req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *ControlPlaneClient) ListVerificationRuns(ctx context.Context, limit int) (*VerificationRunList, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var result VerificationRunList
+	if err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/admin/benchmark/runs?limit=%d", limit), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *ControlPlaneClient) StartVerificationRun(ctx context.Context, req *VerificationRunRequest) (*VerificationRunDetail, error) {
+	if req == nil {
+		return nil, fmt.Errorf("verification benchmark run request is required")
+	}
+	var result VerificationRunDetail
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/benchmark/runs", req, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *ControlPlaneClient) GetVerificationRun(ctx context.Context, runID string) (*VerificationRunDetail, error) {
+	var result VerificationRunDetail
+	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/benchmark/runs/"+url.PathEscape(strings.TrimSpace(runID)), nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *ControlPlaneClient) GetVerificationRunTelemetry(ctx context.Context, runID string, query *VerificationRunTelemetryQuery) (*TelemetryResult, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil, fmt.Errorf("verification benchmark run id is required")
+	}
+	if query == nil {
+		query = &VerificationRunTelemetryQuery{WindowHours: 24, Limit: 200}
+	}
+	if query.WindowHours <= 0 {
+		query.WindowHours = 24
+	}
+	if query.Limit <= 0 {
+		query.Limit = 200
+	}
+
+	params := url.Values{}
+	params.Set("hours", fmt.Sprintf("%d", query.WindowHours))
+	params.Set("limit", fmt.Sprintf("%d", query.Limit))
+	if query.Offset > 0 {
+		params.Set("offset", fmt.Sprintf("%d", query.Offset))
+	}
+	if models := cleanQueryStrings(query.Models); len(models) > 0 {
+		params.Set("models", strings.Join(models, ","))
+	}
+	if providers := cleanQueryStrings(query.Providers); len(providers) > 0 {
+		params.Set("providers", strings.Join(providers, ","))
+	}
+	if targetID := strings.TrimSpace(query.TargetID); targetID != "" {
+		params.Set("target_id", targetID)
+	}
+	if caseID := strings.TrimSpace(query.CaseID); caseID != "" {
+		params.Set("case_id", caseID)
+	}
+
+	var result TelemetryResult
+	path := fmt.Sprintf("/api/admin/benchmark/runs/%s/telemetry?%s", url.PathEscape(runID), params.Encode())
+	if err := c.doRequest(ctx, http.MethodGet, path, nil, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 // GetStatus fetches system status
 func (c *ControlPlaneClient) GetStatus(ctx context.Context) (*SystemStatus, error) {
 	var status SystemStatus
@@ -387,6 +625,16 @@ func (c *ControlPlaneClient) TestProvider(ctx context.Context, providerName stri
 		}
 	}
 	return providerStatus, nil
+}
+
+func cleanQueryStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // doRequest performs an HTTP request

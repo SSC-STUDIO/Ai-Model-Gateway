@@ -38,6 +38,28 @@ func TestAcceptsGzip(t *testing.T) {
 	}
 }
 
+func TestNormalizeGzipLevel(t *testing.T) {
+	tests := []struct {
+		input int
+		want  int
+	}{
+		{0, gzip.DefaultCompression},   // 0 maps to default
+		{1, 1},                         // BestSpeed
+		{5, 5},                         // Middle
+		{9, 9},                         // BestCompression
+		{-1, gzip.DefaultCompression},  // Negative value
+		{-2, gzip.DefaultCompression},  // Below valid range
+		{10, gzip.DefaultCompression},  // Above valid range
+		{100, gzip.DefaultCompression}, // Way above valid range
+	}
+
+	for _, tc := range tests {
+		got := normalizeGzipLevel(tc.input)
+		if got != tc.want {
+			t.Errorf("normalizeGzipLevel(%d) = %d, want %d", tc.input, got, tc.want)
+		}
+	}
+}
 
 func TestCompressionMiddleware_CompressesLargeResponse(t *testing.T) {
 	body := largeBody(50)

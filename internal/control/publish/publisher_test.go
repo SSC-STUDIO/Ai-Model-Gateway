@@ -101,6 +101,45 @@ func TestReplaceRevisionsPreservesActiveRevisionWhenUnspecified(t *testing.T) {
 	}
 }
 
+func TestUpsertRevisionPreservesExistingHistory(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	createdAt := time.Date(2026, time.April, 17, 11, 0, 0, 0, time.UTC)
+
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_1", CreatedAt: createdAt, Description: "older", Config: testConfig("127.0.0.1:18080")},
+		{RevisionID: "rev_2", CreatedAt: createdAt.Add(time.Minute), Description: "current", Config: testConfig("127.0.0.1:19090")},
+	}, "rev_2"); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	if err := publisher.UpsertRevision(Revision{
+		RevisionID:  "rev_3",
+		CreatedAt:   createdAt.Add(2 * time.Minute),
+		CreatedBy:   "watcher",
+		Description: "reloaded from file",
+		Config:      testConfig("127.0.0.1:29090"),
+	}, true); err != nil {
+		t.Fatalf("UpsertRevision() error = %v", err)
+	}
+
+	history, err := publisher.GetHistory(10)
+	if err != nil {
+		t.Fatalf("GetHistory() error = %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("len(GetHistory()) = %d, want 3", len(history))
+	}
+	if history[0].RevisionID != "rev_3" || !history[0].IsActive {
+		t.Fatalf("history[0] = %#v, want active rev_3", history[0])
+	}
+	if history[1].RevisionID != "rev_2" || history[1].IsActive {
+		t.Fatalf("history[1] = %#v, want inactive rev_2", history[1])
+	}
+	if history[2].RevisionID != "rev_1" {
+		t.Fatalf("history[2] = %#v, want rev_1", history[2])
+	}
+}
+
 func TestGetCurrentConfigViewIncludesRevisionAndPolicy(t *testing.T) {
 	publisher := NewPublisher(nil, nil)
 	cfg := testConfig("127.0.0.1:18080")
@@ -131,6 +170,66 @@ func TestGetCurrentConfigViewIncludesRevisionAndPolicy(t *testing.T) {
 	}
 	if view.Policy.PublishHistoryLimit != 42 {
 		t.Fatalf("GetCurrentConfigView().Policy.PublishHistoryLimit = %d, want 42", view.Policy.PublishHistoryLimit)
+	}
+}
+
+func TestValidateConfigAcceptsMapInput(t *testing.T) {
+	publisher := NewPublisher(nil, compiler.NewCompiler())
+
+	result, err := publisher.ValidateConfig(map[string]interface{}{
+		"server": map[string]interface{}{
+			"listen": "127.0.0.1:18080",
+		},
+		"providers": []interface{}{
+			map[string]interface{}{
+				"name":     "test-provider",
+				"base_url": "https://example.invalid/v1",
+				"api_key":  "secret",
+				"models":   []interface{}{"gpt-test"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateConfig(map) error = %v", err)
+	}
+	if result == nil || !result.Valid {
+		t.Fatalf("ValidateConfig(map) = %#v, want valid", result)
+	}
+}
+
+func TestUpdateConfigAcceptsMapInput(t *testing.T) {
+	gateway := &stubGateway{}
+	publisher := NewPublisher(gateway, compiler.NewCompiler())
+
+	result, err := publisher.UpdateConfig(map[string]interface{}{
+		"server": map[string]interface{}{
+			"listen": "127.0.0.1:18080",
+		},
+		"providers": []interface{}{
+			map[string]interface{}{
+				"name":     "test-provider",
+				"base_url": "https://example.invalid/v1",
+				"api_key":  "secret",
+				"models":   []interface{}{"gpt-test"},
+			},
+		},
+	}, "editor save")
+	if err != nil {
+		t.Fatalf("UpdateConfig(map) error = %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("UpdateConfig(map) = %#v, want success", result)
+	}
+	if len(gateway.applyRequests) != 1 {
+		t.Fatalf("len(applyRequests) = %d, want 1", len(gateway.applyRequests))
+	}
+
+	current, err := publisher.GetCurrentConfig()
+	if err != nil {
+		t.Fatalf("GetCurrentConfig() error = %v", err)
+	}
+	if current == nil || current.Server.Listen != "127.0.0.1:18080" {
+		t.Fatalf("GetCurrentConfig() = %#v, want listen 127.0.0.1:18080", current)
 	}
 }
 

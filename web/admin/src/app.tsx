@@ -3,6 +3,9 @@ import { useI18n } from './i18n'
 import { ThemeToggle } from './theme/ThemeToggle'
 import { LanguageSelector } from './theme/LanguageSelector'
 import { ToastContainer } from './components/ToastContainer'
+import { BrandMark } from './components/BrandMark'
+import { LoginScreen } from './components/LoginScreen'
+import { Icon, type IconName } from './components/Icon'
 import {
   primeCache,
   useAdminSession,
@@ -15,12 +18,13 @@ import {
   useAutoRefresh,
 } from './hooks'
 import type { ControlTabKey } from './types'
-import { OverviewTab, TelemetryTab, TimeSeriesTab, BenchmarkTab, ConfigTab } from './components/tabs'
+import { OverviewTab, TelemetryTab, BenchmarkTab, ConfigTab, LogsTab, PricingTab } from './components/tabs'
+import { fetchJSON } from './utils/fetch'
 import {
   benchmarkURL,
-  historyTimeseriesURL,
   telemetryTimeseriesURL,
   telemetryURL,
+  logsURL,
 } from './utils/controlApi'
 
 const DEFAULT_ADMIN_PATH = '/admin'
@@ -29,22 +33,25 @@ const LOGIN_PATH = '/admin/login'
 const tabPaths: Record<ControlTabKey, string> = {
   overview: '/admin',
   telemetry: '/admin/telemetry',
-  timeseries: '/admin/timeseries',
+  pricing: '/admin/pricing',
   benchmark: '/admin/benchmark',
+  logs: '/admin/logs',
   config: '/admin/config',
 }
 
-const TAB_ICONS: Record<ControlTabKey, string> = {
-  overview: '\u{1F4CA}',
-  telemetry: '\u{1F4C8}',
-  timeseries: '\u{1F4C9}',
-  benchmark: '\u26A1',
-  config: '\u2699\uFE0F',
+const TAB_ICONS: Record<ControlTabKey, IconName> = {
+  overview: 'overview',
+  telemetry: 'telemetry',
+  pricing: 'pricing',
+  benchmark: 'benchmark',
+  logs: 'logs',
+  config: 'config',
 }
 
 function inferTab(pathname: string): ControlTabKey {
   if (pathname.endsWith('/telemetry')) return 'telemetry'
-  if (pathname.endsWith('/timeseries')) return 'timeseries'
+  if (pathname.endsWith('/logs')) return 'logs'
+  if (pathname.endsWith('/pricing')) return 'pricing'
   if (pathname.endsWith('/benchmark')) return 'benchmark'
   if (pathname.endsWith('/config')) return 'config'
   return 'overview'
@@ -62,14 +69,18 @@ function roleLabel(role: string | undefined, t: (key: string) => string): string
   return role === 'viewer' ? t('auth.roleViewer') : t('auth.roleAdmin')
 }
 
-function BrandMark() {
-  return (
-    <svg width="36" height="36" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="96" height="96" rx="24" fill="#0B0C0C" />
-      <path d="M24 68V28H38L48 52L58 28H72V68H62V46L54 66H42L34 46V68H24Z" fill="#7EE7D6" />
-      <circle cx="73" cy="24" r="8" fill="#F1B866" />
-    </svg>
-  )
+function primeCacheSilently(url: string, ttl: number) {
+  void primeCache(url, { ttl }).catch(() => {})
+}
+
+function isTelemetryConnectionError(message: string): boolean {
+  const value = message.trim().toLowerCase()
+  if (!value) return false
+  return value.includes('telemetry')
+    || value.includes('connection is shut down')
+    || value.includes('broken pipe')
+    || value.includes('unexpected eof')
+    || value === 'eof'
 }
 
 export function App() {
@@ -88,11 +99,12 @@ export function App() {
   } = useAdminSession()
 
   const [tab, setTab] = useState<ControlTabKey>(() => inferTab(window.location.pathname))
-  const [loginToken, setLoginToken] = useState('')
   const [refreshInterval, setRefreshInterval] = usePersistentState<number>('admin-refresh-interval', 30000)
   const [telemetryHours, setTelemetryHours] = useUrlState<string>('hours', '168')
+  const [telemetryBucket, setTelemetryBucket] = useUrlState<string>('bucket', '1')
   const [benchmarkHours, setBenchmarkHours] = useUrlState<number>('benchmarkHours', 168)
   const [benchmarkModels, setBenchmarkModels] = useUrlState<string[]>('models', [])
+  const [logsHours, setLogsHours] = useUrlState<string>('logsHours', '24')
   const [selectedRevision, setSelectedRevision] = useState('')
   const isPageVisible = usePageVisibility()
 
@@ -131,6 +143,7 @@ export function App() {
     historyPayload,
     benchmark,
     benchmarkLoading,
+    logs,
     configError,
     overviewError,
     statusError,
@@ -138,6 +151,7 @@ export function App() {
     telemetryTimeseriesError,
     historyError,
     benchmarkError,
+    logsError,
     refetchOverview,
     refetchStatus,
     refetchTelemetry,
@@ -145,14 +159,16 @@ export function App() {
     refetchConfig,
     refetchHistory,
     refetchBenchmark,
-  } = useControlData(tab, telemetryHours, benchmarkHours, benchmarkModels, canAccessAdmin, handleUnauthorized)
+    refetchLogs,
+  } = useControlData(tab, telemetryHours, telemetryBucket, benchmarkHours, benchmarkModels, logsHours, canAccessAdmin, handleUnauthorized)
 
   const tabLabels = useMemo(
     () => [
       { key: 'overview' as ControlTabKey, label: t('tabs.overview') },
       { key: 'telemetry' as ControlTabKey, label: t('tabs.telemetry') },
-      { key: 'timeseries' as ControlTabKey, label: t('tabs.timeseries') },
+      { key: 'pricing' as ControlTabKey, label: t('tabs.pricing') },
       { key: 'benchmark' as ControlTabKey, label: t('tabs.benchmark') },
+      { key: 'logs' as ControlTabKey, label: t('tabs.logs') },
       { key: 'config' as ControlTabKey, label: t('tabs.config') },
     ],
     [t]
@@ -161,27 +177,27 @@ export function App() {
   const prefetchTabResources = useCallback((targetTab: ControlTabKey) => {
     switch (targetTab) {
       case 'overview':
-        void primeCache('/api/admin/overview', { ttl: 30000 })
-        void primeCache('/api/admin/status', { ttl: 30000 })
+        primeCacheSilently('/api/admin/overview', 30000)
+        primeCacheSilently('/api/admin/status', 30000)
         break
       case 'telemetry':
-        void primeCache(telemetryURL(telemetryHours), { ttl: 30000 })
-        void primeCache(telemetryTimeseriesURL(telemetryHours), { ttl: 30000 })
+      case 'pricing':
+        primeCacheSilently(telemetryURL(telemetryHours), 30000)
+        primeCacheSilently(telemetryTimeseriesURL(telemetryHours, telemetryBucket), 30000)
         break
-      case 'timeseries':
-        void primeCache('/api/admin/timeseries?hours=168&bucket=5', { ttl: 30000 })
-        void primeCache(historyTimeseriesURL(), { ttl: 60000 })
+      case 'logs':
+        primeCacheSilently(logsURL(logsHours), 30000)
         break
       case 'config':
-        void primeCache('/api/admin/config', { ttl: 60000 })
-        void primeCache('/api/admin/status', { ttl: 30000 })
-        void primeCache('/api/admin/config/history', { ttl: 60000 })
+        primeCacheSilently('/api/admin/config', 60000)
+        primeCacheSilently('/api/admin/status', 30000)
+        primeCacheSilently('/api/admin/config/history', 60000)
         break
       case 'benchmark':
-        void primeCache(benchmarkURL(benchmarkHours, benchmarkModels), { ttl: 30000 })
+        primeCacheSilently(benchmarkURL(benchmarkHours, benchmarkModels), 30000)
         break
     }
-  }, [telemetryHours, benchmarkHours, benchmarkModels])
+  }, [telemetryHours, telemetryBucket, logsHours, benchmarkHours, benchmarkModels])
 
   const handleTabChange = useCallback((nextTab: ControlTabKey) => {
     navigate(tabPaths[nextTab] + window.location.search, 'push')
@@ -230,6 +246,7 @@ export function App() {
     refetchConfig,
     refetchHistory,
     refetchBenchmark,
+    refetchLogs,
   })
 
   const {
@@ -248,17 +265,32 @@ export function App() {
     handleUnauthorized
   )
 
+  const refreshPricingStatus = useCallback(async () => {
+    await fetchJSON('/api/admin/pricing/refresh', {
+      method: 'POST',
+    })
+    await Promise.all([refetchStatus(), refetchTelemetry()])
+  }, [refetchStatus, refetchTelemetry])
+
+  const retryTelemetryState = useCallback(async () => {
+    await Promise.all([
+      refetchStatus(),
+      refetchOverview(),
+      refetchTelemetry(),
+      refetchTelemetryTimeseries(),
+      refetchBenchmark(),
+      refetchLogs(),
+    ])
+  }, [refetchBenchmark, refetchLogs, refetchOverview, refetchStatus, refetchTelemetry, refetchTelemetryTimeseries])
+
   const handleBenchmarkRefresh = useCallback(() => {
     void refetchBenchmark()
   }, [refetchBenchmark])
 
-  const handleLoginSubmit = useCallback(async (event: Event) => {
-    event.preventDefault()
-    const result = await login(loginToken)
-    if (result?.authenticated) {
-      setLoginToken('')
-    }
-  }, [login, loginToken])
+  const handleLogin = useCallback(async (token: string) => {
+    const result = await login(token)
+    return Boolean(result?.authenticated)
+  }, [login])
 
   const handleLogout = useCallback(() => {
     clearError()
@@ -270,6 +302,8 @@ export function App() {
     if (sessionError) return sessionError
     if (tab === 'overview') return overviewError?.message ?? statusError?.message ?? ''
     if (tab === 'telemetry') return telemetryError?.message ?? telemetryTimeseriesError?.message ?? ''
+    if (tab === 'logs') return logsError?.message ?? ''
+    if (tab === 'pricing') return telemetryError?.message ?? ''
     if (tab === 'config') return configError?.message ?? statusError?.message ?? historyError?.message ?? actionError
     if (tab === 'benchmark') return benchmarkError?.message ?? ''
     return ''
@@ -279,6 +313,7 @@ export function App() {
     canAccessAdmin,
     configError?.message,
     historyError?.message,
+    logsError?.message,
     overviewError?.message,
     sessionError,
     statusError?.message,
@@ -291,6 +326,12 @@ export function App() {
     ? status.gateway_readiness === 'ready' ? 'success' : 'warning'
     : status?.gateway_status === 'error' ? 'error' : 'neutral'
   const telemetryTone = status?.telemetry_status === 'connected' ? 'success' : 'neutral'
+  const inlineTelemetryState = Boolean(
+    status?.telemetry_status
+    && status.telemetry_status !== 'connected'
+    && (tab === 'overview' || tab === 'telemetry' || tab === 'pricing' || tab === 'logs' || tab === 'benchmark')
+  )
+  const hideActiveError = inlineTelemetryState && isTelemetryConnectionError(activeError)
 
   const refreshControls = (
     <div class="auto-refresh-controls">
@@ -317,7 +358,13 @@ export function App() {
         return (
           <>
             {refreshControls}
-            <OverviewTab overview={overview} />
+            <OverviewTab
+              overview={overview}
+              telemetryStatus={status?.telemetry_status}
+              telemetryError={status?.telemetry_error}
+              telemetryLastCheckedAt={status?.telemetry_last_checked_at}
+              onRetry={() => { void retryTelemetryState() }}
+            />
           </>
         )
       case 'telemetry':
@@ -329,11 +376,42 @@ export function App() {
               timeseries={telemetryTimeseries}
               hours={telemetryHours}
               onHoursChange={setTelemetryHours}
+              bucketMinutes={parseInt(telemetryBucket, 10) || 1}
+              onBucketChange={setTelemetryBucket}
+              telemetryStatus={status?.telemetry_status}
+              telemetryError={status?.telemetry_error}
+              telemetryLastCheckedAt={status?.telemetry_last_checked_at}
+              onRetry={() => { void retryTelemetryState() }}
             />
           </>
         )
-      case 'timeseries':
-        return <TimeSeriesTab />
+      case 'logs':
+        return (
+          <>
+            {refreshControls}
+            <LogsTab
+              telemetry={logs}
+              hours={logsHours}
+              onHoursChange={setLogsHours}
+              telemetryStatus={status?.telemetry_status}
+              telemetryError={status?.telemetry_error}
+              telemetryLastCheckedAt={status?.telemetry_last_checked_at}
+              onRetry={() => { void retryTelemetryState() }}
+            />
+          </>
+        )
+      case 'pricing':
+        return (
+          <>
+            {refreshControls}
+            <PricingTab
+              telemetry={telemetry}
+              status={status}
+              onRefreshPricing={refreshPricingStatus}
+              onRetry={() => { void retryTelemetryState() }}
+            />
+          </>
+        )
       case 'config':
         return (
           <ConfigTab
@@ -360,12 +438,16 @@ export function App() {
         return (
           <BenchmarkTab
             benchmark={benchmark}
+            status={status}
             benchmarkHours={benchmarkHours}
             benchmarkModels={benchmarkModels}
             benchmarkLoading={benchmarkLoading}
+            canWrite={canWrite}
             onHoursChange={setBenchmarkHours}
             onModelsChange={setBenchmarkModels}
             onRefresh={handleBenchmarkRefresh}
+            onRetry={() => { void retryTelemetryState() }}
+            onUnauthorized={handleUnauthorized}
           />
         )
     }
@@ -387,73 +469,35 @@ export function App() {
     refreshControls,
     selectedRevision,
     setTelemetryHours,
+    setTelemetryBucket,
     setBenchmarkHours,
     setBenchmarkModels,
+    setLogsHours,
     status,
     t,
+    logs,
+    logsHours,
     tab,
     telemetry,
     telemetryHours,
     telemetryTimeseries,
+    telemetryBucket,
   ])
 
-  const bgOrbs = (
-    <>
-      <div class="bg-orb bg-orb-1" aria-hidden="true" />
-      <div class="bg-orb bg-orb-2" aria-hidden="true" />
-      <div class="bg-orb bg-orb-3" aria-hidden="true" />
-    </>
-  )
+  if (sessionLoading) {
+    return <main class="app-shell login-shell" />
+  }
 
-  if (sessionLoading || !canAccessAdmin) {
+  if (!canAccessAdmin) {
     return (
       <>
-        {bgOrbs}
         <main class="app-shell login-shell">
-          <section class="login-panel">
-            <div class="login-panel-toolbar">
-              <LanguageSelector />
-              <ThemeToggle />
-            </div>
-            <div class="login-brand">
-              <BrandMark />
-              <div>
-                <div class="login-eyebrow">{t('header.title')}</div>
-                <h1>{t('auth.title')}</h1>
-              </div>
-            </div>
-
-            <p class="muted">
-              {sessionLoading ? t('auth.checking') : t('auth.subtitle')}
-            </p>
-
-            {!sessionLoading && (
-              <form class="login-form" onSubmit={handleLoginSubmit}>
-                <label>
-                  {t('auth.tokenLabel')}
-                  <input
-                    type="password"
-                    value={loginToken}
-                    placeholder={t('auth.tokenPlaceholder')}
-                    autoComplete="current-password"
-                    autoFocus
-                    disabled={loginBusy}
-                    onInput={(event) => {
-                      clearError()
-                      setLoginToken((event.currentTarget as HTMLInputElement).value)
-                    }}
-                  />
-                </label>
-
-                <button type="submit" disabled={loginBusy || !loginToken.trim()}>
-                  {loginBusy ? t('auth.submitting') : t('auth.submit')}
-                </button>
-              </form>
-            )}
-
-            {sessionError && <p class="error">{sessionError}</p>}
-            {!sessionLoading && <p class="muted login-help">{t('auth.hint')}</p>}
-          </section>
+          <LoginScreen
+            loginBusy={loginBusy}
+            sessionError={sessionError}
+            onClearError={clearError}
+            onLogin={handleLogin}
+          />
         </main>
 
         <ToastContainer toasts={toasts} onClose={removeToast} />
@@ -463,7 +507,6 @@ export function App() {
 
   return (
     <>
-      {bgOrbs}
       <main class="app-shell">
         <header class="topbar">
           <div class="topbar-brand">
@@ -484,8 +527,11 @@ export function App() {
                   onClick={() => handleTabChange(item.key)}
                   onMouseEnter={() => prefetchTabResources(item.key)}
                   onFocus={() => prefetchTabResources(item.key)}
+                  title={item.label}
+                  aria-current={tab === item.key ? 'page' : undefined}
                 >
-                  {TAB_ICONS[item.key]} {item.label}
+                  <Icon name={TAB_ICONS[item.key]} class="tab-icon" />
+                  <span>{item.label}</span>
                 </button>
               ))}
             </div>
@@ -510,7 +556,7 @@ export function App() {
                   <span class="status-badge neutral">
                     {session?.name ?? t('auth.sessionCurrent')} · {roleLabel(session?.role, t)}
                   </span>
-                  <button type="button" class="secondary" onClick={handleLogout} disabled={logoutBusy}>
+                  <button type="button" class="logout-btn" onClick={handleLogout} disabled={logoutBusy}>
                     {logoutBusy ? t('auth.loggingOut') : t('auth.logout')}
                   </button>
                 </>
@@ -521,7 +567,7 @@ export function App() {
           </div>
         </header>
 
-        {activeError && (
+        {activeError && !hideActiveError && (
           <section class="panel">
             <p class="error">{activeError}</p>
           </section>

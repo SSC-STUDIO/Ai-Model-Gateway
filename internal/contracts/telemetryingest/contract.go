@@ -88,6 +88,57 @@ type EventPayload struct {
 	// CompletionTokens is the number of output tokens generated.
 	CompletionTokens int64
 
+	// PricingStatus indicates whether cost is fixed, legacy-estimated, or unpriced.
+	PricingStatus string
+
+	// PricingSourceID identifies the official source snapshot or manual override.
+	PricingSourceID string
+
+	// PricingCurrency is the native pricing currency at request completion.
+	PricingCurrency string
+
+	// PricingFXRateToUSD is the FX rate used to normalize native currency to USD.
+	PricingFXRateToUSD float64
+
+	// PricingInputPer1M is the fixed prompt/input unit price per 1M tokens.
+	PricingInputPer1M float64
+
+	// PricingCachedInputPer1M is the fixed cached-input unit price per 1M tokens.
+	PricingCachedInputPer1M float64
+
+	// PricingOutputPer1M is the fixed completion/output unit price per 1M tokens.
+	PricingOutputPer1M float64
+
+	// PricingPromptCost is the fixed prompt/input cost in native currency.
+	PricingPromptCost float64
+
+	// PricingCompletionCost is the fixed completion/output cost in native currency.
+	PricingCompletionCost float64
+
+	// PricingTotalCost is the fixed total cost in native currency.
+	PricingTotalCost float64
+
+	// PricingPromptCostUSD is the fixed prompt/input cost normalized to USD.
+	PricingPromptCostUSD float64
+
+	// PricingCompletionCostUSD is the fixed completion/output cost normalized to USD.
+	PricingCompletionCostUSD float64
+
+	// PricingTotalCostUSD is the fixed total cost normalized to USD.
+	PricingTotalCostUSD float64
+
+	// SyntheticKind marks synthetic traffic that should be excluded from normal dashboards.
+	SyntheticKind string
+
+	// BenchmarkRunID identifies the benchmark verification run for synthetic traffic.
+	BenchmarkRunID string
+
+	// BenchmarkTargetID identifies the benchmark verification target for synthetic traffic.
+	BenchmarkTargetID string
+
+	// BenchmarkCaseID identifies the benchmark verification case for synthetic traffic.
+	BenchmarkCaseID string
+
 	// Stream indicates if this was a streaming request.
 	Stream bool
 

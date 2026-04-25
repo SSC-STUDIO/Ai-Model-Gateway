@@ -4,8 +4,10 @@ import { lttbSampling, type DataPoint } from '../utils/dataSampling'
 import { useChartInteraction } from '../hooks/useChartInteraction'
 import { useChartTooltip } from '../hooks/useChartTooltip'
 import { ChartFrame } from './ChartFrame'
+import { Icon } from './Icon'
 import {
   buildAreaPath,
+  buildChartAssetId,
   buildLinePath,
   buildTooltipState,
   clampActiveIndex,
@@ -54,7 +56,7 @@ function EmptyChart({
         <h3>{title}</h3>
       </div>
       <div class="chart-body chart-empty">
-        <div class="empty-state-icon" style={{ width: '56px', height: '56px', fontSize: '1.5rem' }}>📈</div>
+        <div class="empty-state-icon" style={{ width: '56px', height: '56px' }}><Icon name="chart" size={26} /></div>
         <div class="chart-empty-title">{message}</div>
         <div class="chart-empty-hint">{hint}</div>
       </div>
@@ -67,7 +69,19 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
   const normalizedData = useMemo(() => sanitizeDataPoints(data), [data])
   const sampledData = useMemo(() => lttbSampling(normalizedData, MAX_POINTS), [normalizedData])
   const labelIndices = useMemo(() => pickLabelIndices(sampledData.length, MAX_POINT_LABELS), [sampledData.length])
-  const gradientId = useMemo(() => `gradient-${title.replace(/\s+/g, '-')}-${color.replace(/[^a-z0-9]/gi, '')}`, [title, color])
+  const chartAssetKey = useMemo(() => Math.random().toString(36).slice(2, 10), [])
+  const fillGradientId = useMemo(
+    () => buildChartAssetId('line-fill', title, color, chartAssetKey),
+    [chartAssetKey, color, title]
+  )
+  const glowId = useMemo(
+    () => buildChartAssetId('line-glow', title, color, chartAssetKey),
+    [chartAssetKey, color, title]
+  )
+  const focusGradientId = useMemo(
+    () => buildChartAssetId('line-focus', title, color, chartAssetKey),
+    [chartAssetKey, color, title]
+  )
   const chartWidth = LINE_VIEWBOX_WIDTH - LINE_PADDING.left - LINE_PADDING.right
   const chartHeight = LINE_VIEWBOX_HEIGHT - LINE_PADDING.top - LINE_PADDING.bottom
   const domain = useMemo(() => getLineDomain(sampledData.map((point) => point.value)), [sampledData])
@@ -107,19 +121,20 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
   })
 
   const activePoint = interaction.activeIndex !== null ? sampledData[interaction.activeIndex] : null
-  const latestPoint = sampledData[sampledData.length - 1]
+  const latestPoint = sampledData[sampledData.length - 1]!
+  const metricPoint = activePoint ?? latestPoint
 
   if (sampledData.length === 0) {
     return <EmptyChart title={title} message={t('charts.lineEmpty')} hint={t('charts.lineEmptyHint')} />
   }
 
   return (
-    <div class="chart-container">
+    <div class="chart-container line-chart">
       <div class="chart-header">
         <h3>{title}</h3>
         <div class="chart-summary">
           <span class="chart-summary-label">{activePoint ? t('charts.current') : t('charts.latest')}</span>
-          <strong class="chart-summary-value">{formatPointLabel((activePoint ?? latestPoint).value)}{unit}</strong>
+          <strong class="chart-summary-value">{formatPointLabel(metricPoint.value)}{unit}</strong>
         </div>
       </div>
       <div
@@ -131,16 +146,30 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
       >
         <ChartFrame width={LINE_VIEWBOX_WIDTH} height={LINE_VIEWBOX_HEIGHT} ariaLabel={title ? `${title} chart` : 'Data chart'}>
           <defs>
-            <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color={color} stop-opacity="0.38" />
-              <stop offset="55%" stop-color={color} stop-opacity="0.12" />
+            <linearGradient id={fillGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color={color} stop-opacity="0.34" />
+              <stop offset="45%" stop-color={color} stop-opacity="0.18" />
               <stop offset="100%" stop-color={color} stop-opacity="0.02" />
             </linearGradient>
-            <filter id={`glow-${gradientId}`} x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="5.5" result="blur" />
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
             </filter>
+            <radialGradient id={focusGradientId} cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color={color} stop-opacity="0.32" />
+              <stop offset="55%" stop-color={color} stop-opacity="0.12" />
+              <stop offset="100%" stop-color={color} stop-opacity="0" />
+            </radialGradient>
           </defs>
+
+          <rect
+            class="chart-plot-backdrop"
+            x={LINE_PADDING.left}
+            y={LINE_PADDING.top}
+            width={chartWidth}
+            height={chartHeight}
+            rx="20"
+          />
 
           <g class="grid-lines">
             {Array.from({ length: 5 }).map((_, index) => {
@@ -148,34 +177,85 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
               return (
                 <line
                   key={index}
+                  class={`chart-grid-line${index === 4 ? ' is-baseline' : ''}`}
                   x1={LINE_PADDING.left}
                   y1={y}
                   x2={LINE_VIEWBOX_WIDTH - LINE_PADDING.right}
                   y2={y}
-                  stroke="var(--border-color)"
-                  stroke-opacity="0.3"
-                  stroke-dasharray="4 4"
                 />
               )
             })}
           </g>
 
+          {activePoint && interaction.activeIndex !== null && (
+            <rect
+              class="chart-focus-band"
+              x={xScale(interaction.activeIndex) - 9}
+              y={LINE_PADDING.top + 4}
+              width="18"
+              height={chartHeight - 8}
+              rx="9"
+              fill={color}
+              opacity="0.08"
+            />
+          )}
+
           {sampledData.length > 1 && (
             <path
+              class="chart-series-area"
               d={buildAreaPath(sampledData, xScale, yScale, LINE_PADDING.top + chartHeight)}
-              fill={`url(#${gradientId})`}
+              fill={`url(#${fillGradientId})`}
             />
           )}
           {sampledData.length > 1 && (
             <path
+              class="chart-series-line-glow"
               d={buildLinePath(sampledData, xScale, yScale)}
               fill="none"
               stroke={color}
-              stroke-width="2.4"
+              stroke-width="8"
               stroke-linecap="round"
               stroke-linejoin="round"
-              filter={`url(#glow-${gradientId})`}
+              filter={`url(#${glowId})`}
+              opacity="0.18"
             />
+          )}
+          {sampledData.length > 1 && (
+            <path
+              class="chart-series-line"
+              d={buildLinePath(sampledData, xScale, yScale)}
+              fill="none"
+              stroke={color}
+              stroke-width="3.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          )}
+          {sampledData.length === 1 && (
+            <>
+              <circle
+                cx={xScale(0)}
+                cy={yScale(sampledData[0].value)}
+                r="14"
+                fill={color}
+                opacity="0.14"
+              />
+              <circle
+                cx={xScale(0)}
+                cy={yScale(sampledData[0].value)}
+                r="8"
+                fill={color}
+                opacity="0.35"
+              />
+              <circle
+                cx={xScale(0)}
+                cy={yScale(sampledData[0].value)}
+                r="4.5"
+                fill={color}
+                stroke="var(--bg-primary)"
+                stroke-width="2.4"
+              />
+            </>
           )}
 
           {activePoint && interaction.activeIndex !== null && (
@@ -193,17 +273,30 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
               const x = xScale(index)
               const y = yScale(point.value)
               const highlighted = index === interaction.activeIndex
+              const marked = labelIndices.has(index)
               return (
-                <circle
-                  key={`${point.timestamp}-${index}`}
-                  cx={x}
-                  cy={y}
-                  r={highlighted ? 5.4 : labelIndices.has(index) ? 3.2 : 2.4}
-                  fill={color}
-                  opacity={highlighted || labelIndices.has(index) ? 1 : 0.45}
-                  stroke="var(--bg-primary)"
-                  stroke-width={highlighted ? 2.6 : 1.6}
-                />
+                <g key={`${point.timestamp}-${index}`}>
+                  {(highlighted || marked) && (
+                    <circle
+                      class="chart-series-point-shell"
+                      cx={x}
+                      cy={y}
+                      r={highlighted ? 8.5 : 5.4}
+                      fill={color}
+                      opacity={highlighted ? '0.16' : '0.10'}
+                    />
+                  )}
+                  <circle
+                    class={`chart-series-point${highlighted ? ' is-active' : marked ? ' is-key' : ''}`}
+                    cx={x}
+                    cy={y}
+                    r={highlighted ? 4.8 : marked ? 3.3 : 2.2}
+                    fill={color}
+                    opacity={highlighted || marked ? 1 : 0.5}
+                    stroke="var(--bg-primary)"
+                    stroke-width={highlighted ? 2.1 : 1.3}
+                  />
+                </g>
               )
             })}
           </g>
@@ -216,17 +309,12 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
               const placeBelow = y <= LINE_PADDING.top + 14
               return (
                 <text
+                  class={`chart-point-label${index === interaction.activeIndex ? ' is-active' : ''}`}
                   key={`label-${point.timestamp}-${index}`}
                   x={x}
                   y={placeBelow ? y + 10 : y - 10}
                   text-anchor="middle"
                   dominant-baseline={placeBelow ? 'hanging' : 'auto'}
-                  fill="var(--text-primary)"
-                  stroke="var(--bg-primary)"
-                  stroke-width={index === interaction.activeIndex ? 3.8 : 3}
-                  paint-order="stroke"
-                  font-size="11"
-                  font-weight={index === interaction.activeIndex ? '700' : '600'}
                 >
                   {`${formatPointLabel(point.value)}${unit}`}
                 </text>
@@ -237,21 +325,28 @@ const LineChartComponent = ({ data, title, color = '#3b82f6', unit = '' }: Chart
           {activePoint && interaction.activeIndex !== null && (
             <>
               <circle
+                class="chart-focus-halo"
+                cx={xScale(interaction.activeIndex)}
+                cy={yScale(activePoint.value)}
+                r="16"
+                fill={`url(#${focusGradientId})`}
+              />
+              <circle
                 class="chart-focus-dot"
                 cx={xScale(interaction.activeIndex)}
                 cy={yScale(activePoint.value)}
-                r="7"
+                r="9"
                 fill={color}
-                opacity="0.18"
+                opacity="0.22"
               />
               <circle
                 class="chart-focus-dot-inner"
                 cx={xScale(interaction.activeIndex)}
                 cy={yScale(activePoint.value)}
-                r="4.5"
+                r="4.8"
                 fill={color}
                 stroke="var(--bg-primary)"
-                stroke-width="2"
+                stroke-width="2.2"
               />
             </>
           )}
@@ -302,27 +397,32 @@ const DonutChartComponent = ({ data, title, singleRowLegend = false }: DonutChar
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
   const segments = useMemo(
-    () => sanitizeLabeledValues(data).filter((segment) => segment.value > 0),
+    () => sanitizeLabeledValues(data).filter((segment) => segment.value >= 0),
     [data]
   )
   const total = useMemo(() => segments.reduce((sum, segment) => sum + segment.value, 0), [segments])
+  const allZero = segments.length > 0 && total === 0
 
   const arcs = useMemo(() => {
     let currentAngle = -Math.PI / 2
     return segments.map((segment) => {
-      const angle = total > 0 ? (segment.value / total) * Math.PI * 2 : 0
+      const angle = allZero
+        ? (Math.PI * 2) / segments.length
+        : total > 0
+          ? (segment.value / total) * Math.PI * 2
+          : 0
       const startAngle = currentAngle
       const endAngle = currentAngle + angle
       currentAngle = endAngle
       return {
         ...segment,
-        pct: total > 0 ? (segment.value / total) * 100 : 0,
+        pct: allZero ? 100 / segments.length : total > 0 ? (segment.value / total) * 100 : 0,
         startAngle,
         endAngle,
         midAngle: startAngle + angle / 2,
       }
     })
-  }, [segments, total])
+  }, [segments, total, allZero])
 
   const activeSegment = activeIndex !== null ? arcs[activeIndex] : null
 
@@ -347,7 +447,7 @@ const DonutChartComponent = ({ data, title, singleRowLegend = false }: DonutChar
     }
   }, [arcs.length])
 
-  if (arcs.length === 0 || total <= 0) {
+  if (arcs.length === 0) {
     return <EmptyChart title={title} message={t('charts.donutEmpty')} hint={t('charts.donutEmptyHint')} />
   }
 
@@ -363,7 +463,8 @@ const DonutChartComponent = ({ data, title, singleRowLegend = false }: DonutChar
 
       <div
         class="chart-body interactive donut-body"
-        tabIndex={0}
+        tabIndex={arcs.length === 0 ? -1 : 0}
+        aria-disabled={arcs.length === 0 ? 'true' : undefined}
         onFocus={() => setActiveIndex((prev) => prev ?? 0)}
         onBlur={() => setActiveIndex(null)}
         onKeyDown={handleKeyboard}
@@ -455,34 +556,45 @@ interface BarChartProps {
   horizontal?: boolean
 }
 
+// Unified chart color palette — matches LineChart accent system
+const BAR_PALETTE = [
+  '#2b4f7c', '#2f7b5b', '#a5622a', '#c24a3d',
+  '#8661c5', '#0f8b8d', '#b3477a', '#64748b',
+]
+
+const BAR_VIEWBOX_WIDTH = 460
+const BAR_VIEWBOX_HEIGHT = 240
+const BAR_PADDING = { top: 32, right: 24, bottom: 52, left: 56 }
+const BAR_H_PADDING = { top: 32, right: 28, bottom: 32, left: 128 }
+
 const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarChartProps) => {
   const { t } = useI18n()
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
-  const palette = useMemo(
-    () => ['#2b4f7c', '#2f7b5b', '#a5622a', '#c24a3d', '#8661c5', '#0f8b8d', '#b3477a', '#64748b'],
-    []
-  )
+  const chartAssetKey = useMemo(() => Math.random().toString(36).slice(2, 10), [])
+
   const chartData = useMemo(() => sanitizeLabeledValues(data), [data])
   const colors = useMemo(
-    () => chartData.map((item, index) => item.color || palette[index % palette.length]),
-    [chartData, palette]
+    () => chartData.map((item, index) => item.color || BAR_PALETTE[index % BAR_PALETTE.length]),
+    [chartData]
   )
   const domain = useMemo(() => getBarDomain(chartData.map((item) => item.value)), [chartData])
-  const chartWidth = horizontal ? 460 : 460
-  const chartHeight = horizontal ? Math.max(240, 52 + chartData.length * 34) : 240
-  const padding = horizontal
-    ? { top: 24, right: 28, bottom: 24, left: 128 }
-    : { top: 24, right: 24, bottom: 64, left: 56 }
+
+  const chartWidth = BAR_VIEWBOX_WIDTH
+  const chartHeight = horizontal
+    ? Math.max(BAR_VIEWBOX_HEIGHT, 52 + chartData.length * 36)
+    : BAR_VIEWBOX_HEIGHT
+  const padding = horizontal ? BAR_H_PADDING : BAR_PADDING
   const drawableWidth = chartWidth - padding.left - padding.right
   const drawableHeight = chartHeight - padding.top - padding.bottom
   const range = domain.max - domain.min || 1
   const zeroRatio = clamp((0 - domain.min) / range, 0, 1)
   const zeroX = padding.left + zeroRatio * drawableWidth
   const zeroY = padding.top + drawableHeight - zeroRatio * drawableHeight
-  const peakItem = useMemo(() => {
+
+  const maxItem = useMemo(() => {
     if (chartData.length === 0) return null
     return chartData.reduce((best, item) =>
-      Math.abs(item.value) > Math.abs(best.value) ? item : best
+      item.value > best.value ? item : best
     )
   }, [chartData])
 
@@ -578,9 +690,9 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
       <div class="chart-header">
         <h3>{title}</h3>
         <div class="chart-summary">
-          <span class="chart-summary-label">{t('charts.barPeak')}</span>
+          <span class="chart-summary-label">{t('charts.barMax')}</span>
           <strong class="chart-summary-value">
-            {peakItem ? `${formatPointLabel(peakItem.value)}${unit}` : `0${unit}`}
+            {maxItem ? `${formatPointLabel(maxItem.value)}${unit}` : `0${unit}`}
           </strong>
         </div>
       </div>
@@ -596,6 +708,26 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
         }}
       >
         <ChartFrame width={chartWidth} height={chartHeight} ariaLabel={title ? `${title} chart` : 'Bar chart'}>
+          <defs>
+            {chartData.map((_, index) => {
+              const c = colors[index]
+              const gradId = buildChartAssetId('bar-grad', `${title}-${index}`, c, chartAssetKey)
+              return (
+                <linearGradient
+                  key={`grad-${index}`}
+                  id={gradId}
+                  x1="0%"
+                  y1="0%"
+                  x2={horizontal ? '100%' : '0%'}
+                  y2={horizontal ? '0%' : '100%'}
+                >
+                  <stop offset="0%" stop-color={c} stop-opacity="0.92" />
+                  <stop offset="100%" stop-color={c} stop-opacity="0.62" />
+                </linearGradient>
+              )
+            })}
+          </defs>
+
           <g class="grid-lines">
             {Array.from({ length: 5 }).map((_, index) => {
               if (horizontal) {
@@ -608,7 +740,7 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
                     x2={x}
                     y2={chartHeight - padding.bottom}
                     stroke="var(--border-color)"
-                    stroke-opacity="0.3"
+                    stroke-opacity="0.25"
                     stroke-dasharray="4 4"
                   />
                 )
@@ -622,7 +754,7 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
                   x2={chartWidth - padding.right}
                   y2={y}
                   stroke="var(--border-color)"
-                  stroke-opacity="0.3"
+                  stroke-opacity="0.25"
                   stroke-dasharray="4 4"
                 />
               )
@@ -637,34 +769,38 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
 
           {chartData.map((item, index) => {
             const active = index === activeIndex
+            const gradId = buildChartAssetId('bar-grad', `${title}-${index}`, colors[index], chartAssetKey)
             if (horizontal) {
               const barSlot = drawableHeight / Math.max(1, chartData.length)
-              const barHeight = barSlot * 0.72
+              const barHeight = Math.min(barSlot * 0.68, 48)
               const y = padding.top + index * barSlot + (barSlot - barHeight) / 2
               const barWidth = (Math.abs(item.value) / range) * drawableWidth
               const x = item.value >= 0 ? zeroX : zeroX - barWidth
               return (
                 <g key={`${item.label}-${index}`}>
                   <text
-                    x={padding.left - 8}
+                    x={padding.left - 10}
                     y={y + barHeight / 2}
                     text-anchor="end"
                     dominant-baseline="middle"
-                    fill="var(--text-primary)"
+                    fill="var(--text-secondary)"
                     font-size="11"
-                    font-weight={active ? '700' : '600'}
+                    font-weight={active ? '700' : '500'}
+                    opacity={activeIndex === null || active ? 1 : 0.65}
+                    title={item.label}
                   >
                     {truncateLabel(item.label, 16)}
                   </text>
                   <rect
+                    class="bar-rect"
                     x={x}
                     y={y}
                     width={Math.max(barWidth, 2)}
                     height={barHeight}
-                    rx="10"
-                    fill={colors[index]}
-                    opacity={activeIndex === null || active ? 0.96 : 0.58}
-                    stroke={active ? 'var(--bg-primary)' : 'transparent'}
+                    rx="6"
+                    fill={`url(#${gradId})`}
+                    opacity={activeIndex === null || active ? 1 : 0.45}
+                    stroke={active ? colors[index] : 'transparent'}
                     stroke-width={active ? 2 : 0}
                     onPointerEnter={() => setActiveIndex(index)}
                     onPointerDown={() => setActiveIndex(index)}
@@ -675,30 +811,31 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
                     y={y + barHeight / 2}
                     text-anchor={item.value >= 0 ? 'start' : 'end'}
                     dominant-baseline="middle"
+                    opacity={activeIndex === null || active ? 1 : 0.55}
                   >
-                    {formatPointLabel(item.value)}
-                    {unit}
+                    {formatPointLabel(item.value)}{unit}
                   </text>
                 </g>
               )
             }
 
             const barSlot = drawableWidth / Math.max(1, chartData.length)
-            const barWidth = barSlot * 0.7
+            const barWidth = Math.min(barSlot * 0.65, 80)
             const x = padding.left + index * barSlot + (barSlot - barWidth) / 2
             const valueHeight = (Math.abs(item.value) / range) * drawableHeight
             const y = item.value >= 0 ? zeroY - valueHeight : zeroY
             return (
               <g key={`${item.label}-${index}`}>
                 <rect
+                  class="bar-rect"
                   x={x}
                   y={y}
                   width={barWidth}
                   height={Math.max(valueHeight, 2)}
-                  rx="10"
-                  fill={colors[index]}
-                  opacity={activeIndex === null || active ? 0.96 : 0.58}
-                  stroke={active ? 'var(--bg-primary)' : 'transparent'}
+                  rx="6"
+                  fill={`url(#${gradId})`}
+                  opacity={activeIndex === null || active ? 1 : 0.45}
+                  stroke={active ? colors[index] : 'transparent'}
                   stroke-width={active ? 2 : 0}
                   onPointerEnter={() => setActiveIndex(index)}
                   onPointerDown={() => setActiveIndex(index)}
@@ -706,21 +843,23 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
                 <text
                   class="bar-value-label"
                   x={x + barWidth / 2}
-                  y={item.value >= 0 ? y - 8 : y + valueHeight + 14}
+                  y={item.value >= 0 ? y - 10 : y + valueHeight + 14}
                   text-anchor="middle"
+                  opacity={activeIndex === null || active ? 1 : 0.55}
                 >
-                  {formatPointLabel(item.value)}
-                  {unit}
+                  {formatPointLabel(item.value)}{unit}
                 </text>
                 <text
                   x={x + barWidth / 2}
-                  y={chartHeight - 10}
+                  y={chartHeight - 14}
                   text-anchor="middle"
-                  fill="var(--text-primary)"
+                  fill="var(--text-secondary)"
                   font-size="10"
-                  font-weight={active ? '700' : '600'}
+                  font-weight={active ? '700' : '500'}
+                  opacity={activeIndex === null || active ? 1 : 0.65}
+                  title={item.label}
                 >
-                  {truncateLabel(item.label, 9)}
+                  {truncateLabel(item.label, 10)}
                 </text>
               </g>
             )
@@ -747,3 +886,4 @@ const BarChartComponent = ({ data, title, unit = '', horizontal = false }: BarCh
 export const BarChart = memo(BarChartComponent)
 
 export { HistoryChart } from './HistoryChart'
+export { TimeSeriesChart } from './TimeSeriesChart'

@@ -97,6 +97,7 @@ type GatewayResponse struct {
 // Provider represents an upstream AI model provider endpoint.
 type Provider struct {
 	Name             string            `yaml:"name"              json:"name"`
+	ProtocolAdapter  string            `yaml:"protocol_adapter"  json:"protocol_adapter,omitempty"`
 	BaseURL          string            `yaml:"base_url"          json:"base_url"`
 	AnthropicBaseURL string            `yaml:"anthropic_base_url" json:"anthropic_base_url,omitempty"`
 	APIKey           string            `yaml:"api_key"           json:"-"`

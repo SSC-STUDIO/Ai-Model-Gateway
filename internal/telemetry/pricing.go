@@ -8,6 +8,12 @@ import (
 
 const OfficialPricingURL = "https://openai.com/api/pricing/"
 
+const (
+	PricingStatusFixed           = "fixed"
+	PricingStatusEstimatedLegacy = "estimated_legacy"
+	PricingStatusUnpriced        = "unpriced"
+)
+
 type Pricing struct {
 	Currency            string  `json:"currency,omitempty"`
 	InputPer1M          float64 `json:"input_per_1m"`
@@ -17,6 +23,8 @@ type Pricing struct {
 	CachedInputPer1MUsd float64 `json:"cached_input_per_1m_usd,omitempty"`
 	OutputPer1MUsd      float64 `json:"output_per_1m_usd,omitempty"`
 	Source              string  `json:"source,omitempty"`
+	SourceID            string  `json:"source_id,omitempty"`
+	FXRateToUSD         float64 `json:"fx_rate_to_usd,omitempty"`
 }
 
 type PricingCost struct {
@@ -30,14 +38,16 @@ type PricingCost struct {
 }
 
 type PricingModelSummary struct {
-	DisplayModel   string      `json:"display_model"`
-	RequestedModel string      `json:"requested_model,omitempty"`
-	EffectiveModel string      `json:"effective_model,omitempty"`
-	Upstream       string      `json:"upstream,omitempty"`
-	PricingModel   string      `json:"pricing_model,omitempty"`
-	Usage          Usage       `json:"usage"`
-	Pricing        *Pricing    `json:"pricing,omitempty"`
-	Cost           PricingCost `json:"cost"`
+	DisplayModel    string      `json:"display_model"`
+	RequestedModel  string      `json:"requested_model,omitempty"`
+	EffectiveModel  string      `json:"effective_model,omitempty"`
+	Upstream        string      `json:"upstream,omitempty"`
+	PricingModel    string      `json:"pricing_model,omitempty"`
+	PricingStatus   string      `json:"pricing_status,omitempty"`
+	PricingSourceID string      `json:"pricing_source_id,omitempty"`
+	Usage           Usage       `json:"usage"`
+	Pricing         *Pricing    `json:"pricing,omitempty"`
+	Cost            PricingCost `json:"cost"`
 }
 
 type PricingCurrencySummary struct {
@@ -62,15 +72,24 @@ type PricingSummary struct {
 	CacheSavingsUsd    float64                  `json:"cache_savings_usd,omitempty"`
 	PricedModels       int                      `json:"priced_models"`
 	UnpricedModels     int                      `json:"unpriced_models"`
+	ExactTotalUsd      float64                  `json:"exact_total_usd,omitempty"`
+	EstimatedTotalUsd  float64                  `json:"estimated_total_usd,omitempty"`
+	ExactRequests      int64                    `json:"exact_requests,omitempty"`
+	EstimatedRequests  int64                    `json:"estimated_requests,omitempty"`
+	ExactModels        int                      `json:"exact_models,omitempty"`
+	EstimatedModels    int                      `json:"estimated_models,omitempty"`
 	TotalsByCurrency   []PricingCurrencySummary `json:"totals_by_currency,omitempty"`
 }
 
 type PricingCatalogSnapshot struct {
-	SourceURL     string             `json:"source_url,omitempty"`
-	UpdatedAt     time.Time          `json:"updated_at,omitempty"`
-	LastAttemptAt time.Time          `json:"last_attempt_at,omitempty"`
-	LastError     string             `json:"last_error,omitempty"`
-	Catalog       map[string]Pricing `json:"catalog"`
+	SourceURL      string                        `json:"source_url,omitempty"`
+	UpdatedAt      time.Time                     `json:"updated_at,omitempty"`
+	LastAttemptAt  time.Time                     `json:"last_attempt_at,omitempty"`
+	LastError      string                        `json:"last_error,omitempty"`
+	Catalog        map[string]Pricing            `json:"catalog"`
+	Sources        []PricingSourceState          `json:"sources,omitempty"`
+	FX             PricingFXSnapshot             `json:"fx,omitempty"`
+	SourceCatalogs map[string]map[string]Pricing `json:"source_catalogs,omitempty"`
 }
 
 type PricingSnapshot struct {
@@ -82,6 +101,30 @@ type PricingSnapshot struct {
 	Models        []PricingModelSummary `json:"models"`
 	Catalog       map[string]Pricing    `json:"catalog"`
 	RouteCatalog  map[string]Pricing    `json:"route_catalog"`
+	Sources       []PricingSourceState  `json:"sources,omitempty"`
+	FX            PricingFXSnapshot     `json:"fx,omitempty"`
+}
+
+type PricingSourceState struct {
+	ID            string    `json:"id"`
+	Vendor        string    `json:"vendor"`
+	URL           string    `json:"url,omitempty"`
+	Enabled       bool      `json:"enabled"`
+	Status        string    `json:"status,omitempty"`
+	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+	LastAttemptAt time.Time `json:"last_attempt_at,omitempty"`
+	LastError     string    `json:"last_error,omitempty"`
+	ModelCount    int       `json:"model_count,omitempty"`
+}
+
+type PricingFXSnapshot struct {
+	Enabled       bool               `json:"enabled"`
+	SourceURL     string             `json:"source_url,omitempty"`
+	BaseCurrency  string             `json:"base_currency,omitempty"`
+	UpdatedAt     time.Time          `json:"updated_at,omitempty"`
+	LastAttemptAt time.Time          `json:"last_attempt_at,omitempty"`
+	LastError     string             `json:"last_error,omitempty"`
+	RatesToUSD    map[string]float64 `json:"rates_to_usd,omitempty"`
 }
 
 type pricingCurrencyAccumulator struct {
@@ -332,6 +375,7 @@ func BootstrapPricingCatalog() map[string]Pricing {
 		"gpt-5.4":                    pricing(2.50, 0.25, 15.00),
 		"gpt-5.4-mini":               pricing(0.75, 0.075, 4.50),
 		"gpt-5.4-nano":               pricing(0.20, 0.020, 1.25),
+		"gpt-5.5":                    pricing(5.00, 0.50, 30.00),
 		"o1":                         pricing(15.00, 7.50, 60.00),
 		"o1-mini":                    pricing(1.10, 0.55, 4.40),
 		"o1-preview":                 pricing(15.00, 7.50, 60.00),
@@ -360,11 +404,16 @@ func BootstrapPricingCatalog() map[string]Pricing {
 		"kimi-k2-thinking":           priced("CNY", 4.00, 1.00, 16.00),
 		"kimi-k2-0711-preview":       priced("CNY", 4.00, 1.00, 16.00),
 		"kimi-k2-0905-preview":       priced("CNY", 4.00, 1.00, 16.00),
-		"kimi-k2.5":                  priced("CNY", 2.40, 0.60, 10.00),
-		"kimi-k2.5-preview":          priced("CNY", 2.40, 0.60, 10.00),
+		"kimi-k2.5":                  pricing(0.60, 0.10, 3.00),
+		"kimi-k2.5-preview":          pricing(0.60, 0.10, 3.00),
+		"kimi-k2.6":                  pricing(0.95, 0.16, 4.00),
 		"glm-4.5":                    priced("CNY", 0.80, 0, 2.00),
 		"glm-4.5-air":                priced("CNY", 0.80, 0, 2.00),
 		"glm-4.5-flash":              priced("CNY", 0, 0, 0),
+		"glm-5":                      priced("CNY", 1.00, 0.20, 3.00),
+		"glm-5.1":                    priced("CNY", 1.00, 0.20, 3.00),
+		"glm-5-air":                  priced("CNY", 0.50, 0.10, 1.50),
+		"glm-5-flash":                priced("CNY", 0, 0, 0),
 	}
 }
 

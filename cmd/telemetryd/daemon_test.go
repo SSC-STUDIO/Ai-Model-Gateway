@@ -176,15 +176,15 @@ func TestAppendEvents(t *testing.T) {
 func TestDaemonWithEventLog(t *testing.T) {
 	dataDir := t.TempDir()
 	eventLogPath := filepath.Join(dataDir, "events.db")
-	
+
 	eventLog, err := eventlog.New(eventLogPath)
 	if err != nil {
 		t.Fatalf("eventlog.New() error = %v", err)
 	}
 
 	d := &Daemon{
-		config:   Config{DataDir: dataDir},
-		eventLog: eventLog,
+		config:    Config{DataDir: dataDir},
+		eventLog:  eventLog,
 		startedAt: time.Now(),
 	}
 

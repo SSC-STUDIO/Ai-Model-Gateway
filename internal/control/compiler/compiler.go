@@ -14,15 +14,18 @@ import (
 )
 
 const (
-	compilerVersion                 = "1.0.0"
-	publicAPIOpenAIChatCompletions  = "openai_chat_completions"
-	telemetryChannel                = "telemetry-ingest"
-	credentialKindBearer            = "bearer"
-	credentialKindAPIKey            = "api_key"
-	usageAccountingOpenAI           = "openai_usage"
-	errorClassifierOpenAI           = "openai_error"
-	defaultQuotaRecoveryIntervalMin = 60
-	minimumQuotaRecoveryIntervalMin = 5
+	compilerVersion                  = "1.0.0"
+	publicAPIOpenAIChatCompletions   = "openai_chat_completions"
+	protocolAdapterAnthropicMessages = "anthropic_messages"
+	telemetryChannel                 = "telemetry-ingest"
+	credentialKindBearer             = "bearer"
+	credentialKindAPIKey             = "api_key"
+	usageAccountingOpenAI            = "openai_usage"
+	errorClassifierOpenAI            = "openai_error"
+	usageAccountingAnthropic         = "anthropic_usage"
+	errorClassifierAnthropic         = "anthropic_error"
+	defaultQuotaRecoveryIntervalMin  = 60
+	minimumQuotaRecoveryIntervalMin  = 5
 )
 
 var gatewayEnabledRoutes = []string{
@@ -115,6 +118,7 @@ func (c *Compiler) CompileFromConfig(cfg interface{}) (*snapshot.Snapshot, error
 				FlushIntervalMs: int(telemetryDefaults.FlushInterval / time.Millisecond),
 			},
 		},
+		Pricing: compilePricing(normalized.Pricing),
 	}
 
 	for i, provider := range normalized.Providers {
@@ -192,6 +196,9 @@ func cloneConfig(src *core.Config) core.Config {
 	if len(src.Pricing.ManualPrices) > 0 {
 		cloned.Pricing.ManualPrices = append([]core.PricingManualPrice(nil), src.Pricing.ManualPrices...)
 	}
+	if len(src.Pricing.Sources) > 0 {
+		cloned.Pricing.Sources = append([]core.PricingSourceConfig(nil), src.Pricing.Sources...)
+	}
 	if src.Compat.Fallback.Models != nil {
 		cloned.Compat.Fallback.Models = cloneStringMap(src.Compat.Fallback.Models)
 	}
@@ -211,6 +218,48 @@ func compileIngress(cfg core.ServerConfig) snapshot.IngressConfig {
 		IdleTimeoutMs:  cfg.IdleTimeoutMs,
 		MaxBodyBytes:   cfg.MaxBodyBytes,
 	}
+}
+
+func compilePricing(cfg core.PricingConfig) snapshot.PricingConfig {
+	result := snapshot.PricingConfig{
+		CachePath:              cfg.CachePath,
+		RefreshIntervalMinutes: cfg.RefreshIntervalMinutes,
+		RequestTimeoutMs:       cfg.RequestTimeoutMs,
+		FX: snapshot.PricingFXConfig{
+			Enabled:                cfg.FX.IsEnabled(),
+			CachePath:              cfg.FX.CachePath,
+			RefreshIntervalMinutes: cfg.FX.RefreshIntervalMinutes,
+		},
+	}
+	if len(cfg.Sources) > 0 {
+		result.Sources = make([]snapshot.PricingSource, 0, len(cfg.Sources))
+		for _, source := range cfg.Sources {
+			result.Sources = append(result.Sources, snapshot.PricingSource{
+				ID:                     source.ID,
+				Vendor:                 source.Vendor,
+				URL:                    source.URL,
+				Enabled:                source.IsEnabled(),
+				TimeoutMs:              source.TimeoutMs,
+				RefreshIntervalMinutes: source.RefreshIntervalMinutes,
+			})
+		}
+	}
+	if len(cfg.ManualPrices) > 0 {
+		result.ManualPrices = make([]snapshot.PricingManualPrice, 0, len(cfg.ManualPrices))
+		for _, manual := range cfg.ManualPrices {
+			result.ManualPrices = append(result.ManualPrices, snapshot.PricingManualPrice{
+				Provider:         manual.Provider,
+				Model:            manual.Model,
+				Currency:         manual.Currency,
+				InputPer1M:       manual.InputPer1M,
+				CachedInputPer1M: manual.CachedInputPer1M,
+				OutputPer1M:      manual.OutputPer1M,
+				Enabled:          manual.IsEnabled(),
+				Source:           manual.Source,
+			})
+		}
+	}
+	return result
 }
 
 func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
@@ -312,9 +361,17 @@ func compileProvider(provider core.Provider, index int) (snapshot.ProviderSnapsh
 		}
 	}
 
+	protocolAdapter := core.NormalizeProtocolAdapter(provider.ProtocolAdapter, provider.AnthropicBaseURL)
+	usageAccounting := usageAccountingOpenAI
+	errorClassifier := errorClassifierOpenAI
+	if protocolAdapter == protocolAdapterAnthropicMessages {
+		usageAccounting = usageAccountingAnthropic
+		errorClassifier = errorClassifierAnthropic
+	}
+
 	return snapshot.ProviderSnapshot{
 		ProviderID:       providerID,
-		ProtocolAdapter:  publicAPIOpenAIChatCompletions,
+		ProtocolAdapter:  protocolAdapter,
 		BaseURL:          baseURL,
 		AnthropicBaseURL: anthropicBaseURL,
 		Credentials:      compileCredentials(provider),
@@ -323,8 +380,8 @@ func compileProvider(provider core.Provider, index int) (snapshot.ProviderSnapsh
 		CapabilityTable: snapshot.CapabilityTable{
 			SupportsChatCompletions: true,
 			SupportsStreaming:       true,
-			UsageAccounting:         usageAccountingOpenAI,
-			ErrorClassifier:         errorClassifierOpenAI,
+			UsageAccounting:         usageAccounting,
+			ErrorClassifier:         errorClassifier,
 		},
 		ExecutionPolicy: snapshot.ExecutionPolicy{
 			Enabled:       provider.IsEnabled(),
@@ -344,7 +401,8 @@ func compileCredentials(provider core.Provider) snapshot.Credentials {
 	}
 
 	// When AnthropicBaseURL is set, use api_key credential type with x-api-key header
-	if strings.TrimSpace(provider.AnthropicBaseURL) != "" {
+	if strings.TrimSpace(provider.AnthropicBaseURL) != "" ||
+		core.NormalizeProtocolAdapter(provider.ProtocolAdapter, provider.AnthropicBaseURL) == protocolAdapterAnthropicMessages {
 		return snapshot.Credentials{
 			Kind:       credentialKindAPIKey,
 			Value:      apiKey,

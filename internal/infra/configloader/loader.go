@@ -67,6 +67,7 @@ func loadFromBytes(path string, data []byte) (*core.Config, error) {
 	baseDir := filepath.Dir(path)
 	cfg.Telemetry.SQLitePath = resolveConfigPath(baseDir, cfg.Telemetry.SQLitePath)
 	cfg.Pricing.CachePath = resolveConfigPath(baseDir, cfg.Pricing.CachePath)
+	cfg.Pricing.FX.CachePath = resolveConfigPath(baseDir, cfg.Pricing.FX.CachePath)
 	return cfg, nil
 }
 

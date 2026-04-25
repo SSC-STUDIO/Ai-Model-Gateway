@@ -15,8 +15,7 @@ describe('useCachedFetch', () => {
   it('starts loading then resolves data', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      text: vi.fn().mockResolvedValue(''),
-      json: vi.fn().mockResolvedValue({ value: 42 }),
+      text: vi.fn().mockResolvedValue('{"value":42}'),
     })
     vi.stubGlobal('fetch', mockFetch)
 
@@ -68,8 +67,7 @@ describe('useCachedFetch', () => {
       callCount++
       return Promise.resolve({
         ok: true,
-        text: vi.fn().mockResolvedValue(''),
-        json: vi.fn().mockResolvedValue({ count: callCount }),
+        text: vi.fn().mockResolvedValue(JSON.stringify({ count: callCount })),
       })
     })
     vi.stubGlobal('fetch', mockFetch)
@@ -95,8 +93,7 @@ describe('useCachedFetch', () => {
       await promise
       return {
         ok: true,
-        text: vi.fn().mockResolvedValue(''),
-        json: vi.fn().mockResolvedValue({ dedup: true }),
+        text: vi.fn().mockResolvedValue('{"dedup":true}'),
       }
     })
     vi.stubGlobal('fetch', mockFetch)
@@ -131,8 +128,7 @@ describe('primeCache', () => {
   it('fetches and caches data', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      text: vi.fn().mockResolvedValue(''),
-      json: vi.fn().mockResolvedValue({ primed: true }),
+      text: vi.fn().mockResolvedValue('{"primed":true}'),
     })
     vi.stubGlobal('fetch', mockFetch)
 
@@ -149,8 +145,7 @@ describe('primeCache', () => {
   it('force refetches when requested', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      text: vi.fn().mockResolvedValue(''),
-      json: vi.fn().mockResolvedValue({ version: 1 }),
+      text: vi.fn().mockResolvedValue('{"version":1}'),
     })
     vi.stubGlobal('fetch', mockFetch)
 
@@ -168,8 +163,7 @@ describe('invalidateCache', () => {
   it('invalidates by exact string', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      text: vi.fn().mockResolvedValue(''),
-      json: vi.fn().mockResolvedValue({}),
+      text: vi.fn().mockResolvedValue('{}'),
     })
     vi.stubGlobal('fetch', mockFetch)
 
@@ -182,8 +176,7 @@ describe('invalidateCache', () => {
   it('invalidates by regex pattern', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
-      text: vi.fn().mockResolvedValue(''),
-      json: vi.fn().mockResolvedValue({}),
+      text: vi.fn().mockResolvedValue('{}'),
     })
     vi.stubGlobal('fetch', mockFetch)
 

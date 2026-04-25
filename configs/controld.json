@@ -1,1 +1,8 @@
-{"listen": "127.0.0.1:18085", "gateway_socket": "/run/user/1000/gateway-control.sock", "telemetry_socket": "/run/user/1000/telemetry-query.sock", "data_dir": "data/control", "config_path": "configs/config.yaml", "log_level": "info"}
+{
+  "listen": "127.0.0.1:18081",
+  "gateway_socket": ".gateway-runtime/gateway-control.sock",
+  "telemetry_socket": ".gateway-runtime/telemetry-query.sock",
+  "data_dir": ".gateway-runtime/control",
+  "config_path": "configs/config.yaml",
+  "log_level": "info"
+}

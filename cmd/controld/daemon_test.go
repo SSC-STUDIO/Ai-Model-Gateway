@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -652,52 +653,105 @@ func TestWriteAdminAuthErrorBrowserPath(t *testing.T) {
 	}
 }
 
-func TestMaybeBootstrapAdminCookie(t *testing.T) {
-	configPath := writeAdminAuthoringConfig(t)
-	comp := compiler.NewCompiler()
-	d := &Daemon{
-		config:    Config{ConfigPath: configPath, Listen: "127.0.0.1:18081"},
-		compiler:  comp,
-		publisher: newConfiguredPublisher(nil, comp, nil),
-	}
-	if err := d.seedInitialRevision(); err != nil {
-		t.Fatalf("seedInitialRevision() error = %v", err)
-	}
-
-	authenticator, err := d.currentAuthenticator()
-	if err != nil {
-		t.Fatalf("currentAuthenticator() error = %v", err)
-	}
-
-	cases := []struct {
-		name string
-		path string
-		want bool
+func TestIsSameOriginWriteRequired(t *testing.T) {
+	tests := []struct {
+		path   string
+		method string
+		want   bool
 	}{
-		{"no token", "/admin", false},
-		{"non-admin path", "/api/admin", false},
-		{"valid token", "/admin?token=" + strings.Repeat("a", 34), true},
-		{"invalid token", "/admin?token=bad", true},
+		{"/api/admin/config/publish", "POST", true},
+		{"/api/admin/config/rollback", "POST", true},
+		{"/api/admin/config", "PUT", true},
+		{"/api/admin/config", "GET", false},
+		{"/api/admin/upstreams/test", "POST", true},
+		{"/api/admin/pricing/refresh", "POST", true},
+		{"/api/admin/overview", "GET", false},
+		{"/admin", "GET", false},
+		{"/admin", "POST", false},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-			rec := httptest.NewRecorder()
-			got := d.maybeBootstrapAdminCookie(rec, req, authenticator)
-			if got != tc.want {
-				t.Fatalf("maybeBootstrapAdminCookie() = %v, want %v", got, tc.want)
+	for _, tc := range tests {
+		t.Run(tc.path+"_"+tc.method, func(t *testing.T) {
+			if got := isSameOriginWriteRequired(tc.path, tc.method); got != tc.want {
+				t.Errorf("isSameOriginWriteRequired(%q, %q) = %v, want %v", tc.path, tc.method, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestMaybeBootstrapAdminCookieNilAuthenticator(t *testing.T) {
-	d := &Daemon{}
-	req := httptest.NewRequest(http.MethodGet, "/admin?token=test", nil)
-	rec := httptest.NewRecorder()
-	if got := d.maybeBootstrapAdminCookie(rec, req, nil); got != false {
-		t.Fatalf("maybeBootstrapAdminCookie(nil) = %v, want false", got)
+func TestIsValidSameOriginRequest(t *testing.T) {
+	tests := []struct {
+		name           string
+		origin         string
+		referer        string
+		requestHost    string
+		forwardedHost  string
+		forwardedProto string
+		isTLS          bool
+		want           bool
+	}{
+		{"valid origin", "http://127.0.0.1:18081", "", "127.0.0.1:18081", "", "", false, true},
+		{"valid referer", "", "http://127.0.0.1:18081/admin", "127.0.0.1:18081", "", "", false, true},
+		{"invalid origin", "http://evil.com", "", "127.0.0.1:18081", "", "", false, false},
+		{"invalid referer", "", "http://evil.com/admin", "127.0.0.1:18081", "", "", false, false},
+		{"no headers", "", "", "127.0.0.1:18081", "", "", false, false},
+		{"request host localhost", "http://localhost:18081", "", "localhost:18081", "", "", false, true},
+		{"forwarded https host", "https://admin.example.com", "", "127.0.0.1:18081", "admin.example.com", "https", false, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/admin/config/publish", nil)
+			req.Host = tc.requestHost
+			if tc.isTLS {
+				req.TLS = &tls.ConnectionState{}
+			}
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
+			if tc.referer != "" {
+				req.Header.Set("Referer", tc.referer)
+			}
+			if tc.forwardedHost != "" {
+				req.Header.Set("X-Forwarded-Host", tc.forwardedHost)
+			}
+			if tc.forwardedProto != "" {
+				req.Header.Set("X-Forwarded-Proto", tc.forwardedProto)
+			}
+			if got := isValidSameOriginRequest(req); got != tc.want {
+				t.Errorf("isValidSameOriginRequest() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsSameOrigin(t *testing.T) {
+	tests := []struct {
+		name           string
+		rawURL         string
+		expectedHost   string
+		expectedScheme string
+		want           bool
+	}{
+		// HTTP cases
+		{"http valid", "http://127.0.0.1:18081", "127.0.0.1:18081", "http", true},
+		{"http default port", "http://127.0.0.1", "127.0.0.1", "http", true},
+		{"http wrong scheme", "https://127.0.0.1:18081", "127.0.0.1:18081", "http", false},
+		{"http wrong host", "http://evil.com:18081", "127.0.0.1:18081", "http", false},
+		// HTTPS cases
+		{"https valid", "https://127.0.0.1:18081", "127.0.0.1:18081", "https", true},
+		{"https wrong scheme", "http://127.0.0.1:18081", "127.0.0.1:18081", "https", false},
+		{"ipv6 default port", "https://[::1]", "[::1]", "https", true},
+		// Invalid URL
+		{"invalid url", "://invalid", "127.0.0.1:18081", "http", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isSameOrigin(tc.rawURL, tc.expectedHost, tc.expectedScheme); got != tc.want {
+				t.Errorf("isSameOrigin(%q, %q, %q) = %v, want %v", tc.rawURL, tc.expectedHost, tc.expectedScheme, got, tc.want)
+			}
+		})
 	}
 }
 

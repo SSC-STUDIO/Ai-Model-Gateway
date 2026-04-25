@@ -60,6 +60,7 @@ func tryFallbackModels(
 	snap *snapshot.Snapshot,
 	runtimeState *RuntimeState,
 	telClient TelemetryEmitter,
+	pricingResolver PricingResolver,
 	w http.ResponseWriter,
 	r *http.Request,
 	isAnthropic bool,
@@ -67,6 +68,7 @@ func tryFallbackModels(
 	body []byte,
 	requestID string,
 	start time.Time,
+	opts *ExecutionOptions,
 ) bool {
 	fallbacks := ResolveFallbackModels(snap, reqMeta.Model)
 	if len(fallbacks) == 0 {
@@ -74,7 +76,7 @@ func tryFallbackModels(
 	}
 
 	for _, fallbackModel := range fallbacks {
-		candidates := collectProviderCandidates(snap, fallbackModel)
+		candidates, _ := collectProviderCandidatesForRequest(snap, fallbackModel, isAnthropic)
 		if len(candidates) == 0 {
 			continue
 		}
@@ -92,16 +94,21 @@ func tryFallbackModels(
 			log.Printf("[gatewayd] request_id=%s fallback model=%s upstream_model=%s provider=%s",
 				requestID, fallbackModel, candidate.upstreamModel, candidate.provider.ProviderID)
 
-			fbBody := rewriteModelInBody(body, reqMeta.Model, candidate.upstreamModel)
+			compatPlan, compatErr := buildCompatPlan(isAnthropic, candidate.provider, reqMeta.Model, candidate.upstreamModel, body)
+			if compatErr != nil {
+				log.Printf("[gatewayd] request_id=%s fallback compat failed: model=%s provider=%s err=%v",
+					requestID, fallbackModel, candidate.provider.ProviderID, compatErr)
+				continue
+			}
 
 			statusCode, respBody, streamBody, streamContentType, latency, forwardErr := forwardToUpstream(
 				ctx,
 				candidate.provider,
-				r.URL.Path,
-				fbBody,
+				compatPlan.forwardPath,
+				compatPlan.forwardBody,
 				reqMeta.Stream,
 				r.Header,
-				isAnthropic,
+				compatPlan.upstreamIsAnthropic,
 			)
 
 			if runtimeState != nil {
@@ -118,18 +125,34 @@ func tryFallbackModels(
 			}
 
 			// Fallback succeeded -- write the response.
+			var promptTokens, cachedPromptTokens, completionTokens int64
+			capturedContentType := streamContentType
 			if reqMeta.Stream && streamBody != nil {
-				handleStreamResponse(w, statusCode, streamContentType, streamBody)
+				promptTokens, cachedPromptTokens, completionTokens = writeCompatStreamResponse(w, statusCode, streamContentType, streamBody, compatPlan)
 			} else {
-				w.Header().Set("Content-Type", "application/json")
+				clientRespBody, clientContentType, adaptErr := adaptResponseBodyForClient(compatPlan, statusCode, respBody)
+				if adaptErr != nil {
+					log.Printf("[gatewayd] request_id=%s fallback adapt failed: model=%s provider=%s err=%v",
+						requestID, fallbackModel, candidate.provider.ProviderID, adaptErr)
+					continue
+				}
+				if clientContentType == "" {
+					clientContentType = "application/json"
+				}
+				capturedContentType = clientContentType
+				w.Header().Set("Content-Type", clientContentType)
 				w.WriteHeader(statusCode)
-				_, _ = w.Write(respBody)
+				_, _ = w.Write(clientRespBody)
+				promptTokens, cachedPromptTokens, completionTokens = extractUsage(clientRespBody)
 			}
 
 			// Emit a telemetry event for the successful fallback attempt.
+			fixedPricing := resolveFixedPricing(pricingResolver, reqMeta.Model, candidate.upstreamModel, candidate.provider.ProviderID, promptTokens, cachedPromptTokens, completionTokens, false, statusCode)
 			emitTelemetry(telClient, requestID, start, r.URL.Path,
 				reqMeta.Model, candidate.upstreamModel, candidate.provider.ProviderID,
-				"model_fallback", statusCode, latency, 1, 0, 0, 0, reqMeta.Stream, "")
+				routeModeForAttempt("model_fallback", true, isAnthropic, candidate.provider), statusCode, latency, 1, promptTokens, cachedPromptTokens, completionTokens, reqMeta.Stream, "",
+				fixedPricing, opts)
+			captureExecutionResult(opts, statusCode, capturedContentType, latency, promptTokens, cachedPromptTokens, completionTokens, candidate.provider.ProviderID, candidate.upstreamModel, routeModeForAttempt("model_fallback", true, isAnthropic, candidate.provider), fixedPricing.TotalCostUSD, "")
 
 			log.Printf("[gatewayd] request_id=%s fallback succeeded: model=%s provider=%s latency=%s",
 				requestID, fallbackModel, candidate.provider.ProviderID, latency)

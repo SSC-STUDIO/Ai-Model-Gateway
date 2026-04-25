@@ -12,6 +12,7 @@ import {
   normalizeTimeSeriesResponse,
   telemetryTimeseriesURL,
   telemetryURL,
+  logsURL,
 } from '../utils/controlApi'
 
 export interface ControlDataResult {
@@ -23,6 +24,7 @@ export interface ControlDataResult {
   historyPayload: ConfigHistoryResponse
   benchmark: ReturnType<typeof normalizeBenchmarkResponse>
   benchmarkLoading: boolean
+  logs: DataResponse | null
   configError: Error | null
   overviewError: Error | null
   statusError: Error | null
@@ -30,6 +32,7 @@ export interface ControlDataResult {
   telemetryTimeseriesError: Error | null
   historyError: Error | null
   benchmarkError: Error | null
+  logsError: Error | null
   refetchOverview: () => Promise<unknown>
   refetchStatus: () => Promise<unknown>
   refetchTelemetry: () => Promise<unknown>
@@ -37,6 +40,7 @@ export interface ControlDataResult {
   refetchConfig: () => Promise<unknown>
   refetchHistory: () => Promise<unknown>
   refetchBenchmark: () => Promise<unknown>
+  refetchLogs: () => Promise<unknown>
 }
 
 /**
@@ -57,13 +61,19 @@ export interface ControlDataResult {
 export function useControlData(
   tab: ControlTabKey,
   telemetryHours: string,
+  telemetryBucket: string,
   benchmarkHours: number,
   benchmarkModels: string[],
+  logsHours: string,
   enabled = true,
   onUnauthorized?: () => void
 ): ControlDataResult {
   const telemetryDataURL = useMemo(() => telemetryURL(telemetryHours), [telemetryHours])
-  const telemetryChartURL = useMemo(() => telemetryTimeseriesURL(telemetryHours), [telemetryHours])
+  const telemetryChartURL = useMemo(
+    () => telemetryTimeseriesURL(telemetryHours, telemetryBucket),
+    [telemetryHours, telemetryBucket]
+  )
+  const logsDataURL = useMemo(() => logsURL(logsHours), [logsHours])
 
   const { data: rawOverview, error: overviewError, refetch: refetchOverview } = useCachedFetch<unknown>(
     '/api/admin/overview',
@@ -73,12 +83,13 @@ export function useControlData(
     '/api/admin/status',
     { ttl: 30000, enabled, onUnauthorized }
   )
+  const telemetryEnabled = enabled && (tab === 'telemetry' || tab === 'pricing')
   const { data: rawTelemetry, error: telemetryError, refetch: refetchTelemetry } = useCachedFetch<unknown>(
     telemetryDataURL,
-    { ttl: 30000, enabled: enabled && tab === 'telemetry', onUnauthorized }
+    { ttl: 30000, enabled: telemetryEnabled, onUnauthorized }
   )
   const { data: rawTelemetryTimeseries, error: telemetryTimeseriesError, refetch: refetchTelemetryTimeseries } =
-    useCachedFetch<unknown>(telemetryChartURL, { ttl: 30000, enabled: enabled && tab === 'telemetry', onUnauthorized })
+    useCachedFetch<unknown>(telemetryChartURL, { ttl: 30000, enabled: telemetryEnabled, onUnauthorized })
   const { data: rawConfig, error: configError, refetch: refetchConfig } = useCachedFetch<unknown>(
     '/api/admin/config',
     { ttl: 60000, enabled: enabled && tab === 'config', onUnauthorized }
@@ -92,6 +103,11 @@ export function useControlData(
   const { data: rawBenchmark, error: benchmarkError, loading: benchmarkLoading, refetch: refetchBenchmark } =
     useCachedFetch<unknown>(benchmarkDataURL, { ttl: 30000, enabled: enabled && tab === 'benchmark', onUnauthorized })
 
+  const { data: rawLogs, error: logsError, refetch: refetchLogs } = useCachedFetch<unknown>(
+    logsDataURL,
+    { ttl: 30000, enabled: enabled && tab === 'logs', onUnauthorized }
+  )
+
   const status = useMemo(() => normalizeControlStatus(rawStatus), [rawStatus])
   const overview = useMemo<AnyRecord | null>(() => normalizeOverviewResponse(rawOverview, rawStatus), [rawOverview, rawStatus])
   const telemetry = useMemo<DataResponse | null>(() => normalizeTelemetryResponse(rawTelemetry), [rawTelemetry])
@@ -102,6 +118,7 @@ export function useControlData(
   const controlConfig = useMemo<ControlConfigView | null>(() => normalizeControlConfigResponse(rawConfig), [rawConfig])
   const historyPayload = useMemo<ConfigHistoryResponse>(() => normalizeConfigHistoryResponse(rawHistory), [rawHistory])
   const benchmark = useMemo(() => normalizeBenchmarkResponse(rawBenchmark), [rawBenchmark])
+  const logs = useMemo<DataResponse | null>(() => normalizeTelemetryResponse(rawLogs), [rawLogs])
 
   return {
     status,
@@ -112,6 +129,7 @@ export function useControlData(
     historyPayload,
     benchmark,
     benchmarkLoading,
+    logs,
     configError,
     overviewError,
     statusError,
@@ -119,6 +137,7 @@ export function useControlData(
     telemetryTimeseriesError,
     historyError,
     benchmarkError,
+    logsError,
     refetchOverview,
     refetchStatus,
     refetchTelemetry,
@@ -126,5 +145,6 @@ export function useControlData(
     refetchConfig,
     refetchHistory,
     refetchBenchmark,
+    refetchLogs,
   }
 }

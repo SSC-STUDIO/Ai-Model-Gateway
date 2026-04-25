@@ -260,7 +260,7 @@ func TestRestoreOrSeedInitialRevisionMigratesLegacyJSONState(t *testing.T) {
 	}
 }
 
-func TestCreateHandlerRequiresAdminAuthAndSupportsAdminTokenBootstrap(t *testing.T) {
+func TestCreateHandlerRequiresAdminAuthAndSupportsLoginForm(t *testing.T) {
 	configPath := writeAdminAuthoringConfig(t)
 
 	comp := compiler.NewCompiler()
@@ -309,6 +309,16 @@ func TestCreateHandlerRequiresAdminAuthAndSupportsAdminTokenBootstrap(t *testing
 	if viewer.Code != http.StatusOK {
 		t.Fatalf("GET /api/admin/config with viewer auth = %d, want %d", viewer.Code, http.StatusOK)
 	}
+	if strings.Contains(viewer.Body.String(), "bootstrap_token") || strings.Contains(viewer.Body.String(), "cookie_signing_key") || strings.Contains(viewer.Body.String(), "test-key") {
+		t.Fatalf("viewer config response leaked secrets: %s", viewer.Body.String())
+	}
+	if strings.Contains(viewer.Body.String(), "raw_yaml") || strings.Contains(viewer.Body.String(), `"config"`) {
+		t.Fatalf("viewer config response should omit config payloads: %s", viewer.Body.String())
+	}
+
+	if !strings.Contains(bearer.Body.String(), "bootstrap_token") || !strings.Contains(bearer.Body.String(), "test-key") {
+		t.Fatalf("admin config response should include editable config payload: %s", bearer.Body.String())
+	}
 
 	viewerWriteReq := httptest.NewRequest(http.MethodPost, "/api/admin/config/publish", strings.NewReader(`{"revision_id":"rev"}`))
 	viewerWriteReq.Header.Set("Authorization", "Bearer "+strings.Repeat("c", 34))
@@ -319,14 +329,18 @@ func TestCreateHandlerRequiresAdminAuthAndSupportsAdminTokenBootstrap(t *testing
 		t.Fatalf("POST /api/admin/config/publish with viewer auth = %d, want %d", viewerWrite.Code, http.StatusForbidden)
 	}
 
+	// Test login via POST /api/admin/login (the only supported method now)
+	loginBody := strings.NewReader(`{"token":"` + strings.Repeat("a", 34) + `"}`)
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/admin/login", loginBody)
+	loginReq.Header.Set("Content-Type", "application/json")
 	loginRR := httptest.NewRecorder()
-	handler.ServeHTTP(loginRR, httptest.NewRequest(http.MethodGet, "/admin?token="+strings.Repeat("a", 34), nil))
-	if loginRR.Code != http.StatusSeeOther {
-		t.Fatalf("GET /admin?token=... status = %d, want %d", loginRR.Code, http.StatusSeeOther)
+	handler.ServeHTTP(loginRR, loginReq)
+	if loginRR.Code != http.StatusOK {
+		t.Fatalf("POST /api/admin/login status = %d, want %d, body: %s", loginRR.Code, http.StatusOK, loginRR.Body.String())
 	}
 	cookies := loginRR.Result().Cookies()
 	if len(cookies) != 1 {
-		t.Fatalf("expected 1 cookie after admin bootstrap, got %d", len(cookies))
+		t.Fatalf("expected 1 cookie after admin login, got %d", len(cookies))
 	}
 	if cookies[0].Secure {
 		t.Fatalf("expected loopback admin cookie to omit Secure over local HTTP")
@@ -349,6 +363,137 @@ func TestCreateHandlerRequiresAdminAuthAndSupportsAdminTokenBootstrap(t *testing
 	}
 	if !strings.Contains(sessionRR.Body.String(), `"authenticated":true`) {
 		t.Fatalf("unexpected session body: %s", sessionRR.Body.String())
+	}
+}
+
+func TestSameOriginWriteProtection(t *testing.T) {
+	configPath := writeAdminAuthoringConfig(t)
+
+	comp := compiler.NewCompiler()
+	d := &Daemon{
+		config: Config{
+			ConfigPath: configPath,
+			Listen:     "127.0.0.1:18081",
+		},
+		compiler:  comp,
+		publisher: newConfiguredPublisher(nil, comp, nil),
+		startedAt: time.Unix(1_710_000_000, 0),
+	}
+	if err := d.seedInitialRevision(); err != nil {
+		t.Fatalf("seedInitialRevision() error = %v", err)
+	}
+
+	handler := d.createHandler()
+
+	// Login first to get a cookie
+	loginBody := strings.NewReader(`{"token":"` + strings.Repeat("a", 34) + `"}`)
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/admin/login", loginBody)
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRR := httptest.NewRecorder()
+	handler.ServeHTTP(loginRR, loginReq)
+	if loginRR.Code != http.StatusOK {
+		t.Fatalf("login failed: %d", loginRR.Code)
+	}
+	cookies := loginRR.Result().Cookies()
+
+	// Write request without Origin/Referer should be rejected
+	writeReq := httptest.NewRequest(http.MethodPost, "/api/admin/config/publish", strings.NewReader(`{"revision_id":"rev-001"}`))
+	writeReq.AddCookie(cookies[0])
+	writeReq.Header.Set("Content-Type", "application/json")
+	writeRR := httptest.NewRecorder()
+	handler.ServeHTTP(writeRR, writeReq)
+	if writeRR.Code != http.StatusForbidden {
+		t.Fatalf("POST /api/admin/config/publish without origin = %d, want %d", writeRR.Code, http.StatusForbidden)
+	}
+
+	// Write request with valid Origin should succeed (even if publish fails for other reasons)
+	writeReq2 := httptest.NewRequest(http.MethodPost, "/api/admin/config/publish", strings.NewReader(`{"revision_id":"rev-001"}`))
+	writeReq2.Host = "127.0.0.1:18081"
+	writeReq2.AddCookie(cookies[0])
+	writeReq2.Header.Set("Content-Type", "application/json")
+	writeReq2.Header.Set("Origin", "http://127.0.0.1:18081")
+	writeRR2 := httptest.NewRecorder()
+	handler.ServeHTTP(writeRR2, writeReq2)
+	// Should not be same-origin error (might fail for other reasons like missing revision)
+	if strings.Contains(writeRR2.Body.String(), "same-origin") {
+		t.Fatalf("POST with valid origin should not fail same-origin check: %s", writeRR2.Body.String())
+	}
+
+	writeReq3 := httptest.NewRequest(http.MethodPost, "/api/admin/config/publish", strings.NewReader(`{"revision_id":"rev-001"}`))
+	writeReq3.Host = "localhost:18081"
+	writeReq3.AddCookie(cookies[0])
+	writeReq3.Header.Set("Content-Type", "application/json")
+	writeReq3.Header.Set("Origin", "http://localhost:18081")
+	writeRR3 := httptest.NewRecorder()
+	handler.ServeHTTP(writeRR3, writeReq3)
+	if strings.Contains(writeRR3.Body.String(), "same-origin") {
+		t.Fatalf("POST with localhost origin should not fail same-origin check: %s", writeRR3.Body.String())
+	}
+
+	writeReq4 := httptest.NewRequest(http.MethodPost, "/api/admin/config/publish", strings.NewReader(`{"revision_id":"rev-001"}`))
+	writeReq4.Host = "127.0.0.1:18081"
+	writeReq4.AddCookie(cookies[0])
+	writeReq4.Header.Set("Content-Type", "application/json")
+	writeReq4.Header.Set("X-Forwarded-Host", "admin.example.com")
+	writeReq4.Header.Set("X-Forwarded-Proto", "https")
+	writeReq4.Header.Set("Origin", "https://admin.example.com")
+	writeRR4 := httptest.NewRecorder()
+	handler.ServeHTTP(writeRR4, writeReq4)
+	if strings.Contains(writeRR4.Body.String(), "same-origin") {
+		t.Fatalf("POST with forwarded public origin should not fail same-origin check: %s", writeRR4.Body.String())
+	}
+
+	// Bearer token should bypass same-origin check
+	bearerReq := httptest.NewRequest(http.MethodPost, "/api/admin/config/publish", strings.NewReader(`{"revision_id":"rev-001"}`))
+	bearerReq.Header.Set("Authorization", "Bearer "+strings.Repeat("a", 34))
+	bearerReq.Header.Set("Content-Type", "application/json")
+	bearerRR := httptest.NewRecorder()
+	handler.ServeHTTP(bearerRR, bearerReq)
+	// Bearer token requests don't need same-origin check
+	if strings.Contains(bearerRR.Body.String(), "same-origin") {
+		t.Fatalf("Bearer token should bypass same-origin check: %s", bearerRR.Body.String())
+	}
+
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+	}{
+		{
+			name: "pricing refresh",
+			path: "/api/admin/pricing/refresh",
+			body: `{}`,
+		},
+		{
+			name: "benchmark baseline import",
+			path: "/api/admin/benchmark/baselines/import",
+			body: `{"kind":"public_standard","source_name":"test","file_name":"baseline.json","contents":"[{\"canonical_model_id\":\"m\",\"metric_name\":\"overall\",\"score\":90,\"scale_max\":100}]"}`,
+		},
+		{
+			name: "benchmark run",
+			path: "/api/admin/benchmark/runs",
+			body: `{"provider_id":"test-provider","public_model":"gpt-test","public_snapshot_id":"baseline_test"}`,
+		},
+	} {
+		req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+		req.AddCookie(cookies[0])
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s without origin = %d, want %d", tc.name, rec.Code, http.StatusForbidden)
+		}
+
+		req = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+		req.Host = "127.0.0.1:18081"
+		req.AddCookie(cookies[0])
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "http://127.0.0.1:18081")
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if strings.Contains(rec.Body.String(), "same-origin") {
+			t.Fatalf("%s with valid origin should not fail same-origin check: %s", tc.name, rec.Body.String())
+		}
 	}
 }
 
@@ -411,4 +556,69 @@ providers:
 		t.Fatalf("WriteFile(%q) error = %v", path, err)
 	}
 	return path
+}
+
+func TestReloadWatchedConfigPublishesUpdatedRevision(t *testing.T) {
+	configPath := writeTestAuthoringConfig(t)
+	gateway := &stubGatewayRPC{}
+	comp := compiler.NewCompiler()
+	d := &Daemon{
+		config: Config{
+			ConfigPath: configPath,
+			DataDir:    t.TempDir(),
+		},
+		gatewayRPC: &GatewayClient{},
+		compiler:   comp,
+		publisher:  newConfiguredPublisher(gateway, comp, nil),
+	}
+	if err := d.seedInitialRevision(); err != nil {
+		t.Fatalf("seedInitialRevision() error = %v", err)
+	}
+
+	updated := []byte(`server:
+  listen: 127.0.0.1:29090
+providers:
+  - name: test-provider
+    base_url: https://example.invalid/v1
+    api_key: test-key-updated
+    models:
+      - gpt-test
+`)
+	if err := os.WriteFile(configPath, updated, 0600); err != nil {
+		t.Fatalf("WriteFile(%q) error = %v", configPath, err)
+	}
+
+	if err := d.reloadWatchedConfig(); err != nil {
+		t.Fatalf("reloadWatchedConfig() error = %v", err)
+	}
+	if len(gateway.requests) != 1 {
+		t.Fatalf("len(requests) = %d, want 1", len(gateway.requests))
+	}
+
+	var published snapshot.Snapshot
+	if err := json.Unmarshal(gateway.requests[0].SnapshotBytes, &published); err != nil {
+		t.Fatalf("json.Unmarshal(snapshot) error = %v", err)
+	}
+	if published.Ingress.Listen != "127.0.0.1:29090" {
+		t.Fatalf("snapshot.Ingress.Listen = %q, want %q", published.Ingress.Listen, "127.0.0.1:29090")
+	}
+
+	current, err := d.publisher.GetCurrentConfig()
+	if err != nil {
+		t.Fatalf("GetCurrentConfig() error = %v", err)
+	}
+	if current == nil || current.Server.Listen != "127.0.0.1:29090" {
+		t.Fatalf("GetCurrentConfig() = %#v, want listen 127.0.0.1:29090", current)
+	}
+
+	history, err := d.publisher.GetHistory(10)
+	if err != nil {
+		t.Fatalf("GetHistory() error = %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("len(GetHistory()) = %d, want 2", len(history))
+	}
+	if history[0].RevisionID == history[1].RevisionID {
+		t.Fatalf("history = %#v, want distinct revisions after reload", history)
+	}
 }

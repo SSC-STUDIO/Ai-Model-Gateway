@@ -45,11 +45,20 @@ func TestConfig_Normalize_Defaults(t *testing.T) {
 	if cfg.Pricing.CachePath != "data/pricing-cache.json" {
 		t.Errorf("expected pricing.cache_path data/pricing-cache.json, got %s", cfg.Pricing.CachePath)
 	}
-	if cfg.Pricing.RefreshIntervalHours != 12 {
-		t.Errorf("expected pricing.refresh_interval_hours 12, got %d", cfg.Pricing.RefreshIntervalHours)
+	if cfg.Pricing.RefreshIntervalHours != 1 {
+		t.Errorf("expected pricing.refresh_interval_hours 1, got %d", cfg.Pricing.RefreshIntervalHours)
+	}
+	if cfg.Pricing.RefreshIntervalMinutes != 15 {
+		t.Errorf("expected pricing.refresh_interval_minutes 15, got %d", cfg.Pricing.RefreshIntervalMinutes)
 	}
 	if cfg.Pricing.RequestTimeoutMs != 15000 {
 		t.Errorf("expected pricing.request_timeout_ms 15000, got %d", cfg.Pricing.RequestTimeoutMs)
+	}
+	if len(cfg.Pricing.Sources) == 0 {
+		t.Error("expected default pricing sources to be configured")
+	}
+	if cfg.Pricing.FX.CachePath != "data/pricing-fx-cache.json" {
+		t.Errorf("expected pricing.fx.cache_path data/pricing-fx-cache.json, got %s", cfg.Pricing.FX.CachePath)
 	}
 	if len(cfg.Pricing.ManualPrices) != 0 {
 		t.Errorf("expected no default manual prices, got %d", len(cfg.Pricing.ManualPrices))
@@ -243,6 +252,113 @@ func TestProvider_Normalize(t *testing.T) {
 	}
 	if p.ProviderClass != ProviderClassQuotaLimited {
 		t.Errorf("expected provider_class quota_limited, got %s", p.ProviderClass)
+	}
+}
+
+func TestProvider_Normalize_InferAnthropicProtocolAdapter(t *testing.T) {
+	p := Provider{AnthropicBaseURL: "https://api.anthropic.com"}
+	p.normalize()
+
+	if p.ProtocolAdapter != ProtocolAdapterAnthropicMessages {
+		t.Fatalf("expected protocol_adapter %q, got %q", ProtocolAdapterAnthropicMessages, p.ProtocolAdapter)
+	}
+}
+
+func TestNormalizeProtocolAdapter(t *testing.T) {
+	tests := []struct {
+		name             string
+		value            string
+		anthropicBaseURL string
+		want             string
+	}{
+		{
+			name: "default openai adapter",
+			want: ProtocolAdapterOpenAIChatCompletions,
+		},
+		{
+			name:             "infer anthropic from anthropic base url",
+			anthropicBaseURL: "https://api.anthropic.com",
+			want:             ProtocolAdapterAnthropicMessages,
+		},
+		{
+			name:             "explicit openai adapter overrides anthropic base url inference",
+			value:            ProtocolAdapterOpenAIChatCompletions,
+			anthropicBaseURL: "https://api.anthropic.com",
+			want:             ProtocolAdapterOpenAIChatCompletions,
+		},
+		{
+			name:  "explicit anthropic adapter",
+			value: ProtocolAdapterAnthropicMessages,
+			want:  ProtocolAdapterAnthropicMessages,
+		},
+		{
+			name:  "preserve unknown value for validation",
+			value: "invalid",
+			want:  "invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NormalizeProtocolAdapter(tt.value, tt.anthropicBaseURL); got != tt.want {
+				t.Fatalf("NormalizeProtocolAdapter(%q, %q) = %q, want %q", tt.value, tt.anthropicBaseURL, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConfig_Validate_RejectsInvalidProtocolAdapter(t *testing.T) {
+	cfg := Config{
+		Providers: []Provider{{
+			Name:            "test",
+			BaseURL:         "https://example.com",
+			ProtocolAdapter: "invalid",
+		}},
+	}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "providers[0].protocol_adapter") {
+		t.Fatalf("expected protocol_adapter validation error, got %v", err)
+	}
+}
+
+func TestConfig_Validate_BenchmarkJudgeMustResolveToEnabledProvider(t *testing.T) {
+	base := Config{
+		Providers: []Provider{
+			{Name: "provider-a", BaseURL: "https://example.com", Models: []string{"model-a"}},
+			{Name: "judge-provider", BaseURL: "https://judge.example", Models: []string{"judge-model"}},
+		},
+		Benchmarking: BenchmarkingConfig{
+			Enabled: true,
+			Judge: BenchmarkJudgeConfig{
+				Provider:    "judge-provider",
+				PublicModel: "judge-model",
+			},
+		},
+	}
+
+	cfg := base
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected benchmark judge config to validate, got %v", err)
+	}
+
+	cfg = base
+	cfg.Benchmarking.Judge.Provider = "missing"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), `benchmarking.judge.provider "missing"`) {
+		t.Fatalf("expected missing judge provider validation error, got %v", err)
+	}
+
+	cfg = base
+	disabled := false
+	cfg.Providers[1].Enabled = &disabled
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), `benchmarking.judge.provider "judge-provider"`) {
+		t.Fatalf("expected disabled judge provider validation error, got %v", err)
+	}
+
+	cfg = base
+	cfg.Benchmarking.Judge.Provider = ""
+	cfg.Benchmarking.Judge.PublicModel = "missing-model"
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), `benchmarking.judge.public_model "missing-model"`) {
+		t.Fatalf("expected missing judge model validation error, got %v", err)
 	}
 }
 

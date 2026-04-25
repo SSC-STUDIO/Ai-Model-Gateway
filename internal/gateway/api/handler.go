@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"ai-model-gateway/internal/contracts/telemetryingest"
+	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/cache"
 	"ai-model-gateway/internal/gateway/snapshot"
 	"ai-model-gateway/internal/proxy"
@@ -48,8 +49,25 @@ var sharedHTTPClient = &http.Client{
 	Timeout: 0, // per-request timeout set via context
 }
 
-var ssrfChecker = proxy.NewSSRFChecker()
+type urlValidator interface {
+	ValidateURL(rawURL string) error
+}
+
+var ssrfChecker urlValidator = proxy.NewSSRFChecker()
 var routingSequence atomic.Uint64
+
+// SetSSRFCheckerForTesting swaps the SSRF checker for tests and returns a restore function.
+func SetSSRFCheckerForTesting(checker urlValidator) func() {
+	original := ssrfChecker
+	if checker == nil {
+		ssrfChecker = proxy.NewSSRFChecker()
+	} else {
+		ssrfChecker = checker
+	}
+	return func() {
+		ssrfChecker = original
+	}
+}
 
 // responseCache is a shared LRU cache instance keyed by config parameters.
 var responseCache struct {
@@ -70,19 +88,23 @@ func getResponseCache(snap *snapshot.Snapshot) *cache.Cache {
 }
 
 // HandleChatCompletion handles a chat completion request.
-func HandleChatCompletion(ctx context.Context, snap *snapshot.Snapshot, runtimeState *RuntimeState, telClient TelemetryEmitter, w http.ResponseWriter, r *http.Request) {
-	handleChatOrMessages(ctx, snap, runtimeState, telClient, w, r, false)
+func HandleChatCompletion(ctx context.Context, snap *snapshot.Snapshot, runtimeState *RuntimeState, telClient TelemetryEmitter, pricingResolver PricingResolver, w http.ResponseWriter, r *http.Request) {
+	handleChatOrMessages(ctx, snap, runtimeState, telClient, pricingResolver, w, r, false)
 }
 
 // HandleMessages handles an Anthropic Messages API request.
-func HandleMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeState *RuntimeState, telClient TelemetryEmitter, w http.ResponseWriter, r *http.Request) {
-	handleChatOrMessages(ctx, snap, runtimeState, telClient, w, r, true)
+func HandleMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeState *RuntimeState, telClient TelemetryEmitter, pricingResolver PricingResolver, w http.ResponseWriter, r *http.Request) {
+	handleChatOrMessages(ctx, snap, runtimeState, telClient, pricingResolver, w, r, true)
 }
 
 // handleChatOrMessages handles both chat completion and messages requests.
-func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeState *RuntimeState, telClient TelemetryEmitter, w http.ResponseWriter, r *http.Request, isAnthropic bool) {
+func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeState *RuntimeState, telClient TelemetryEmitter, pricingResolver PricingResolver, w http.ResponseWriter, r *http.Request, isAnthropic bool) {
 	start := time.Now()
+	opts := executionOptionsFromContext(ctx)
 	requestID := uuid.New().String()
+	if opts != nil && strings.TrimSpace(opts.RequestID) != "" {
+		requestID = strings.TrimSpace(opts.RequestID)
+	}
 
 	// Read request body
 	body, err := io.ReadAll(io.LimitReader(r.Body, snap.Ingress.MaxBodyBytes))
@@ -106,7 +128,7 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 	}
 
 	// Check request cache for non-streaming requests.
-	if !reqMeta.Stream && snap.RoutingPolicy.Cache.Enabled {
+	if !reqMeta.Stream && snap.RoutingPolicy.Cache.Enabled && (opts == nil || !opts.DisableCache) {
 		c := getResponseCache(snap)
 		cacheKey := c.MakeKey(body, reqMeta.Model)
 		if cached, ok := c.Get(cacheKey); ok {
@@ -116,25 +138,57 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 			_, _ = w.Write(cached)
 
 			emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, reqMeta.Model, "",
-				"cache", http.StatusOK, time.Since(start), 0, 0, 0, 0, false, "")
+				"cache", http.StatusOK, time.Since(start), 0, 0, 0, 0, false, "",
+				resolveFixedPricing(pricingResolver, reqMeta.Model, reqMeta.Model, "", 0, 0, 0, true, http.StatusOK), opts)
+			captureExecutionResult(opts, http.StatusOK, "application/json", time.Since(start), 0, 0, 0, "", reqMeta.Model, "cache", 0, "")
 			return
 		}
 	}
 
 	stickyKey := resolveStickyKey(reqMeta, r.Header)
-	candidates := collectProviderCandidates(snap, reqMeta.Model)
+	if opts != nil && opts.DisableSticky {
+		stickyKey = ""
+	}
+	candidates, unsupportedMatches := collectProviderCandidatesForRequest(snap, reqMeta.Model, isAnthropic)
 	if len(candidates) == 0 {
+		if isAnthropic && unsupportedMatches {
+			writeError(w, http.StatusNotImplemented, errMessagesAPIRequiresAnthropicProvider.Error())
+			return
+		}
 		writeError(w, http.StatusNotFound, "model not found: "+reqMeta.Model)
 		return
 	}
+	pinnedProviderID := ""
+	if opts != nil {
+		pinnedProviderID = strings.TrimSpace(opts.PinnedProviderID)
+	}
+	if pinnedProviderID != "" {
+		filtered := make([]providerCandidate, 0, len(candidates))
+		for _, candidate := range candidates {
+			if candidate.provider != nil && candidate.provider.ProviderID == pinnedProviderID {
+				filtered = append(filtered, candidate)
+			}
+		}
+		candidates = filtered
+		if len(candidates) == 0 {
+			writeError(w, http.StatusNotFound, "provider not available for requested model")
+			captureExecutionResult(opts, http.StatusNotFound, "application/json", time.Since(start), 0, 0, 0, "", reqMeta.Model, "", 0, "provider not available for requested model")
+			return
+		}
+	}
 	var orderedCandidates []providerCandidate
-	if runtimeState != nil {
+	if pinnedProviderID != "" {
+		orderedCandidates = orderProviderCandidates(candidates)
+	} else if runtimeState != nil {
 		orderedCandidates = runtimeState.orderCandidates(snap, reqMeta.Model, stickyKey, candidates)
 	} else {
 		orderedCandidates = orderProviderCandidates(candidates)
 	}
 	routeMode := determineRouteMode(orderedCandidates, snap)
 	maxAttempts := maxTotalAttempts(snap)
+	if opts != nil && opts.DisableRetries {
+		maxAttempts = 1
+	}
 
 	var (
 		attempts            int
@@ -147,31 +201,44 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 		finalProvider       *snapshot.ProviderSnapshot
 		finalEffectiveModel = reqMeta.Model
 		finalErrorMessage   string
+		finalCompatPlan     compatPlan
 	)
 
 attemptLoop:
 	for i := range orderedCandidates {
 		candidate := orderedCandidates[i]
+		compatPlan, compatErr := buildCompatPlan(isAnthropic, candidate.provider, reqMeta.Model, candidate.upstreamModel, body)
+		if compatErr != nil {
+			finalStatusCode = http.StatusBadRequest
+			if errors.Is(compatErr, errMessagesAPIRequiresAnthropicProvider) {
+				finalStatusCode = http.StatusNotImplemented
+			}
+			finalForwardErr = nil
+			finalProvider = candidate.provider
+			finalEffectiveModel = candidate.upstreamModel
+			finalErrorMessage = compatErr.Error()
+			finalCompatPlan = compatPlan
+			break
+		}
+
 		sameProviderAttempts := 1 + maxInt(candidate.provider.ExecutionPolicy.SameRetries, 0)
+		if opts != nil && opts.DisableRetries {
+			sameProviderAttempts = 1
+		}
 		for providerAttempt := 0; providerAttempt < sameProviderAttempts && attempts < maxAttempts; providerAttempt++ {
 			attempts++
 
 			log.Printf("[gatewayd] request_id=%s model=%s upstream_model=%s provider=%s attempt=%d/%d",
 				requestID, reqMeta.Model, candidate.upstreamModel, candidate.provider.ProviderID, attempts, maxAttempts)
 
-			forwardBody := body
-			if candidate.upstreamModel != reqMeta.Model {
-				forwardBody = rewriteModelInBody(body, reqMeta.Model, candidate.upstreamModel)
-			}
-
 			statusCode, respBody, streamBody, streamContentType, latency, forwardErr := forwardToUpstream(
 				ctx,
 				candidate.provider,
-				r.URL.Path,
-				forwardBody,
+				compatPlan.forwardPath,
+				compatPlan.forwardBody,
 				reqMeta.Stream,
 				r.Header,
-				isAnthropic,
+				compatPlan.upstreamIsAnthropic,
 			)
 
 			finalStatusCode = statusCode
@@ -182,6 +249,7 @@ attemptLoop:
 			finalForwardErr = forwardErr
 			finalProvider = candidate.provider
 			finalEffectiveModel = candidate.upstreamModel
+			finalCompatPlan = compatPlan
 			finalErrorMessage = extractErrorMessage(respBody, forwardErr)
 			if runtimeState != nil {
 				runtimeState.reportAttemptResult(candidate.provider.ProviderID, statusCode, latency, forwardErr, snap)
@@ -215,17 +283,32 @@ attemptLoop:
 		log.Printf("[gatewayd] request_id=%s upstream error: status=%d err=%v", requestID, finalStatusCode, finalForwardErr)
 
 		// Attempt fallback models before returning the error to the client.
-		if tryFallbackModels(ctx, snap, runtimeState, telClient, w, r, isAnthropic, reqMeta, body, requestID, start) {
+		if (opts == nil || !opts.DisableFallback) && tryFallbackModels(ctx, snap, runtimeState, telClient, pricingResolver, w, r, isAnthropic, reqMeta, body, requestID, start, opts) {
 			return
 		}
 
-		emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID,
-			routeMode, finalStatusCode, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, finalErrorMessage)
+		errorBody := finalRespBody
+		if len(errorBody) > 0 {
+			if adapted, contentType, adaptErr := adaptResponseBodyForClient(finalCompatPlan, finalStatusCode, errorBody); adaptErr == nil {
+				errorBody = adapted
+				if contentType != "" {
+					finalContentType = contentType
+				}
+			}
+		}
 
-		if len(finalRespBody) > 0 {
-			w.Header().Set("Content-Type", "application/json")
+		emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID,
+			routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), finalStatusCode, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, finalErrorMessage,
+			resolveFixedPricing(pricingResolver, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID, 0, 0, 0, false, finalStatusCode), opts)
+		captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, 0, 0, 0, finalProvider.ProviderID, finalEffectiveModel, routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), 0, finalErrorMessage)
+
+		if len(errorBody) > 0 {
+			if strings.TrimSpace(finalContentType) == "" {
+				finalContentType = "application/json"
+			}
+			w.Header().Set("Content-Type", finalContentType)
 			w.WriteHeader(finalStatusCode)
-			_, _ = w.Write(finalRespBody)
+			_, _ = w.Write(errorBody)
 		} else {
 			writeError(w, finalStatusCode, finalErrorMessage)
 		}
@@ -236,27 +319,42 @@ attemptLoop:
 
 	// Handle streaming response
 	if reqMeta.Stream && finalStreamBody != nil {
-		promptTokens, cachedPromptTokens, completionTokens = handleStreamResponse(w, finalStatusCode, finalContentType, finalStreamBody)
+		promptTokens, cachedPromptTokens, completionTokens = writeCompatStreamResponse(w, finalStatusCode, finalContentType, finalStreamBody, finalCompatPlan)
 	} else {
+		clientRespBody, clientContentType, adaptErr := adaptResponseBodyForClient(finalCompatPlan, finalStatusCode, finalRespBody)
+		if adaptErr != nil {
+			writeError(w, http.StatusBadGateway, "failed to adapt upstream response")
+			emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID,
+				routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), http.StatusBadGateway, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, adaptErr.Error(),
+				resolveFixedPricing(pricingResolver, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID, 0, 0, 0, false, http.StatusBadGateway), opts)
+			captureExecutionResult(opts, http.StatusBadGateway, "application/json", finalLatency, 0, 0, 0, finalProvider.ProviderID, finalEffectiveModel, routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), 0, adaptErr.Error())
+			return
+		}
 		// Non-streaming: pass through response
-		w.Header().Set("Content-Type", "application/json")
+		if strings.TrimSpace(clientContentType) == "" {
+			clientContentType = "application/json"
+		}
+		finalContentType = clientContentType
+		w.Header().Set("Content-Type", clientContentType)
 		w.WriteHeader(finalStatusCode)
-		_, _ = w.Write(finalRespBody)
+		_, _ = w.Write(clientRespBody)
 
 		// Extract usage from response
-		promptTokens, cachedPromptTokens, completionTokens = extractUsage(finalRespBody)
+		promptTokens, cachedPromptTokens, completionTokens = extractUsage(clientRespBody)
 
 		// Store successful response in cache.
-		if snap.RoutingPolicy.Cache.Enabled && finalStatusCode < 400 {
+		if snap.RoutingPolicy.Cache.Enabled && finalStatusCode < 400 && (opts == nil || !opts.DisableCache) {
 			c := getResponseCache(snap)
 			cacheKey := c.MakeKey(body, reqMeta.Model)
-			c.Put(cacheKey, finalRespBody)
+			c.Put(cacheKey, clientRespBody)
 		}
 	}
 
 	// Emit telemetry
+	fixedPricing := resolveFixedPricing(pricingResolver, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID, promptTokens, cachedPromptTokens, completionTokens, false, finalStatusCode)
 	emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID,
-		routeMode, finalStatusCode, finalLatency, attempts, promptTokens, cachedPromptTokens, completionTokens, reqMeta.Stream, "")
+		routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), finalStatusCode, finalLatency, attempts, promptTokens, cachedPromptTokens, completionTokens, reqMeta.Stream, "", fixedPricing, opts)
+	captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, promptTokens, cachedPromptTokens, completionTokens, finalProvider.ProviderID, finalEffectiveModel, routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), fixedPricing.TotalCostUSD, "")
 }
 
 // forwardToUpstream forwards the request to the upstream provider.
@@ -338,7 +436,7 @@ func forwardToUpstream(ctx context.Context, provider *snapshot.ProviderSnapshot,
 
 	if err != nil {
 		cancel()
-		if ctx.Err() != nil {
+		if reqCtx.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
 			return http.StatusGatewayTimeout, nil, nil, "", latency, err
 		}
 		return http.StatusBadGateway, nil, nil, "", latency, err
@@ -484,11 +582,13 @@ func extractUsage(respBody []byte) (promptTokens, cachedPromptTokens, completion
 
 	var payload struct {
 		Usage struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			InputTokens      int64 `json:"input_tokens"`
-			OutputTokens     int64 `json:"output_tokens"`
-			PromptDetails    struct {
+			PromptTokens             int64 `json:"prompt_tokens"`
+			CompletionTokens         int64 `json:"completion_tokens"`
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+			PromptDetails            struct {
 				CachedTokens int64 `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
 			InputDetails struct {
@@ -505,6 +605,9 @@ func extractUsage(respBody []byte) (promptTokens, cachedPromptTokens, completion
 	if promptTokens == 0 {
 		promptTokens = payload.Usage.InputTokens
 	}
+	if payload.Usage.CacheReadInputTokens > 0 || payload.Usage.CacheCreationInputTokens > 0 {
+		promptTokens = payload.Usage.InputTokens + payload.Usage.CacheCreationInputTokens + payload.Usage.CacheReadInputTokens
+	}
 	completionTokens = payload.Usage.CompletionTokens
 	if completionTokens == 0 {
 		completionTokens = payload.Usage.OutputTokens
@@ -513,13 +616,19 @@ func extractUsage(respBody []byte) (promptTokens, cachedPromptTokens, completion
 	if cachedPromptTokens == 0 {
 		cachedPromptTokens = payload.Usage.InputDetails.CachedTokens
 	}
+	if cachedPromptTokens == 0 {
+		cachedPromptTokens = payload.Usage.CacheReadInputTokens
+	}
+	if promptTokens < cachedPromptTokens {
+		promptTokens = cachedPromptTokens
+	}
 
 	return promptTokens, cachedPromptTokens, completionTokens
 }
 
 // emitTelemetry emits a telemetry event for a completed request.
 func emitTelemetry(telClient TelemetryEmitter, requestID string, start time.Time, path, requestedModel, effectiveModel, providerID, routeMode string,
-	statusCode int, latency time.Duration, attempts int, promptTokens, cachedPromptTokens, completionTokens int64, stream bool, errMsg string) {
+	statusCode int, latency time.Duration, attempts int, promptTokens, cachedPromptTokens, completionTokens int64, stream bool, errMsg string, fixedPricing FixedPricing, opts *ExecutionOptions) {
 
 	if telClient == nil {
 		return
@@ -532,21 +641,38 @@ func emitTelemetry(telClient TelemetryEmitter, requestID string, start time.Time
 		SourceService: "gatewayd",
 		EmittedAt:     time.Now(),
 		Payload: telemetryingest.EventPayload{
-			RequestID:          requestID,
-			Timestamp:          start,
-			Path:               path,
-			RequestedModel:     requestedModel,
-			EffectiveModel:     effectiveModel,
-			ProviderID:         providerID,
-			RouteMode:          routeMode,
-			StatusCode:         statusCode,
-			Latency:            latency,
-			Attempts:           attempts,
-			PromptTokens:       promptTokens,
-			CachedPromptTokens: cachedPromptTokens,
-			CompletionTokens:   completionTokens,
-			Stream:             stream,
-			Error:              errMsg,
+			RequestID:                requestID,
+			Timestamp:                start,
+			Path:                     path,
+			RequestedModel:           requestedModel,
+			EffectiveModel:           effectiveModel,
+			ProviderID:               providerID,
+			RouteMode:                routeMode,
+			StatusCode:               statusCode,
+			Latency:                  latency,
+			Attempts:                 attempts,
+			PromptTokens:             promptTokens,
+			CachedPromptTokens:       cachedPromptTokens,
+			CompletionTokens:         completionTokens,
+			PricingStatus:            fixedPricing.Status,
+			PricingSourceID:          fixedPricing.SourceID,
+			PricingCurrency:          fixedPricing.Currency,
+			PricingFXRateToUSD:       fixedPricing.FXRateToUSD,
+			PricingInputPer1M:        fixedPricing.InputPer1M,
+			PricingCachedInputPer1M:  fixedPricing.CachedInputPer1M,
+			PricingOutputPer1M:       fixedPricing.OutputPer1M,
+			PricingPromptCost:        fixedPricing.PromptCost,
+			PricingCompletionCost:    fixedPricing.CompletionCost,
+			PricingTotalCost:         fixedPricing.TotalCost,
+			PricingPromptCostUSD:     fixedPricing.PromptCostUSD,
+			PricingCompletionCostUSD: fixedPricing.CompletionCostUSD,
+			PricingTotalCostUSD:      fixedPricing.TotalCostUSD,
+			SyntheticKind:            syntheticKindFromOptions(opts),
+			BenchmarkRunID:           benchmarkRunIDFromOptions(opts),
+			BenchmarkTargetID:        benchmarkTargetIDFromOptions(opts),
+			BenchmarkCaseID:          benchmarkCaseIDFromOptions(opts),
+			Stream:                   stream,
+			Error:                    errMsg,
 		},
 	}
 	if err := telClient.Emit(event); err != nil {
@@ -708,6 +834,19 @@ func determineRouteMode(candidates []providerCandidate, snap *snapshot.Snapshot)
 	return "weighted_failover"
 }
 
+func routeModeForAttempt(defaultMode string, usedFallback bool, clientAnthropic bool, provider *snapshot.ProviderSnapshot) string {
+	if !clientAnthropic && providerProtocolAdapter(provider) == core.ProtocolAdapterAnthropicMessages {
+		if usedFallback {
+			return "bridge_fallback"
+		}
+		return "bridged"
+	}
+	if usedFallback {
+		return "model_fallback"
+	}
+	return defaultMode
+}
+
 func maxTotalAttempts(snap *snapshot.Snapshot) int {
 	if snap == nil {
 		return 1
@@ -774,6 +913,16 @@ func extractUsageFromSSEEvent(data []byte) (promptTokens, cachedPromptTokens, co
 		return 0, 0, 0, false
 	}
 	promptTokens, cachedPromptTokens, completionTokens = extractUsage([]byte(trimmed))
+	if promptTokens == 0 && cachedPromptTokens == 0 && completionTokens == 0 {
+		var payload struct {
+			Message struct {
+				Usage anthropicUsage `json:"usage"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+			promptTokens, cachedPromptTokens, completionTokens = payload.Message.Usage.tokenTriplet()
+		}
+	}
 	if promptTokens == 0 && cachedPromptTokens == 0 && completionTokens == 0 {
 		return 0, 0, 0, false
 	}

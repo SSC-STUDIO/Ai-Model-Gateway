@@ -20,11 +20,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"ai-model-gateway/internal/contracts"
+	"ai-model-gateway/internal/contracts/gatewaycontrol"
 	"ai-model-gateway/internal/control/api"
+	"ai-model-gateway/internal/control/benchmarking"
 	"ai-model-gateway/internal/control/compiler"
 	"ai-model-gateway/internal/control/publish"
 	"ai-model-gateway/internal/core"
@@ -71,14 +74,82 @@ type Config struct {
 
 // Daemon represents the controld daemon.
 type Daemon struct {
-	config       Config
-	transport    contracts.Transport
-	httpServer   *http.Server
-	gatewayRPC   *GatewayClient
-	telemetryRPC *TelemetryClient
-	publisher    *publish.Publisher
-	compiler     *compiler.Compiler
-	startedAt    time.Time
+	config         Config
+	transport      contracts.Transport
+	httpServer     *http.Server
+	gatewayRPC     *GatewayClient
+	gatewayMu      sync.RWMutex
+	telemetryRPC   *TelemetryClient
+	telemetryMu    sync.RWMutex
+	publisher      *publish.Publisher
+	compiler       *compiler.Compiler
+	benchmarkStore *benchmarking.Store
+	benchmarkSvc   *benchmarking.Service
+	startedAt      time.Time
+	runCtx         context.Context
+	runCancel      context.CancelFunc
+	frontendBundle *api.AdminFrontendBundle
+	configWatcher  *configloader.Watcher
+}
+
+type configCommandsAdapter struct {
+	publisher *publish.Publisher
+	reloadFn  func() (*publish.PublishResult, error)
+}
+
+type publisherGatewayAdapter struct {
+	daemon *Daemon
+}
+
+func (a publisherGatewayAdapter) ApplySnapshot(req gatewaycontrol.ApplySnapshotRequest) (*gatewaycontrol.ApplySnapshotResponse, error) {
+	client := a.daemon.currentGatewayRPC()
+	if client == nil {
+		return nil, fmt.Errorf("gateway not connected")
+	}
+	return client.ApplySnapshot(req)
+}
+
+func (a publisherGatewayAdapter) GetStatus() (*gatewaycontrol.GetStatusResponse, error) {
+	client := a.daemon.currentGatewayRPC()
+	if client == nil {
+		return nil, fmt.Errorf("gateway not connected")
+	}
+	return client.GetStatus()
+}
+
+type benchmarkGatewayAdapter struct {
+	daemon *Daemon
+}
+
+func (a benchmarkGatewayAdapter) RunBenchmarkCase(req gatewaycontrol.RunBenchmarkCaseRequest) (*gatewaycontrol.RunBenchmarkCaseResponse, error) {
+	client := a.daemon.currentGatewayRPC()
+	if client == nil {
+		return nil, fmt.Errorf("gateway not connected")
+	}
+	return client.RunBenchmarkCase(req)
+}
+
+func (a configCommandsAdapter) Publish(revisionID string) (*publish.PublishResult, error) {
+	return a.publisher.Publish(revisionID)
+}
+
+func (a configCommandsAdapter) Rollback(revisionID string) (*publish.PublishResult, error) {
+	return a.publisher.Rollback(revisionID)
+}
+
+func (a configCommandsAdapter) ValidateConfig(cfg interface{}) (*publish.ConfigValidationResult, error) {
+	return a.publisher.ValidateConfig(cfg)
+}
+
+func (a configCommandsAdapter) UpdateConfig(cfg interface{}, description string) (*publish.PublishResult, error) {
+	return a.publisher.UpdateConfig(cfg, description)
+}
+
+func (a configCommandsAdapter) ReloadConfig() (*publish.PublishResult, error) {
+	if a.reloadFn == nil {
+		return nil, fmt.Errorf("reload is not configured")
+	}
+	return a.reloadFn()
 }
 
 func main() {
@@ -216,25 +287,64 @@ func newConfiguredPublisher(gateway publish.GatewayRPC, comp *compiler.Compiler,
 
 // Start starts the daemon.
 func (d *Daemon) Start(ctx context.Context) error {
+	d.runCtx, d.runCancel = context.WithCancel(ctx)
+
 	// Connect to gatewayd
-	if err := d.connectGateway(ctx); err != nil {
+	if err := d.connectGateway(d.runCtx); err != nil {
 		log.Printf("[controld] warning: could not connect to gateway: %v", err)
 	}
 
 	// Connect to telemetryd
-	if err := d.connectTelemetry(ctx); err != nil {
+	if err := d.connectTelemetry(d.runCtx); err != nil {
 		log.Printf("[controld] warning: could not connect to telemetry: %v", err)
 	}
 
 	// Initialize compiler and publisher
 	d.compiler = compiler.NewCompiler()
-	d.publisher = newConfiguredPublisher(d.gatewayRPC, d.compiler, d.publisherStateStore())
+	d.publisher = newConfiguredPublisher(publisherGatewayAdapter{daemon: d}, d.compiler, d.publisherStateStore())
+	benchmarkStore, err := benchmarking.NewStore(filepath.Join(d.config.DataDir, "benchmark.db"))
+	if err != nil {
+		return fmt.Errorf("initialize benchmark store: %w", err)
+	}
+	d.benchmarkStore = benchmarkStore
+	d.benchmarkSvc = benchmarking.NewService(benchmarkStore, d.publisher, benchmarkGatewayAdapter{daemon: d})
 	if err := d.restoreOrSeedInitialRevision(); err != nil {
 		return fmt.Errorf("restore or seed initial revision: %w", err)
 	}
 	if err := d.publishInitialRevision(); err != nil {
 		log.Printf("[controld] warning: could not publish initial revision: %v", err)
 	}
+
+	// Initialize frontend bundle (supports dev mode hot reload)
+	frontendBundle, err := api.NewAdminFrontendBundle("web/admin/dist")
+	if err != nil {
+		log.Printf("[controld] warning: %v, using embedded assets", err)
+		frontendBundle, _ = api.NewAdminFrontendBundle("")
+	}
+	d.frontendBundle = frontendBundle
+
+	// Start config file watcher for hot reload
+	if d.config.ConfigPath != "" {
+		if watcher, err := configloader.NewWatcher(d.config.ConfigPath, 5*time.Second); err == nil {
+			watcher.OnChange(func(cfg *core.Config) {
+				_ = cfg
+				log.Printf("[controld] config file changed, reloading...")
+				if err := d.reloadWatchedConfig(); err != nil {
+					log.Printf("[controld] config reload error: %v", err)
+				} else {
+					log.Printf("[controld] config reloaded from %s", d.config.ConfigPath)
+				}
+			})
+			watcher.Start()
+			d.configWatcher = watcher
+			log.Printf("[controld] watching config file: %s", d.config.ConfigPath)
+		} else {
+			log.Printf("[controld] warning: could not watch config file: %v", err)
+		}
+	}
+
+	go d.maintainGatewayConnection(d.runCtx)
+	go d.maintainTelemetryConnection(d.runCtx)
 
 	// Start HTTP server
 	readTimeout := time.Duration(d.config.ReadTimeoutSec) * time.Second
@@ -327,7 +437,7 @@ func (d *Daemon) publishInitialRevision() error {
 	if d.publisher == nil {
 		return fmt.Errorf("publisher not initialized")
 	}
-	if d.gatewayRPC == nil {
+	if d.currentGatewayRPC() == nil {
 		log.Printf("[controld] warning: skipping initial publish because gateway is not connected")
 		return nil
 	}
@@ -348,6 +458,46 @@ func (d *Daemon) publishInitialRevision() error {
 		return fmt.Errorf("publish %s failed: %s", current.RevisionID, result.ErrorMessage)
 	}
 	return nil
+}
+
+func (d *Daemon) reloadWatchedConfig() error {
+	_, err := d.reloadConfigFromSource()
+	return err
+}
+
+func (d *Daemon) reloadConfigFromSource() (*publish.PublishResult, error) {
+	if strings.TrimSpace(d.config.ConfigPath) == "" {
+		return nil, fmt.Errorf("config path is not configured")
+	}
+	revision, err := loadInitialRevision(d.config.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	return d.applyWatchedRevision(revision)
+}
+
+func (d *Daemon) applyWatchedRevision(revision publish.Revision) (*publish.PublishResult, error) {
+	if d.publisher == nil {
+		return nil, fmt.Errorf("publisher not initialized")
+	}
+	if err := d.publisher.UpsertRevision(revision, true); err != nil {
+		return nil, err
+	}
+	if d.currentGatewayRPC() == nil {
+		log.Printf("[controld] warning: skipping watched config publish because gateway is not connected")
+		return &publish.PublishResult{
+			Success:    true,
+			RevisionID: revision.RevisionID,
+		}, nil
+	}
+	result, err := d.publisher.Publish(revision.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	if result != nil && !result.Success {
+		return nil, fmt.Errorf("publish %s failed: %s", revision.RevisionID, result.ErrorMessage)
+	}
+	return result, nil
 }
 
 func revisionIDFromConfig(cfg *core.Config) (string, error) {
@@ -382,62 +532,180 @@ func (d *Daemon) publisherStateStore() publish.StateStore {
 	)
 }
 
-// connectGateway connects to gatewayd.
-func (d *Daemon) connectGateway(ctx context.Context) error {
-	retryCount := d.config.RPCRetryCount
-	if retryCount <= 0 {
-		retryCount = 10
+func (d *Daemon) currentGatewayRPC() *GatewayClient {
+	d.gatewayMu.RLock()
+	defer d.gatewayMu.RUnlock()
+	return d.gatewayRPC
+}
+
+func (d *Daemon) currentTelemetryRPC() *TelemetryClient {
+	d.telemetryMu.RLock()
+	defer d.telemetryMu.RUnlock()
+	return d.telemetryRPC
+}
+
+func (d *Daemon) setGatewayRPC(client *GatewayClient) {
+	d.gatewayMu.Lock()
+	previous := d.gatewayRPC
+	d.gatewayRPC = client
+	d.gatewayMu.Unlock()
+
+	if previous != nil && previous != client {
+		if err := previous.Close(); err != nil {
+			log.Printf("[controld] gateway RPC close error: %v", err)
+		}
 	}
+}
+
+func (d *Daemon) setTelemetryRPC(client *TelemetryClient) {
+	d.telemetryMu.Lock()
+	previous := d.telemetryRPC
+	d.telemetryRPC = client
+	d.telemetryMu.Unlock()
+
+	if previous != nil && previous != client {
+		if err := previous.Close(); err != nil {
+			log.Printf("[controld] telemetry RPC close error: %v", err)
+		}
+	}
+}
+
+func (d *Daemon) rpcRetryInterval() time.Duration {
 	retryInterval := time.Duration(d.config.RPCRetryInterval) * time.Second
 	if retryInterval == 0 {
-		retryInterval = time.Second
+		return time.Second
 	}
+	return retryInterval
+}
 
-	var conn contracts.Conn
-	var err error
-	for i := 0; i < retryCount; i++ {
-		conn, err = d.transport.Dial(d.config.GatewaySocket)
-		if err == nil {
-			break
-		}
-		log.Printf("[controld] waiting for gateway... (%d/%d)", i+1, retryCount)
-		time.Sleep(retryInterval)
+func (d *Daemon) rpcRetryCount() int {
+	retryCount := d.config.RPCRetryCount
+	if retryCount <= 0 {
+		return 10
 	}
+	return retryCount
+}
+
+func sleepWithContext(ctx context.Context, wait time.Duration) bool {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func (d *Daemon) connectGatewayOnce() error {
+	conn, err := d.transport.Dial(d.config.GatewaySocket)
 	if err != nil {
-		return fmt.Errorf("connect to gateway: %w", err)
+		return err
 	}
-
-	d.gatewayRPC = NewGatewayClient(conn)
+	d.setGatewayRPC(NewGatewayClient(conn))
 	return nil
+}
+
+func (d *Daemon) connectTelemetryOnce() error {
+	conn, err := d.transport.Dial(d.config.TelemetrySocket)
+	if err != nil {
+		return err
+	}
+	d.setTelemetryRPC(NewTelemetryClient(conn))
+	return nil
+}
+
+// connectGateway connects to gatewayd.
+func (d *Daemon) connectGateway(ctx context.Context) error {
+	var err error
+	for i := 0; i < d.rpcRetryCount(); i++ {
+		if err = d.connectGatewayOnce(); err == nil {
+			return nil
+		}
+		log.Printf("[controld] waiting for gateway... (%d/%d)", i+1, d.rpcRetryCount())
+		if !sleepWithContext(ctx, d.rpcRetryInterval()) {
+			return ctx.Err()
+		}
+	}
+	return fmt.Errorf("connect to gateway: %w", err)
 }
 
 // connectTelemetry connects to telemetryd.
 func (d *Daemon) connectTelemetry(ctx context.Context) error {
-	retryCount := d.config.RPCRetryCount
-	if retryCount <= 0 {
-		retryCount = 10
-	}
-	retryInterval := time.Duration(d.config.RPCRetryInterval) * time.Second
-	if retryInterval == 0 {
-		retryInterval = time.Second
-	}
-
-	var conn contracts.Conn
 	var err error
-	for i := 0; i < retryCount; i++ {
-		conn, err = d.transport.Dial(d.config.TelemetrySocket)
-		if err == nil {
-			break
+	for i := 0; i < d.rpcRetryCount(); i++ {
+		if err = d.connectTelemetryOnce(); err == nil {
+			return nil
 		}
-		log.Printf("[controld] waiting for telemetry... (%d/%d)", i+1, retryCount)
-		time.Sleep(retryInterval)
+		log.Printf("[controld] waiting for telemetry... (%d/%d)", i+1, d.rpcRetryCount())
+		if !sleepWithContext(ctx, d.rpcRetryInterval()) {
+			return ctx.Err()
+		}
 	}
-	if err != nil {
-		return fmt.Errorf("connect to telemetry: %w", err)
-	}
+	return fmt.Errorf("connect to telemetry: %w", err)
+}
 
-	d.telemetryRPC = NewTelemetryClient(conn)
-	return nil
+func (d *Daemon) maintainGatewayConnection(ctx context.Context) {
+	ticker := time.NewTicker(d.rpcRetryInterval())
+	defer ticker.Stop()
+
+	wasDisconnected := d.currentGatewayRPC() == nil
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		client := d.currentGatewayRPC()
+		if client != nil {
+			if _, err := client.GetStatus(); err == nil {
+				wasDisconnected = false
+				continue
+			} else if !wasDisconnected {
+				log.Printf("[controld] gateway connection lost: %v", err)
+			}
+			d.setGatewayRPC(nil)
+			wasDisconnected = true
+		}
+
+		if err := d.connectGatewayOnce(); err == nil {
+			log.Printf("[controld] gateway connected")
+			wasDisconnected = false
+		}
+	}
+}
+
+func (d *Daemon) maintainTelemetryConnection(ctx context.Context) {
+	ticker := time.NewTicker(d.rpcRetryInterval())
+	defer ticker.Stop()
+
+	wasDisconnected := d.currentTelemetryRPC() == nil
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		client := d.currentTelemetryRPC()
+		if client != nil {
+			if _, err := client.Ping(); err == nil {
+				wasDisconnected = false
+				continue
+			} else if !wasDisconnected {
+				log.Printf("[controld] telemetry connection lost: %v", err)
+			}
+			d.setTelemetryRPC(nil)
+			wasDisconnected = true
+		}
+
+		if err := d.connectTelemetryOnce(); err == nil {
+			log.Printf("[controld] telemetry connected")
+			wasDisconnected = false
+		}
+	}
 }
 
 // createHandler creates the HTTP handler.
@@ -454,19 +722,33 @@ func (d *Daemon) createHandler() http.Handler {
 
 	// Admin API
 	deps := api.Deps{
-		ConfigQuery:     d.publisher,
-		ConfigCommands:  d.publisher,
+		ConfigQuery: d.publisher,
+		ConfigCommands: configCommandsAdapter{
+			publisher: d.publisher,
+			reloadFn:  d.reloadConfigFromSource,
+		},
+		TelemetryRPCProvider: func() api.TelemetryQuerier {
+			client := d.currentTelemetryRPC()
+			if client == nil {
+				return nil
+			}
+			return client
+		},
+		GatewayRPCProvider: func() api.GatewayController {
+			client := d.currentGatewayRPC()
+			if client == nil {
+				return nil
+			}
+			return client
+		},
 		Version:         Version,
 		StartedAt:       d.startedAt,
 		AdminMiddleware: d.adminAuthMiddleware(),
 	}
-	if d.telemetryRPC != nil {
-		deps.TelemetryRPC = d.telemetryRPC
+	if d.benchmarkSvc != nil {
+		deps.Benchmarking = d.benchmarkSvc
 	}
-	if d.gatewayRPC != nil {
-		deps.GatewayRPC = d.gatewayRPC
-	}
-	api.Mount(mux, deps)
+	api.Mount(mux, deps, d.frontendBundle)
 
 	return mux
 }
@@ -484,10 +766,6 @@ func (d *Daemon) adminAuthMiddleware() func(http.Handler) http.Handler {
 				return
 			}
 
-			if handled := d.maybeBootstrapAdminCookie(w, r, authenticator); handled {
-				return
-			}
-
 			info, err := authenticator.Authenticate(r)
 			if err != nil {
 				if isPublicAdminShellRequest(r) {
@@ -501,12 +779,152 @@ func (d *Daemon) adminAuthMiddleware() func(http.Handler) http.Handler {
 				writeAdminAuthError(w, r, http.StatusUnauthorized, "authentication required")
 				return
 			}
+
+			// Same-origin check for cookie-authenticated write requests
+			if isCookieAuthenticated(r) && isSameOriginWriteRequired(r.URL.Path, r.Method) {
+				if !isValidSameOriginRequest(r) {
+					writeAdminAuthError(w, r, http.StatusForbidden, "same-origin check failed")
+					return
+				}
+			}
+
 			if !canAccessAdminRoute(info.Role, r.Method) {
 				writeAdminAuthError(w, r, http.StatusForbidden, "insufficient admin privileges")
 				return
 			}
+			r = api.WithAdminRole(r, info.Role)
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// isCookieAuthenticated checks if the request uses cookie authentication.
+func isCookieAuthenticated(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	// Has session cookie (name is "aigw" from authinfra package)
+	for _, c := range r.Cookies() {
+		if c.Name == "aigw" {
+			return true
+		}
+	}
+	return false
+}
+
+// isSameOriginWriteRequired returns true for paths that require same-origin validation.
+func isSameOriginWriteRequired(path, method string) bool {
+	// Read operations don't require same-origin check
+	if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
+		return false
+	}
+	// Write operations on admin API require same-origin check
+	return strings.HasPrefix(path, "/api/admin/config") ||
+		strings.HasPrefix(path, "/api/admin/upstreams") ||
+		strings.HasPrefix(path, "/api/admin/pricing/refresh") ||
+		strings.HasPrefix(path, "/api/admin/benchmark/baselines/import") ||
+		strings.HasPrefix(path, "/api/admin/benchmark/runs")
+}
+
+// isValidSameOriginRequest validates Origin/Referer for same-origin requests.
+func isValidSameOriginRequest(r *http.Request) bool {
+	expectedHost := requestHostForSameOrigin(r)
+	expectedScheme := requestSchemeForSameOrigin(r)
+	if expectedHost == "" || expectedScheme == "" {
+		return false
+	}
+
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		return isSameOrigin(origin, expectedHost, expectedScheme)
+	}
+
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		return isSameOrigin(referer, expectedHost, expectedScheme)
+	}
+
+	// Neither header present - reject for security
+	return false
+}
+
+func requestHostForSameOrigin(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if forwardedHost := firstForwardedValue(r.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
+		return forwardedHost
+	}
+	return strings.TrimSpace(r.Host)
+}
+
+func requestSchemeForSameOrigin(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if forwardedProto := firstForwardedValue(r.Header.Get("X-Forwarded-Proto")); forwardedProto != "" {
+		return strings.ToLower(forwardedProto)
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
+}
+
+func firstForwardedValue(value string) string {
+	if idx := strings.Index(value, ","); idx >= 0 {
+		value = value[:idx]
+	}
+	return strings.TrimSpace(value)
+}
+
+// isSameOrigin checks if the provided URL matches the expected origin.
+// It validates both host and scheme (http/https).
+func isSameOrigin(rawURL, expectedHost, expectedScheme string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+
+	if !strings.EqualFold(u.Scheme, expectedScheme) {
+		return false
+	}
+
+	actualName, actualPort := splitOriginHostPort(u.Host, expectedScheme)
+	expectedName, expectedPort := splitOriginHostPort(expectedHost, expectedScheme)
+	if actualPort != expectedPort {
+		return false
+	}
+	return strings.EqualFold(actualName, expectedName)
+}
+
+func splitOriginHostPort(hostport, scheme string) (string, string) {
+	hostport = strings.TrimSpace(hostport)
+	if hostport == "" {
+		return "", defaultPortForScheme(scheme)
+	}
+
+	if host, port, err := net.SplitHostPort(hostport); err == nil {
+		return strings.Trim(host, "[]"), port
+	}
+
+	if strings.HasPrefix(hostport, "[") && strings.HasSuffix(hostport, "]") {
+		return strings.Trim(hostport, "[]"), defaultPortForScheme(scheme)
+	}
+
+	if strings.Count(hostport, ":") > 1 {
+		return strings.Trim(hostport, "[]"), defaultPortForScheme(scheme)
+	}
+
+	return strings.Trim(hostport, "[]"), defaultPortForScheme(scheme)
+}
+
+func defaultPortForScheme(scheme string) string {
+	switch strings.ToLower(strings.TrimSpace(scheme)) {
+	case "https":
+		return "443"
+	default:
+		return "80"
 	}
 }
 
@@ -535,27 +953,6 @@ func (d *Daemon) currentAuthenticator() (*authinfra.Authenticator, error) {
 	}
 	authenticator.SetTokens(tokens)
 	return authenticator, nil
-}
-
-func (d *Daemon) maybeBootstrapAdminCookie(w http.ResponseWriter, r *http.Request, authenticator *authinfra.Authenticator) bool {
-	if authenticator == nil || r.URL == nil || !strings.HasPrefix(r.URL.Path, "/admin") {
-		return false
-	}
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
-	if token == "" {
-		return false
-	}
-	if err := authenticator.Login(w, token); err != nil {
-		writeAdminAuthError(w, r, http.StatusUnauthorized, "invalid admin token")
-		return true
-	}
-
-	redirectURL := *r.URL
-	query := redirectURL.Query()
-	query.Del("token")
-	redirectURL.RawQuery = query.Encode()
-	http.Redirect(w, r, redirectURL.String(), http.StatusSeeOther)
-	return true
 }
 
 func isLoopbackListenAddr(addr string) bool {
@@ -781,7 +1178,7 @@ func writeAdminAuthError(w http.ResponseWriter, r *http.Request, status int, mes
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte("<!DOCTYPE html><html><body><h1>Admin Authentication Required</h1><p>" + message + "</p><p>Open /admin to sign in, open /admin?token=&lt;admin-token&gt; once to bootstrap a session, or use a Bearer token for API access.</p></body></html>"))
+	_, _ = w.Write([]byte("<!DOCTYPE html><html><body><h1>Admin Authentication Required</h1><p>" + message + "</p><p>Open /admin to sign in via the login form, or use a Bearer token for API access.</p></body></html>"))
 }
 
 // healthHandler handles health check requests.
@@ -789,12 +1186,12 @@ func (d *Daemon) healthHandler(w http.ResponseWriter, r *http.Request) {
 	status := "healthy"
 
 	// Check gateway connection
-	if d.gatewayRPC == nil {
+	if d.currentGatewayRPC() == nil {
 		status = "degraded"
 	}
 
 	// Check telemetry connection
-	if d.telemetryRPC == nil {
+	if d.currentTelemetryRPC() == nil {
 		status = "degraded"
 	}
 
@@ -810,6 +1207,20 @@ func (d *Daemon) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // Shutdown gracefully shuts down the daemon.
 func (d *Daemon) Shutdown(ctx context.Context) error {
+	if d.runCancel != nil {
+		d.runCancel()
+	}
+
+	// Stop config watcher
+	if d.configWatcher != nil {
+		d.configWatcher.Stop()
+	}
+
+	// Close frontend bundle (stops file watcher)
+	if d.frontendBundle != nil {
+		d.frontendBundle.Close()
+	}
+
 	// Shutdown HTTP server
 	if d.httpServer != nil {
 		if err := d.httpServer.Shutdown(ctx); err != nil {
@@ -818,16 +1229,13 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	}
 
 	// Close gateway RPC
-	if d.gatewayRPC != nil {
-		if err := d.gatewayRPC.Close(); err != nil {
-			log.Printf("[controld] gateway RPC close error: %v", err)
-		}
-	}
+	d.setGatewayRPC(nil)
 
 	// Close telemetry RPC
-	if d.telemetryRPC != nil {
-		if err := d.telemetryRPC.Close(); err != nil {
-			log.Printf("[controld] telemetry RPC close error: %v", err)
+	d.setTelemetryRPC(nil)
+	if d.benchmarkStore != nil {
+		if err := d.benchmarkStore.Close(); err != nil {
+			log.Printf("[controld] benchmark store close error: %v", err)
 		}
 	}
 

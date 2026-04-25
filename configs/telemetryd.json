@@ -1,1 +1,6 @@
-{"ingest": "/run/user/1000/telemetry-ingest.sock", "query": "/run/user/1000/telemetry-query.sock", "data_dir": "data/telemetry"}
+{
+  "ingest_socket": ".gateway-runtime/telemetry-ingest.sock",
+  "query_socket": ".gateway-runtime/telemetry-query.sock",
+  "data_dir": ".gateway-runtime/telemetry-migrated",
+  "log_level": "info"
+}

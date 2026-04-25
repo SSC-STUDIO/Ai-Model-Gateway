@@ -3,12 +3,16 @@ import type {
   AnyRecord,
   BenchmarkModel,
   BenchmarkResponse,
+  ControlStatusView,
   ControlConfigView,
   ConfigHistoryResponse,
   ConfigVersionSummary,
   DataResponse,
   RequestEntry,
   ErrorEntry,
+  PricingFXStatus,
+  PricingSourceStatus,
+  PricingStatusView,
   ProviderHealthView,
   TimeSeriesBucket,
   TimeSeriesResponse,
@@ -24,36 +28,26 @@ const READINESS_LABELS: Record<number, string> = {
   4: 'stopped',
 }
 
-export interface ControlStatusView {
-  version?: string
-  started_at?: string
-  uptime?: string
-  gateway_status?: string
-  gateway_error?: string
-  telemetry_status?: string
-  gateway_readiness?: string
-  gateway_listener?: string
-  active_snapshot_id?: string
-  active_requests?: number
-  provider_health_count?: number
-  healthy_provider_count?: number
-  unhealthy_provider_count?: number
-  cooldown_provider_count?: number
-  provider_health?: ProviderHealthView[]
-}
-
 interface TelemetryEventView {
+  request_id: string
   timestamp: string
   path: string
   requested_model: string
   effective_model: string
   provider: string
+  route_mode: string
   status_code: number
   latency_ms: number
   attempts: number
   input_tokens: number
   cached_prompt_tokens: number
   output_tokens: number
+  pricing_status: string
+  total_cost_usd: number
+  synthetic_kind: string
+  benchmark_run_id: string
+  benchmark_target_id: string
+  benchmark_case_id: string
   error: string
 }
 
@@ -138,6 +132,55 @@ function normalizeProviderHealthEntry(name: string, value: unknown): ProviderHea
   }
 }
 
+function normalizePricingSourceStatus(value: unknown): PricingSourceStatus | null {
+  const record = asRecord(value)
+  const id = asString(record?.id ?? record?.ID)
+  const vendor = asString(record?.vendor ?? record?.Vendor)
+  if (!id || !vendor) return null
+
+  return {
+    id,
+    vendor,
+    url: asString(record?.url ?? record?.URL),
+    enabled: asBoolean(record?.enabled ?? record?.Enabled) ?? false,
+    status: asString(record?.status ?? record?.Status),
+    updated_at: asString(record?.updated_at ?? record?.UpdatedAt),
+    last_attempt_at: asString(record?.last_attempt_at ?? record?.LastAttemptAt),
+    last_error: asString(record?.last_error ?? record?.LastError),
+    model_count: asNumber(record?.model_count ?? record?.ModelCount),
+  }
+}
+
+function normalizePricingFXStatus(value: unknown): PricingFXStatus | undefined {
+  const record = asRecord(value)
+  if (!record) return undefined
+  return {
+    enabled: asBoolean(record?.enabled ?? record?.Enabled) ?? false,
+    source_url: asString(record?.source_url ?? record?.SourceURL),
+    base_currency: asString(record?.base_currency ?? record?.BaseCurrency),
+    updated_at: asString(record?.updated_at ?? record?.UpdatedAt),
+    last_attempt_at: asString(record?.last_attempt_at ?? record?.LastAttemptAt),
+    last_error: asString(record?.last_error ?? record?.LastError),
+  }
+}
+
+function normalizePricingStatusView(value: unknown): PricingStatusView | undefined {
+  const record = asRecord(value)
+  if (!record) return undefined
+
+  return {
+    source_url: asString(record?.source_url ?? record?.SourceURL),
+    updated_at: asString(record?.updated_at ?? record?.UpdatedAt),
+    last_attempt_at: asString(record?.last_attempt_at ?? record?.LastAttemptAt),
+    last_error: asString(record?.last_error ?? record?.LastError),
+    catalog_size: asNumber(record?.catalog_size ?? record?.CatalogSize),
+    sources: asArray(record?.sources ?? record?.Sources)
+      .map((item) => normalizePricingSourceStatus(item))
+      .filter((item): item is PricingSourceStatus => item !== null),
+    fx: normalizePricingFXStatus(record?.fx ?? record?.FX),
+  }
+}
+
 function timeRangeHours(value: string | number): string {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
     return String(value)
@@ -171,17 +214,25 @@ function normalizeTelemetryEvent(value: unknown): TelemetryEventView | null {
   if (!timestamp || !path) return null
 
   return {
+    request_id: asString(record?.RequestID ?? record?.request_id) ?? '',
     timestamp,
     path,
     requested_model: asString(record?.RequestedModel ?? record?.requested_model) ?? '',
     effective_model: asString(record?.EffectiveModel ?? record?.effective_model) ?? '',
     provider: asString(record?.Provider ?? record?.provider) ?? '',
+    route_mode: asString(record?.RouteMode ?? record?.route_mode) ?? '',
     status_code: metricNumber(record, 'StatusCode', 'status_code'),
     latency_ms: metricNumber(record, 'LatencyMs', 'latency_ms'),
     attempts: metricNumber(record, 'Attempts', 'attempts'),
     input_tokens: metricNumber(record, 'InputTokens', 'input_tokens'),
     cached_prompt_tokens: metricNumber(record, 'CachedPromptTokens', 'cached_prompt_tokens'),
     output_tokens: metricNumber(record, 'OutputTokens', 'output_tokens'),
+    pricing_status: asString(record?.PricingStatus ?? record?.pricing_status) ?? '',
+    total_cost_usd: asNumber(record?.PricingTotalCostUSD ?? record?.pricing_total_cost_usd) ?? 0,
+    synthetic_kind: asString(record?.SyntheticKind ?? record?.synthetic_kind) ?? '',
+    benchmark_run_id: asString(record?.BenchmarkRunID ?? record?.benchmark_run_id) ?? '',
+    benchmark_target_id: asString(record?.BenchmarkTargetID ?? record?.benchmark_target_id) ?? '',
+    benchmark_case_id: asString(record?.BenchmarkCaseID ?? record?.benchmark_case_id) ?? '',
     error: asString(record?.Error ?? record?.error) ?? '',
   }
 }
@@ -224,6 +275,8 @@ function normalizeBenchmarkModel(value: unknown): BenchmarkModel | null {
     max_latency_ms: metricNumber(record, 'MaxLatencyMs', 'max_latency_ms'),
     success_rate: successRate,
     estimated_cost_usd: asNumber(record?.EstimatedCostUSD ?? record?.estimated_cost_usd) ?? 0,
+    exact_cost_usd: asNumber(record?.ExactCostUSD ?? record?.exact_cost_usd),
+    estimated_legacy_cost_usd: asNumber(record?.EstimatedLegacyCostUSD ?? record?.estimated_legacy_cost_usd),
   }
 }
 
@@ -246,10 +299,16 @@ export function telemetryURL(hours: string): string {
   return `/api/admin/telemetry?hours=${encodeURIComponent(timeRangeHours(hours))}&limit=500`
 }
 
-export function telemetryTimeseriesURL(hours: string): string {
+export function logsURL(hours: string, limit = 500, offset = 0): string {
+  return `/api/admin/telemetry?hours=${encodeURIComponent(timeRangeHours(hours))}&limit=${limit}&offset=${offset}`
+}
+
+export function telemetryTimeseriesURL(hours: string, bucket = ''): string {
   const resolvedHours = timeRangeHours(hours)
-  const bucket = hours === 'all' ? HISTORY_BUCKET_MINUTES : hours === '720' ? 1440 : 60
-  return `/api/admin/timeseries?hours=${encodeURIComponent(resolvedHours)}&bucket=${bucket}`
+  const resolvedBucket = bucket.trim() !== ''
+    ? bucket.trim()
+    : String(hours === 'all' ? HISTORY_BUCKET_MINUTES : hours === '720' ? 1440 : 60)
+  return `/api/admin/timeseries?hours=${encodeURIComponent(resolvedHours)}&bucket=${encodeURIComponent(resolvedBucket)}`
 }
 
 export function historyTimeseriesURL(): string {
@@ -291,6 +350,10 @@ export function normalizeControlStatus(payload: unknown): ControlStatusView | nu
     gateway_status: asString(record.gateway_status),
     gateway_error: asString(record.gateway_error),
     telemetry_status: asString(record.telemetry_status),
+    telemetry_error: asString(record.telemetry_error),
+    telemetry_version: asString(record.telemetry_version),
+    telemetry_event_count: asNumber(record.telemetry_event_count),
+    telemetry_last_checked_at: asString(record.telemetry_last_checked_at),
     gateway_readiness: readiness,
     gateway_listener: asString(gateway?.Listener ?? gateway?.listener),
     active_snapshot_id: asString(gateway?.ActiveSnapshotID ?? gateway?.active_snapshot_id),
@@ -300,6 +363,7 @@ export function normalizeControlStatus(payload: unknown): ControlStatusView | nu
     unhealthy_provider_count: unhealthyProviderCount,
     cooldown_provider_count: cooldownProviderCount,
     provider_health: providerHealthItems,
+    pricing: normalizePricingStatusView(record.pricing ?? record.Pricing),
   }
 }
 
@@ -327,6 +391,8 @@ export function normalizeControlConfigResponse(payload: unknown): ControlConfigV
     policy: {
       publish_history_limit: metricNumber(policyRecord, 'PublishHistoryLimit', 'publish_history_limit'),
     },
+    raw_yaml: asString(record.raw_yaml ?? record.RawYAML),
+    config: asRecord(record.config ?? record.Config) ?? undefined,
   }
 }
 
@@ -402,17 +468,28 @@ export function normalizeTelemetryResponse(payload: unknown): DataResponse | nul
     const isSuccess = event.status_code > 0 && event.status_code < 400
 
     requests.push({
+      RequestID: event.request_id,
       Timestamp: event.timestamp,
       Path: event.path,
+      RequestedModel: event.requested_model,
+      EffectiveModel: event.effective_model,
       StatusCode: event.status_code,
       Upstream: upstream,
       Model: model,
+      RouteMode: event.route_mode,
       Attempts: event.attempts,
       LatencyMs: event.latency_ms,
       InputTokens: event.input_tokens,
       CachedPromptTokens: event.cached_prompt_tokens,
       OutputTokens: event.output_tokens,
       cached: event.cached_prompt_tokens > 0,
+      PricingStatus: event.pricing_status,
+      TotalCostUSD: event.total_cost_usd,
+      SyntheticKind: event.synthetic_kind,
+      BenchmarkRunID: event.benchmark_run_id,
+      BenchmarkTargetID: event.benchmark_target_id,
+      BenchmarkCaseID: event.benchmark_case_id,
+      Error: event.error,
     })
 
     if (event.error || event.status_code >= 400) {
@@ -478,6 +555,7 @@ export function normalizeTelemetryResponse(payload: unknown): DataResponse | nul
     upstreams: toDistribution(upstreamMap),
     requests,
     errors,
+    pricing_economics: (asRecord(record.pricing_economics ?? record.PricingEconomics ?? record.Pricing) ?? undefined) as DataResponse['pricing_economics'],
   }
 }
 

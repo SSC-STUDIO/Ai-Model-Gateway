@@ -40,6 +40,18 @@ test.describe('Admin UI Smoke Tests', () => {
         body: JSON.stringify({ points: [] }),
       })
     })
+    await page.route('/api/admin/config', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          revision: null,
+          policy: {},
+          config: {},
+          raw_yaml: '{}',
+        }),
+      })
+    })
     await page.route('/api/admin/config/history', async (route) => {
       await route.fulfill({
         status: 200,
@@ -54,8 +66,22 @@ test.describe('Admin UI Smoke Tests', () => {
         body: JSON.stringify({}),
       })
     })
+    await page.route('/api/admin/benchmark/baselines**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ snapshots: [] }),
+      })
+    })
+    await page.route('/api/admin/benchmark/runs**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ runs: [] }),
+      })
+    })
 
-    await page.goto('/')
+    await page.goto('/admin/')
   })
 
   test('overview page loads with navigation and data panels', async ({ page }) => {
@@ -64,7 +90,7 @@ test.describe('Admin UI Smoke Tests', () => {
 
     // Verify top navigation tabs exist
     await expect(page.locator('.tabbar')).toBeVisible()
-    const tabs = ['Overview', 'Telemetry', 'Timeseries', 'History', 'Benchmark']
+    const tabs = ['Overview', 'Telemetry', 'Pricing', 'Benchmark', 'Logs', 'Config']
     for (const label of tabs) {
       await expect(page.locator('.tabbar')).toContainText(label)
     }
@@ -73,14 +99,14 @@ test.describe('Admin UI Smoke Tests', () => {
     await expect(page.locator('.panel').first()).toBeVisible()
 
     // Verify status badges in header (gateway + telemetry + auth disabled)
-    await expect(page.locator('.topbar-actions .status-badge')).toHaveCount(3)
+    await expect(page.locator('.topbar-right .status-badge')).toHaveCount(3)
   })
 
-  test('history tab shows publish/rollback button state', async ({ page }) => {
-    await page.click('text=History')
+  test('config tab shows publish/rollback button state', async ({ page }) => {
+    await page.click('text=Config')
 
-    // Wait for history panel to load
-    await expect(page.locator('h2')).toContainText('History')
+    // Wait for config panel to load
+    await expect(page.locator('h2')).toContainText('Config')
 
     // Toolbar may not exist if backend is unavailable; verify gracefully
     const toolbar = page.locator('.history-toolbar')
@@ -120,23 +146,60 @@ test.describe('Admin UI Smoke Tests', () => {
     await expect(hoursSelect).toBeVisible()
   })
 
+  test('logs tab loads with controls and empty state', async ({ page }) => {
+    await page.click('text=Logs')
+
+    // Wait for logs panel
+    await expect(page.locator('h2')).toContainText('Logs')
+
+    // Verify time range controls exist
+    const timeButtons = page.locator('.timeseries-selector button')
+    await expect(timeButtons.first()).toBeVisible()
+
+    // Verify log type filter buttons
+    const typeButtons = page.locator('.logs-type-selector button')
+    await expect(typeButtons).toHaveCount(3)
+
+    // Verify search input exists
+    const searchInput = page.locator('.logs-search input')
+    await expect(searchInput).toBeVisible()
+
+    // Type a search query
+    await searchInput.fill('gpt-4o')
+    await expect(searchInput).toHaveValue('gpt-4o')
+
+    // Switch log type filter
+    await typeButtons.nth(1).click()
+    await typeButtons.nth(2).click()
+  })
+
+  test('pricing tab loads with title', async ({ page }) => {
+    await page.click('text=Pricing')
+
+    // Wait for pricing panel
+    await expect(page.locator('h2')).toContainText('Pricing')
+  })
+
   test('tab switching updates URL without full reload', async ({ page }) => {
     const initialUrl = page.url()
 
     await page.click('text=Telemetry')
     await expect(page).toHaveURL(/\/admin\/telemetry/)
 
-    await page.click('text=Timeseries')
-    await expect(page).toHaveURL(/\/admin\/timeseries/)
-
-    await page.click('text=History')
-    await expect(page).toHaveURL(/\/admin\/history/)
+    await page.click('text=Pricing')
+    await expect(page).toHaveURL(/\/admin\/pricing/)
 
     await page.click('text=Benchmark')
     await expect(page).toHaveURL(/\/admin\/benchmark/)
 
+    await page.click('text=Logs')
+    await expect(page).toHaveURL(/\/admin\/logs/)
+
+    await page.click('text=Config')
+    await expect(page).toHaveURL(/\/admin\/config/)
+
     // Back button should work
     await page.goBack()
-    await expect(page).toHaveURL(/\/admin\/history/)
+    await expect(page).toHaveURL(/\/admin\/logs/)
   })
 })

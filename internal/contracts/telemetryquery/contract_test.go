@@ -149,6 +149,12 @@ func TestTelemetryFilters(t *testing.T) {
 	if f.MaxLatencyMs != 5000 {
 		t.Errorf("MaxLatencyMs = %d, want 5000", f.MaxLatencyMs)
 	}
+	f.SyntheticKind = "benchmark"
+	f.BenchmarkRunID = "run_1"
+	f.BenchmarkCaseID = "reasoning_exact"
+	if f.SyntheticKind != "benchmark" || f.BenchmarkRunID != "run_1" || f.BenchmarkCaseID != "reasoning_exact" {
+		t.Errorf("unexpected synthetic filter fields: %+v", f)
+	}
 }
 
 // TestTelemetryRequest tests the telemetry request struct.
@@ -199,22 +205,27 @@ func TestTelemetryResponse(t *testing.T) {
 func TestTelemetryEvent(t *testing.T) {
 	now := time.Now()
 	te := TelemetryEvent{
-		EventID:        "evt-001",
-		Timestamp:      now,
-		RequestID:      "req-001",
-		Path:           "/v1/chat/completions",
-		RequestedModel: "gpt-4",
-		EffectiveModel: "gpt-4-turbo",
-		Provider:       "openai",
-		RouteMode:      "direct",
-		StatusCode:     200,
-		LatencyMs:      150,
-		Attempts:       1,
-		InputTokens:    100,
-		CachedPromptTokens: 50,
-		OutputTokens:   200,
-		Stream:         true,
-		Error:          "",
+		EventID:             "evt-001",
+		Timestamp:           now,
+		RequestID:           "req-001",
+		Path:                "/v1/chat/completions",
+		RequestedModel:      "gpt-4",
+		EffectiveModel:      "gpt-4-turbo",
+		Provider:            "openai",
+		RouteMode:           "direct",
+		StatusCode:          200,
+		LatencyMs:           150,
+		Attempts:            1,
+		InputTokens:         100,
+		CachedPromptTokens:  50,
+		OutputTokens:        200,
+		PricingStatus:       "fixed",
+		PricingTotalCostUSD: 0.0123,
+		SyntheticKind:       "benchmark",
+		BenchmarkRunID:      "run_1",
+		BenchmarkCaseID:     "reasoning_exact",
+		Stream:              true,
+		Error:               "",
 	}
 
 	if te.EventID != "evt-001" {
@@ -228,6 +239,9 @@ func TestTelemetryEvent(t *testing.T) {
 	}
 	if te.LatencyMs != 150 {
 		t.Errorf("LatencyMs = %d, want 150", te.LatencyMs)
+	}
+	if te.BenchmarkRunID != "run_1" || te.BenchmarkCaseID != "reasoning_exact" {
+		t.Errorf("unexpected benchmark fields: %+v", te)
 	}
 }
 
@@ -272,15 +286,15 @@ func TestTimeSeriesResponse(t *testing.T) {
 // TestTimeBucket tests the time bucket struct.
 func TestTimeBucket(t *testing.T) {
 	tb := TimeBucket{
-		Bucket:           "2024-01-01T00:00:00Z",
-		Requests:         100,
-		Successes:        95,
-		Failures:         5,
-		InputTokens:      1000,
+		Bucket:             "2024-01-01T00:00:00Z",
+		Requests:           100,
+		Successes:          95,
+		Failures:           5,
+		InputTokens:        1000,
 		CachedPromptTokens: 200,
-		OutputTokens:     500,
-		AvgLatencyMs:     120.5,
-		GroupValue:       "gpt-4",
+		OutputTokens:       500,
+		AvgLatencyMs:       120.5,
+		GroupValue:         "gpt-4",
 	}
 
 	if tb.Bucket != "2024-01-01T00:00:00Z" {
@@ -340,20 +354,20 @@ func TestBenchmarkResponse(t *testing.T) {
 // TestModelBenchmark tests the model benchmark struct.
 func TestModelBenchmark(t *testing.T) {
 	mb := ModelBenchmark{
-		Model:            "gpt-4",
-		Requests:         1000,
-		Successes:        950,
-		Failures:         50,
-		InputTokens:      50000,
+		Model:              "gpt-4",
+		Requests:           1000,
+		Successes:          950,
+		Failures:           50,
+		InputTokens:        50000,
 		CachedPromptTokens: 10000,
-		OutputTokens:     20000,
-		AvgLatencyMs:     200.0,
-		P50LatencyMs:     180.0,
-		P95LatencyMs:     350.0,
-		P99LatencyMs:     500.0,
-		MaxLatencyMs:     1000,
-		SuccessRate:      95.0,
-		EstimatedCostUSD: 12.50,
+		OutputTokens:       20000,
+		AvgLatencyMs:       200.0,
+		P50LatencyMs:       180.0,
+		P95LatencyMs:       350.0,
+		P99LatencyMs:       500.0,
+		MaxLatencyMs:       1000,
+		SuccessRate:        95.0,
+		EstimatedCostUSD:   12.50,
 	}
 
 	if mb.Model != "gpt-4" {

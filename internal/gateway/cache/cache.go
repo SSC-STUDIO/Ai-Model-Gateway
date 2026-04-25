@@ -123,6 +123,26 @@ func (c *Cache) Len() int {
 	return len(c.entries)
 }
 
+// CurrentBytes returns the total size of cached values in bytes.
+func (c *Cache) CurrentBytes() int64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	var total int64
+	for _, e := range c.entries {
+		total += int64(len(e.value))
+	}
+	return total
+}
+
+// MaxItems returns the maximum number of items allowed in the cache.
+func (c *Cache) MaxItems() int {
+	return c.maxItems
+}
+
+// TTL returns the cache entry TTL duration.
+func (c *Cache) TTL() time.Duration {
+	return c.ttl
+}
 
 // MakeKey produces a cache key from the request body and model name.
 // The key is the hex-encoded SHA-256 of (body + model).

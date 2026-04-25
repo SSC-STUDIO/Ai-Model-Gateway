@@ -27,6 +27,9 @@ type Snapshot struct {
 
 	// TelemetryEmit contains the telemetry emission configuration.
 	TelemetryEmit TelemetryEmitConfig `yaml:"telemetry_emit" json:"telemetry_emit"`
+
+	// Pricing contains runtime pricing refresh and manual override configuration.
+	Pricing PricingConfig `yaml:"pricing" json:"pricing"`
 }
 
 // SnapshotMeta contains metadata about the snapshot.
@@ -282,6 +285,45 @@ type TelemetryEmitConfig struct {
 
 	// Batching contains the batching configuration.
 	Batching BatchingConfig `yaml:"batching" json:"batching"`
+}
+
+// PricingConfig contains runtime pricing catalog configuration.
+type PricingConfig struct {
+	CachePath              string               `yaml:"cache_path"                json:"cache_path"`
+	RefreshIntervalMinutes int                  `yaml:"refresh_interval_minutes"  json:"refresh_interval_minutes"`
+	RequestTimeoutMs       int                  `yaml:"request_timeout_ms"        json:"request_timeout_ms"`
+	Sources                []PricingSource      `yaml:"sources"                   json:"sources"`
+	FX                     PricingFXConfig      `yaml:"fx"                        json:"fx"`
+	ManualPrices           []PricingManualPrice `yaml:"manual_prices"             json:"manual_prices"`
+}
+
+// PricingSource defines a single official source to refresh.
+type PricingSource struct {
+	ID                     string `yaml:"id"                        json:"id"`
+	Vendor                 string `yaml:"vendor"                    json:"vendor"`
+	URL                    string `yaml:"url"                       json:"url"`
+	Enabled                bool   `yaml:"enabled"                   json:"enabled"`
+	TimeoutMs              int    `yaml:"timeout_ms"                json:"timeout_ms"`
+	RefreshIntervalMinutes int    `yaml:"refresh_interval_minutes"  json:"refresh_interval_minutes"`
+}
+
+// PricingFXConfig defines runtime FX normalization settings.
+type PricingFXConfig struct {
+	Enabled                bool   `yaml:"enabled"                   json:"enabled"`
+	CachePath              string `yaml:"cache_path"                json:"cache_path"`
+	RefreshIntervalMinutes int    `yaml:"refresh_interval_minutes"  json:"refresh_interval_minutes"`
+}
+
+// PricingManualPrice defines a compiled manual pricing override.
+type PricingManualPrice struct {
+	Provider         string  `yaml:"provider,omitempty"             json:"provider,omitempty"`
+	Model            string  `yaml:"model"                          json:"model"`
+	Currency         string  `yaml:"currency,omitempty"             json:"currency,omitempty"`
+	InputPer1M       float64 `yaml:"input_per_1m"                   json:"input_per_1m"`
+	CachedInputPer1M float64 `yaml:"cached_input_per_1m,omitempty"  json:"cached_input_per_1m,omitempty"`
+	OutputPer1M      float64 `yaml:"output_per_1m"                  json:"output_per_1m"`
+	Enabled          bool    `yaml:"enabled"                        json:"enabled"`
+	Source           string  `yaml:"source,omitempty"               json:"source,omitempty"`
 }
 
 // BatchingConfig contains batching configuration.

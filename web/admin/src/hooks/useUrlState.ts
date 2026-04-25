@@ -46,7 +46,8 @@ function readParam<T>(key: string, defaultValue: T, serializer: Serializer<T>): 
 
 function writeParam(key: string, value: string, defaultValue: UrlValue) {
   const url = new URL(window.location.href)
-  const isDefault = value === getSerializer(defaultValue).stringify(defaultValue as never)
+  const serializer = getSerializer(defaultValue)
+  const isDefault = value === serializer.stringify(defaultValue as never)
 
   if (isDefault || value === '' || value === '0') {
     url.searchParams.delete(key)
@@ -76,14 +77,16 @@ export function useUrlState<T extends UrlValue>(
   const serializer = useRef(getSerializer(defaultValue)).current
   const [state, setState] = useState<T>(() => readParam(key, defaultValue, serializer))
 
+  // Keep a ref to the latest state for functional updates without stale closures
+  const stateRef = useRef(state)
+  stateRef.current = state
+
   const setUrlState = useCallback(
     (value: T | ((prev: T) => T)) => {
-      setState((prev) => {
-        const next = typeof value === 'function' ? (value as (prev: T) => T)(prev) : value
-        const serialized = serializer.stringify(next)
-        writeParam(key, serialized, defaultValue)
-        return next
-      })
+      const next = typeof value === 'function' ? (value as (prev: T) => T)(stateRef.current) : value
+      setState(next)
+      const serialized = serializer.stringify(next)
+      writeParam(key, serialized, defaultValue)
     },
     [key, defaultValue, serializer]
   )

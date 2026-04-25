@@ -96,6 +96,7 @@ providers:
   - name: kimi-official
     base_url: https://api.moonshot.cn
     anthropic_base_url: https://api.moonshot.cn/anthropic
+    protocol_adapter: anthropic_messages
     api_key: "${KIMI_OFFICIAL_API_KEY}"
     provider_class: quota_limited
     models:
@@ -125,6 +126,27 @@ pricing:
       output_per_1m: 0
       enabled: false
       source: manual
+
+benchmarking:
+  enabled: false
+  default_suite: general_protocol_v1
+  judge:
+    provider: kimi-official
+    public_model: kimi-k2.5
+    timeout_ms: 30000
+  limits:
+    max_parallel_runs: 1
+    max_parallel_cases: 2
+    per_case_timeout_ms: 30000
+  verdict_thresholds:
+    normal_max_gap: 8
+    suspect_max_gap: 20
+    high_suspect_protocol_failures: 2
+  aliases:
+    - canonical_model_id: gpt-4o-mini
+      provider: station-a
+      models:
+        - gpt-4o-mini
 
 compat:
   bridge:

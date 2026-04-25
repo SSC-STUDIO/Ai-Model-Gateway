@@ -15,6 +15,8 @@ configs/data/
 *.db
 *.db-shm
 *.db-wal
+/data/
+/cmd/gatewayd/data/
 
 # Logs
 *.log
@@ -32,9 +34,13 @@ Thumbs.db
 web/admin/node_modules/
 web/admin/dist/
 web/admin/test-results/
+web/admin/tmp-*.png
 
 # Root-level embedded dist (auto-generated)
 /embedded_admin_dist/
+
+# Local three-plane runtime state
+.gateway-runtime/
 
 # Temp files
 cookies.txt

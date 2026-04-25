@@ -54,6 +54,10 @@ describe('controlApi', () => {
     it('uses 10080min bucket for "all"', () => {
       expect(telemetryTimeseriesURL('all')).toContain('bucket=10080')
     })
+
+    it('uses the explicit selected bucket when provided', () => {
+      expect(telemetryTimeseriesURL('168', '15')).toBe('/api/admin/timeseries?hours=168&bucket=15')
+    })
   })
 
   describe('normalizeControlStatus', () => {
@@ -81,6 +85,23 @@ describe('controlApi', () => {
         gateway: { provider_health: { a: true, b: false } },
       })
       expect(result?.provider_health_count).toBe(2)
+    })
+
+    it('normalizes telemetry diagnostics', () => {
+      const result = normalizeControlStatus({
+        telemetry_status: 'error',
+        telemetry_error: 'telemetry not connected',
+        telemetry_version: '1.2.0',
+        telemetry_event_count: 18,
+        telemetry_last_checked_at: '2026-04-24T10:00:00Z',
+      })
+      expect(result).toMatchObject({
+        telemetry_status: 'error',
+        telemetry_error: 'telemetry not connected',
+        telemetry_version: '1.2.0',
+        telemetry_event_count: 18,
+        telemetry_last_checked_at: '2026-04-24T10:00:00Z',
+      })
     })
 
     it('normalizes detailed provider health entries', () => {
@@ -224,6 +245,7 @@ describe('controlApi', () => {
             input_tokens: 10,
             cached_prompt_tokens: 0,
             output_tokens: 20,
+            benchmark_target_id: 'target-1',
             error: '',
           },
           {
@@ -247,6 +269,7 @@ describe('controlApi', () => {
       expect(result!.summary!.successes).toBe(1)
       expect(result!.summary!.failures).toBe(1)
       expect(result!.requests!.length).toBe(2)
+      expect(result!.requests![0].BenchmarkTargetID).toBe('target-1')
       expect(result!.errors!.length).toBe(1)
     })
   })

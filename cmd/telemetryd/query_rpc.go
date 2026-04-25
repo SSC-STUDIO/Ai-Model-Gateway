@@ -77,6 +77,9 @@ func (r *TelemetryQueryRPC) GetTelemetry(req telemetryquery.TelemetryRequest, re
 	resp.Events = events
 	resp.Total = total
 	resp.WindowHours = windowHours
+	if req.Filters.SyntheticKind == "" && req.Filters.BenchmarkRunID == "" && req.Filters.BenchmarkCaseID == "" {
+		resp.Pricing = r.daemon.queryStore.QueryPricingEconomics(windowHours)
+	}
 	return nil
 }
 

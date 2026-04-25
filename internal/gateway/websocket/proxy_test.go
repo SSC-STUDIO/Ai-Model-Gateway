@@ -433,7 +433,12 @@ func TestServeHTTP_DisabledProvider(t *testing.T) {
 
 // TestServeHTTP_NoProviderAvailable tests when all providers fail to connect.
 func TestServeHTTP_NoProviderAvailable(t *testing.T) {
-	proxy := NewProxy()
+	proxy := NewProxyWithSSRFChecker(&mockSSRFChecker{})
+
+	failingUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not a websocket endpoint", http.StatusBadGateway)
+	}))
+	defer failingUpstream.Close()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		snap := &snapshot.Snapshot{
@@ -443,7 +448,7 @@ func TestServeHTTP_NoProviderAvailable(t *testing.T) {
 					ExecutionPolicy: snapshot.ExecutionPolicy{
 						Enabled: true,
 					},
-					BaseURL: "https://invalid-host-that-does-not-exist.local",
+					BaseURL: failingUpstream.URL,
 					ModelTable: []snapshot.ModelMapping{
 						{PublicModel: "gpt-4", UpstreamModel: "gpt-4"},
 					},
@@ -820,6 +825,11 @@ func TestServeHTTP_Success(t *testing.T) {
 func TestServeHTTP_ProviderFallback(t *testing.T) {
 	proxy := NewProxyWithSSRFChecker(&mockSSRFChecker{})
 
+	failingUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not a websocket endpoint", http.StatusBadGateway)
+	}))
+	defer failingUpstream.Close()
+
 	// Create upstream WebSocket server
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{
@@ -850,7 +860,7 @@ func TestServeHTTP_ProviderFallback(t *testing.T) {
 					ExecutionPolicy: snapshot.ExecutionPolicy{
 						Enabled: true,
 					},
-					BaseURL: "http://invalid-host.local",
+					BaseURL: failingUpstream.URL,
 					ModelTable: []snapshot.ModelMapping{
 						{PublicModel: "gpt-4", UpstreamModel: "gpt-4"},
 					},

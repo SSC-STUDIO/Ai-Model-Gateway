@@ -24,11 +24,6 @@ type PricingCatalog struct {
 	state atomic.Value
 }
 
-type pricingPageParser struct {
-	URL   string
-	Parse func(string) map[string]Pricing
-}
-
 var (
 	pricingCardPattern = regexp.MustCompile(`(?is)<h2 class="text-h4">([^<]+)</h2>.*?<h3[^>]*>Price</h3>(.*?)</div></div></div>`)
 	priceValuePattern  = regexp.MustCompile(`(?is)(Input|Cached input|Output):<br/>\$([0-9]+(?:\.[0-9]+)?) / 1M tokens`)
@@ -50,23 +45,26 @@ func (c *PricingCatalog) Start(ctx context.Context) {
 	}
 
 	go func() {
+		timer := time.NewTicker(time.Minute)
+		defer timer.Stop()
+		_ = c.RefreshNow(ctx)
 		for {
-			_ = c.refresh(ctx)
-
-			interval := time.Duration(c.currentConfig().RefreshIntervalHours) * time.Hour
-			if interval <= 0 {
-				interval = 12 * time.Hour
-			}
-
-			timer := time.NewTimer(interval)
 			select {
 			case <-ctx.Done():
-				timer.Stop()
 				return
 			case <-timer.C:
+				_, _ = c.refresh(ctx, false)
 			}
 		}
 	}()
+}
+
+func (c *PricingCatalog) RefreshNow(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
+	_, err := c.refresh(ctx, true)
+	return err
 }
 
 func (c *PricingCatalog) Snapshot() PricingCatalogSnapshot {
@@ -74,8 +72,7 @@ func (c *PricingCatalog) Snapshot() PricingCatalogSnapshot {
 		return BootstrapPricingSnapshot()
 	}
 	current := c.state.Load().(PricingCatalogSnapshot)
-	current.Catalog = clonePricingCatalog(current.Catalog)
-	return current
+	return clonePricingCatalogSnapshot(current)
 }
 
 func (c *PricingCatalog) UpdateConfig(cfg core.PricingConfig) {
@@ -87,9 +84,9 @@ func (c *PricingCatalog) UpdateConfig(cfg core.PricingConfig) {
 	c.state.Store(pricingSnapshotForUpdate(current, cfg))
 }
 
-func (c *PricingCatalog) refresh(parent context.Context) error {
+func (c *PricingCatalog) refresh(parent context.Context, force bool) (PricingCatalogSnapshot, error) {
 	if c == nil {
-		return nil
+		return BootstrapPricingSnapshot(), nil
 	}
 
 	cfg := c.currentConfig()
@@ -99,32 +96,19 @@ func (c *PricingCatalog) refresh(parent context.Context) error {
 	defer cancel()
 
 	current := c.Snapshot()
-	current.LastAttemptAt = time.Now().UTC()
-
-	fetched, err := fetchOfficialPricingCatalog(ctx)
-	if err != nil {
-		current.LastError = err.Error()
-		c.state.Store(current)
-		return err
+	updated, err := refreshPricingSnapshot(ctx, current, cfg, force)
+	c.state.Store(updated)
+	if saveErr := savePricingCatalogCache(cfg.CachePath, updated); saveErr != nil {
+		updated.LastError = fmt.Sprintf("save pricing cache: %v", saveErr)
+		c.state.Store(updated)
+		if err == nil {
+			err = saveErr
+		}
 	}
-
-	fetched.LastAttemptAt = current.LastAttemptAt
-	fetched.UpdatedAt = time.Now().UTC()
-	if fetched.SourceURL == "" {
-		fetched.SourceURL = OfficialPricingURL
+	if fxErr := savePricingFXCache(cfg.FX.CachePath, updated.FX); fxErr != nil && err == nil {
+		err = fxErr
 	}
-	fetched.Catalog = mergePricingCatalogs(BootstrapPricingCatalog(), fetched.Catalog)
-
-	if err := savePricingCatalogCache(cfg.CachePath, fetched); err != nil {
-		current = applyPricingConfigToSnapshot(fetched, cfg)
-		current.LastError = fmt.Sprintf("save pricing cache: %v", err)
-		c.state.Store(current)
-		return err
-	}
-
-	c.state.Store(applyPricingConfigToSnapshot(fetched, cfg))
-
-	return nil
+	return updated, err
 }
 
 func (c *PricingCatalog) currentConfig() core.PricingConfig {
@@ -139,30 +123,16 @@ func (c *PricingCatalog) currentConfig() core.PricingConfig {
 }
 
 func fetchOfficialPricingCatalog(ctx context.Context) (PricingCatalogSnapshot, error) {
-	pages := []pricingPageParser{
-		{URL: OfficialPricingURL, Parse: parseAPIPricingPage},
-		{URL: "https://openai.com/index/introducing-gpt-5-2/", Parse: parseGPT52PricingPage},
+	catalog, err := fetchPricingSourceCatalog(ctx, core.PricingSourceConfig{
+		ID:                     "openai",
+		Vendor:                 "openai",
+		URL:                    OfficialPricingURL,
+		RefreshIntervalMinutes: 15,
+		TimeoutMs:              15000,
+	})
+	if err != nil {
+		return PricingCatalogSnapshot{}, err
 	}
-
-	client := &http.Client{}
-	catalog := make(map[string]Pricing)
-	var errs []string
-
-	for _, page := range pages {
-		body, err := fetchPricingPage(ctx, client, page.URL)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %v", page.URL, err))
-			continue
-		}
-		for key, value := range page.Parse(body) {
-			catalog[key] = value
-		}
-	}
-
-	if len(catalog) == 0 {
-		return PricingCatalogSnapshot{}, fmt.Errorf("fetch official pricing: %s", strings.Join(errs, "; "))
-	}
-
 	return PricingCatalogSnapshot{
 		SourceURL: OfficialPricingURL,
 		Catalog:   catalog,
@@ -271,6 +241,16 @@ func parseGPT52PricingPage(body string) map[string]Pricing {
 func mergePricingSnapshots(base PricingCatalogSnapshot, overlay PricingCatalogSnapshot) PricingCatalogSnapshot {
 	merged := base
 	merged.Catalog = mergePricingCatalogs(base.Catalog, overlay.Catalog)
+	merged.SourceCatalogs = mergeSourceCatalogs(base.SourceCatalogs, overlay.SourceCatalogs)
+	merged.Sources = clonePricingSourceStates(overlay.Sources)
+	if len(merged.Sources) == 0 {
+		merged.Sources = clonePricingSourceStates(base.Sources)
+	}
+	if overlay.FX.Enabled || overlay.FX.SourceURL != "" || overlay.FX.LastError != "" || len(overlay.FX.RatesToUSD) > 0 {
+		merged.FX = clonePricingFXSnapshot(overlay.FX)
+	} else if merged.FX.RatesToUSD == nil {
+		merged.FX = clonePricingFXSnapshot(base.FX)
+	}
 	if overlay.SourceURL != "" {
 		merged.SourceURL = overlay.SourceURL
 	}
@@ -317,8 +297,7 @@ func loadPricingCatalogCache(path string) (PricingCatalogSnapshot, error) {
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		return PricingCatalogSnapshot{}, err
 	}
-	snapshot.Catalog = clonePricingCatalog(snapshot.Catalog)
-	return snapshot, nil
+	return clonePricingCatalogSnapshot(snapshot), nil
 }
 
 func savePricingCatalogCache(path string, snapshot PricingCatalogSnapshot) error {
@@ -365,7 +344,11 @@ func canonicalModelNames(value string) []string {
 		strings.HasPrefix(slug, "gemini-"),
 		strings.HasPrefix(slug, "deepseek-"),
 		strings.HasPrefix(slug, "kimi-"),
-		strings.HasPrefix(slug, "glm-"):
+		strings.HasPrefix(slug, "glm-"),
+		strings.HasPrefix(slug, "grok-"),
+		strings.HasPrefix(slug, "step-"),
+		strings.HasPrefix(slug, "minimax-"),
+		strings.HasPrefix(slug, "mimo-"):
 		return []string{slug}
 	default:
 		return nil
@@ -379,6 +362,11 @@ func pricingSnapshotFromConfig(cfg core.PricingConfig) PricingCatalogSnapshot {
 	} else if strings.TrimSpace(cfg.CachePath) != "" {
 		snapshot.LastError = err.Error()
 	}
+	if fx, err := loadPricingFXCache(cfg.FX.CachePath); err == nil {
+		snapshot.FX = clonePricingFXSnapshot(fx)
+	} else if strings.TrimSpace(cfg.FX.CachePath) != "" && snapshot.LastError == "" {
+		snapshot.LastError = err.Error()
+	}
 	return applyPricingConfigToSnapshot(snapshot, cfg)
 }
 
@@ -389,8 +377,15 @@ func pricingSnapshotForUpdate(current PricingCatalogSnapshot, cfg core.PricingCo
 	} else if strings.TrimSpace(cfg.CachePath) != "" {
 		snapshot.LastError = err.Error()
 	}
+	if fx, err := loadPricingFXCache(cfg.FX.CachePath); err == nil {
+		snapshot.FX = clonePricingFXSnapshot(fx)
+	}
 	snapshot = mergePricingSnapshots(snapshot, current)
-	return applyPricingConfigToSnapshot(snapshot, cfg)
+	updated := applyPricingConfigToSnapshot(snapshot, cfg)
+	if len(updated.SourceCatalogs) == 0 {
+		updated.Catalog = preserveLiveCatalogEntries(updated.Catalog, current.Catalog)
+	}
+	return updated
 }
 
 func stripPricingManualOverrides(snapshot PricingCatalogSnapshot, cfg core.PricingConfig) PricingCatalogSnapshot {
@@ -414,7 +409,17 @@ func stripPricingManualOverrides(snapshot PricingCatalogSnapshot, cfg core.Prici
 }
 
 func applyPricingConfigToSnapshot(snapshot PricingCatalogSnapshot, cfg core.PricingConfig) PricingCatalogSnapshot {
-	snapshot.Catalog = clonePricingCatalog(snapshot.Catalog)
+	sourceCatalogs := filterSourceCatalogsForConfig(snapshot.SourceCatalogs, cfg.Sources)
+	combined := BootstrapPricingCatalog()
+	for _, source := range cfg.Sources {
+		if !source.IsEnabled() {
+			continue
+		}
+		catalog := sourceCatalogs[source.ID]
+		combined = mergePricingCatalogs(combined, applyFXToCatalog(catalog, snapshot.FX))
+	}
+	snapshot.Catalog = combined
+	snapshot.SourceCatalogs = sourceCatalogs
 	for _, manual := range cfg.ManualPrices {
 		if !manual.IsEnabled() {
 			continue
@@ -435,9 +440,53 @@ func applyPricingConfigToSnapshot(snapshot PricingCatalogSnapshot, cfg core.Pric
 		if price.Source == "" {
 			price.Source = "manual"
 		}
+		price.SourceID = "manual"
+		if snapshot.FX.Enabled {
+			price = applyFXToPrice(price, snapshot.FX)
+		}
 		snapshot.Catalog[key] = normalizePricing(price)
 	}
+	snapshot.Sources = hydrateSourceStates(cfg, snapshot.Sources, snapshot.SourceCatalogs)
 	return snapshot
+}
+
+func filterSourceCatalogsForConfig(sourceCatalogs map[string]map[string]Pricing, configured []core.PricingSourceConfig) map[string]map[string]Pricing {
+	if len(sourceCatalogs) == 0 || len(configured) == 0 {
+		return nil
+	}
+	filtered := make(map[string]map[string]Pricing, len(configured))
+	for _, source := range configured {
+		catalog, ok := sourceCatalogs[source.ID]
+		if !ok {
+			continue
+		}
+		filtered[source.ID] = clonePricingCatalog(catalog)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
+func preserveLiveCatalogEntries(base map[string]Pricing, live map[string]Pricing) map[string]Pricing {
+	if len(live) == 0 {
+		return base
+	}
+	merged := clonePricingCatalog(base)
+	for key, price := range live {
+		normalizedKey := normalizePricingAlias(key)
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), "provider::") {
+			normalizedKey = strings.ToLower(strings.TrimSpace(key))
+		}
+		if normalizedKey == "" {
+			continue
+		}
+		if _, exists := merged[normalizedKey]; exists {
+			continue
+		}
+		merged[normalizedKey] = normalizePricing(price)
+	}
+	return merged
 }
 
 func splitModelAliases(value string) []string {

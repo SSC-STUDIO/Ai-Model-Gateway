@@ -36,12 +36,18 @@ Security-sensitive areas in this repository include:
 
 ## Admin browser threat model
 
-- 浏览器中的 admin cookie 会话仅面向同源上下文；对 `PUT /-/admin/config`、`POST /-/admin/config/rollback`、`POST /-/admin/upstreams/test` 的 cookie-auth 写请求必须通过同源 `Origin`，缺失时仅接受同源 `Referer`。
+- 浏览器中的 admin cookie 会话仅面向同源上下文；对 `POST /api/admin/config/publish`、`POST /api/admin/config/rollback` 的 cookie-auth 写请求必须通过同源 `Origin` 或 `Referer` 校验。
 - Bearer token 面向脚本、CLI 与自动化调用，不依赖浏览器来源头。
 - 如需报告 admin 相关问题，请说明是否涉及同源校验绕过、cookie 跨站写入，或 Bearer / cookie 模式边界混淆。
 
-## Expectations
+## Authentication
 
-- Reports will be reviewed on a best-effort basis.
-- Please allow time for triage before requesting public disclosure.
-- If a fix requires config rotation, assume API keys should be rotated immediately.
+- Cookie-based browser sessions must be established via POST `/api/admin/login` with a JSON body containing the token.
+- URL-based token login (`/admin?token=...`) is no longer supported to prevent token exposure in browser history, proxy logs, and referrer headers.
+- Bearer token authentication is available for API access and bypasses same-origin checks.
+
+## Configuration secrets
+
+- Never commit real secrets to version control.
+- Use environment variable placeholders (`${VAR_NAME}`) in config files.
+- The default `configs/config.yaml` uses placeholder values; operators must set actual secrets via environment variables.

@@ -1,0 +1,21 @@
+admin:
+  enabled: true
+  bootstrap_token: "test-bootstrap-123456789012345678901234567890"
+  cookie_signing_key: "test-cookie-key-32bytes-long-xxx123456"
+  tokens:
+    - name: "admin"
+      token: "admin-test-token"
+      role: "admin"
+    - name: "viewer"
+      token: "viewer-test-token"
+      role: "viewer"
+
+gateway:
+  listen: ":18083"
+  providers:
+    - id: "test"
+      name: "Test Provider"
+      base_url: "http://localhost:8080"
+      api_key: "test-key"
+      models:
+        - "gpt-4"

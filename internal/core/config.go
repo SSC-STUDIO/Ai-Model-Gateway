@@ -13,13 +13,14 @@ import (
 
 // Config holds the complete gateway configuration.
 type Config struct {
-	Server    ServerConfig    `yaml:"server"    json:"server"`
-	Admin     AdminConfig     `yaml:"admin"     json:"admin"`
-	Routing   RoutingConfig   `yaml:"routing"   json:"routing"`
-	Providers []Provider      `yaml:"providers" json:"providers"`
-	Telemetry TelemetryConfig `yaml:"telemetry" json:"telemetry"`
-	Pricing   PricingConfig   `yaml:"pricing"   json:"pricing"`
-	Compat    CompatConfig    `yaml:"compat"    json:"compat"`
+	Server       ServerConfig       `yaml:"server"       json:"server"`
+	Admin        AdminConfig        `yaml:"admin"        json:"admin"`
+	Routing      RoutingConfig      `yaml:"routing"      json:"routing"`
+	Providers    []Provider         `yaml:"providers"    json:"providers"`
+	Telemetry    TelemetryConfig    `yaml:"telemetry"    json:"telemetry"`
+	Pricing      PricingConfig      `yaml:"pricing"      json:"pricing"`
+	Benchmarking BenchmarkingConfig `yaml:"benchmarking" json:"benchmarking"`
+	Compat       CompatConfig       `yaml:"compat"       json:"compat"`
 }
 
 // ServerConfig controls the network listener and general server behaviour.
@@ -144,9 +145,9 @@ type KeyRotationConfig struct {
 
 // CompressionConfig controls response compression.
 type CompressionConfig struct {
-	Enabled     bool `yaml:"enabled"        json:"enabled"`
+	Enabled      bool `yaml:"enabled"        json:"enabled"`
 	MinSizeBytes int  `yaml:"min_size_bytes" json:"min_size_bytes"`
-	Level       int  `yaml:"level"          json:"level"`
+	Level        int  `yaml:"level"          json:"level"`
 }
 
 // IsEnabled returns whether the intercept rule is enabled (defaults to true).
@@ -167,10 +168,46 @@ type TelemetryConfig struct {
 
 // PricingConfig controls pricing cache and refresh behaviour.
 type PricingConfig struct {
-	CachePath            string               `yaml:"cache_path"             json:"cache_path"`
-	RefreshIntervalHours int                  `yaml:"refresh_interval_hours" json:"refresh_interval_hours"`
-	RequestTimeoutMs     int                  `yaml:"request_timeout_ms"     json:"request_timeout_ms"`
-	ManualPrices         []PricingManualPrice `yaml:"manual_prices" json:"manual_prices"`
+	CachePath              string                `yaml:"cache_path"                json:"cache_path"`
+	RefreshIntervalHours   int                   `yaml:"refresh_interval_hours"    json:"refresh_interval_hours"`
+	RefreshIntervalMinutes int                   `yaml:"refresh_interval_minutes"  json:"refresh_interval_minutes"`
+	RequestTimeoutMs       int                   `yaml:"request_timeout_ms"        json:"request_timeout_ms"`
+	Sources                []PricingSourceConfig `yaml:"sources"                   json:"sources"`
+	FX                     PricingFXConfig       `yaml:"fx"                        json:"fx"`
+	ManualPrices           []PricingManualPrice  `yaml:"manual_prices"             json:"manual_prices"`
+}
+
+// PricingSourceConfig defines an official pricing source to poll.
+type PricingSourceConfig struct {
+	ID                     string `yaml:"id"                        json:"id"`
+	Vendor                 string `yaml:"vendor"                    json:"vendor"`
+	URL                    string `yaml:"url"                       json:"url"`
+	Enabled                *bool  `yaml:"enabled,omitempty"         json:"enabled,omitempty"`
+	TimeoutMs              int    `yaml:"timeout_ms"                json:"timeout_ms"`
+	RefreshIntervalMinutes int    `yaml:"refresh_interval_minutes"  json:"refresh_interval_minutes"`
+}
+
+// IsEnabled returns whether the pricing source is enabled (defaults to true).
+func (s PricingSourceConfig) IsEnabled() bool {
+	if s.Enabled == nil {
+		return true
+	}
+	return *s.Enabled
+}
+
+// PricingFXConfig defines foreign exchange refresh behaviour for USD normalization.
+type PricingFXConfig struct {
+	Enabled                *bool  `yaml:"enabled,omitempty"         json:"enabled,omitempty"`
+	CachePath              string `yaml:"cache_path"                json:"cache_path"`
+	RefreshIntervalMinutes int    `yaml:"refresh_interval_minutes"  json:"refresh_interval_minutes"`
+}
+
+// IsEnabled returns whether FX normalization is enabled (defaults to true).
+func (c PricingFXConfig) IsEnabled() bool {
+	if c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
 }
 
 // PricingManualPrice allows operator-defined pricing overrides by model and optional provider.
@@ -191,6 +228,44 @@ func (p PricingManualPrice) IsEnabled() bool {
 		return true
 	}
 	return *p.Enabled
+}
+
+// BenchmarkingConfig controls model verification benchmark execution.
+type BenchmarkingConfig struct {
+	Enabled           bool                       `yaml:"enabled"            json:"enabled"`
+	DefaultSuite      string                     `yaml:"default_suite"      json:"default_suite"`
+	Judge             BenchmarkJudgeConfig       `yaml:"judge"              json:"judge"`
+	Limits            BenchmarkLimitsConfig      `yaml:"limits"             json:"limits"`
+	VerdictThresholds BenchmarkVerdictThresholds `yaml:"verdict_thresholds" json:"verdict_thresholds"`
+	Aliases           []BenchmarkAliasConfig     `yaml:"aliases"            json:"aliases"`
+}
+
+// BenchmarkJudgeConfig defines the judge model route used for open-ended cases.
+type BenchmarkJudgeConfig struct {
+	PublicModel string `yaml:"public_model" json:"public_model"`
+	Provider    string `yaml:"provider"     json:"provider,omitempty"`
+	TimeoutMs   int    `yaml:"timeout_ms"   json:"timeout_ms"`
+}
+
+// BenchmarkLimitsConfig controls benchmark run concurrency and case timeouts.
+type BenchmarkLimitsConfig struct {
+	MaxParallelRuns  int `yaml:"max_parallel_runs"  json:"max_parallel_runs"`
+	MaxParallelCases int `yaml:"max_parallel_cases" json:"max_parallel_cases"`
+	PerCaseTimeoutMs int `yaml:"per_case_timeout_ms" json:"per_case_timeout_ms"`
+}
+
+// BenchmarkVerdictThresholds controls the suspicion verdict thresholds.
+type BenchmarkVerdictThresholds struct {
+	NormalMaxGap                float64 `yaml:"normal_max_gap"                   json:"normal_max_gap"`
+	SuspectMaxGap               float64 `yaml:"suspect_max_gap"                  json:"suspect_max_gap"`
+	HighSuspectProtocolFailures int     `yaml:"high_suspect_protocol_failures"   json:"high_suspect_protocol_failures"`
+}
+
+// BenchmarkAliasConfig maps provider/model aliases to a canonical model ID.
+type BenchmarkAliasConfig struct {
+	CanonicalModelID string   `yaml:"canonical_model_id" json:"canonical_model_id"`
+	Provider         string   `yaml:"provider"           json:"provider,omitempty"`
+	Models           []string `yaml:"models"             json:"models"`
 }
 
 // CompatConfig controls protocol compatibility (bridge, fallback).
@@ -230,6 +305,7 @@ func (c *Config) Normalize() {
 	c.Routing.normalize()
 	c.Telemetry.normalize()
 	c.Pricing.normalize()
+	c.Benchmarking.normalize()
 	c.Compat.normalize()
 	for i := range c.Providers {
 		c.Providers[i].normalize()
@@ -344,11 +420,45 @@ func (p *PricingConfig) normalize() {
 	if p.CachePath == "" {
 		p.CachePath = "data/pricing-cache.json"
 	}
-	if p.RefreshIntervalHours <= 0 {
-		p.RefreshIntervalHours = 12
+	if p.RefreshIntervalMinutes <= 0 {
+		switch {
+		case p.RefreshIntervalHours > 0:
+			p.RefreshIntervalMinutes = p.RefreshIntervalHours * 60
+		default:
+			p.RefreshIntervalMinutes = 15
+		}
 	}
+	p.RefreshIntervalHours = (p.RefreshIntervalMinutes + 59) / 60
 	if p.RequestTimeoutMs <= 0 {
 		p.RequestTimeoutMs = 15000
+	}
+	if p.FX.CachePath == "" {
+		p.FX.CachePath = "data/pricing-fx-cache.json"
+	}
+	if p.FX.RefreshIntervalMinutes <= 0 {
+		p.FX.RefreshIntervalMinutes = 24 * 60
+	}
+	if p.FX.Enabled == nil {
+		enabled := true
+		p.FX.Enabled = &enabled
+	}
+	if len(p.Sources) == 0 {
+		p.Sources = defaultPricingSources(p.RefreshIntervalMinutes, p.RequestTimeoutMs)
+	}
+	for i := range p.Sources {
+		p.Sources[i].ID = strings.TrimSpace(p.Sources[i].ID)
+		p.Sources[i].Vendor = strings.ToLower(strings.TrimSpace(p.Sources[i].Vendor))
+		p.Sources[i].URL = strings.TrimSpace(p.Sources[i].URL)
+		if p.Sources[i].RefreshIntervalMinutes <= 0 {
+			p.Sources[i].RefreshIntervalMinutes = p.RefreshIntervalMinutes
+		}
+		if p.Sources[i].TimeoutMs <= 0 {
+			p.Sources[i].TimeoutMs = p.RequestTimeoutMs
+		}
+		if p.Sources[i].Enabled == nil {
+			enabled := true
+			p.Sources[i].Enabled = &enabled
+		}
 	}
 	for i := range p.ManualPrices {
 		p.ManualPrices[i].Provider = strings.TrimSpace(p.ManualPrices[i].Provider)
@@ -371,8 +481,49 @@ func (c *CompatConfig) normalize() {
 	}
 }
 
+func (b *BenchmarkingConfig) normalize() {
+	if b.DefaultSuite == "" {
+		b.DefaultSuite = BenchmarkSuiteGeneralProtocolV1
+	}
+	b.Judge.PublicModel = strings.TrimSpace(b.Judge.PublicModel)
+	b.Judge.Provider = strings.TrimSpace(b.Judge.Provider)
+	if b.Judge.TimeoutMs <= 0 {
+		b.Judge.TimeoutMs = 30000
+	}
+	if b.Limits.MaxParallelRuns <= 0 {
+		b.Limits.MaxParallelRuns = 1
+	}
+	if b.Limits.MaxParallelCases <= 0 {
+		b.Limits.MaxParallelCases = 2
+	}
+	if b.Limits.PerCaseTimeoutMs <= 0 {
+		b.Limits.PerCaseTimeoutMs = 30000
+	}
+	if b.VerdictThresholds.NormalMaxGap <= 0 {
+		b.VerdictThresholds.NormalMaxGap = 8
+	}
+	if b.VerdictThresholds.SuspectMaxGap <= 0 {
+		b.VerdictThresholds.SuspectMaxGap = 20
+	}
+	if b.VerdictThresholds.HighSuspectProtocolFailures <= 0 {
+		b.VerdictThresholds.HighSuspectProtocolFailures = 2
+	}
+	for i := range b.Aliases {
+		b.Aliases[i].CanonicalModelID = strings.TrimSpace(b.Aliases[i].CanonicalModelID)
+		b.Aliases[i].Provider = strings.TrimSpace(b.Aliases[i].Provider)
+		normalized := make([]string, 0, len(b.Aliases[i].Models))
+		for _, model := range b.Aliases[i].Models {
+			if value := strings.TrimSpace(model); value != "" {
+				normalized = append(normalized, value)
+			}
+		}
+		b.Aliases[i].Models = normalized
+	}
+}
+
 func (p *Provider) normalize() {
 	p.ProviderClass = NormalizeProviderClass(string(p.ProviderClass))
+	p.ProtocolAdapter = NormalizeProtocolAdapter(p.ProtocolAdapter, p.AnthropicBaseURL)
 	if p.Weight == 0 {
 		p.Weight = 1
 	}
@@ -407,8 +558,37 @@ func (c *Config) Validate() error {
 	if c.Pricing.RefreshIntervalHours < 0 {
 		return errors.New("pricing.refresh_interval_hours must be >= 0")
 	}
+	if c.Pricing.RefreshIntervalMinutes < 0 {
+		return errors.New("pricing.refresh_interval_minutes must be >= 0")
+	}
 	if c.Pricing.RequestTimeoutMs < 0 {
 		return errors.New("pricing.request_timeout_ms must be >= 0")
+	}
+	if c.Pricing.FX.RefreshIntervalMinutes < 0 {
+		return errors.New("pricing.fx.refresh_interval_minutes must be >= 0")
+	}
+	if c.Benchmarking.Limits.MaxParallelRuns < 0 {
+		return errors.New("benchmarking.limits.max_parallel_runs must be >= 0")
+	}
+	if c.Benchmarking.Limits.MaxParallelCases < 0 {
+		return errors.New("benchmarking.limits.max_parallel_cases must be >= 0")
+	}
+	if c.Benchmarking.Limits.PerCaseTimeoutMs < 0 {
+		return errors.New("benchmarking.limits.per_case_timeout_ms must be >= 0")
+	}
+	for i, source := range c.Pricing.Sources {
+		if strings.TrimSpace(source.ID) == "" {
+			return fmt.Errorf("pricing.sources[%d].id must not be empty", i)
+		}
+		if strings.TrimSpace(source.Vendor) == "" {
+			return fmt.Errorf("pricing.sources[%d].vendor must not be empty", i)
+		}
+		if source.TimeoutMs < 0 {
+			return fmt.Errorf("pricing.sources[%d].timeout_ms must be >= 0", i)
+		}
+		if source.RefreshIntervalMinutes < 0 {
+			return fmt.Errorf("pricing.sources[%d].refresh_interval_minutes must be >= 0", i)
+		}
 	}
 	for i, manual := range c.Pricing.ManualPrices {
 		if strings.TrimSpace(manual.Model) == "" {
@@ -424,6 +604,49 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("pricing.manual_prices[%d].output_per_1m must be >= 0", i)
 		}
 	}
+	if c.Benchmarking.Enabled && strings.TrimSpace(c.Benchmarking.Judge.PublicModel) == "" {
+		return errors.New("benchmarking.judge.public_model must be set when benchmarking is enabled")
+	}
+	if c.Benchmarking.Enabled {
+		enabledProviders := 0
+		judgeProviderName := strings.TrimSpace(c.Benchmarking.Judge.Provider)
+		judgeModel := strings.TrimSpace(c.Benchmarking.Judge.PublicModel)
+		judgeModelServed := false
+		for _, provider := range c.Providers {
+			if !provider.IsEnabled() {
+				continue
+			}
+			enabledProviders++
+			for _, model := range provider.Models {
+				if !strings.EqualFold(strings.TrimSpace(model), judgeModel) {
+					continue
+				}
+				if judgeProviderName == "" || strings.EqualFold(strings.TrimSpace(provider.Name), judgeProviderName) {
+					judgeModelServed = true
+				}
+			}
+		}
+		if enabledProviders == 0 {
+			return errors.New("benchmarking requires at least one enabled provider")
+		}
+		switch {
+		case judgeProviderName != "" && !judgeModelServed:
+			return fmt.Errorf("benchmarking.judge.provider %q must be enabled and advertise model %q", judgeProviderName, judgeModel)
+		case judgeProviderName == "" && !judgeModelServed:
+			return fmt.Errorf("benchmarking.judge.public_model %q must be served by at least one enabled provider", judgeModel)
+		}
+	}
+	if c.Benchmarking.DefaultSuite != "" && c.Benchmarking.DefaultSuite != BenchmarkSuiteGeneralProtocolV1 {
+		return fmt.Errorf("benchmarking.default_suite must be %q", BenchmarkSuiteGeneralProtocolV1)
+	}
+	for i, alias := range c.Benchmarking.Aliases {
+		if strings.TrimSpace(alias.CanonicalModelID) == "" {
+			return fmt.Errorf("benchmarking.aliases[%d].canonical_model_id must not be empty", i)
+		}
+		if len(alias.Models) == 0 {
+			return fmt.Errorf("benchmarking.aliases[%d].models must not be empty", i)
+		}
+	}
 	if len(c.Providers) == 0 {
 		return errors.New("at least one provider must be configured")
 	}
@@ -434,6 +657,11 @@ func (c *Config) Validate() error {
 		if p.BaseURL == "" {
 			return fmt.Errorf("providers[%d].base_url must not be empty", i)
 		}
+		switch NormalizeProtocolAdapter(p.ProtocolAdapter, p.AnthropicBaseURL) {
+		case ProtocolAdapterOpenAIChatCompletions, ProtocolAdapterAnthropicMessages:
+		default:
+			return fmt.Errorf("providers[%d].protocol_adapter must be one of %q or %q", i, ProtocolAdapterOpenAIChatCompletions, ProtocolAdapterAnthropicMessages)
+		}
 	}
 	return nil
 }
@@ -443,9 +671,12 @@ func (c *Config) Validate() error {
 // ---------------------------------------------------------------------------
 
 const (
-	StrategyHealthWeightedRR = "health_weighted_rr"
-	StrategyRoundRobin       = "round_robin"
-	StrategyWeightedRR       = "weighted_rr"
+	StrategyHealthWeightedRR             = "health_weighted_rr"
+	StrategyRoundRobin                   = "round_robin"
+	StrategyWeightedRR                   = "weighted_rr"
+	ProtocolAdapterOpenAIChatCompletions = "openai_chat_completions"
+	ProtocolAdapterAnthropicMessages     = "anthropic_messages"
+	BenchmarkSuiteGeneralProtocolV1      = "general_protocol_v1"
 
 	DefaultAdminPublishHistoryLimit = 256
 
@@ -498,6 +729,31 @@ func normalizePricingCurrency(currency string) string {
 	return currency
 }
 
+func defaultPricingSources(refreshIntervalMinutes int, timeoutMs int) []PricingSourceConfig {
+	sources := []PricingSourceConfig{
+		{ID: "openai", Vendor: "openai", URL: "https://openai.com/api/pricing/"},
+		{ID: "anthropic", Vendor: "anthropic", URL: "https://docs.anthropic.com/en/docs/about-claude/pricing"},
+		{ID: "gemini", Vendor: "gemini", URL: "https://ai.google.dev/gemini-api/docs/pricing"},
+		{ID: "moonshot", Vendor: "moonshot", URL: "https://platform.moonshot.cn/docs/pricing/chat"},
+		{ID: "zhipu", Vendor: "zhipu", URL: "https://open.bigmodel.cn/pricing"},
+		{ID: "minimax", Vendor: "minimax", URL: "https://platform.minimaxi.com/docs/pricing"},
+		{ID: "deepseek", Vendor: "deepseek", URL: "https://api-docs.deepseek.com/quick_start/pricing"},
+		{ID: "xai", Vendor: "xai", URL: "https://x.ai/api"},
+		{ID: "step", Vendor: "step", URL: "https://platform.stepfun.com/docs/pricing"},
+		{ID: "xiaomi", Vendor: "xiaomi", URL: "https://platform.xiaomi.com/"},
+	}
+	for i := range sources {
+		sources[i].TimeoutMs = timeoutMs
+		sources[i].RefreshIntervalMinutes = refreshIntervalMinutes
+		enabled := true
+		if sources[i].Vendor == "xiaomi" {
+			enabled = false
+		}
+		sources[i].Enabled = &enabled
+	}
+	return sources
+}
+
 // NormalizeProviderClass normalises a provider class string.
 func NormalizeProviderClass(value string) ProviderClass {
 	switch strings.ToLower(strings.TrimSpace(value)) {
@@ -505,6 +761,23 @@ func NormalizeProviderClass(value string) ProviderClass {
 		return ProviderClassFree
 	default:
 		return ProviderClassQuotaLimited
+	}
+}
+
+// NormalizeProtocolAdapter normalizes a provider adapter while preserving
+// legacy AnthropicBaseURL behavior for existing configs.
+func NormalizeProtocolAdapter(value string, anthropicBaseURL string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "", ProtocolAdapterOpenAIChatCompletions:
+		if strings.TrimSpace(anthropicBaseURL) != "" && value == "" {
+			return ProtocolAdapterAnthropicMessages
+		}
+		return ProtocolAdapterOpenAIChatCompletions
+	case ProtocolAdapterAnthropicMessages:
+		return ProtocolAdapterAnthropicMessages
+	default:
+		return value
 	}
 }
 

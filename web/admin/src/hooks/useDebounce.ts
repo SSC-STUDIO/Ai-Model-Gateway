@@ -97,9 +97,11 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
 ): (...args: Parameters<T>) => void {
   let lastRun = 0
   let timeoutId: ReturnType<typeof setTimeout> | null = null
+  let pendingArgs: Parameters<T> | null = null
 
   return (...args: Parameters<T>) => {
     const now = Date.now()
+    pendingArgs = args
 
     if (now - lastRun >= limit) {
       lastRun = now
@@ -108,7 +110,9 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
       timeoutId = setTimeout(() => {
         lastRun = Date.now()
         timeoutId = null
-        fn(...args)
+        if (pendingArgs) {
+          fn(...pendingArgs)
+        }
       }, limit - (now - lastRun))
     }
   }

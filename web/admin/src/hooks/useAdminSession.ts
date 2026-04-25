@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { AdminSession, AnyRecord } from '../types'
 import { invalidateCache } from './useCachedFetch'
+import { fetchJSON } from '../utils/fetch'
 
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null
@@ -22,50 +23,6 @@ function normalizeSession(payload: unknown, defaultEnabled = true): AdminSession
     name: asString(record?.name),
     role: asString(record?.role),
   }
-}
-
-function extractErrorMessage(payload: unknown): string {
-  const record = asRecord(payload)
-  const message = asString(record?.error) ?? asString(record?.message)
-  if (message && message.trim()) {
-    return message.trim()
-  }
-  if (typeof payload === 'string' && payload.trim()) {
-    return payload.trim()
-  }
-  return 'Request failed'
-}
-
-async function readAdminJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers)
-  if (!headers.has('Accept')) {
-    headers.set('Accept', 'application/json')
-  }
-  if (init?.body !== undefined && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
-
-  const response = await fetch(url, {
-    credentials: 'same-origin',
-    ...init,
-    headers,
-  })
-
-  const text = await response.text()
-  let payload: unknown = text
-  if (text) {
-    try {
-      payload = JSON.parse(text) as unknown
-    } catch {
-      payload = text
-    }
-  }
-
-  if (!response.ok) {
-    throw new Error(extractErrorMessage(payload) || `${response.status} ${response.statusText}`)
-  }
-
-  return payload as T
 }
 
 export interface AdminSessionResult {
@@ -100,7 +57,7 @@ export function useAdminSession(): AdminSessionResult {
     const pending = (async () => {
       setLoading(true)
       try {
-        const next = normalizeSession(await readAdminJSON<unknown>('/api/admin/session'))
+        const next = normalizeSession(await fetchJSON<unknown>('/api/admin/session'))
         setSession(next)
         setError('')
         if (!next.authenticated) {
@@ -131,7 +88,7 @@ export function useAdminSession(): AdminSessionResult {
     setError('')
     try {
       const next = normalizeSession(
-        await readAdminJSON<unknown>('/api/admin/login', {
+        await fetchJSON<unknown>('/api/admin/login', {
           method: 'POST',
           body: JSON.stringify({ token: trimmed }),
         })
@@ -152,7 +109,7 @@ export function useAdminSession(): AdminSessionResult {
     setLogoutBusy(true)
     setError('')
     try {
-      await readAdminJSON('/api/admin/logout', { method: 'POST' })
+      await fetchJSON('/api/admin/logout', { method: 'POST' })
       invalidateCache(/\/api\/admin\//)
       setSession((current) => ({
         enabled: current?.enabled ?? true,

@@ -1,0 +1,7 @@
+{
+  "ingest_socket": "/run/user/1000/test-telemetry-ingest.sock",
+  "query_socket": "/run/user/1000/test-telemetry-query.sock",
+  "event_log_path": "data/test-telemetry/events.db",
+  "query_store_path": "data/test-telemetry/query.db",
+  "retention_days": 3650
+}

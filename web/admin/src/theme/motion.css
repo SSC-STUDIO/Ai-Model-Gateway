@@ -75,57 +75,59 @@
 
 /* === Tab Content Transitions === */
 .tab-content-wrapper {
-  animation: tab-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: tab-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes tab-enter {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px) scale(0.995);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 /* === SSE Status Pulse === */
 /* === Metric Card Number Glow === */
 .metric-value {
-  transition: color 0.3s ease, text-shadow 0.3s ease;
+  transition: color 0.35s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .metric-card:hover .metric-value {
-  text-shadow: 0 0 18px var(--accent-glow);
+  text-shadow: 0 0 20px var(--accent-glow);
+  transform: translateY(-1px);
 }
 
 /* === Panel Enter Stagger === */
 .panel-stagger > * {
-  animation: panel-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: panel-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .panel-stagger > *:nth-child(1) { animation-delay: 0ms; }
-.panel-stagger > *:nth-child(2) { animation-delay: 60ms; }
-.panel-stagger > *:nth-child(3) { animation-delay: 120ms; }
-.panel-stagger > *:nth-child(4) { animation-delay: 180ms; }
-.panel-stagger > *:nth-child(5) { animation-delay: 240ms; }
-.panel-stagger > *:nth-child(6) { animation-delay: 300ms; }
-.panel-stagger > *:nth-child(7) { animation-delay: 360ms; }
-.panel-stagger > *:nth-child(8) { animation-delay: 420ms; }
+.panel-stagger > *:nth-child(2) { animation-delay: 50ms; }
+.panel-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.panel-stagger > *:nth-child(4) { animation-delay: 150ms; }
+.panel-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.panel-stagger > *:nth-child(6) { animation-delay: 250ms; }
+.panel-stagger > *:nth-child(7) { animation-delay: 300ms; }
+.panel-stagger > *:nth-child(8) { animation-delay: 350ms; }
 @keyframes panel-fade-up {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(18px) scale(0.992);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 /* === Button Press Effect === */
 button {
-  transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 button:active:not(:disabled) {
   transform: scale(0.97);
+  transition-duration: 0.08s;
 }
 
 /* === Tab Hover Underline Glow === */
@@ -138,15 +140,16 @@ button:active:not(:disabled) {
   bottom: 0;
   left: 50%;
   width: 0;
-  height: 2px;
-  background: var(--accent-color);
+  height: 2.5px;
+  background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
   border-radius: 2px;
-  transition: width 0.25s ease, left 0.25s ease;
-  opacity: 0.6;
+  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1), left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  opacity: 0.7;
+  filter: blur(0.5px);
 }
 .tab:hover::after {
-  left: 10%;
-  width: 80%;
+  left: 8%;
+  width: 84%;
 }
 .tab.active::after {
   width: 0;
@@ -156,87 +159,32 @@ button:active:not(:disabled) {
    UI Polish Round 2 — Login, Background, Metrics, LogViewer
    ============================================ */
 
-/* === Dynamic Background Orbs === */
-.bg-orb {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.45;
-  animation: orb-float 20s infinite ease-in-out alternate;
-}
-.bg-orb-1 {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(43, 79, 124, 0.25), transparent 70%);
-  top: -100px;
-  left: -100px;
-  animation-duration: 24s;
-}
-.bg-orb-2 {
-  width: 350px;
-  height: 350px;
-  background: radial-gradient(circle, rgba(47, 123, 91, 0.2), transparent 70%);
-  bottom: -80px;
-  right: -80px;
-  animation-duration: 28s;
-  animation-delay: -8s;
-}
-.bg-orb-3 {
-  width: 280px;
-  height: 280px;
-  background: radial-gradient(circle, rgba(165, 98, 42, 0.18), transparent 70%);
-  top: 40%;
-  left: 60%;
-  animation-duration: 22s;
-  animation-delay: -14s;
-}
-[data-theme="dark"] .bg-orb-1 {
-  background: radial-gradient(circle, rgba(108, 152, 208, 0.18), transparent 70%);
-}
-[data-theme="dark"] .bg-orb-2 {
-  background: radial-gradient(circle, rgba(83, 178, 138, 0.14), transparent 70%);
-}
-[data-theme="dark"] .bg-orb-3 {
-  background: radial-gradient(circle, rgba(218, 155, 88, 0.12), transparent 70%);
-}
-@keyframes orb-float {
-  0% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -20px) scale(1.05); }
-  66% { transform: translate(-20px, 15px) scale(0.95); }
-  100% { transform: translate(10px, -10px) scale(1.02); }
-}
-
 /* === Metric Value Count-Up Flash === */
-.metric-value {
-  transition: color 0.3s ease, text-shadow 0.3s ease;
-}
 .metric-value.flash {
-  animation: metric-flash 0.5s ease;
+  animation: metric-flash 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes metric-flash {
-  0% { color: var(--metric-value-color); text-shadow: none; }
-  30% { color: var(--accent-color); text-shadow: 0 0 20px var(--accent-glow); }
-  100% { color: var(--metric-value-color); text-shadow: none; }
+  0% { color: var(--metric-value-color); text-shadow: none; transform: scale(1); }
+  35% { color: var(--accent-color); text-shadow: 0 0 24px var(--accent-glow); transform: scale(1.02); }
+  100% { color: var(--metric-value-color); text-shadow: none; transform: scale(1); }
 }
 
 /* === Topbar Brand Glow === */
 .topbar-brand svg {
-  transition: transform 0.3s ease, filter 0.3s ease;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), filter 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .topbar-brand:hover svg {
-  transform: scale(1.05) rotate(-3deg);
-  filter: drop-shadow(0 0 8px var(--accent-glow));
+  transform: scale(1.06) rotate(-3deg);
+  filter: drop-shadow(0 0 10px var(--accent-glow));
 }
 
 /* === App Shell Entrance === */
 .app-shell {
-  animation: shell-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: shell-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes shell-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes toast-slide-in-right {
@@ -281,7 +229,6 @@ button:active:not(:disabled) {
     scroll-behavior: auto !important;
   }
 
-  .bg-orb,
   .shine-sweep,
   .skeleton,
   .skeleton-text,

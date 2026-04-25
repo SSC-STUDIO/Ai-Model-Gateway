@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -19,24 +20,47 @@ type Store struct {
 
 // ProjectionFact is a projected request fact ready to be persisted.
 type ProjectionFact struct {
-	EventID            string
-	RequestID          string
-	Timestamp          string
-	Bucket             string
-	Path               string
-	RequestedModel     string
-	EffectiveModel     string
-	ProviderID         string
-	RouteMode          string
-	StatusCode         int
-	LatencyMs          int64
-	Attempts           int
-	PromptTokens       int64
-	CachedPromptTokens int64
-	CompletionTokens   int64
-	Stream             bool
-	ErrorMessage       string
+	EventID                  string
+	RequestID                string
+	Timestamp                string
+	Bucket                   string
+	Path                     string
+	RequestedModel           string
+	EffectiveModel           string
+	ProviderID               string
+	RouteMode                string
+	StatusCode               int
+	LatencyMs                int64
+	Attempts                 int
+	PromptTokens             int64
+	CachedPromptTokens       int64
+	CompletionTokens         int64
+	PricingStatus            string
+	PricingSourceID          string
+	PricingCurrency          string
+	PricingFXRateToUSD       float64
+	PricingInputPer1M        float64
+	PricingCachedInputPer1M  float64
+	PricingOutputPer1M       float64
+	PricingPromptCost        float64
+	PricingCompletionCost    float64
+	PricingTotalCost         float64
+	PricingPromptCostUSD     float64
+	PricingCompletionCostUSD float64
+	PricingTotalCostUSD      float64
+	SyntheticKind            string
+	BenchmarkRunID           string
+	BenchmarkTargetID        string
+	BenchmarkCaseID          string
+	Stream                   bool
+	ErrorMessage             string
 }
+
+const (
+	PricingStatusFixed           = "fixed"
+	PricingStatusEstimatedLegacy = "estimated_legacy"
+	PricingStatusUnpriced        = "unpriced"
+)
 
 type projectionAggregate struct {
 	bucket             string
@@ -94,12 +118,17 @@ func NewStore(path string) (*Store, error) {
 		prompt_tokens   INTEGER NOT NULL DEFAULT 0,
 		cached_prompt_tokens INTEGER NOT NULL DEFAULT 0,
 		completion_tokens INTEGER NOT NULL DEFAULT 0,
+		synthetic_kind TEXT NOT NULL DEFAULT '',
+		benchmark_run_id TEXT NOT NULL DEFAULT '',
+		benchmark_target_id TEXT NOT NULL DEFAULT '',
+		benchmark_case_id TEXT NOT NULL DEFAULT '',
 		stream          INTEGER NOT NULL DEFAULT 0,
 		error_message   TEXT
 	);
 	CREATE INDEX IF NOT EXISTS idx_request_facts_timestamp ON request_facts(timestamp DESC);
 	CREATE INDEX IF NOT EXISTS idx_request_facts_provider ON request_facts(provider_id);
 	CREATE INDEX IF NOT EXISTS idx_request_facts_model ON request_facts(effective_model);
+	CREATE INDEX IF NOT EXISTS idx_request_facts_benchmark_target ON request_facts(benchmark_target_id);
 
 	-- Time bucket aggregates
 	CREATE TABLE IF NOT EXISTS agg_buckets (
@@ -127,6 +156,30 @@ func NewStore(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE request_facts ADD COLUMN pricing_status TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_source_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_currency TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_fx_rate_to_usd REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_input_per_1m REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_cached_input_per_1m REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_output_per_1m REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_prompt_cost REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_completion_cost REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_total_cost REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_prompt_cost_usd REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_completion_cost_usd REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN pricing_total_cost_usd REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE request_facts ADD COLUMN synthetic_kind TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE request_facts ADD COLUMN benchmark_run_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE request_facts ADD COLUMN benchmark_target_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE request_facts ADD COLUMN benchmark_case_id TEXT NOT NULL DEFAULT ''`,
+	} {
+		if err := execCompatibleDDL(db, stmt); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 
 	return &Store{
@@ -174,8 +227,12 @@ func (s *Store) ApplyProjectionBatch(ctx context.Context, projectionName string,
 		INSERT OR IGNORE INTO request_facts
 			(event_id, request_id, timestamp, path, requested_model, effective_model,
 			 provider_id, route_mode, status_code, latency_ms, attempts,
-			 prompt_tokens, cached_prompt_tokens, completion_tokens, stream, error_message)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+			 prompt_tokens, cached_prompt_tokens, completion_tokens, pricing_status,
+			 pricing_source_id, pricing_currency, pricing_fx_rate_to_usd, pricing_input_per_1m,
+			 pricing_cached_input_per_1m, pricing_output_per_1m, pricing_prompt_cost,
+			 pricing_completion_cost, pricing_total_cost, pricing_prompt_cost_usd,
+			 pricing_completion_cost_usd, pricing_total_cost_usd, synthetic_kind, benchmark_run_id, benchmark_target_id, benchmark_case_id, stream, error_message)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return 0, fmt.Errorf("prepare fact insert: %w", err)
 	}
@@ -205,6 +262,23 @@ func (s *Store) ApplyProjectionBatch(ctx context.Context, projectionName string,
 			fact.PromptTokens,
 			fact.CachedPromptTokens,
 			fact.CompletionTokens,
+			normalizePricingStatus(fact.PricingStatus, fact.PromptTokens, fact.CachedPromptTokens, fact.CompletionTokens),
+			fact.PricingSourceID,
+			fact.PricingCurrency,
+			fact.PricingFXRateToUSD,
+			fact.PricingInputPer1M,
+			fact.PricingCachedInputPer1M,
+			fact.PricingOutputPer1M,
+			fact.PricingPromptCost,
+			fact.PricingCompletionCost,
+			fact.PricingTotalCost,
+			fact.PricingPromptCostUSD,
+			fact.PricingCompletionCostUSD,
+			fact.PricingTotalCostUSD,
+			fact.SyntheticKind,
+			fact.BenchmarkRunID,
+			fact.BenchmarkTargetID,
+			fact.BenchmarkCaseID,
 			streamInt,
 			fact.ErrorMessage,
 		)
@@ -221,6 +295,9 @@ func (s *Store) ApplyProjectionBatch(ctx context.Context, projectionName string,
 		}
 
 		insertedCount += rowsAffected
+		if fact.SyntheticKind != "" {
+			continue
+		}
 		key := fact.Bucket + "|" + fact.EffectiveModel + "|" + fact.ProviderID
 		agg := aggUpdates[key]
 		if agg == nil {
@@ -291,4 +368,25 @@ func (s *Store) ApplyProjectionBatch(ctx context.Context, projectionName string,
 	}
 
 	return insertedCount, nil
+}
+
+func execCompatibleDDL(db *sql.DB, stmt string) error {
+	if _, err := db.Exec(stmt); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil
+		}
+		return fmt.Errorf("apply schema update %q: %w", stmt, err)
+	}
+	return nil
+}
+
+func normalizePricingStatus(status string, promptTokens, cachedPromptTokens, completionTokens int64) string {
+	switch status {
+	case PricingStatusFixed, PricingStatusEstimatedLegacy, PricingStatusUnpriced:
+		return status
+	}
+	if promptTokens > 0 || cachedPromptTokens > 0 || completionTokens > 0 {
+		return PricingStatusEstimatedLegacy
+	}
+	return PricingStatusUnpriced
 }

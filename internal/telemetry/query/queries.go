@@ -3,21 +3,28 @@ package query
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"ai-model-gateway/internal/contracts/telemetryquery"
-	"ai-model-gateway/internal/telemetry"
+	telemetrycore "ai-model-gateway/internal/telemetry"
 )
 
 const (
-	defaultWindowHours       = 24
-	defaultTelemetryLimit    = 100
-	maxTelemetryLimit        = 500
-	defaultBucketMinutes     = 5
-	maxBucketMinutes         = 7 * 24 * 60
-	defaultOverviewWindow    = 5 * time.Minute
-	projectedModelExpression = "COALESCE(NULLIF(effective_model, ''), NULLIF(requested_model, ''), '')"
+	defaultWindowHours               = 24
+	defaultTelemetryLimit            = 100
+	maxTelemetryLimit                = 500
+	defaultBucketMinutes             = 5
+	maxBucketMinutes                 = 7 * 24 * 60
+	defaultOverviewWindow            = 5 * time.Minute
+	projectedModelExpression         = "COALESCE(NULLIF(effective_model, ''), NULLIF(requested_model, ''), '')"
+	nonSyntheticFilterExpression     = "COALESCE(synthetic_kind, '') = ''"
+	projectedPricingStatusExpression = `CASE
+		WHEN COALESCE(NULLIF(pricing_status, ''), '') != '' THEN pricing_status
+		WHEN prompt_tokens > 0 OR cached_prompt_tokens > 0 OR completion_tokens > 0 THEN 'estimated_legacy'
+		ELSE 'unpriced'
+	END`
 )
 
 // QueryWindowMetrics returns aggregated metrics for a time window using agg_buckets.
@@ -68,6 +75,7 @@ SELECT DISTINCT model
 FROM (
   SELECT ` + projectedModelExpression + ` AS model
   FROM request_facts
+  WHERE ` + nonSyntheticFilterExpression + `
 )
 WHERE model != ''
 ORDER BY model ASC`)
@@ -102,6 +110,7 @@ func (s *Store) QueryTelemetry(req telemetryquery.TelemetryRequest) ([]telemetry
 
 	where := []string{"timestamp >= ?"}
 	args := []interface{}{time.Now().Add(-time.Duration(windowHours) * time.Hour).UTC().Format(time.RFC3339Nano)}
+	where, args = appendSyntheticTelemetryFilters(where, args, req.Filters)
 
 	if models := cleanStrings(req.Filters.Models); len(models) > 0 {
 		modelPlaceholders := placeholders(len(models))
@@ -155,6 +164,12 @@ SELECT
   prompt_tokens,
   cached_prompt_tokens,
   completion_tokens,
+  COALESCE(pricing_status, ''),
+  COALESCE(pricing_total_cost_usd, 0),
+  COALESCE(synthetic_kind, ''),
+  COALESCE(benchmark_run_id, ''),
+  COALESCE(benchmark_target_id, ''),
+  COALESCE(benchmark_case_id, ''),
   stream,
   COALESCE(error_message, '')
 FROM request_facts
@@ -188,6 +203,12 @@ LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 			&event.InputTokens,
 			&event.CachedPromptTokens,
 			&event.OutputTokens,
+			&event.PricingStatus,
+			&event.PricingTotalCostUSD,
+			&event.SyntheticKind,
+			&event.BenchmarkRunID,
+			&event.BenchmarkTargetID,
+			&event.BenchmarkCaseID,
 			&streamInt,
 			&event.Error,
 		); err != nil {
@@ -205,6 +226,37 @@ LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	}
 
 	return events, total, windowHours, nil
+}
+
+func appendSyntheticTelemetryFilters(where []string, args []interface{}, filters telemetryquery.TelemetryFilters) ([]string, []interface{}) {
+	syntheticKind := strings.TrimSpace(filters.SyntheticKind)
+	benchmarkRunID := strings.TrimSpace(filters.BenchmarkRunID)
+	benchmarkTargetID := strings.TrimSpace(filters.BenchmarkTargetID)
+	benchmarkCaseID := strings.TrimSpace(filters.BenchmarkCaseID)
+
+	switch {
+	case syntheticKind != "":
+		where = append(where, "COALESCE(synthetic_kind, '') = ?")
+		args = append(args, syntheticKind)
+	case benchmarkRunID != "" || benchmarkTargetID != "" || benchmarkCaseID != "":
+		where = append(where, "COALESCE(synthetic_kind, '') != ''")
+	default:
+		where = append(where, nonSyntheticFilterExpression)
+	}
+
+	if benchmarkRunID != "" {
+		where = append(where, "COALESCE(benchmark_run_id, '') = ?")
+		args = append(args, benchmarkRunID)
+	}
+	if benchmarkTargetID != "" {
+		where = append(where, "COALESCE(benchmark_target_id, '') = ?")
+		args = append(args, benchmarkTargetID)
+	}
+	if benchmarkCaseID != "" {
+		where = append(where, "COALESCE(benchmark_case_id, '') = ?")
+		args = append(args, benchmarkCaseID)
+	}
+	return where, args
 }
 
 // QueryTimeSeries returns time-bucketed metrics derived from agg_buckets.
@@ -315,6 +367,7 @@ func (s *Store) QueryModelBenchmark(req telemetryquery.BenchmarkRequest) ([]tele
 		"timestamp >= ?",
 		"timestamp <= ?",
 		projectedModelExpression + " != ''",
+		nonSyntheticFilterExpression,
 	}
 	args := []interface{}{
 		start.UTC().Format(time.RFC3339Nano),
@@ -371,12 +424,14 @@ ORDER BY COUNT(*) DESC, model ASC`, args...)
 		return nil, windowHours, err
 	}
 
-	costs, err := s.queryBenchmarkCosts(start, end, models)
+	costs, err := s.queryBenchmarkCostBreakdown(start, end, models)
 	if err != nil {
 		return nil, windowHours, err
 	}
 	for i := range benchmarks {
-		benchmarks[i].EstimatedCostUSD = costs[benchmarks[i].Model]
+		benchmarks[i].ExactCostUSD = costs[benchmarks[i].Model][0]
+		benchmarks[i].EstimatedLegacyCostUSD = costs[benchmarks[i].Model][1]
+		benchmarks[i].EstimatedCostUSD = benchmarks[i].ExactCostUSD + benchmarks[i].EstimatedLegacyCostUSD
 	}
 
 	return benchmarks, windowHours, nil
@@ -393,6 +448,7 @@ FROM request_facts
 WHERE timestamp >= ?
   AND timestamp <= ?
   AND `+projectedModelExpression+` = ?
+  AND `+nonSyntheticFilterExpression+`
   AND latency_ms > 0`,
 		start.UTC().Format(time.RFC3339Nano),
 		end.UTC().Format(time.RFC3339Nano),
@@ -413,6 +469,7 @@ FROM request_facts
 WHERE timestamp >= ?
   AND timestamp <= ?
   AND `+projectedModelExpression+` = ?
+  AND `+nonSyntheticFilterExpression+`
   AND latency_ms > 0
 ORDER BY latency_ms ASC
 LIMIT 1 OFFSET ?`,
@@ -456,6 +513,55 @@ func (s *Store) queryBenchmarkCosts(start, end time.Time, models []string) (map[
 		"timestamp >= ?",
 		"timestamp <= ?",
 		projectedModelExpression + " != ''",
+		nonSyntheticFilterExpression,
+	}
+	args := []interface{}{
+		start.UTC().Format(time.RFC3339Nano),
+		end.UTC().Format(time.RFC3339Nano),
+	}
+	if len(models) > 0 {
+		where = append(where, projectedModelExpression+" IN ("+placeholders(len(models))+")")
+		args = append(args, stringArgs(models)...)
+	}
+
+	rows, err := s.db.Query(`
+SELECT
+  `+projectedModelExpression+` AS model,
+  COALESCE(SUM(CASE WHEN `+projectedPricingStatusExpression+` = '`+PricingStatusFixed+`' THEN pricing_total_cost_usd ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN `+projectedPricingStatusExpression+` = '`+PricingStatusEstimatedLegacy+`' THEN pricing_total_cost_usd ELSE 0 END), 0)
+FROM request_facts
+WHERE `+strings.Join(where, " AND ")+`
+GROUP BY model`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	costs := make(map[string]float64, 32)
+	for rows.Next() {
+		var (
+			model            string
+			exactCostUSD     float64
+			estimatedCostUSD float64
+		)
+		if err := rows.Scan(&model, &exactCostUSD, &estimatedCostUSD); err != nil {
+			return nil, err
+		}
+		costs[model] = exactCostUSD + estimatedCostUSD
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return costs, nil
+}
+
+func (s *Store) queryBenchmarkCostBreakdown(start, end time.Time, models []string) (map[string][2]float64, error) {
+	where := []string{
+		"timestamp >= ?",
+		"timestamp <= ?",
+		projectedModelExpression + " != ''",
+		nonSyntheticFilterExpression,
 	}
 	args := []interface{}{
 		start.UTC().Format(time.RFC3339Nano),
@@ -470,65 +576,51 @@ func (s *Store) queryBenchmarkCosts(start, end time.Time, models []string) (map[
 SELECT
   `+projectedModelExpression+` AS model,
   COALESCE(provider_id, ''),
+  COALESCE(requested_model, ''),
+  `+projectedPricingStatusExpression+` AS pricing_status,
   COALESCE(SUM(prompt_tokens), 0),
   COALESCE(SUM(cached_prompt_tokens), 0),
-  COALESCE(SUM(completion_tokens), 0)
+  COALESCE(SUM(completion_tokens), 0),
+  COALESCE(SUM(pricing_total_cost_usd), 0)
 FROM request_facts
 WHERE `+strings.Join(where, " AND ")+`
-GROUP BY model, provider_id`, args...)
+GROUP BY model, provider_id, requested_model, pricing_status`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	routes := make([]telemetry.ModelRouteUsage, 0, 32)
+	result := make(map[string][2]float64, 32)
 	for rows.Next() {
 		var (
 			model              string
 			provider           string
+			requestedModel     string
+			pricingStatus      string
 			inputTokens        int64
 			cachedPromptTokens int64
 			outputTokens       int64
+			totalCostUSD       float64
 		)
-		if err := rows.Scan(&model, &provider, &inputTokens, &cachedPromptTokens, &outputTokens); err != nil {
+		if err := rows.Scan(&model, &provider, &requestedModel, &pricingStatus, &inputTokens, &cachedPromptTokens, &outputTokens, &totalCostUSD); err != nil {
 			return nil, err
 		}
-		routes = append(routes, telemetry.ModelRouteUsage{
-			Model:    model,
-			Upstream: provider,
-			Usage: telemetry.Usage{
-				PromptTokens:       int(inputTokens),
-				CachedPromptTokens: int(cachedPromptTokens),
-				CompletionTokens:   int(outputTokens),
-				TotalTokens:        int(inputTokens + outputTokens),
-			},
-		})
+		current := result[model]
+		switch normalizePricingStatus(pricingStatus, inputTokens, cachedPromptTokens, outputTokens) {
+		case PricingStatusFixed:
+			current[0] += totalCostUSD
+		case PricingStatusEstimatedLegacy:
+			if totalCostUSD == 0 {
+				_, _, _, _, _, totalCostUSD, _ = estimateLegacyPricing(requestedModel, model, provider, inputTokens, cachedPromptTokens, outputTokens)
+			}
+			current[1] += totalCostUSD
+		}
+		result[model] = current
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	if len(routes) == 0 {
-		return map[string]float64{}, nil
-	}
-
-	pricing := telemetry.BuildPricingSnapshot(
-		telemetry.Snapshot{ByModelRoute: routes},
-		telemetry.BootstrapPricingSnapshot(),
-	)
-	costs := make(map[string]float64, len(pricing.Models))
-	for _, item := range pricing.Models {
-		model := strings.TrimSpace(item.EffectiveModel)
-		if model == "" {
-			model = strings.TrimSpace(item.DisplayModel)
-		}
-		if model == "" {
-			continue
-		}
-		costs[model] += item.Cost.TotalUsd
-	}
-
-	return costs, nil
+	return result, nil
 }
 
 func resolveBenchmarkRange(req telemetryquery.BenchmarkRequest) (time.Time, time.Time, int) {
@@ -641,4 +733,315 @@ func parseStoredTimestamp(value string) time.Time {
 		return ts
 	}
 	return time.Time{}
+}
+
+// QueryPricingEconomics returns pricing economics for the specified time window.
+func (s *Store) QueryPricingEconomics(windowHours int) telemetryquery.PricingEconomics {
+	if windowHours <= 0 {
+		windowHours = defaultWindowHours
+	}
+
+	rows, err := s.db.Query(`
+SELECT
+  `+projectedModelExpression+` AS model,
+  COALESCE(provider_id, ''),
+  COALESCE(requested_model, ''),
+  `+projectedPricingStatusExpression+` AS pricing_status,
+  COALESCE(pricing_source_id, ''),
+  COALESCE(pricing_currency, ''),
+  COALESCE(SUM(prompt_tokens), 0),
+  COALESCE(SUM(cached_prompt_tokens), 0),
+  COALESCE(SUM(completion_tokens), 0),
+  COALESCE(SUM(pricing_prompt_cost), 0),
+  COALESCE(SUM(pricing_completion_cost), 0),
+  COALESCE(SUM(pricing_total_cost), 0),
+  COALESCE(SUM(pricing_prompt_cost_usd), 0),
+  COALESCE(SUM(pricing_completion_cost_usd), 0),
+  COALESCE(SUM(pricing_total_cost_usd), 0),
+  COALESCE(MAX(pricing_input_per_1m), 0),
+  COALESCE(MAX(pricing_cached_input_per_1m), 0)
+FROM request_facts
+WHERE timestamp >= ?
+  AND `+projectedModelExpression+` != ''
+  AND `+nonSyntheticFilterExpression+`
+GROUP BY model, provider_id, requested_model, pricing_status, pricing_source_id, pricing_currency`,
+		time.Now().Add(-time.Duration(windowHours)*time.Hour).UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return telemetryquery.PricingEconomics{}
+	}
+	defer rows.Close()
+
+	models := make([]telemetryquery.PricingModelSummary, 0, 32)
+	currencyTotals := make(map[string]*telemetryquery.PricingCurrencySummary)
+	currencyModels := make(map[string]map[string]struct{})
+	exactModels := make(map[string]struct{})
+	estimatedModels := make(map[string]struct{})
+	unpricedModels := make(map[string]struct{})
+	pricedModels := make(map[string]struct{})
+	var summary telemetryquery.PricingSummary
+	summary.Currency = "USD"
+
+	for rows.Next() {
+		var (
+			model              string
+			provider           string
+			requestedModel     string
+			pricingStatus      string
+			pricingSourceID    string
+			pricingCurrency    string
+			inputTokens        int64
+			cachedPromptTokens int64
+			outputTokens       int64
+			promptCost         float64
+			completionCost     float64
+			totalCost          float64
+			promptCostUSD      float64
+			completionCostUSD  float64
+			totalCostUSD       float64
+			inputPer1M         float64
+			cachedInputPer1M   float64
+		)
+		if err := rows.Scan(
+			&model,
+			&provider,
+			&requestedModel,
+			&pricingStatus,
+			&pricingSourceID,
+			&pricingCurrency,
+			&inputTokens,
+			&cachedPromptTokens,
+			&outputTokens,
+			&promptCost,
+			&completionCost,
+			&totalCost,
+			&promptCostUSD,
+			&completionCostUSD,
+			&totalCostUSD,
+			&inputPer1M,
+			&cachedInputPer1M,
+		); err != nil {
+			continue
+		}
+		pricingStatus = normalizePricingStatus(pricingStatus, inputTokens, cachedPromptTokens, outputTokens)
+		currency := strings.ToUpper(strings.TrimSpace(pricingCurrency))
+		if currency == "" {
+			currency = "USD"
+		}
+		modelKey := strings.TrimSpace(model)
+		if modelKey == "" {
+			modelKey = strings.TrimSpace(requestedModel)
+		}
+		if pricingStatus == PricingStatusEstimatedLegacy && totalCostUSD == 0 {
+			var ok bool
+			promptCost, completionCost, totalCost, promptCostUSD, completionCostUSD, totalCostUSD, ok = estimateLegacyPricing(requestedModel, model, provider, inputTokens, cachedPromptTokens, outputTokens)
+			if ok {
+				pricingSourceID = "estimated_legacy_bootstrap"
+				if promptCost > 0 || completionCost > 0 || totalCost > 0 {
+					currency, ok = estimateLegacyCurrency(requestedModel, model, provider)
+					if !ok {
+						currency = "USD"
+					}
+				}
+			}
+		}
+		switch pricingStatus {
+		case PricingStatusFixed:
+			summary.ExactTotalUsd += totalCostUSD
+			summary.ExactRequests++
+			exactModels[modelKey] = struct{}{}
+			pricedModels[modelKey] = struct{}{}
+		case PricingStatusEstimatedLegacy:
+			summary.EstimatedTotalUsd += totalCostUSD
+			summary.EstimatedRequests++
+			estimatedModels[modelKey] = struct{}{}
+			pricedModels[modelKey] = struct{}{}
+		default:
+			unpricedModels[modelKey] = struct{}{}
+		}
+		summary.CachedPromptTokens += cachedPromptTokens
+		cacheSavings := float64(cachedPromptTokens) * (inputPer1M - cachedInputPer1M) / 1_000_000
+		cacheSavingsUSD := float64(cachedPromptTokens) * ((inputPer1M - cachedInputPer1M) * fxRateForSummary(totalCost, totalCostUSD)) / 1_000_000
+		if pricingStatus == PricingStatusFixed {
+			summary.CacheSavings += maxFloat(cacheSavings, 0)
+			summary.CacheSavingsUsd += maxFloat(cacheSavingsUSD, 0)
+			acc := currencyTotals[currency]
+			if acc == nil {
+				acc = &telemetryquery.PricingCurrencySummary{Currency: currency}
+				currencyTotals[currency] = acc
+			}
+			if currencyModels[currency] == nil {
+				currencyModels[currency] = make(map[string]struct{})
+			}
+			currencyModels[currency][modelKey] = struct{}{}
+			acc.Prompt += promptCost
+			acc.Completion += completionCost
+			acc.Total += totalCost
+			acc.CacheSavings += maxFloat(cacheSavings, 0)
+		}
+
+		models = append(models, telemetryquery.PricingModelSummary{
+			DisplayModel:    modelKey,
+			RequestedModel:  requestedModel,
+			EffectiveModel:  model,
+			Upstream:        provider,
+			PricingModel:    modelKey,
+			PricingStatus:   pricingStatus,
+			PricingSourceID: pricingSourceID,
+			Usage: telemetryquery.PricingUsage{
+				PromptTokens:       int(inputTokens),
+				CachedPromptTokens: int(cachedPromptTokens),
+				CompletionTokens:   int(outputTokens),
+				TotalTokens:        int(inputTokens + outputTokens),
+			},
+			Cost: telemetryquery.PricingCost{
+				Currency:      currency,
+				Prompt:        promptCost,
+				Completion:    completionCost,
+				Total:         totalCost,
+				PromptUsd:     promptCostUSD,
+				CompletionUsd: completionCostUSD,
+				TotalUsd:      totalCostUSD,
+			},
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return telemetryquery.PricingEconomics{}
+	}
+
+	if len(models) == 0 {
+		return telemetryquery.PricingEconomics{}
+	}
+
+	summary.ExactModels = len(exactModels)
+	summary.EstimatedModels = len(estimatedModels)
+	summary.UnpricedModels = len(unpricedModels)
+	summary.PricedModels = len(pricedModels)
+	summary.TotalUsd = summary.ExactTotalUsd + summary.EstimatedTotalUsd
+	for _, model := range models {
+		summary.PromptUsd += model.Cost.PromptUsd
+		summary.CompletionUsd += model.Cost.CompletionUsd
+	}
+	summary.Total = summary.TotalUsd
+	summary.Prompt = summary.PromptUsd
+	summary.Completion = summary.CompletionUsd
+	if len(currencyTotals) > 0 {
+		summary.TotalsByCurrency = make([]telemetryquery.PricingCurrencySummary, 0, len(currencyTotals))
+		for _, total := range currencyTotals {
+			total.PricedModels = len(currencyModels[total.Currency])
+			summary.TotalsByCurrency = append(summary.TotalsByCurrency, *total)
+		}
+		sortPricingCurrencySummaries(summary.TotalsByCurrency)
+		summary.Currency = summary.TotalsByCurrency[0].Currency
+		summary.Prompt = summary.TotalsByCurrency[0].Prompt
+		summary.Completion = summary.TotalsByCurrency[0].Completion
+		summary.Total = summary.TotalsByCurrency[0].Total
+	}
+	sortPricingModels(models)
+
+	return telemetryquery.PricingEconomics{
+		Summary: summary,
+		Models:  models,
+	}
+}
+
+func sortPricingModels(models []telemetryquery.PricingModelSummary) {
+	sort.Slice(models, func(i, j int) bool {
+		if models[i].Cost.TotalUsd == models[j].Cost.TotalUsd {
+			return models[i].DisplayModel < models[j].DisplayModel
+		}
+		return models[i].Cost.TotalUsd > models[j].Cost.TotalUsd
+	})
+}
+
+func sortPricingCurrencySummaries(items []telemetryquery.PricingCurrencySummary) {
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Total == items[j].Total {
+			return items[i].Currency < items[j].Currency
+		}
+		return items[i].Total > items[j].Total
+	})
+}
+
+func fxRateForSummary(totalNative, totalUSD float64) float64 {
+	if totalNative <= 0 || totalUSD <= 0 {
+		return 0
+	}
+	return totalUSD / totalNative
+}
+
+func maxFloat(value, fallback float64) float64 {
+	if value < fallback {
+		return fallback
+	}
+	return value
+}
+
+func estimateLegacyPricing(requestedModel, effectiveModel, provider string, promptTokens, cachedPromptTokens, completionTokens int64) (float64, float64, float64, float64, float64, float64, bool) {
+	pricing, ok := resolveBootstrapPricing(requestedModel, effectiveModel, provider)
+	if !ok {
+		return 0, 0, 0, 0, 0, 0, false
+	}
+	usage := telemetrycore.Usage{
+		PromptTokens:       int(promptTokens),
+		CachedPromptTokens: int(cachedPromptTokens),
+		CompletionTokens:   int(completionTokens),
+		TotalTokens:        int(promptTokens + completionTokens),
+	}
+	prompt, completion, total := calculateLegacyNativeCost(usage, pricing)
+	promptUSD, completionUSD, totalUSD := calculateLegacyUSDCost(usage, pricing)
+	return prompt, completion, total, promptUSD, completionUSD, totalUSD, true
+}
+
+func estimateLegacyCurrency(requestedModel, effectiveModel, provider string) (string, bool) {
+	pricing, ok := resolveBootstrapPricing(requestedModel, effectiveModel, provider)
+	if !ok {
+		return "", false
+	}
+	return pricing.Currency, true
+}
+
+func resolveBootstrapPricing(requestedModel, effectiveModel, provider string) (telemetrycore.Pricing, bool) {
+	_, pricing, ok := telemetrycore.ResolvePricing(telemetrycore.BootstrapPricingSnapshot().Catalog, requestedModel, effectiveModel, provider)
+	return pricing, ok
+}
+
+func calculateLegacyNativeCost(usage telemetrycore.Usage, price telemetrycore.Pricing) (float64, float64, float64) {
+	cachedTokens := clampLegacyCachedPromptTokens(usage)
+	uncachedTokens := usage.PromptTokens - cachedTokens
+	prompt := (float64(uncachedTokens) / 1_000_000) * price.InputPer1M
+	if cachedTokens > 0 {
+		cachedRate := price.CachedInputPer1M
+		if cachedRate <= 0 {
+			cachedRate = price.InputPer1M
+		}
+		prompt += (float64(cachedTokens) / 1_000_000) * cachedRate
+	}
+	completion := (float64(usage.CompletionTokens) / 1_000_000) * price.OutputPer1M
+	return prompt, completion, prompt + completion
+}
+
+func calculateLegacyUSDCost(usage telemetrycore.Usage, price telemetrycore.Pricing) (float64, float64, float64) {
+	cachedTokens := clampLegacyCachedPromptTokens(usage)
+	uncachedTokens := usage.PromptTokens - cachedTokens
+	prompt := (float64(uncachedTokens) / 1_000_000) * price.InputPer1MUsd
+	if cachedTokens > 0 {
+		cachedRate := price.CachedInputPer1MUsd
+		if cachedRate <= 0 {
+			cachedRate = price.InputPer1MUsd
+		}
+		prompt += (float64(cachedTokens) / 1_000_000) * cachedRate
+	}
+	completion := (float64(usage.CompletionTokens) / 1_000_000) * price.OutputPer1MUsd
+	return prompt, completion, prompt + completion
+}
+
+func clampLegacyCachedPromptTokens(usage telemetrycore.Usage) int {
+	cached := usage.CachedPromptTokens
+	if cached < 0 {
+		return 0
+	}
+	if cached > usage.PromptTokens {
+		return usage.PromptTokens
+	}
+	return cached
 }

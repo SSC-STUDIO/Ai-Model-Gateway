@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks'
+import { fetchJSON } from '../utils/fetch'
 
 interface CacheEntry<T> {
   data: T
@@ -77,18 +78,9 @@ async function fetchAndCache<T>(
     return pending.promise
   }
 
-  const fetchPromise = fetch(url, {
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json' },
-  }).then(async (resp) => {
-    if (!resp.ok) {
-      const text = await resp.text()
-      if (resp.status === 401) {
-        onUnauthorized?.()
-      }
-      throw new Error(text || `${resp.status} ${resp.statusText}`)
-    }
-    const result = await resp.json() as T
+  const fetchPromise = fetchJSON<T>(url, {
+    onUnauthorized,
+  }).then((result) => {
     if (getGeneration(url) === generation) {
       globalCache.set(url, { data: result, timestamp: Date.now(), key: url })
       trimCache()

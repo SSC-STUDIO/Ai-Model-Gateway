@@ -6,6 +6,12 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+### Security
+
+- **移除 URL token 登录**: `/admin?token=...` 登录方式已移除，改用 `POST /api/admin/login` JSON 请求登录，防止 token 泄露到浏览器历史和代理日志
+- **同源校验**: Cookie-auth 写请求现在要求 `Origin` 或 `Referer` 头，Bearer token 认证不受影响
+- **移除硬编码凭据**: `configs/config.yaml` 不再包含 demo 凭据，改用环境变量占位符
+
 ### Fixed
 
 - 修复 Admin UI 静态资源 404 错误（/icon.svg、/favicon.svg、/manifest.json）

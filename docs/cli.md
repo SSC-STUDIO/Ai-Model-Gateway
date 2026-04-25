@@ -11,6 +11,9 @@
 - `-config` 仍表示 daemon 自己的 bootstrap JSON，不是 `config.yaml`
 - `controld -authoring-config` 才是人类可编辑 YAML 的入口
 - `gatewayd` 不读取 YAML
+- 仓库内默认 bootstrap JSON 分别是 `configs/gatewayd.json`、`configs/controld.json`、`configs/telemetryd.json`
+- `telemetryd` bootstrap JSON 字段是 `ingest_socket` / `query_socket`，不是 `ingest` / `query`
+- 本地默认 HTTP 端口是 `gatewayd` `127.0.0.1:18080`、`controld` `127.0.0.1:18081`
 - 推荐把 IPC 名称、数据目录和日志路径都放进同一个运行目录，例如 `.gateway-runtime/`
 
 ## gatewayd

@@ -53,6 +53,7 @@ SELECT
 FROM request_facts
 WHERE timestamp >= ? AND timestamp <= ?
   AND `+projectedModelExpression+` != ''
+  AND `+nonSyntheticFilterExpression+`
 GROUP BY model
 ORDER BY model ASC`,
 		start.UTC().Format(time.RFC3339Nano),
@@ -90,6 +91,7 @@ SELECT
 FROM request_facts
 WHERE timestamp >= ? AND timestamp <= ?
   AND `+projectedModelExpression+` != ''
+  AND `+nonSyntheticFilterExpression+`
 GROUP BY model, provider_id
 ORDER BY provider_id ASC, model ASC`,
 		start.UTC().Format(time.RFC3339Nano),
@@ -133,6 +135,7 @@ SELECT
 FROM request_facts
 WHERE timestamp >= ? AND timestamp <= ?
   AND `+projectedModelExpression+` != ''
+  AND `+nonSyntheticFilterExpression+`
 GROUP BY grouped_bucket, model, provider_id
 ORDER BY grouped_bucket ASC, model ASC`,
 		bucketSec, bucketSec,

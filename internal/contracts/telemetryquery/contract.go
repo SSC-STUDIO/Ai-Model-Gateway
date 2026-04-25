@@ -131,6 +131,18 @@ type TelemetryFilters struct {
 
 	// MaxLatencyMs filters by maximum latency.
 	MaxLatencyMs int64
+
+	// SyntheticKind filters synthetic traffic by kind when set.
+	SyntheticKind string
+
+	// BenchmarkRunID filters benchmark synthetic traffic to one run when set.
+	BenchmarkRunID string
+
+	// BenchmarkTargetID filters benchmark synthetic traffic to one target when set.
+	BenchmarkTargetID string
+
+	// BenchmarkCaseID filters benchmark synthetic traffic to one case when set.
+	BenchmarkCaseID string
 }
 
 // TelemetryResponse contains telemetry events.
@@ -143,6 +155,83 @@ type TelemetryResponse struct {
 
 	// WindowHours is the actual window used.
 	WindowHours int
+
+	// Pricing contains pricing economics snapshot.
+	Pricing PricingEconomics
+}
+
+// PricingEconomics contains pricing economics data for the telemetry response.
+type PricingEconomics struct {
+	// Summary is the pricing summary.
+	Summary PricingSummary `json:"summary"`
+
+	// Models is the per-model pricing breakdown.
+	Models []PricingModelSummary `json:"models"`
+}
+
+// PricingSummary contains aggregated pricing information.
+type PricingSummary struct {
+	Currency           string                   `json:"currency"`
+	Prompt             float64                  `json:"prompt"`
+	Completion         float64                  `json:"completion"`
+	Total              float64                  `json:"total"`
+	PromptUsd          float64                  `json:"prompt_usd,omitempty"`
+	CompletionUsd      float64                  `json:"completion_usd,omitempty"`
+	TotalUsd           float64                  `json:"total_usd,omitempty"`
+	CachedPromptTokens int64                    `json:"cached_prompt_tokens"`
+	CacheSavings       float64                  `json:"cache_savings"`
+	CacheSavingsUsd    float64                  `json:"cache_savings_usd,omitempty"`
+	PricedModels       int                      `json:"priced_models"`
+	UnpricedModels     int                      `json:"unpriced_models"`
+	ExactTotalUsd      float64                  `json:"exact_total_usd,omitempty"`
+	EstimatedTotalUsd  float64                  `json:"estimated_total_usd,omitempty"`
+	ExactRequests      int64                    `json:"exact_requests,omitempty"`
+	EstimatedRequests  int64                    `json:"estimated_requests,omitempty"`
+	ExactModels        int                      `json:"exact_models,omitempty"`
+	EstimatedModels    int                      `json:"estimated_models,omitempty"`
+	TotalsByCurrency   []PricingCurrencySummary `json:"totals_by_currency,omitempty"`
+}
+
+// PricingCurrencySummary contains totals grouped by native currency.
+type PricingCurrencySummary struct {
+	Currency     string  `json:"currency"`
+	Prompt       float64 `json:"prompt"`
+	Completion   float64 `json:"completion"`
+	Total        float64 `json:"total"`
+	CacheSavings float64 `json:"cache_savings"`
+	PricedModels int     `json:"priced_models"`
+}
+
+// PricingModelSummary contains pricing breakdown for a single model.
+type PricingModelSummary struct {
+	DisplayModel    string       `json:"display_model"`
+	RequestedModel  string       `json:"requested_model,omitempty"`
+	EffectiveModel  string       `json:"effective_model,omitempty"`
+	Upstream        string       `json:"upstream,omitempty"`
+	PricingModel    string       `json:"pricing_model,omitempty"`
+	PricingStatus   string       `json:"pricing_status,omitempty"`
+	PricingSourceID string       `json:"pricing_source_id,omitempty"`
+	Usage           PricingUsage `json:"usage"`
+	Cost            PricingCost  `json:"cost"`
+}
+
+// PricingUsage contains token usage for pricing calculation.
+type PricingUsage struct {
+	PromptTokens       int `json:"prompt_tokens"`
+	CachedPromptTokens int `json:"cached_prompt_tokens,omitempty"`
+	CompletionTokens   int `json:"completion_tokens"`
+	TotalTokens        int `json:"total_tokens"`
+}
+
+// PricingCost contains cost breakdown.
+type PricingCost struct {
+	Currency      string  `json:"currency,omitempty"`
+	Prompt        float64 `json:"prompt"`
+	Completion    float64 `json:"completion"`
+	Total         float64 `json:"total"`
+	PromptUsd     float64 `json:"prompt_usd,omitempty"`
+	CompletionUsd float64 `json:"completion_usd,omitempty"`
+	TotalUsd      float64 `json:"total_usd,omitempty"`
 }
 
 // TelemetryEvent represents a single telemetry event for queries.
@@ -188,6 +277,24 @@ type TelemetryEvent struct {
 
 	// OutputTokens is the output tokens generated.
 	OutputTokens int64
+
+	// PricingStatus indicates whether request cost was fixed or estimated.
+	PricingStatus string
+
+	// PricingTotalCostUSD is the fixed or estimated total cost in USD.
+	PricingTotalCostUSD float64
+
+	// SyntheticKind marks synthetic traffic excluded from standard dashboards.
+	SyntheticKind string
+
+	// BenchmarkRunID identifies the benchmark verification run for synthetic traffic.
+	BenchmarkRunID string
+
+	// BenchmarkTargetID identifies the benchmark verification target for synthetic traffic.
+	BenchmarkTargetID string
+
+	// BenchmarkCaseID identifies the benchmark verification case for synthetic traffic.
+	BenchmarkCaseID string
 
 	// Stream indicates if this was a streaming request.
 	Stream bool
@@ -320,6 +427,12 @@ type ModelBenchmark struct {
 
 	// EstimatedCostUSD is the estimated cost in USD.
 	EstimatedCostUSD float64
+
+	// ExactCostUSD is the fixed cost in USD from persisted pricing rows.
+	ExactCostUSD float64
+
+	// EstimatedLegacyCostUSD is the non-fixed legacy estimate in USD, if available.
+	EstimatedLegacyCostUSD float64
 }
 
 // PingRequest checks telemetryd health.

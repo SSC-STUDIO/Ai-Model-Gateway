@@ -758,6 +758,7 @@ ORDER BY bucket ASC`, bucketMinutes, bucketMinutes, cutoff)
 	if err != nil {
 		return TimeSeries{}
 	}
+	defer rows.Close()
 
 	var buckets []TimeSeriesBucket
 	for rows.Next() {
@@ -770,10 +771,8 @@ ORDER BY bucket ASC`, bucketMinutes, bucketMinutes, cutoff)
 		buckets = append(buckets, b)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
 		return TimeSeries{}
 	}
-	rows.Close()
 
 	// --- per-upstream token usage buckets ---
 	rows2, err := s.db.Query(`
@@ -789,6 +788,7 @@ ORDER BY bucket ASC`, bucketMinutes, bucketMinutes, cutoff)
 	if err != nil {
 		return TimeSeries{Buckets: buckets}
 	}
+	defer rows2.Close()
 
 	upstreamMap := make(map[string]map[string]int64)
 	for rows2.Next() {
@@ -803,10 +803,8 @@ ORDER BY bucket ASC`, bucketMinutes, bucketMinutes, cutoff)
 		upstreamMap[bucket][upstream] = tokens
 	}
 	if err := rows2.Err(); err != nil {
-		rows2.Close()
 		return TimeSeries{Buckets: buckets}
 	}
-	rows2.Close()
 
 	// build ordered slice
 	var byUpstream []TimeSeriesByUpstream

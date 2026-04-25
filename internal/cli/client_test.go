@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -134,6 +135,31 @@ func TestControlPlaneClient_PublishConfig(t *testing.T) {
 	}
 }
 
+func TestControlPlaneClient_ReloadConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/config/reload" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		json.NewEncoder(w).Encode(PublishResult{
+			Success:    true,
+			RevisionID: "rev-reloaded",
+		})
+	}))
+	defer server.Close()
+
+	client := NewControlPlaneClient(server.URL, "token")
+	result, err := client.ReloadConfig(context.Background())
+	if err != nil {
+		t.Fatalf("ReloadConfig failed: %v", err)
+	}
+	if !result.Success || result.RevisionID != "rev-reloaded" {
+		t.Fatalf("ReloadConfig result = %#v, want success rev-reloaded", result)
+	}
+}
+
 func TestControlPlaneClient_RollbackConfig(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/admin/config/rollback" {
@@ -224,6 +250,67 @@ func TestControlPlaneClient_GetTelemetry(t *testing.T) {
 				t.Errorf("expected total 0, got %d", result.Total)
 			}
 		})
+	}
+}
+
+func TestControlPlaneClient_GetVerificationRunTelemetry(t *testing.T) {
+	tests := []struct {
+		name         string
+		runID        string
+		query        *VerificationRunTelemetryQuery
+		expectedPath string
+	}{
+		{
+			name:         "nil query uses defaults",
+			runID:        "run-1",
+			query:        nil,
+			expectedPath: "/api/admin/benchmark/runs/run-1/telemetry?hours=24&limit=200",
+		},
+		{
+			name:  "custom query",
+			runID: "run-2",
+			query: &VerificationRunTelemetryQuery{
+				WindowHours: 12,
+				Limit:       50,
+				Offset:      10,
+				Providers:   []string{"provider-a"},
+				Models:      []string{"gpt-4o"},
+				TargetID:    "target-2",
+				CaseID:      "reasoning_exact",
+			},
+			expectedPath: "/api/admin/benchmark/runs/run-2/telemetry?case_id=reasoning_exact&hours=12&limit=50&models=gpt-4o&offset=10&providers=provider-a&target_id=target-2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.String(); got != tt.expectedPath {
+					t.Fatalf("expected %s, got %s", tt.expectedPath, got)
+				}
+				json.NewEncoder(w).Encode(TelemetryResult{
+					Total: 1,
+					Events: []EventRecord{
+						{RequestID: "req-1", BenchmarkCaseID: "reasoning_exact"},
+					},
+				})
+			}))
+			defer server.Close()
+
+			client := NewControlPlaneClient(server.URL, "token")
+			result, err := client.GetVerificationRunTelemetry(context.Background(), tt.runID, tt.query)
+			if err != nil {
+				t.Fatalf("GetVerificationRunTelemetry failed: %v", err)
+			}
+			if result.Total != 1 || len(result.Events) != 1 {
+				t.Fatalf("unexpected result: %#v", result)
+			}
+		})
+	}
+
+	client := NewControlPlaneClient("http://example.com", "token")
+	if _, err := client.GetVerificationRunTelemetry(context.Background(), "  ", nil); err == nil || !strings.Contains(err.Error(), "run id is required") {
+		t.Fatalf("expected missing run id error, got %v", err)
 	}
 }
 

@@ -568,7 +568,7 @@ func newGatewayTestServerWithState(t *testing.T, snap *snapshot.Snapshot, tel Te
 	}
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		HandleChatCompletion(r.Context(), snap, state, tel, w, r)
+		HandleChatCompletion(r.Context(), snap, state, tel, nil, w, r)
 	}))
 }
 
@@ -640,9 +640,9 @@ func TestHandleChatCompletionReturnsCachedResponseOnSecondRequest(t *testing.T) 
 
 	snap := testGatewaySnapshot()
 	snap.RoutingPolicy.Cache = snapshot.CacheConfig{
-		Enabled:   true,
+		Enabled:    true,
 		MaxEntries: 64,
-		TTLSec:    300,
+		TTLSec:     300,
 	}
 
 	// Reset shared cache so test is isolated.
@@ -691,6 +691,55 @@ func TestHandleChatCompletionReturnsCachedResponseOnSecondRequest(t *testing.T) 
 	}
 }
 
+func TestHandleChatCompletionPinnedProviderBypassesRuntimeGateForBenchmark(t *testing.T) {
+	routingSequence.Store(0)
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2}}`)),
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.RoutingPolicy.FailurePolicy = snapshot.FailurePolicy{
+		Threshold:           1,
+		CooldownSec:         60,
+		PassthroughAfterSec: 600,
+	}
+	state := NewRuntimeState()
+	state.reportAttemptResult("test-provider", http.StatusTooManyRequests, 0, nil, snap)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	rec := httptest.NewRecorder()
+	result := &ExecutionResult{}
+	ctx := WithExecutionOptions(req.Context(), &ExecutionOptions{
+		RequestID:        "benchmark_run_case",
+		PinnedProviderID: "test-provider",
+		DisableCache:     true,
+		DisableFallback:  true,
+		DisableRetries:   true,
+		DisableSticky:    true,
+		SyntheticKind:    "benchmark",
+		Result:           result,
+	})
+
+	HandleChatCompletion(ctx, snap, state, nil, nil, rec, req.WithContext(ctx))
+	resp := rec.Result()
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("resp.StatusCode = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if result.Snapshot().ProviderID != "test-provider" {
+		t.Fatalf("captured provider = %q, want test-provider", result.Snapshot().ProviderID)
+	}
+}
+
 func TestHandleChatCompletionDoesNotCacheStreamRequests(t *testing.T) {
 	routingSequence.Store(0)
 
@@ -713,9 +762,9 @@ func TestHandleChatCompletionDoesNotCacheStreamRequests(t *testing.T) {
 
 	snap := testGatewaySnapshot()
 	snap.RoutingPolicy.Cache = snapshot.CacheConfig{
-		Enabled:   true,
+		Enabled:    true,
 		MaxEntries: 64,
-		TTLSec:    300,
+		TTLSec:     300,
 	}
 
 	responseCache.mu.Lock()

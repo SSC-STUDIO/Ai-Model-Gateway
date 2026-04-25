@@ -2,16 +2,24 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"net/rpc"
+	"strings"
 	"time"
 
 	"ai-model-gateway/internal/contracts"
 	"ai-model-gateway/internal/contracts/gatewaycontrol"
+	"ai-model-gateway/internal/core"
+	"ai-model-gateway/internal/gateway/api"
 	"ai-model-gateway/internal/gateway/snapshot"
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -145,6 +153,138 @@ func (r *GatewayControlRPC) Drain(req gatewaycontrol.DrainRequest, resp *gateway
 
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// GetPricingStatus returns the live pricing status.
+func (r *GatewayControlRPC) GetPricingStatus(req gatewaycontrol.GetPricingStatusRequest, resp *gatewaycontrol.GetPricingStatusResponse) error {
+	*resp = r.daemon.GetPricingStatus()
+	return nil
+}
+
+// RefreshPricing forces an immediate pricing refresh.
+func (r *GatewayControlRPC) RefreshPricing(req gatewaycontrol.RefreshPricingRequest, resp *gatewaycontrol.RefreshPricingResponse) error {
+	ctx := context.Background()
+	if r.daemon.runCtx != nil {
+		ctx = r.daemon.runCtx
+	}
+	*resp = r.daemon.RefreshPricing(ctx)
+	return nil
+}
+
+// RunBenchmarkCase executes one synthetic benchmark request through the live request pipeline.
+func (r *GatewayControlRPC) RunBenchmarkCase(req gatewaycontrol.RunBenchmarkCaseRequest, resp *gatewaycontrol.RunBenchmarkCaseResponse) error {
+	r.daemon.snapshotMu.RLock()
+	snap := r.daemon.snapshot
+	r.daemon.snapshotMu.RUnlock()
+	if snap == nil {
+		resp.Error = "no snapshot loaded"
+		return nil
+	}
+	if strings.TrimSpace(req.ProviderID) == "" {
+		resp.Error = "provider_id is required"
+		return nil
+	}
+	if strings.TrimSpace(req.PublicModel) == "" {
+		resp.Error = "public_model is required"
+		return nil
+	}
+
+	protocol := strings.ToLower(strings.TrimSpace(req.Protocol))
+	if protocol == "" {
+		protocol = core.ProtocolAdapterOpenAIChatCompletions
+	}
+
+	var (
+		path    string
+		handler func(context.Context, *snapshot.Snapshot, *api.RuntimeState, api.TelemetryEmitter, api.PricingResolver, http.ResponseWriter, *http.Request)
+	)
+	switch protocol {
+	case core.ProtocolAdapterOpenAIChatCompletions:
+		path = "/v1/chat/completions"
+		handler = api.HandleChatCompletion
+	case core.ProtocolAdapterAnthropicMessages:
+		path = "/v1/messages"
+		handler = api.HandleMessages
+	default:
+		resp.Error = fmt.Sprintf("unsupported benchmark protocol: %s", req.Protocol)
+		return nil
+	}
+
+	ctx := context.Background()
+	if r.daemon.runCtx != nil {
+		ctx = r.daemon.runCtx
+	}
+	timeout := time.Duration(req.TimeoutMs) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	resultSink := &api.ExecutionResult{}
+	requestID := fmt.Sprintf(
+		"benchmark_%s_%s_%s_%s_%s",
+		strings.TrimSpace(req.RunID),
+		strings.TrimSpace(req.CaseID),
+		strings.TrimSpace(req.ProviderID),
+		strings.TrimSpace(req.PublicModel),
+		uuid.New().String(),
+	)
+	opts := &api.ExecutionOptions{
+		RequestID:         requestID,
+		PinnedProviderID:  strings.TrimSpace(req.ProviderID),
+		DisableCache:      req.DisableCache,
+		DisableFallback:   req.DisableFallback,
+		DisableRetries:    req.DisableRetries,
+		DisableSticky:     true,
+		SyntheticKind:     strings.TrimSpace(req.SyntheticKind),
+		BenchmarkRunID:    strings.TrimSpace(req.RunID),
+		BenchmarkTargetID: strings.TrimSpace(req.BenchmarkTargetID),
+		BenchmarkCaseID:   strings.TrimSpace(req.CaseID),
+		Result:            resultSink,
+	}
+	if opts.SyntheticKind == "" {
+		opts.SyntheticKind = "benchmark"
+	}
+	ctx = api.WithExecutionOptions(ctx, opts)
+
+	httpReq := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(req.RequestBody)).WithContext(ctx)
+	httpReq.Header.Set("Content-Type", "application/json")
+	for key, value := range req.Headers {
+		httpReq.Header.Set(key, value)
+	}
+	recorder := httptest.NewRecorder()
+
+	r.daemon.activeReqs.Add(1)
+	defer r.daemon.activeReqs.Add(-1)
+	handler(ctx, snap, r.daemon.runtime, r.daemon.telClient, r.daemon.pricingCatalog, recorder, httpReq)
+
+	httpResp := recorder.Result()
+	defer httpResp.Body.Close()
+	bodyBytes, _ := io.ReadAll(httpResp.Body)
+	result := resultSink.Snapshot()
+
+	resp.StatusCode = httpResp.StatusCode
+	resp.Headers = api.CloneHeadersForRPC(httpResp.Header)
+	resp.ResponseBody = bodyBytes
+	resp.ContentType = httpResp.Header.Get("Content-Type")
+	if result.ContentType != "" {
+		resp.ContentType = result.ContentType
+	}
+	resp.LatencyMs = result.Latency.Milliseconds()
+	resp.PromptTokens = result.PromptTokens
+	resp.CachedPromptTokens = result.CachedPromptTokens
+	resp.CompletionTokens = result.CompletionTokens
+	resp.ProviderID = result.ProviderID
+	resp.EffectiveModel = result.EffectiveModel
+	resp.RouteMode = result.RouteMode
+	resp.PricingTotalCostUSD = result.PricingTotalCostUSD
+	resp.Error = result.Error
+	if resp.Error == "" && httpResp.StatusCode >= http.StatusBadRequest {
+		resp.Error = strings.TrimSpace(string(bodyBytes))
+	}
+	return nil
 }
 
 // parseSnapshot parses snapshot bytes into a Snapshot struct.

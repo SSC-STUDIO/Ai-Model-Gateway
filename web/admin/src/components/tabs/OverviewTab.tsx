@@ -2,9 +2,14 @@ import { memo, useMemo } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import { useFlashValue } from '../../hooks'
 import type { AnyRecord, ProviderHealthView } from '../../types'
+import { ServiceStatePanel } from '../ServiceStatePanel'
 
 interface OverviewTabProps {
   overview: AnyRecord | null
+  telemetryStatus?: string
+  telemetryError?: string
+  telemetryLastCheckedAt?: string
+  onRetry?: () => void
 }
 
 const WINDOW_KEYS = ['last_1m', 'last_5m', 'last_1h', 'last_24h'] as const
@@ -79,8 +84,15 @@ function getProviderStatusLabel(entry: ProviderHealthView, t: (key: string) => s
   }
 }
 
-const OverviewTabComponent = ({ overview }: OverviewTabProps) => {
+const OverviewTabComponent = ({
+  overview,
+  telemetryStatus,
+  telemetryError,
+  telemetryLastCheckedAt,
+  onRetry,
+}: OverviewTabProps) => {
   const { t } = useI18n()
+  const telemetryUnavailable = telemetryStatus && telemetryStatus !== 'connected'
 
   const windowCards = useMemo(() => {
     return WINDOW_KEYS.map((key) => {
@@ -155,6 +167,27 @@ const OverviewTabComponent = ({ overview }: OverviewTabProps) => {
 
   const hasRecentRequests = (totalRequests ?? 0) > 0
 
+  if (telemetryUnavailable) {
+    return (
+      <section class="panel">
+        <h2>{t('overview.title')}</h2>
+        <ServiceStatePanel
+          icon="overview"
+          title={t('services.telemetryUnavailableTitle')}
+          message={t('services.telemetryUnavailableMessage')}
+          hint={t('services.telemetryUnavailableHint')}
+          detail={telemetryError}
+          actionLabel={t('common.retry')}
+          onAction={onRetry}
+          items={[
+            { label: t('header.telemetry'), value: telemetryStatus, tone: telemetryStatus === 'error' ? 'error' : 'warning' },
+            ...(telemetryLastCheckedAt ? [{ label: t('services.lastChecked'), value: formatTimestamp(telemetryLastCheckedAt) }] : []),
+          ]}
+        />
+      </section>
+    )
+  }
+
   if (!overview || !hasWindowMetrics) {
     return (
       <section class="panel">
@@ -204,30 +237,29 @@ const OverviewTabComponent = ({ overview }: OverviewTabProps) => {
         </div>
       </div>
 
-      <div class="panel-subsection split">
-        <div>
-          <h3>{t('overview.runtime')}</h3>
-          <div class="runtime-grid panel-stagger">
-            {runtimeEntries.map(([key, value]) => (
-              <RuntimeCard key={key} rKey={key} value={value} />
-            ))}
-          </div>
+      <div class="panel-subsection">
+        <h3>{t('overview.runtime')}</h3>
+        <div class="runtime-grid panel-stagger">
+          {runtimeEntries.map(([key, value]) => (
+            <RuntimeCard key={key} rKey={key} value={value} />
+          ))}
         </div>
-        <div>
-          <h3>{t('overview.availableModels')}</h3>
-          <div class="config-card overview-models-card">
-            {availableModels.length > 0 ? (
-              <div class="model-chip-grid">
-                {availableModels.map((model) => (
-                  <span key={String(model)} class="model-chip" title={String(model)}>
-                    {String(model)}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p class="muted">{t('overview.noModels')}</p>
-            )}
-          </div>
+      </div>
+
+      <div class="panel-subsection">
+        <h3>{t('overview.availableModels')}</h3>
+        <div class="config-card overview-models-card">
+          {availableModels.length > 0 ? (
+            <div class="model-chip-grid">
+              {availableModels.map((model) => (
+                <span key={String(model)} class="model-chip" title={String(model)}>
+                  {String(model)}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p class="muted">{t('overview.noModels')}</p>
+          )}
         </div>
       </div>
 

@@ -170,6 +170,43 @@ func TestLRUPromotionOnGet(t *testing.T) {
 	}
 }
 
+func TestCurrentBytes(t *testing.T) {
+	c := NewCache(10, 60)
+
+	// Initially empty
+	if c.CurrentBytes() != 0 {
+		t.Fatalf("expected 0 bytes, got %d", c.CurrentBytes())
+	}
+
+	// Add entries
+	c.Put("a", []byte("hello"))
+	c.Put("b", []byte("world"))
+
+	expected := int64(5 + 5) // "hello" + "world"
+	if c.CurrentBytes() != expected {
+		t.Fatalf("expected %d bytes, got %d", expected, c.CurrentBytes())
+	}
+
+	// Delete one
+	c.Delete("a")
+	if c.CurrentBytes() != 5 {
+		t.Fatalf("expected 5 bytes after delete, got %d", c.CurrentBytes())
+	}
+}
+
+func TestMaxItems(t *testing.T) {
+	c := NewCache(100, 60)
+	if c.MaxItems() != 100 {
+		t.Fatalf("expected MaxItems 100, got %d", c.MaxItems())
+	}
+}
+
+func TestTTL(t *testing.T) {
+	c := NewCache(10, 300)
+	if c.TTL() != 300*time.Second {
+		t.Fatalf("expected TTL 300s, got %v", c.TTL())
+	}
+}
 
 func TestMakeKeyDeterministic(t *testing.T) {
 	c := NewCache(1, 60)

@@ -70,6 +70,13 @@ export function truncateLabel(label: string, maxLength: number): string {
   return label.length > maxLength ? `${label.slice(0, maxLength - 1)}…` : label
 }
 
+export function buildChartAssetId(prefix: string, ...parts: string[]): string {
+  const tokens = parts
+    .map((part) => part.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
+    .filter(Boolean)
+  return [prefix, ...tokens].join('-')
+}
+
 export function pickLabelIndices(length: number, maxLabels: number): Set<number> {
   const picked = new Set<number>()
   if (length <= 0) return picked
@@ -107,13 +114,60 @@ export function buildLinePath(
   yScale: (value: number) => number
 ): string {
   if (data.length === 0) return ''
-  if (data.length === 1) {
-    return `M ${xScale(0)} ${yScale(data[0].value)}`
+
+  const points = data.map((point, index) => ({
+    x: xScale(index),
+    y: yScale(point.value),
+  }))
+
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y}`
   }
-  let path = `M ${xScale(0)} ${yScale(data[0].value)}`
-  for (let i = 1; i < data.length; i++) {
-    path += ` L ${xScale(i)} ${yScale(data[i].value)}`
+
+  const slopes = new Array<number>(points.length - 1)
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = points[i + 1].x - points[i].x || 1
+    slopes[i] = (points[i + 1].y - points[i].y) / dx
   }
+
+  const tangents = new Array<number>(points.length)
+  tangents[0] = slopes[0]
+  tangents[points.length - 1] = slopes[slopes.length - 1]
+  for (let i = 1; i < points.length - 1; i++) {
+    tangents[i] = (slopes[i - 1] + slopes[i]) / 2
+  }
+
+  for (let i = 0; i < slopes.length; i++) {
+    if (slopes[i] === 0) {
+      tangents[i] = 0
+      tangents[i + 1] = 0
+      continue
+    }
+
+    const alpha = tangents[i] / slopes[i]
+    const beta = tangents[i + 1] / slopes[i]
+    const norm = alpha * alpha + beta * beta
+
+    if (norm > 9) {
+      const scale = 3 / Math.sqrt(norm)
+      tangents[i] = scale * alpha * slopes[i]
+      tangents[i + 1] = scale * beta * slopes[i]
+    }
+  }
+
+  let path = `M ${points[0].x} ${points[0].y}`
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const current = points[i]
+    const next = points[i + 1]
+    const controlOffsetX = (next.x - current.x) / 3
+    const cp1x = current.x + controlOffsetX
+    const cp1y = current.y + tangents[i] * controlOffsetX
+    const cp2x = next.x - controlOffsetX
+    const cp2y = next.y - tangents[i + 1] * controlOffsetX
+    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${next.x} ${next.y}`
+  }
+
   return path
 }
 
@@ -124,13 +178,11 @@ export function buildAreaPath(
   baselineY: number
 ): string {
   if (data.length === 0) return ''
-  let path = `M ${xScale(0)} ${yScale(data[0].value)}`
-  for (let i = 1; i < data.length; i++) {
-    path += ` L ${xScale(i)} ${yScale(data[i].value)}`
-  }
-  path += ` L ${xScale(data.length - 1)} ${baselineY}`
-  path += ` L ${xScale(0)} ${baselineY} Z`
-  return path
+
+  const linePath = buildLinePath(data, xScale, yScale)
+  const startX = xScale(0)
+  const endX = xScale(data.length - 1)
+  return `${linePath} L ${endX} ${baselineY} L ${startX} ${baselineY} Z`
 }
 
 export function formatTimestamp(timestamp: number, spanMs: number, locale = 'en'): string {

@@ -5,12 +5,13 @@ import { useChartInteraction } from '../hooks/useChartInteraction'
 import { useChartTooltip } from '../hooks/useChartTooltip'
 import { ChartFrame } from './ChartFrame'
 import {
-	buildAreaPath,
-	buildLinePath,
-	buildTooltipState,
-	clamp,
-	formatPointLabel,
-	formatTimestamp,
+  buildAreaPath,
+  buildChartAssetId,
+  buildLinePath,
+  buildTooltipState,
+  clamp,
+  formatPointLabel,
+  formatTimestamp,
   formatTooltipValue,
   getLineDomain,
   MAX_HISTORY_POINT_LABELS,
@@ -79,6 +80,19 @@ const HistoryChartComponent = ({
   const [viewWindow, setViewWindow] = useState(DEFAULT_VIEW_WINDOW)
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef<DragState>({ pointerId: null, startX: 0, startView: 0, dragging: false })
+  const chartAssetKey = useMemo(() => Math.random().toString(36).slice(2, 10), [])
+  const fillGradientId = useMemo(
+    () => buildChartAssetId('history-fill', title, color, chartAssetKey),
+    [chartAssetKey, color, title]
+  )
+  const glowId = useMemo(
+    () => buildChartAssetId('history-glow', title, color, chartAssetKey),
+    [chartAssetKey, color, title]
+  )
+  const focusGradientId = useMemo(
+    () => buildChartAssetId('history-focus', title, color, chartAssetKey),
+    [chartAssetKey, color, title]
+  )
 
   const aggregatedData = useMemo(
     () => sanitizeDataPoints(aggregateByDays(data, bucketDays)),
@@ -157,6 +171,8 @@ const HistoryChartComponent = ({
   })
 
   const activePoint = interaction.activeIndex !== null ? sampledData[interaction.activeIndex] : null
+  const latestPoint = sampledData[sampledData.length - 1]!
+  const metricPoint = activePoint ?? latestPoint
 
   const canScrollLeft = viewStart > 0
   const canScrollRight = viewStart + viewWindow < aggregatedData.length
@@ -292,7 +308,13 @@ const HistoryChartComponent = ({
   return (
     <div class="chart-container history-chart">
       <div class="chart-header">
-        <h3>{title}</h3>
+        <div class="history-header-main">
+          <h3>{title}</h3>
+          <div class="chart-summary history-summary">
+            <span class="chart-summary-label">{activePoint ? t('charts.current') : t('charts.latest')}</span>
+            <strong class="chart-summary-value">{formatPointLabel(metricPoint.value)}{unit}</strong>
+          </div>
+        </div>
         <div class="history-controls">
           <button
             type="button"
@@ -310,7 +332,7 @@ const HistoryChartComponent = ({
           </span>
           <button
             type="button"
-            class="history-nav-btn"
+            class="history-nav-btn history-nav-btn-primary"
             onClick={handleResetView}
             title={t('timeseries.resetView')}
           >
@@ -357,6 +379,32 @@ const HistoryChartComponent = ({
           className="history-svg"
           ariaLabel={title ? `${title} chart` : 'History chart'}
         >
+          <defs>
+            <linearGradient id={fillGradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color={color} stop-opacity="0.30" />
+              <stop offset="48%" stop-color={color} stop-opacity="0.16" />
+              <stop offset="100%" stop-color={color} stop-opacity="0.02" />
+            </linearGradient>
+            <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="6" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+            <radialGradient id={focusGradientId} cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color={color} stop-opacity="0.30" />
+              <stop offset="55%" stop-color={color} stop-opacity="0.11" />
+              <stop offset="100%" stop-color={color} stop-opacity="0" />
+            </radialGradient>
+          </defs>
+
+          <rect
+            class="chart-plot-backdrop"
+            x={HISTORY_PADDING.left}
+            y={HISTORY_PADDING.top}
+            width={chartWidth}
+            height={chartHeight}
+            rx="24"
+          />
+
           <g class="grid-lines">
             {Array.from({ length: 6 }).map((_, index) => {
               const y = HISTORY_PADDING.top + (chartHeight / 5) * index
@@ -364,21 +412,18 @@ const HistoryChartComponent = ({
               return (
                 <g key={index}>
                   <line
+                    class={`chart-grid-line${index === 5 ? ' is-baseline' : ''}`}
                     x1={HISTORY_PADDING.left}
                     y1={y}
                     x2={HISTORY_VIEWBOX_WIDTH - HISTORY_PADDING.right}
                     y2={y}
-                    stroke="var(--border-color)"
-                    stroke-opacity="0.3"
-                    stroke-dasharray="4 4"
                   />
                   <text
+                    class="chart-grid-label"
                     x={HISTORY_PADDING.left - 10}
                     y={y}
                     text-anchor="end"
                     dominant-baseline="middle"
-                    fill="var(--text-muted)"
-                    font-size="11"
                   >
                     {formatPointLabel(value)}
                     {unit}
@@ -388,22 +433,75 @@ const HistoryChartComponent = ({
             })}
           </g>
 
+          {activePoint && interaction.activeIndex !== null && (
+            <rect
+              class="chart-focus-band"
+              x={xScale(interaction.activeIndex) - 10}
+              y={HISTORY_PADDING.top + 4}
+              width="20"
+              height={chartHeight - 8}
+              rx="10"
+              fill={color}
+              opacity="0.08"
+            />
+          )}
+
           {sampledData.length > 1 && (
             <path
+              class="chart-series-area"
               d={buildAreaPath(sampledData, xScale, yScale, HISTORY_PADDING.top + chartHeight)}
-              fill={color}
-              fill-opacity="0.14"
+              fill={`url(#${fillGradientId})`}
             />
           )}
           {sampledData.length > 1 && (
             <path
+              class="chart-series-line-glow"
               d={buildLinePath(sampledData, xScale, yScale)}
               fill="none"
               stroke={color}
-              stroke-width="2.4"
+              stroke-width="9"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              filter={`url(#${glowId})`}
+              opacity="0.18"
+            />
+          )}
+          {sampledData.length > 1 && (
+            <path
+              class="chart-series-line"
+              d={buildLinePath(sampledData, xScale, yScale)}
+              fill="none"
+              stroke={color}
+              stroke-width="3.3"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
+          )}
+          {sampledData.length === 1 && (
+            <>
+              <circle
+                cx={xScale(0)}
+                cy={yScale(sampledData[0].value)}
+                r="16"
+                fill={color}
+                opacity="0.12"
+              />
+              <circle
+                cx={xScale(0)}
+                cy={yScale(sampledData[0].value)}
+                r="9"
+                fill={color}
+                opacity="0.30"
+              />
+              <circle
+                cx={xScale(0)}
+                cy={yScale(sampledData[0].value)}
+                r="5"
+                fill={color}
+                stroke="var(--bg-primary)"
+                stroke-width="2.4"
+              />
+            </>
           )}
 
           {activePoint && interaction.activeIndex !== null && (
@@ -421,17 +519,30 @@ const HistoryChartComponent = ({
               const x = xScale(index)
               const y = yScale(point.value)
               const highlighted = index === interaction.activeIndex
+              const marked = labelIndices.has(index)
               return (
-                <circle
-                  key={`${point.timestamp}-${index}`}
-                  cx={x}
-                  cy={y}
-                  r={highlighted ? 5.8 : labelIndices.has(index) ? 3.8 : 2.8}
-                  fill={color}
-                  opacity={highlighted || labelIndices.has(index) ? 1 : 0.46}
-                  stroke="var(--bg-primary)"
-                  stroke-width={highlighted ? 2.8 : 1.6}
-                />
+                <g key={`${point.timestamp}-${index}`}>
+                  {(highlighted || marked) && (
+                    <circle
+                      class="chart-series-point-shell"
+                      cx={x}
+                      cy={y}
+                      r={highlighted ? 9 : 6}
+                      fill={color}
+                      opacity={highlighted ? '0.17' : '0.10'}
+                    />
+                  )}
+                  <circle
+                    class={`chart-series-point${highlighted ? ' is-active' : marked ? ' is-key' : ''}`}
+                    cx={x}
+                    cy={y}
+                    r={highlighted ? 5.1 : marked ? 3.6 : 2.5}
+                    fill={color}
+                    opacity={highlighted || marked ? 1 : 0.52}
+                    stroke="var(--bg-primary)"
+                    stroke-width={highlighted ? 2.2 : 1.4}
+                  />
+                </g>
               )
             })}
           </g>
@@ -444,17 +555,12 @@ const HistoryChartComponent = ({
               const placeBelow = y <= HISTORY_PADDING.top + 14
               return (
                 <text
+                  class={`chart-point-label${index === interaction.activeIndex ? ' is-active' : ''}`}
                   key={`history-label-${point.timestamp}-${index}`}
                   x={x}
                   y={placeBelow ? y + 12 : y - 10}
                   text-anchor="middle"
                   dominant-baseline={placeBelow ? 'hanging' : 'auto'}
-                  fill="var(--text-primary)"
-                  stroke="var(--bg-primary)"
-                  stroke-width={index === interaction.activeIndex ? 3.8 : 3}
-                  paint-order="stroke"
-                  font-size="11"
-                  font-weight={index === interaction.activeIndex ? '700' : '600'}
                 >
                   {`${formatPointLabel(point.value)}${unit}`}
                 </text>
@@ -467,12 +573,11 @@ const HistoryChartComponent = ({
               if (!xAxisIndices.has(index)) return null
               return (
                 <text
+                  class="chart-axis-label history-axis-label"
                   key={`history-axis-${point.timestamp}-${index}`}
                   x={xScale(index)}
                   y={HISTORY_VIEWBOX_HEIGHT - 14}
                   text-anchor="middle"
-                  fill="var(--text-muted)"
-                  font-size="11"
                 >
                   {new Date(point.timestamp).toLocaleDateString(locale, {
                     month: 'short',
@@ -486,21 +591,28 @@ const HistoryChartComponent = ({
           {activePoint && interaction.activeIndex !== null && (
             <>
               <circle
+                class="chart-focus-halo"
+                cx={xScale(interaction.activeIndex)}
+                cy={yScale(activePoint.value)}
+                r="18"
+                fill={`url(#${focusGradientId})`}
+              />
+              <circle
                 class="chart-focus-dot"
                 cx={xScale(interaction.activeIndex)}
                 cy={yScale(activePoint.value)}
-                r="8"
+                r="10"
                 fill={color}
-                opacity="0.16"
+                opacity="0.22"
               />
               <circle
                 class="chart-focus-dot-inner"
                 cx={xScale(interaction.activeIndex)}
                 cy={yScale(activePoint.value)}
-                r="4.8"
+                r="5"
                 fill={color}
                 stroke="var(--bg-primary)"
-                stroke-width="2"
+                stroke-width="2.2"
               />
             </>
           )}

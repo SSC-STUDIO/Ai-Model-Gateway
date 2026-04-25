@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"ai-model-gateway/internal/control/publish"
+	"ai-model-gateway/internal/core"
 )
 
 func TestAdminFrontendServesSPAAndAssets(t *testing.T) {
 	mux := http.NewServeMux()
-	Mount(mux, Deps{})
+	Mount(mux, Deps{}, nil)
 
 	tests := []struct {
 		name        string
@@ -72,6 +74,36 @@ func TestAdminFrontendServesSPAAndAssets(t *testing.T) {
 	}
 }
 
+func TestAdminFrontendEmbeddedIndexReferencesExistingAssets(t *testing.T) {
+	mux := http.NewServeMux()
+	Mount(mux, Deps{}, nil)
+
+	indexReq := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	indexRec := httptest.NewRecorder()
+	mux.ServeHTTP(indexRec, indexReq)
+	if indexRec.Code != http.StatusOK {
+		t.Fatalf("GET /admin status = %d, want %d", indexRec.Code, http.StatusOK)
+	}
+
+	matches := regexp.MustCompile(`/admin/assets/[^"' )]+`).FindAllString(indexRec.Body.String(), -1)
+	if len(matches) == 0 {
+		t.Fatal("expected embedded admin index to reference hashed assets")
+	}
+
+	seen := make(map[string]struct{}, len(matches))
+	for _, assetPath := range matches {
+		if _, ok := seen[assetPath]; ok {
+			continue
+		}
+		seen[assetPath] = struct{}{}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, assetPath, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d, want %d", assetPath, rec.Code, http.StatusOK)
+		}
+	}
+}
+
 func TestMountWrapsAdminRoutesWithMiddleware(t *testing.T) {
 	mux := http.NewServeMux()
 	var wrapped int
@@ -83,7 +115,7 @@ func TestMountWrapsAdminRoutesWithMiddleware(t *testing.T) {
 				next.ServeHTTP(w, r)
 			})
 		},
-	})
+	}, nil)
 
 	for _, path := range []string{"/admin", "/api/admin/status"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -120,7 +152,7 @@ func TestConfigRoutesUseSplitQueryAndCommandDeps(t *testing.T) {
 	Mount(mux, Deps{
 		ConfigQuery:    query,
 		ConfigCommands: commands,
-	})
+	}, nil)
 
 	configReq := httptest.NewRequest(http.MethodGet, "/api/admin/config", nil)
 	configRec := httptest.NewRecorder()
@@ -159,6 +191,57 @@ func TestConfigRoutesUseSplitQueryAndCommandDeps(t *testing.T) {
 	if commands.publishCalls != 1 || commands.lastPublishRevisionID != "rev_test" {
 		t.Fatalf("publish calls = %d revision = %q, want 1 and rev_test", commands.publishCalls, commands.lastPublishRevisionID)
 	}
+
+	reloadReq := httptest.NewRequest(http.MethodPost, "/api/admin/config/reload", nil)
+	reloadRec := httptest.NewRecorder()
+	mux.ServeHTTP(reloadRec, reloadReq)
+	if reloadRec.Code != http.StatusOK {
+		t.Fatalf("POST /api/admin/config/reload status = %d, want %d", reloadRec.Code, http.StatusOK)
+	}
+	if commands.reloadCalls != 1 {
+		t.Fatalf("reload calls = %d, want 1", commands.reloadCalls)
+	}
+}
+
+func TestConfigRouteRedactsConfigForViewerRole(t *testing.T) {
+	mux := http.NewServeMux()
+	Mount(mux, Deps{
+		ConfigQuery: &stubConfigQuery{
+			current: &publish.CurrentConfigView{
+				Revision: &publish.RevisionInfo{RevisionID: "rev_secret", IsActive: true},
+				Policy:   publish.PublisherPolicy{PublishHistoryLimit: 16},
+				Config: &core.Config{
+					Admin: core.AdminConfig{
+						BootstrapToken:   "bootstrap-secret",
+						CookieSigningKey: "cookie-secret",
+					},
+				},
+				RawYAML: "admin:\n  bootstrap_token: bootstrap-secret\n",
+			},
+		},
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/config", nil)
+	req = WithAdminRole(req, "viewer")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/admin/config status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp publish.CurrentConfigView
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode config response: %v", err)
+	}
+	if resp.Config != nil {
+		t.Fatalf("viewer config response leaked config: %#v", resp.Config)
+	}
+	if resp.RawYAML != "" {
+		t.Fatalf("viewer raw_yaml = %q, want empty", resp.RawYAML)
+	}
+	if !strings.Contains(rec.Body.String(), "rev_secret") {
+		t.Fatalf("viewer response missing revision metadata: %s", rec.Body.String())
+	}
 }
 
 type stubConfigQuery struct {
@@ -178,8 +261,10 @@ func (s *stubConfigQuery) GetHistory(limit int) ([]publish.RevisionInfo, error) 
 
 type stubConfigCommands struct {
 	publishResult          *publish.PublishResult
+	reloadResult           *publish.PublishResult
 	rollbackResult         *publish.PublishResult
 	publishCalls           int
+	reloadCalls            int
 	rollbackCalls          int
 	lastPublishRevisionID  string
 	lastRollbackRevisionID string
@@ -201,4 +286,20 @@ func (s *stubConfigCommands) Rollback(revisionID string) (*publish.PublishResult
 		return s.rollbackResult, nil
 	}
 	return &publish.PublishResult{Success: true, RevisionID: revisionID}, nil
+}
+
+func (s *stubConfigCommands) ReloadConfig() (*publish.PublishResult, error) {
+	s.reloadCalls++
+	if s.reloadResult != nil {
+		return s.reloadResult, nil
+	}
+	return &publish.PublishResult{Success: true, RevisionID: "rev_reloaded"}, nil
+}
+
+func (s *stubConfigCommands) UpdateConfig(cfg interface{}, description string) (*publish.PublishResult, error) {
+	return &publish.PublishResult{Success: true, RevisionID: "rev_updated"}, nil
+}
+
+func (s *stubConfigCommands) ValidateConfig(cfg interface{}) (*publish.ConfigValidationResult, error) {
+	return &publish.ConfigValidationResult{Valid: true}, nil
 }

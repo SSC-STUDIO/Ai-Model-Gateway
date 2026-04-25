@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,9 +23,12 @@ import (
 
 	"ai-model-gateway/internal/contracts"
 	"ai-model-gateway/internal/contracts/gatewaycontrol"
+	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/api"
 	"ai-model-gateway/internal/gateway/snapshot"
 	"ai-model-gateway/internal/gateway/telemetry"
+	"ai-model-gateway/internal/infra/logger"
+	pricinginfra "ai-model-gateway/internal/infra/pricing"
 )
 
 const (
@@ -69,10 +72,12 @@ type Daemon struct {
 	config            Config
 	transport         contracts.Transport
 	httpServer        *http.Server
+	httpListener      net.Listener
 	rpcServer         *RPCServer
 	telClient         *telemetry.Client
 	healthHTTP        *http.Client
 	runtime           *api.RuntimeState
+	pricingCatalog    *pricinginfra.Catalog
 	snapshot          *snapshot.Snapshot
 	snapshotMu        sync.RWMutex
 	runCtx            context.Context
@@ -94,6 +99,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "Show version")
 	flag.Parse()
 
+	log := logger.With("component", "gatewayd")
 	if *showVersion {
 		fmt.Printf("gatewayd version %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
 		os.Exit(0)
@@ -105,7 +111,8 @@ func main() {
 	// Create daemon
 	d, err := NewDaemon(cfg)
 	if err != nil {
-		log.Fatalf("[gatewayd] failed to create daemon: %v", err)
+		log.Error("failed to create daemon", "error", err)
+		os.Exit(1)
 	}
 
 	// Setup signal handling
@@ -114,24 +121,25 @@ func main() {
 
 	// Start daemon
 	if err := d.Start(ctx); err != nil {
-		log.Fatalf("[gatewayd] failed to start: %v", err)
+		log.Error("failed to start", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("[gatewayd] started on %s", cfg.Listen)
+	log.Info("started", "listen", cfg.Listen)
 
 	// Wait for shutdown
 	<-ctx.Done()
-	log.Printf("[gatewayd] shutting down...")
+	log.Info("shutting down...")
 
 	// Graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := d.Shutdown(shutdownCtx); err != nil {
-		log.Printf("[gatewayd] shutdown error: %v", err)
+		log.Error("shutdown error", "error", err)
 	}
 
-	log.Printf("[gatewayd] stopped")
+	log.Info("stopped")
 }
 
 // loadConfig loads the bootstrap configuration.
@@ -146,9 +154,9 @@ func loadConfig(configPath, listen, controlSocket, telemetrySocket, dataDir stri
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			log.Printf("[gatewayd] warning: could not read config file: %v", err)
+			logger.Warn("could not read config file", "error", err)
 		} else if err := json.Unmarshal(data, &cfg); err != nil {
-			log.Printf("[gatewayd] warning: could not parse config file: %v", err)
+			logger.Warn("could not parse config file", "error", err)
 		}
 	}
 
@@ -212,7 +220,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Connect to telemetry plane
 	if err := d.connectTelemetry(d.runCtx); err != nil {
-		log.Printf("[gatewayd] warning: could not connect to telemetry: %v", err)
+		logger.Warn("could not connect to telemetry", "error", err)
 		// Continue without telemetry - it's not critical
 	}
 
@@ -238,10 +246,16 @@ func (d *Daemon) Start(ctx context.Context) error {
 		IdleTimeout:  idleTimeout,
 	}
 
+	listener, err := net.Listen("tcp", d.config.Listen)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", d.config.Listen, err)
+	}
+	d.httpListener = listener
+
 	go func() {
-		log.Printf("[gatewayd] listening on %s", d.config.Listen)
-		if err := d.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[gatewayd] HTTP server error: %v", err)
+		logger.Info("listening", "address", listener.Addr().String())
+		if err := d.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+			logger.Error("HTTP server error", "error", err)
 		}
 	}()
 
@@ -263,7 +277,7 @@ func (d *Daemon) startRPCServer(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				default:
-					log.Printf("[gatewayd] accept error: %v", err)
+					logger.Error("accept error", "error", err)
 					continue
 				}
 			}
@@ -293,7 +307,7 @@ func (d *Daemon) connectTelemetry(ctx context.Context) error {
 		if err == nil {
 			break
 		}
-		log.Printf("[gatewayd] waiting for telemetry... (%d/%d)", i+1, retryCount)
+		logger.Debug("waiting for telemetry", "attempt", i+1, "max", retryCount)
 		time.Sleep(retryInterval)
 	}
 	if err != nil {
@@ -342,7 +356,6 @@ func (d *Daemon) createHandler() http.Handler {
 
 	return mux
 }
-
 
 // healthHandler handles health check requests.
 func (d *Daemon) healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -476,7 +489,7 @@ func (d *Daemon) chatCompletionsHandler(w http.ResponseWriter, r *http.Request) 
 	defer d.activeReqs.Add(-1)
 
 	// Handle the request using the pipeline
-	api.HandleChatCompletion(r.Context(), snap, d.runtime, d.telClient, w, r)
+	api.HandleChatCompletion(r.Context(), snap, d.runtime, d.telClient, d.pricingCatalog, w, r)
 }
 
 // messagesHandler handles Anthropic Messages API requests.
@@ -495,7 +508,7 @@ func (d *Daemon) messagesHandler(w http.ResponseWriter, r *http.Request) {
 	defer d.activeReqs.Add(-1)
 
 	// Handle the request using the pipeline
-	api.HandleMessages(r.Context(), snap, d.runtime, d.telClient, w, r)
+	api.HandleMessages(r.Context(), snap, d.runtime, d.telClient, d.pricingCatalog, w, r)
 }
 
 // Shutdown gracefully shuts down the daemon.
@@ -508,14 +521,14 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	// Shutdown HTTP server
 	if d.httpServer != nil {
 		if err := d.httpServer.Shutdown(ctx); err != nil {
-			log.Printf("[gatewayd] HTTP shutdown error: %v", err)
+			logger.Error("HTTP shutdown error", "error", err)
 		}
 	}
 
 	// Close telemetry client
 	if d.telClient != nil {
 		if err := d.telClient.Close(); err != nil {
-			log.Printf("[gatewayd] telemetry client close error: %v", err)
+			logger.Error("telemetry client close error", "error", err)
 		}
 	}
 
@@ -533,13 +546,22 @@ func (d *Daemon) ApplySnapshot(snap *snapshot.Snapshot) error {
 	}
 
 	d.snapshot = snap
+	pricingCfg := runtimePricingConfig(snap.Pricing)
+	if d.pricingCatalog == nil {
+		d.pricingCatalog = pricinginfra.NewCatalog(pricingCfg)
+		if d.runCtx != nil {
+			d.pricingCatalog.Start(d.runCtx)
+		}
+	} else {
+		d.pricingCatalog.UpdateConfig(pricingCfg)
+	}
 	if d.runtime != nil {
 		d.runtime.ApplySnapshot(snap)
 	}
 	d.snapshotMu.Unlock()
 
 	d.restartHealthProbes(snap)
-	log.Printf("[gatewayd] applied snapshot %s (revision %s)", snap.Meta.SnapshotID, snap.Meta.RevisionID)
+	logger.Info("applied snapshot", "snapshot_id", snap.Meta.SnapshotID, "revision_id", snap.Meta.RevisionID)
 
 	return nil
 }
@@ -569,6 +591,35 @@ func (d *Daemon) GetStatus() gatewaycontrol.GetStatusResponse {
 	return resp
 }
 
+// GetPricingStatus returns the live pricing catalog status.
+func (d *Daemon) GetPricingStatus() gatewaycontrol.GetPricingStatusResponse {
+	if d.pricingCatalog == nil {
+		snapshot := pricinginfra.NewCatalog(core.PricingConfig{}).Snapshot()
+		return pricingStatusFromSnapshot(snapshot)
+	}
+	return pricingStatusFromSnapshot(d.pricingCatalog.Snapshot())
+}
+
+// RefreshPricing forces a live pricing refresh.
+func (d *Daemon) RefreshPricing(ctx context.Context) gatewaycontrol.RefreshPricingResponse {
+	if d.pricingCatalog == nil {
+		d.pricingCatalog = pricinginfra.NewCatalog(core.PricingConfig{})
+		if d.runCtx != nil {
+			d.pricingCatalog.Start(d.runCtx)
+		}
+	}
+	err := d.pricingCatalog.RefreshNow(ctx)
+	status := pricingStatusFromSnapshot(d.pricingCatalog.Snapshot())
+	resp := gatewaycontrol.RefreshPricingResponse{
+		Refreshed: err == nil,
+		Status:    status,
+	}
+	if err != nil {
+		resp.Error = err.Error()
+	}
+	return resp
+}
+
 // validateSnapshot validates a snapshot.
 func validateSnapshot(snap *snapshot.Snapshot) error {
 	if snap.Meta.SnapshotID == "" {
@@ -584,4 +635,88 @@ func validateSnapshot(snap *snapshot.Snapshot) error {
 		return fmt.Errorf("at least one provider is required")
 	}
 	return nil
+}
+
+func runtimePricingConfig(cfg snapshot.PricingConfig) core.PricingConfig {
+	result := core.PricingConfig{
+		CachePath:              cfg.CachePath,
+		RefreshIntervalMinutes: cfg.RefreshIntervalMinutes,
+		RequestTimeoutMs:       cfg.RequestTimeoutMs,
+	}
+	result.FX = core.PricingFXConfig{
+		CachePath:              cfg.FX.CachePath,
+		RefreshIntervalMinutes: cfg.FX.RefreshIntervalMinutes,
+	}
+	result.FX.Enabled = boolPtr(cfg.FX.Enabled)
+	if len(cfg.Sources) > 0 {
+		result.Sources = make([]core.PricingSourceConfig, 0, len(cfg.Sources))
+		for _, source := range cfg.Sources {
+			result.Sources = append(result.Sources, core.PricingSourceConfig{
+				ID:                     source.ID,
+				Vendor:                 source.Vendor,
+				URL:                    source.URL,
+				Enabled:                boolPtr(source.Enabled),
+				TimeoutMs:              source.TimeoutMs,
+				RefreshIntervalMinutes: source.RefreshIntervalMinutes,
+			})
+		}
+	}
+	if len(cfg.ManualPrices) > 0 {
+		result.ManualPrices = make([]core.PricingManualPrice, 0, len(cfg.ManualPrices))
+		for _, manual := range cfg.ManualPrices {
+			result.ManualPrices = append(result.ManualPrices, core.PricingManualPrice{
+				Provider:         manual.Provider,
+				Model:            manual.Model,
+				Currency:         manual.Currency,
+				InputPer1M:       manual.InputPer1M,
+				CachedInputPer1M: manual.CachedInputPer1M,
+				OutputPer1M:      manual.OutputPer1M,
+				Enabled:          boolPtr(manual.Enabled),
+				Source:           manual.Source,
+			})
+		}
+	}
+	normalized := core.Config{Pricing: result}
+	normalized.Normalize()
+	return normalized.Pricing
+}
+
+func pricingStatusFromSnapshot(snapshot pricinginfra.Snapshot) gatewaycontrol.GetPricingStatusResponse {
+	resp := gatewaycontrol.GetPricingStatusResponse{
+		SourceURL:     snapshot.SourceURL,
+		UpdatedAt:     snapshot.UpdatedAt,
+		LastAttemptAt: snapshot.LastAttemptAt,
+		LastError:     snapshot.LastError,
+		CatalogSize:   len(snapshot.Catalog),
+		FX: gatewaycontrol.PricingFXSnapshot{
+			Enabled:       snapshot.FX.Enabled,
+			SourceURL:     snapshot.FX.SourceURL,
+			BaseCurrency:  snapshot.FX.BaseCurrency,
+			UpdatedAt:     snapshot.FX.UpdatedAt,
+			LastAttemptAt: snapshot.FX.LastAttemptAt,
+			LastError:     snapshot.FX.LastError,
+			RatesToUSD:    snapshot.FX.RatesToUSD,
+		},
+	}
+	if len(snapshot.Sources) > 0 {
+		resp.Sources = make([]gatewaycontrol.PricingSourceState, 0, len(snapshot.Sources))
+		for _, state := range snapshot.Sources {
+			resp.Sources = append(resp.Sources, gatewaycontrol.PricingSourceState{
+				ID:            state.ID,
+				Vendor:        state.Vendor,
+				URL:           state.URL,
+				Enabled:       state.Enabled,
+				Status:        state.Status,
+				UpdatedAt:     state.UpdatedAt,
+				LastAttemptAt: state.LastAttemptAt,
+				LastError:     state.LastError,
+				ModelCount:    state.ModelCount,
+			})
+		}
+	}
+	return resp
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

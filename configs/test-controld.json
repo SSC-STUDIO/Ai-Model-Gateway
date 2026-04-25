@@ -1,0 +1,7 @@
+{
+  "listen": "127.0.0.1:18085",
+  "gateway_socket": "/run/user/1000/test-gateway-control.sock",
+  "telemetry_socket": "/run/user/1000/test-telemetry-query.sock",
+  "data_dir": "data/test-control",
+  "config_path": "configs/test-config.yaml"
+}

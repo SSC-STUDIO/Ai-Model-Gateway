@@ -26,9 +26,10 @@ export function useAutoRefresh(
     refetchConfig: () => Promise<unknown>
     refetchHistory: () => Promise<unknown>
     refetchBenchmark: () => Promise<unknown>
+    refetchLogs: () => Promise<unknown>
   }
 ): void {
-  const { refetchOverview, refetchStatus, refetchTelemetry, refetchTelemetryTimeseries, refetchConfig, refetchHistory, refetchBenchmark } = refetchers
+  const { refetchOverview, refetchStatus, refetchTelemetry, refetchTelemetryTimeseries, refetchConfig, refetchHistory, refetchBenchmark, refetchLogs } = refetchers
 
   useEffect(() => {
     if (refreshInterval === 0 || !isPageVisible) return
@@ -37,6 +38,11 @@ export function useAutoRefresh(
         void refetchOverview()
         void refetchStatus()
       } else if (tab === 'telemetry') {
+        void refetchTelemetry()
+        void refetchTelemetryTimeseries()
+      } else if (tab === 'logs') {
+        void refetchLogs()
+      } else if (tab === 'pricing') {
         void refetchTelemetry()
         void refetchTelemetryTimeseries()
       } else if (tab === 'config') {
@@ -54,6 +60,7 @@ export function useAutoRefresh(
     isPageVisible,
     refetchConfig,
     refetchHistory,
+    refetchLogs,
     refetchOverview,
     refetchStatus,
     refetchTelemetry,

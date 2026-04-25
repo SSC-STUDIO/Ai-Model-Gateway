@@ -40,6 +40,14 @@ $env:VIEWER_TOKEN = "<viewer token>"
 
 `controld` 会通过 `-authoring-config` 读取这个 YAML。`gatewayd` 和 `telemetryd` 不会直接读取它。
 
+三个 daemon 的 `-config` 参数读取各自的 bootstrap JSON：
+
+- `configs/gatewayd.json`
+- `configs/controld.json`
+- `configs/telemetryd.json`
+
+这些 JSON 只放监听地址、IPC socket/named pipe、数据目录等启动参数。不要把 `configs/config.yaml` 传给 daemon 的 `-config`。
+
 ## 本地运行目录建议
 
 推荐为三个 daemon 准备同一个共享运行目录，例如：

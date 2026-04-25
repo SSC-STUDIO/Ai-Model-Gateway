@@ -52,6 +52,36 @@ func (c *GatewayClient) Drain(req gatewaycontrol.DrainRequest) (*gatewaycontrol.
 	return &resp, nil
 }
 
+// GetPricingStatus returns the live pricing state from gatewayd.
+func (c *GatewayClient) GetPricingStatus() (*gatewaycontrol.GetPricingStatusResponse, error) {
+	var resp gatewaycontrol.GetPricingStatusResponse
+	err := c.client.Call("GatewayControlRPC.GetPricingStatus", gatewaycontrol.GetPricingStatusRequest{}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// RefreshPricing forces a live pricing refresh on gatewayd.
+func (c *GatewayClient) RefreshPricing() (*gatewaycontrol.RefreshPricingResponse, error) {
+	var resp gatewaycontrol.RefreshPricingResponse
+	err := c.client.Call("GatewayControlRPC.RefreshPricing", gatewaycontrol.RefreshPricingRequest{}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// RunBenchmarkCase executes one synthetic benchmark case through gatewayd.
+func (c *GatewayClient) RunBenchmarkCase(req gatewaycontrol.RunBenchmarkCaseRequest) (*gatewaycontrol.RunBenchmarkCaseResponse, error) {
+	var resp gatewaycontrol.RunBenchmarkCaseResponse
+	err := c.client.Call("GatewayControlRPC.RunBenchmarkCase", req, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Close closes the client.
 func (c *GatewayClient) Close() error {
 	if c.client != nil {

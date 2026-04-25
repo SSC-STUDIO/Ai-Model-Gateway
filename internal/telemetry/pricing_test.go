@@ -49,7 +49,15 @@ func TestResolvePricingSupportsExpandedCatalog(t *testing.T) {
 			name:           "kimi preview alias",
 			requestedModel: "moonshot/kimi-k2.5-preview",
 			wantPricing:    "kimi-k2.5-preview",
-			wantCurrency:   "CNY",
+			wantCurrency:   "USD",
+		},
+		{
+			name:           "kimi k2.6 routed as coding model",
+			requestedModel: "kimi-k2.6",
+			effectiveModel: "kimi-for-coding",
+			upstream:       "kimi-official",
+			wantPricing:    "kimi-k2.6",
+			wantCurrency:   "USD",
 		},
 		{
 			name:           "dated o4 mini effective model",

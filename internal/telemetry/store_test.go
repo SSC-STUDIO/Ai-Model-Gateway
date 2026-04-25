@@ -284,13 +284,13 @@ func TestQueryWindowMetrics(t *testing.T) {
 	defer store.Close()
 
 	record := RequestRecord{
-		Timestamp:   time.Now(),
-		RequestID:   "req-wm-1",
-		Path:        "/v1/chat/completions",
-		StatusCode:  200,
-		Success:     true,
-		DurationMs:  100,
-		Usage:       Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
+		Timestamp:  time.Now(),
+		RequestID:  "req-wm-1",
+		Path:       "/v1/chat/completions",
+		StatusCode: 200,
+		Success:    true,
+		DurationMs: 100,
+		Usage:      Usage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150},
 	}
 
 	store.RecordRequest(record)
@@ -658,11 +658,11 @@ func TestPricingGroupModel(t *testing.T) {
 
 func TestMergedModelName(t *testing.T) {
 	tests := []struct {
-		name     string
-		current  string
+		name      string
+		current   string
 		candidate string
-		fallback string
-		want     string
+		fallback  string
+		want      string
 	}{
 		{"current set", "gpt-4o", "gpt-4", "gpt-3.5", "gpt-4o"},
 		{"current empty, candidate set", "", "gpt-4", "gpt-3.5", "gpt-4"},
@@ -877,28 +877,28 @@ func TestPricingRouteKey(t *testing.T) {
 
 func TestCalculateCacheSavings(t *testing.T) {
 	tests := []struct {
-		name   string
-		usage  Usage
+		name    string
+		usage   Usage
 		pricing Pricing
-		want   float64
+		want    float64
 	}{
 		{
-			name:   "no cached tokens",
-			usage:  Usage{PromptTokens: 1000},
+			name:    "no cached tokens",
+			usage:   Usage{PromptTokens: 1000},
 			pricing: Pricing{InputPer1M: 10, CachedInputPer1M: 5},
-			want:   0,
+			want:    0,
 		},
 		{
-			name:   "with savings",
-			usage:  Usage{PromptTokens: 1000000, CachedPromptTokens: 500000},
+			name:    "with savings",
+			usage:   Usage{PromptTokens: 1000000, CachedPromptTokens: 500000},
 			pricing: Pricing{InputPer1M: 10, CachedInputPer1M: 5},
-			want:   2.5, // 500k tokens * ($10 - $5) / 1M = $2.50
+			want:    2.5, // 500k tokens * ($10 - $5) / 1M = $2.50
 		},
 		{
-			name:   "no cached rate",
-			usage:  Usage{PromptTokens: 1000000, CachedPromptTokens: 500000},
+			name:    "no cached rate",
+			usage:   Usage{PromptTokens: 1000000, CachedPromptTokens: 500000},
 			pricing: Pricing{InputPer1M: 10},
-			want:   0,
+			want:    0,
 		},
 	}
 
@@ -1060,7 +1060,7 @@ func TestMergePricingCatalogs(t *testing.T) {
 	}
 
 	overlay := map[string]Pricing{
-		"gpt-4o":       {Currency: "USD", InputPer1M: 5, OutputPer1M: 15}, // Override
+		"gpt-4o":        {Currency: "USD", InputPer1M: 5, OutputPer1M: 15},  // Override
 		"claude-3-opus": {Currency: "USD", InputPer1M: 15, OutputPer1M: 75}, // New
 	}
 
@@ -1182,16 +1182,16 @@ func TestCleanPricingText(t *testing.T) {
 
 func TestPricingSummaryKey(t *testing.T) {
 	tests := []struct {
-		name  string
-		item  PricingModelSummary
-		want  string
+		name string
+		item PricingModelSummary
+		want string
 	}{
 		{
 			name: "basic",
 			item: PricingModelSummary{
-				DisplayModel:   "gpt-4o",
-				PricingModel:   "gpt-4o",
-				Upstream:       "openai",
+				DisplayModel: "gpt-4o",
+				PricingModel: "gpt-4o",
+				Upstream:     "openai",
 			},
 			want: "gpt-4o|gpt-4o|openai",
 		},
@@ -1238,7 +1238,7 @@ func TestCalculatePricingCost(t *testing.T) {
 				CompletionTokens: 500_000,
 			},
 			pricing: Pricing{Currency: "USD", InputPer1M: 10, OutputPer1M: 30},
-			want:   25.0, // $10 + $15
+			want:    25.0, // $10 + $15
 		},
 		{
 			name: "with cached tokens",
@@ -1248,7 +1248,7 @@ func TestCalculatePricingCost(t *testing.T) {
 				CompletionTokens:   500_000,
 			},
 			pricing: Pricing{Currency: "USD", InputPer1M: 10, CachedInputPer1M: 5, OutputPer1M: 30},
-			want:   22.5, // ($500k * $10 + $500k * $5) / 1M + $15 = $7.5 + $15
+			want:    22.5, // ($500k * $10 + $500k * $5) / 1M + $15 = $7.5 + $15
 		},
 	}
 

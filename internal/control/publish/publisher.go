@@ -74,6 +74,8 @@ type PublisherPolicy struct {
 type CurrentConfigView struct {
 	Revision *RevisionInfo   `json:"revision"`
 	Policy   PublisherPolicy `json:"policy"`
+	Config   *core.Config    `json:"config,omitempty"`
+	RawYAML  string          `json:"raw_yaml,omitempty"`
 }
 
 // NewPublisher creates a new publisher.
@@ -128,15 +130,29 @@ func (p *Publisher) GetPolicy() (PublisherPolicy, error) {
 }
 
 // GetCurrentConfigView returns the active revision metadata together with the
-// active publisher runtime policy.
+// active publisher runtime policy and config content.
 func (p *Publisher) GetCurrentConfigView() (*CurrentConfigView, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	return &CurrentConfigView{
+	view := &CurrentConfigView{
 		Revision: p.currentRevisionInfoLocked(),
 		Policy:   p.policy,
-	}, nil
+	}
+
+	// Include active revision's config if available
+	if p.activeIdx >= 0 && p.activeIdx < len(p.revisions) {
+		rev := p.revisions[p.activeIdx]
+		view.Config = rev.Config
+		// Also include raw YAML if available
+		if rev.Config != nil {
+			if yamlBytes, err := yaml.Marshal(rev.Config); err == nil {
+				view.RawYAML = string(yamlBytes)
+			}
+		}
+	}
+
+	return view, nil
 }
 
 // LoadState restores publisher state from the configured state store.
@@ -202,6 +218,39 @@ func (p *Publisher) ReplaceRevisions(revisions []Revision, activeRevisionID stri
 
 	p.revisions = cloned
 	p.activeIdx = activeIdx
+	p.syncPolicyFromActiveRevisionLocked()
+	return p.persistStateLocked()
+}
+
+// UpsertRevision adds or replaces a single revision while preserving the rest of the ledger.
+// When activate is true, the supplied revision becomes the active revision.
+func (p *Publisher) UpsertRevision(revision Revision, activate bool) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	revisionID := strings.TrimSpace(revision.RevisionID)
+	if revisionID == "" {
+		return fmt.Errorf("revision_id is required")
+	}
+	revision.RevisionID = revisionID
+
+	cloned, err := cloneRevision(revision)
+	if err != nil {
+		return err
+	}
+
+	if idx, existing := p.findRevisionLocked(revisionID); existing != nil {
+		p.revisions[idx] = cloned
+		if activate {
+			p.activeIdx = idx
+		}
+	} else {
+		p.revisions = append(p.revisions, cloned)
+		if activate {
+			p.activeIdx = len(p.revisions) - 1
+		}
+	}
+
 	p.syncPolicyFromActiveRevisionLocked()
 	return p.persistStateLocked()
 }
@@ -660,4 +709,132 @@ func PublisherPolicyFromConfig(cfg *core.Config) PublisherPolicy {
 	return NormalizePublisherPolicy(PublisherPolicy{
 		PublishHistoryLimit: cfg.Admin.PublishHistoryLimit,
 	})
+}
+
+// ValidateConfig validates a configuration without publishing it.
+func (p *Publisher) ValidateConfig(cfg interface{}) (*ConfigValidationResult, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.compiler == nil {
+		return nil, errors.New("compiler not configured")
+	}
+
+	coreCfg, err := asCoreConfig(cfg)
+	if err != nil {
+		return &ConfigValidationResult{
+			Valid:  false,
+			Errors: []string{err.Error()},
+		}, nil
+	}
+
+	// CompileFromConfig already performs validation
+	snap, err := p.compiler.CompileFromConfig(coreCfg)
+	if err != nil {
+		return &ConfigValidationResult{
+			Valid:  false,
+			Errors: []string{err.Error()},
+		}, nil
+	}
+
+	// Additional snapshot validation
+	if err := p.compiler.Validate(snap); err != nil {
+		return &ConfigValidationResult{
+			Valid:  false,
+			Errors: []string{err.Error()},
+		}, nil
+	}
+
+	return &ConfigValidationResult{
+		Valid:    true,
+		Warnings: []string{},
+	}, nil
+}
+
+// UpdateConfig creates a new revision and publishes it.
+func (p *Publisher) UpdateConfig(cfg interface{}, description string) (*PublishResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.compiler == nil {
+		return nil, errors.New("compiler not configured")
+	}
+
+	coreCfg, err := asCoreConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	// Compile and validate the config
+	snap, err := p.compiler.CompileFromConfig(coreCfg)
+	if err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	if err := p.compiler.Validate(snap); err != nil {
+		return nil, fmt.Errorf("validate snapshot: %w", err)
+	}
+
+	// Create a new revision
+	revisionID := "rev_" + time.Now().UTC().Format("20060102_150405") + "_" + randomSuffix()
+	now := time.Now().UTC()
+	newRevision := Revision{
+		RevisionID:  revisionID,
+		CreatedAt:   now,
+		CreatedBy:   "admin-ui",
+		Description: description,
+		Config:      coreCfg,
+		Snapshot:    snap,
+	}
+
+	// Add to revisions list
+	p.revisions = append(p.revisions, newRevision)
+	newIdx := len(p.revisions) - 1
+
+	// Publish the new revision
+	result, err := p.publishRevisionLocked(&p.revisions[newIdx], newIdx, "publish")
+	if err != nil {
+		// Remove the failed revision
+		p.revisions = p.revisions[:newIdx]
+		return nil, err
+	}
+
+	if err := p.persistStateLocked(); err != nil {
+		log.Printf("[publisher] warning: could not persist state after update: %v", err)
+	}
+
+	log.Printf("[publisher] updated config as revision %s", revisionID)
+	return result, nil
+}
+
+// ConfigValidationResult contains the result of config validation.
+type ConfigValidationResult struct {
+	Valid    bool     `json:"valid"`
+	Errors   []string `json:"errors,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+func asCoreConfig(cfg interface{}) (*core.Config, error) {
+	switch typed := cfg.(type) {
+	case core.Config:
+		return &typed, nil
+	case *core.Config:
+		if typed == nil {
+			return nil, errors.New("config is nil")
+		}
+		return typed, nil
+	case map[string]interface{}:
+		// Convert map to YAML then to core.Config
+		data, err := yaml.Marshal(typed)
+		if err != nil {
+			return nil, fmt.Errorf("marshal config: %w", err)
+		}
+		var coreCfg core.Config
+		if err := yaml.Unmarshal(data, &coreCfg); err != nil {
+			return nil, fmt.Errorf("unmarshal config: %w", err)
+		}
+		return &coreCfg, nil
+	default:
+		return nil, fmt.Errorf("unsupported config type %T; expected core.Config, *core.Config, or map", cfg)
+	}
 }

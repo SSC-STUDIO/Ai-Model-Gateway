@@ -60,10 +60,10 @@ func TestApplySnapshotRequest(t *testing.T) {
 // TestApplySnapshotResponse tests the response struct.
 func TestApplySnapshotResponse(t *testing.T) {
 	resp := ApplySnapshotResponse{
-		Applied:           true,
-		ActiveSnapshotID:  "snap-002",
+		Applied:            true,
+		ActiveSnapshotID:   "snap-002",
 		PreviousSnapshotID: "snap-001",
-		Error:             "",
+		Error:              "",
 		ValidationWarnings: []string{"warning1", "warning2"},
 	}
 
@@ -178,10 +178,10 @@ func TestDrainRequest(t *testing.T) {
 func TestDrainResponse(t *testing.T) {
 	now := time.Now()
 	resp := DrainResponse{
-		Success:          true,
+		Success:           true,
 		RemainingRequests: 0,
-		DrainedAt:        now,
-		Error:            "",
+		DrainedAt:         now,
+		Error:             "",
 	}
 
 	if !resp.Success {
@@ -209,5 +209,17 @@ func (m *mockGatewayControl) GetStatus(req GetStatusRequest, resp *GetStatusResp
 }
 
 func (m *mockGatewayControl) Drain(req DrainRequest, resp *DrainResponse) error {
+	return nil
+}
+
+func (m *mockGatewayControl) GetPricingStatus(req GetPricingStatusRequest, resp *GetPricingStatusResponse) error {
+	return nil
+}
+
+func (m *mockGatewayControl) RefreshPricing(req RefreshPricingRequest, resp *RefreshPricingResponse) error {
+	return nil
+}
+
+func (m *mockGatewayControl) RunBenchmarkCase(req RunBenchmarkCaseRequest, resp *RunBenchmarkCaseResponse) error {
 	return nil
 }

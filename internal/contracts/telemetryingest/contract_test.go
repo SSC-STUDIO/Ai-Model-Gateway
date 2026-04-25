@@ -17,21 +17,21 @@ func TestEventStruct(t *testing.T) {
 		EmittedAt:      now,
 		Imported:       false,
 		Payload: EventPayload{
-			RequestID:       "req-001",
-			Timestamp:       now,
-			Path:            "/v1/chat/completions",
-			RequestedModel:  "gpt-4",
-			EffectiveModel:  "gpt-4-turbo",
-			ProviderID:      "openai",
-			RouteMode:       "direct",
-			StatusCode:      200,
-			Latency:         150 * time.Millisecond,
-			Attempts:        1,
-			PromptTokens:    100,
+			RequestID:          "req-001",
+			Timestamp:          now,
+			Path:               "/v1/chat/completions",
+			RequestedModel:     "gpt-4",
+			EffectiveModel:     "gpt-4-turbo",
+			ProviderID:         "openai",
+			RouteMode:          "direct",
+			StatusCode:         200,
+			Latency:            150 * time.Millisecond,
+			Attempts:           1,
+			PromptTokens:       100,
 			CachedPromptTokens: 50,
-			CompletionTokens: 200,
-			Stream:          true,
-			Error:           "",
+			CompletionTokens:   200,
+			Stream:             true,
+			Error:              "",
 		},
 	}
 
@@ -55,21 +55,21 @@ func TestEventStruct(t *testing.T) {
 // TestEventPayload tests the EventPayload struct.
 func TestEventPayload(t *testing.T) {
 	payload := EventPayload{
-		RequestID:       "req-002",
-		Timestamp:       time.Now(),
-		Path:            "/v1/completions",
-		RequestedModel:  "claude-3",
-		EffectiveModel:  "claude-3-opus",
-		ProviderID:      "anthropic",
-		RouteMode:       "bridge_fallback",
-		StatusCode:      500,
-		Latency:         2 * time.Second,
-		Attempts:        3,
-		PromptTokens:    500,
+		RequestID:          "req-002",
+		Timestamp:          time.Now(),
+		Path:               "/v1/completions",
+		RequestedModel:     "claude-3",
+		EffectiveModel:     "claude-3-opus",
+		ProviderID:         "anthropic",
+		RouteMode:          "bridge_fallback",
+		StatusCode:         500,
+		Latency:            2 * time.Second,
+		Attempts:           3,
+		PromptTokens:       500,
 		CachedPromptTokens: 0,
-		CompletionTokens: 0,
-		Stream:          false,
-		Error:           "upstream timeout",
+		CompletionTokens:   0,
+		Stream:             false,
+		Error:              "upstream timeout",
 	}
 
 	if payload.RequestID != "req-002" {
@@ -148,9 +148,9 @@ func TestFlushRequest(t *testing.T) {
 // TestFlushResponse tests the flush response struct.
 func TestFlushResponse(t *testing.T) {
 	resp := FlushResponse{
-		Success:     true,
+		Success:      true,
 		FlushedCount: 100,
-		Error:       "",
+		Error:        "",
 	}
 
 	if !resp.Success {

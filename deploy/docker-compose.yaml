@@ -1,0 +1,122 @@
+# AI Model Gateway - Docker Compose Configuration
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
+
+services:
+  # Control Plane - Admin API and Configuration Management
+  controld:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["/bin/controld", "-config", "/etc/ai-model-gateway/config.yaml"]
+    container_name: ai-gateway-control
+    restart: unless-stopped
+    ports:
+      - "18081:18081"  # Admin API
+    volumes:
+      - ./config.yaml:/etc/ai-model-gateway/config.yaml:ro
+      - ./secrets.env:/etc/ai-model-gateway/secrets.env:ro
+      - control-data:/var/lib/ai-model-gateway
+    environment:
+      - TZ=UTC
+    env_file:
+      - ./secrets.env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18081/api/admin/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ai-gateway-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  # Data Plane - API Gateway
+  gatewayd:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["/bin/gatewayd", "-config", "/etc/ai-model-gateway/config.yaml"]
+    container_name: ai-gateway-data
+    restart: unless-stopped
+    ports:
+      - "18080:18080"  # Gateway API
+    volumes:
+      - ./config.yaml:/etc/ai-model-gateway/config.yaml:ro
+      - ./secrets.env:/etc/ai-model-gateway/secrets.env:ro
+    environment:
+      - TZ=UTC
+    env_file:
+      - ./secrets.env
+    depends_on:
+      controld:
+        condition: service_healthy
+      telemetryd:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18080/-/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ai-gateway-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # Telemetry Plane - Metrics and Events
+  telemetryd:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["/bin/telemetryd", "-config", "/etc/ai-model-gateway/config.yaml"]
+    container_name: ai-gateway-telemetry
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/etc/ai-model-gateway/config.yaml:ro
+      - ./secrets.env:/etc/ai-model-gateway/secrets.env:ro
+      - telemetry-data:/var/lib/ai-model-gateway
+    environment:
+      - TZ=UTC
+    env_file:
+      - ./secrets.env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ai-gateway-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+networks:
+  ai-gateway-net:
+    driver: bridge
+    name: ai-gateway-network
+
+volumes:
+  control-data:
+    name: ai-gateway-control-data
+  telemetry-data:
+    name: ai-gateway-telemetry-data
