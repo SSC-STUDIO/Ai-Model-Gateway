@@ -20,6 +20,11 @@ import (
 type Deps struct {
 	ConfigQuery          ConfigQuery
 	ConfigCommands       ConfigCommands
+	ConfigTools          ConfigTools
+	AuditLog             AuditLog
+	Runtime              RuntimeConfig
+	ProbeRunner          ProbeRunner
+	Replay               http.Handler
 	TelemetryRPC         TelemetryQuerier
 	TelemetryRPCProvider func() TelemetryQuerier
 	GatewayRPC           GatewayController
@@ -123,6 +128,8 @@ func Mount(mux *http.ServeMux, deps Deps, frontendBundle *AdminFrontendBundle) {
 	mux.Handle("/api/admin/config/rollback", wrap(http.HandlerFunc(configRollbackHandler(deps))))
 	mux.Handle("/api/admin/config/validate", wrap(http.HandlerFunc(configValidateHandler(deps))))
 	mux.Handle("/api/admin/config/update", wrap(http.HandlerFunc(configUpdateHandler(deps))))
+	mux.Handle("/api/admin/config/preview", wrap(http.HandlerFunc(configPreviewHandler(deps))))
+	mux.Handle("/api/admin/config/diff", wrap(http.HandlerFunc(configDiffHandler(deps))))
 	mux.Handle("/api/admin/telemetry", wrap(http.HandlerFunc(telemetryHandler(deps))))
 	mux.Handle("/api/admin/timeseries", wrap(http.HandlerFunc(timeseriesHandler(deps))))
 	mux.Handle("/api/admin/benchmark", wrap(http.HandlerFunc(benchmarkHandler(deps))))
@@ -131,8 +138,21 @@ func Mount(mux *http.ServeMux, deps Deps, frontendBundle *AdminFrontendBundle) {
 	mux.Handle("/api/admin/benchmark/runs", wrap(http.HandlerFunc(benchmarkRunsHandler(deps))))
 	mux.Handle("/api/admin/benchmark/runs/", wrap(http.HandlerFunc(benchmarkRunDetailHandler(deps))))
 	mux.Handle("/api/admin/status", wrap(http.HandlerFunc(statusHandler(deps))))
+	mux.Handle("/api/admin/runtime/status", wrap(http.HandlerFunc(runtimeStatusHandler(deps))))
+	mux.Handle("/api/admin/runtime/preflight", wrap(http.HandlerFunc(runtimePreflightHandler(deps))))
+	mux.Handle("/api/admin/audit", wrap(http.HandlerFunc(auditHandler(deps))))
+	mux.Handle("/api/admin/probe/provider", wrap(http.HandlerFunc(probeProviderHandler(deps))))
+	mux.Handle("/api/admin/probe/model", wrap(http.HandlerFunc(probeModelHandler(deps))))
+	mux.Handle("/api/admin/diagnostics", wrap(http.HandlerFunc(diagnosticsHandler(deps))))
+	mux.Handle("/api/admin/secrets/status", wrap(http.HandlerFunc(secretsStatusHandler(deps))))
+	if deps.Replay != nil {
+		mux.Handle("/api/admin/replay", wrap(deps.Replay))
+	} else {
+		mux.Handle("/api/admin/replay", wrap(http.HandlerFunc(replayUnavailableHandler)))
+	}
 	mux.Handle("/api/admin/pricing/status", wrap(http.HandlerFunc(pricingStatusHandler(deps))))
 	mux.Handle("/api/admin/pricing/refresh", wrap(http.HandlerFunc(pricingRefreshHandler(deps))))
+	mux.Handle("/metrics", http.HandlerFunc(metricsHandler(deps)))
 
 	// Admin UI
 	mux.Handle("/admin", wrap(http.HandlerFunc(adminHandler)))
@@ -263,9 +283,11 @@ func configPublishHandler(deps Deps) http.HandlerFunc {
 
 		result, err := deps.ConfigCommands.Publish(req.RevisionID)
 		if err != nil {
+			recordAudit(deps, r, "config.publish", req.RevisionID, false, err.Error(), nil)
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		recordAudit(deps, r, "config.publish", req.RevisionID, result != nil && result.Success, resultError(result), nil)
 
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -286,9 +308,11 @@ func configReloadHandler(deps Deps) http.HandlerFunc {
 
 		result, err := deps.ConfigCommands.ReloadConfig()
 		if err != nil {
+			recordAudit(deps, r, "config.reload", "source", false, err.Error(), nil)
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		recordAudit(deps, r, "config.reload", "source", result != nil && result.Success, resultError(result), nil)
 
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -317,9 +341,11 @@ func configRollbackHandler(deps Deps) http.HandlerFunc {
 
 		result, err := deps.ConfigCommands.Rollback(req.RevisionID)
 		if err != nil {
+			recordAudit(deps, r, "config.rollback", req.RevisionID, false, err.Error(), nil)
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		recordAudit(deps, r, "config.rollback", req.RevisionID, result != nil && result.Success, resultError(result), nil)
 
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -353,9 +379,11 @@ func configValidateHandler(deps Deps) http.HandlerFunc {
 
 		result, err := deps.ConfigCommands.ValidateConfig(req.Config)
 		if err != nil {
+			recordAudit(deps, r, "config.validate", "draft", false, err.Error(), nil)
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		recordAudit(deps, r, "config.validate", "draft", result != nil && result.Valid, validationError(result), nil)
 
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -390,9 +418,15 @@ func configUpdateHandler(deps Deps) http.HandlerFunc {
 
 		result, err := deps.ConfigCommands.UpdateConfig(req.Config, req.Description)
 		if err != nil {
+			recordAudit(deps, r, "config.update", "draft", false, err.Error(), nil)
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		resource := ""
+		if result != nil {
+			resource = result.RevisionID
+		}
+		recordAudit(deps, r, "config.update", resource, result != nil && result.Success, resultError(result), map[string]any{"description": req.Description})
 
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -456,6 +490,7 @@ func benchmarkHandler(deps Deps) http.HandlerFunc {
 		resp, err := telemetry.GetModelBenchmark(telemetryquery.BenchmarkRequest{
 			WindowHours: intQuery(r, "hours", 24),
 			Models:      stringListQuery(r, "models"),
+			Group:       firstQuery(r, "group", "group_by"),
 			StartTime:   timeQuery(r, "start"),
 			EndTime:     timeQuery(r, "end"),
 		})
@@ -471,65 +506,7 @@ func benchmarkHandler(deps Deps) http.HandlerFunc {
 // statusHandler handles status requests.
 func statusHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
-			"version":   deps.Version,
-			"startedAt": deps.StartedAt.UTC().Format(time.RFC3339),
-			"uptime":    time.Since(deps.StartedAt).String(),
-		}
-
-		// Check gateway status
-		gateway := deps.gatewayRPC()
-		if gateway != nil {
-			status, err := gateway.GetStatus()
-			if err != nil {
-				if isRPCDisconnectedError(err) {
-					resp["gateway_status"] = "disconnected"
-				} else {
-					resp["gateway_status"] = "error"
-				}
-				resp["gateway_error"] = err.Error()
-			} else {
-				resp["gateway_status"] = "connected"
-				resp["gateway"] = status
-				if pricingStatus, pricingErr := gateway.GetPricingStatus(); pricingErr == nil {
-					resp["pricing"] = pricingStatus
-				}
-			}
-		} else {
-			resp["gateway_status"] = "disconnected"
-		}
-
-		// Check telemetry status
-		resp["telemetry_last_checked_at"] = time.Now().UTC().Format(time.RFC3339)
-		telemetry := deps.telemetryRPC()
-		if telemetry != nil {
-			if pinger, ok := telemetry.(telemetryPinger); ok {
-				ping, err := pinger.Ping()
-				if err != nil {
-					if isRPCDisconnectedError(err) {
-						resp["telemetry_status"] = "disconnected"
-					} else {
-						resp["telemetry_status"] = "error"
-					}
-					resp["telemetry_error"] = err.Error()
-				} else if !ping.Healthy {
-					resp["telemetry_status"] = "error"
-					resp["telemetry_error"] = "telemetry unhealthy"
-					resp["telemetry_version"] = ping.Version
-					resp["telemetry_event_count"] = ping.EventCount
-				} else {
-					resp["telemetry_status"] = "connected"
-					resp["telemetry_version"] = ping.Version
-					resp["telemetry_event_count"] = ping.EventCount
-				}
-			} else {
-				resp["telemetry_status"] = "connected"
-			}
-		} else {
-			resp["telemetry_status"] = "disconnected"
-		}
-
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, buildStatusPayload(deps))
 	}
 }
 
@@ -562,9 +539,11 @@ func pricingRefreshHandler(deps Deps) http.HandlerFunc {
 		}
 		resp, err := gateway.RefreshPricing()
 		if err != nil {
+			recordAudit(deps, r, "pricing.refresh", "pricing", false, err.Error(), nil)
 			writeGatewayError(w, err)
 			return
 		}
+		recordAudit(deps, r, "pricing.refresh", "pricing", resp.Refreshed, resp.Error, nil)
 		writeJSON(w, http.StatusOK, resp)
 	}
 }
@@ -776,6 +755,9 @@ func intQuery(r *http.Request, key string, fallback int) int {
 	if raw == "" {
 		return fallback
 	}
+	if strings.EqualFold(raw, "all") {
+		return 365 * 24
+	}
 
 	value, err := strconv.Atoi(raw)
 	if err != nil {
@@ -802,6 +784,15 @@ func stringListQuery(r *http.Request, key string) []string {
 	}
 
 	return result
+}
+
+func firstQuery(r *http.Request, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(r.URL.Query().Get(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func timeQuery(r *http.Request, key string) *time.Time {

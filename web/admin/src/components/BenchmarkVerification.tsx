@@ -11,6 +11,7 @@ import {
 
 interface BenchmarkVerificationProps {
   canWrite: boolean
+  onRunStarted?: () => void
   onUnauthorized?: () => void
 }
 
@@ -27,12 +28,11 @@ function formatStatusTime(value: string | null | undefined): string {
   }).format(parsed)
 }
 
-export function BenchmarkVerification({ canWrite, onUnauthorized }: BenchmarkVerificationProps) {
+export function BenchmarkVerification({ canWrite, onRunStarted, onUnauthorized }: BenchmarkVerificationProps) {
   const { t } = useI18n()
   const verification = useBenchmarkVerification({ onUnauthorized })
   const routeReady = verification.allActive || Boolean(verification.providerInput.trim() && verification.publicModelInput.trim())
   const suiteReady = Boolean(verification.suiteInput.trim())
-  const baselineReady = Boolean(verification.publicSnapshotID.trim() || verification.vendorSnapshotID.trim())
   const runDisabledReason = !canWrite
     ? t('benchmark.verification.runDisabledNoWrite')
     : verification.loadingLists
@@ -43,9 +43,7 @@ export function BenchmarkVerification({ canWrite, onUnauthorized }: BenchmarkVer
         ? t('benchmark.verification.runDisabledSuite')
         : !routeReady
           ? t('benchmark.verification.runDisabledRoute')
-          : !baselineReady
-            ? t('benchmark.verification.runDisabledBaseline')
-            : ''
+          : ''
   const importDisabledReason = !canWrite
     ? t('benchmark.verification.importDisabledNoWrite')
     : verification.importingBaseline
@@ -55,6 +53,12 @@ export function BenchmarkVerification({ canWrite, onUnauthorized }: BenchmarkVer
         : ''
   const hasSelectedRunSettled = !verification.loadingLists && !verification.loadingRunDetail
   const hasSelectedRunTargets = (verification.selectedRun?.targets?.length ?? 0) > 0
+  const handleStartRun = async () => {
+    const started = await verification.startVerification()
+    if (started) {
+      onRunStarted?.()
+    }
+  }
 
   return (
     <div class="panel-subsection benchmark-verification">
@@ -141,7 +145,7 @@ export function BenchmarkVerification({ canWrite, onUnauthorized }: BenchmarkVer
             <button
               class="primary verification-primary-action"
               type="button"
-              onClick={() => void verification.startVerification()}
+              onClick={() => void handleStartRun()}
               disabled={Boolean(runDisabledReason)}
               title={runDisabledReason || undefined}
             >

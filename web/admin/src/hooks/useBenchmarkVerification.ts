@@ -245,8 +245,10 @@ export function useBenchmarkVerification({ onUnauthorized }: UseBenchmarkVerific
       setSelectedRun(payload)
       setSelectedTargetID(payload.targets?.[0]?.target_id ?? '')
       await loadVerification(payload.run_id)
+      return payload
     } catch (error) {
       setVerificationError(error instanceof Error ? error.message : 'Failed to start verification run')
+      return null
     } finally {
       setStartingRun(false)
     }

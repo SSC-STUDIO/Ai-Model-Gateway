@@ -60,6 +60,13 @@ func TestResolvePricingSupportsExpandedCatalog(t *testing.T) {
 			wantCurrency:   "USD",
 		},
 		{
+			name:           "requested model wins over bridge model",
+			requestedModel: "gpt-5.5",
+			effectiveModel: "gpt-4o-mini",
+			wantPricing:    "gpt-5.5",
+			wantCurrency:   "USD",
+		},
+		{
 			name:           "dated o4 mini effective model",
 			effectiveModel: "o4-mini-2025-04-16",
 			wantPricing:    "o4-mini",

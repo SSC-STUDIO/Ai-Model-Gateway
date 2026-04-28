@@ -17,6 +17,8 @@ import { formatUsd, formatInteger } from '../../utils/formatting'
 interface PricingTabProps {
   telemetry: DataResponse | null
   status?: ControlStatusView | null
+  hours?: string
+  onHoursChange?: (hours: string) => void
   onRefreshPricing?: () => Promise<void> | void
   onRetry?: () => Promise<void> | void
 }
@@ -108,7 +110,6 @@ function pricingToDonut(models: PricingModelSummary[], currency: string): DonutE
   if (!Array.isArray(models)) return []
   return models
     .filter((m) => costCurrency(m?.cost, m?.pricing?.currency) === currency && costTotal(m?.cost) > 0)
-    .slice(0, 12)
     .map((m, i) => ({
       label: m?.display_model ?? 'unknown',
       value: costTotal(m?.cost),
@@ -131,6 +132,7 @@ function formatStatusTime(value: string | null | undefined): string {
   if (!value) return '-'
   const parsed = Date.parse(value)
   if (!Number.isFinite(parsed)) return value
+  if (new Date(parsed).getUTCFullYear() < 2000) return '-'
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
@@ -140,7 +142,15 @@ function formatStatusTime(value: string | null | undefined): string {
   }).format(parsed)
 }
 
-const PricingTabComponent = ({ telemetry, status, onRefreshPricing, onRetry }: PricingTabProps) => {
+function formatPricingTimestamp(value: string | null | undefined): string {
+  if (!value) return '-'
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) return value
+  if (new Date(parsed).getUTCFullYear() < 2000) return '-'
+  return new Date(parsed).toLocaleString()
+}
+
+const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, onRefreshPricing, onRetry }: PricingTabProps) => {
   const { t } = useI18n()
   const [activeProvider, setActiveProvider] = useState('all')
   const [refreshing, setRefreshing] = useState(false)
@@ -171,6 +181,22 @@ const PricingTabComponent = ({ telemetry, status, onRefreshPricing, onRetry }: P
       }))
       .filter((group) => group.data.length > 0)
   }, [pricingTotals, filteredModels])
+  const pricingSourceSummary = useMemo(() => {
+    const sources = pricingStatus?.sources ?? []
+    return sources.reduce(
+      (summary, source) => {
+        if (!source.enabled) {
+          summary.disabled += 1
+        } else if ((source.status ?? 'ready') === 'error') {
+          summary.error += 1
+        } else {
+          summary.ready += 1
+        }
+        return summary
+      },
+      { ready: 0, error: 0, disabled: 0 }
+    )
+  }, [pricingStatus?.sources])
 
   const hasData = pricingTotals.length > 0 || pricingModels.length > 0
   const telemetryUnavailable = status?.telemetry_status && status.telemetry_status !== 'connected'
@@ -245,6 +271,20 @@ const PricingTabComponent = ({ telemetry, status, onRefreshPricing, onRetry }: P
         <div class="timeseries-header" style={{ marginBottom: '12px' }}>
           <h3>{t('pricing.costSummary')}</h3>
           <div class="timeseries-controls">
+            {onHoursChange ? (
+              <div class="timeseries-selector">
+                <span>{t('timeseries.timeRange')}:</span>
+                <button type="button" class={`ts-btn${hours === '24' ? ' active' : ''}`} onClick={() => onHoursChange('24')}>
+                  {t('benchmark.last24h')}
+                </button>
+                <button type="button" class={`ts-btn${hours === '168' ? ' active' : ''}`} onClick={() => onHoursChange('168')}>
+                  {t('benchmark.last7d')}
+                </button>
+                <button type="button" class={`ts-btn${hours === 'all' ? ' active' : ''}`} onClick={() => onHoursChange('all')}>
+                  {t('pricing.allHistory')}
+                </button>
+              </div>
+            ) : null}
             <div class="timeseries-selector">
               <span>{t('pricing.provider')}:</span>
               {PROVIDER_OPTIONS.map((opt) => (
@@ -313,61 +353,67 @@ const PricingTabComponent = ({ telemetry, status, onRefreshPricing, onRetry }: P
       {(pricingStatus?.sources?.length || pricingStatus?.fx) && (
         <div class="panel-subsection">
           <div class="timeseries-header" style={{ marginBottom: '12px' }}>
-            <h3>Pricing Sources</h3>
+            <h3>{t('pricing.sources')}</h3>
             {onRefreshPricing ? (
               <button type="button" class="ts-btn active" onClick={() => void handleRefreshPricing()} disabled={refreshing}>
-                {refreshing ? 'Refreshing...' : 'Refresh Now'}
+                {refreshing ? t('pricing.refreshing') : t('pricing.refreshNow')}
               </button>
             ) : null}
           </div>
-          <div class="metrics-grid panel-stagger" style={{ marginBottom: '16px' }}>
+          <div class="metrics-grid pricing-source-grid panel-stagger" style={{ marginBottom: '16px' }}>
             <article class="metric-card">
-              <div class="metric-label">Catalog Size</div>
+              <div class="metric-label">{t('pricing.catalogSize')}</div>
               <div class="metric-value">{formatInteger(pricingStatus?.catalog_size ?? 0)}</div>
             </article>
             <article class="metric-card">
-              <div class="metric-label">Last Update</div>
-              <div class="metric-value">{pricingStatus?.updated_at ? new Date(pricingStatus.updated_at).toLocaleString() : '-'}</div>
+              <div class="metric-label">{t('pricing.readySources')}</div>
+              <div class="metric-value">{pricingSourceSummary.ready}</div>
             </article>
             <article class="metric-card">
-              <div class="metric-label">FX Base</div>
-              <div class="metric-value">{pricingStatus?.fx?.base_currency ?? '-'}</div>
+              <div class="metric-label">{t('pricing.sourceErrors')}</div>
+              <div class="metric-value">{pricingSourceSummary.error}</div>
             </article>
             <article class="metric-card">
-              <div class="metric-label">FX Updated</div>
-              <div class="metric-value">{pricingStatus?.fx?.updated_at ? new Date(pricingStatus.fx.updated_at).toLocaleString() : '-'}</div>
+              <div class="metric-label">{t('pricing.lastUpdate')}</div>
+              <div class="metric-value">{formatPricingTimestamp(pricingStatus?.updated_at)}</div>
             </article>
           </div>
           {pricingStatus?.sources?.length ? (
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Source</th>
-                    <th>Status</th>
-                    <th>Models</th>
-                    <th>Updated</th>
-                    <th>Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pricingStatus.sources.map((source) => (
-                    <tr key={source.id} class="data-row">
-                      <td>
-                        <div class="table-cell-stack">
-                          <span class="table-cell-primary">{source.vendor}</span>
-                          <span class="table-cell-secondary mono">{source.id}</span>
-                        </div>
-                      </td>
-                      <td>{source.enabled ? (source.status ?? 'ready') : 'disabled'}</td>
-                      <td>{formatInteger(source.model_count ?? 0)}</td>
-                      <td>{source.updated_at ? new Date(source.updated_at).toLocaleString() : '-'}</td>
-                      <td>{source.last_error ?? '-'}</td>
+            <details class="pricing-source-details">
+              <summary>
+                <span>{t('pricing.sourceDetails')}</span>
+                <span>{pricingStatus.sources.length} {t('charts.donutItems')}</span>
+              </summary>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{t('pricing.source')}</th>
+                      <th>{t('pricing.status')}</th>
+                      <th>{t('pricing.models')}</th>
+                      <th>{t('pricing.updated')}</th>
+                      <th>{t('pricing.error')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {pricingStatus.sources.map((source) => (
+                      <tr key={source.id} class="data-row">
+                        <td>
+                          <div class="table-cell-stack">
+                            <span class="table-cell-primary">{source.vendor}</span>
+                            <span class="table-cell-secondary mono">{source.id}</span>
+                          </div>
+                        </td>
+                        <td>{source.enabled ? (source.status ?? 'ready') : 'disabled'}</td>
+                        <td>{formatInteger(source.model_count ?? 0)}</td>
+                        <td>{formatPricingTimestamp(source.updated_at)}</td>
+                        <td>{source.last_error ?? '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
           ) : null}
         </div>
       )}

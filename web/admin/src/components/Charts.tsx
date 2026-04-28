@@ -11,6 +11,7 @@ import {
   buildLinePath,
   buildTooltipState,
   clampActiveIndex,
+  collapseLabeledValues,
   clamp,
   describeDonutArc,
   formatPointLabel,
@@ -39,6 +40,8 @@ const LINE_VIEWBOX_WIDTH = 400
 const LINE_VIEWBOX_HEIGHT = 220
 const LINE_PADDING = { top: 32, right: 20, bottom: 30, left: 50 }
 const DONUT_VIEWBOX_SIZE = 240
+const MAX_DONUT_SEGMENTS = 8
+const OTHER_DONUT_COLOR = '#94a3b8'
 
 function EmptyChart({
   title,
@@ -397,8 +400,13 @@ const DonutChartComponent = ({ data, title, singleRowLegend = false }: DonutChar
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
   const segments = useMemo(
-    () => sanitizeLabeledValues(data).filter((segment) => segment.value >= 0),
-    [data]
+    () => {
+      const sorted = sanitizeLabeledValues(data)
+        .filter((segment) => segment.value >= 0)
+        .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label))
+      return collapseLabeledValues(sorted, MAX_DONUT_SEGMENTS, t('charts.other'), OTHER_DONUT_COLOR)
+    },
+    [data, t]
   )
   const total = useMemo(() => segments.reduce((sum, segment) => sum + segment.value, 0), [segments])
   const allZero = segments.length > 0 && total === 0

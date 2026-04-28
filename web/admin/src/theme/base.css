@@ -8,10 +8,9 @@ body {
   margin: 0;
   position: relative;
   background:
-    radial-gradient(circle at 10% 12%, rgba(47, 123, 91, 0.12), transparent 24%),
-    radial-gradient(circle at 88% 12%, rgba(43, 79, 124, 0.2), transparent 26%),
-    radial-gradient(circle at 50% 100%, rgba(165, 98, 42, 0.12), transparent 30%),
-    linear-gradient(145deg, var(--bg-secondary) 0%, var(--bg-primary) 46%, var(--bg-secondary) 100%);
+    linear-gradient(135deg, rgba(23, 111, 107, 0.08) 0%, transparent 34%),
+    linear-gradient(225deg, rgba(47, 95, 152, 0.1) 0%, transparent 32%),
+    linear-gradient(180deg, var(--surface-page) 0%, var(--bg-secondary) 100%);
   background-attachment: fixed;
   color: var(--text-primary);
   font-family: "Aptos", "Segoe UI Variable Text", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
@@ -21,7 +20,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-feature-settings: 'kern';
-  letter-spacing: -0.01em;
 }
 
 body::before,
@@ -35,18 +33,30 @@ body::after {
 
 body::before {
   background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.14), transparent 30%),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.08), transparent 46%);
-  opacity: 0.9;
+    linear-gradient(90deg, rgba(255, 255, 255, 0.64), transparent 32%, rgba(255, 255, 255, 0.34)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.56), transparent 44%);
+  opacity: 0.8;
+}
+
+[data-theme="dark"] body::before {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04), transparent 36%, rgba(255, 255, 255, 0.03)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 48%);
 }
 
 body::after {
   background-image:
-    linear-gradient(rgba(24, 34, 53, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(24, 34, 53, 0.04) 1px, transparent 1px);
-  background-size: 36px 36px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22), transparent 68%);
-  opacity: 0.5;
+    linear-gradient(rgba(17, 24, 39, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 24, 39, 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.22), transparent 76%);
+  opacity: 0.46;
+}
+
+[data-theme="dark"] body::after {
+  background-image:
+    linear-gradient(rgba(218, 226, 235, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(218, 226, 235, 0.035) 1px, transparent 1px);
 }
 
 /* === Subtle Grain Texture === */
@@ -68,7 +78,7 @@ button {
   border: 1px solid var(--button-primary-border);
   background: linear-gradient(180deg, var(--button-primary-start) 0%, var(--button-primary-end) 100%);
   color: white;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   padding: 10px 18px;
   cursor: pointer;
   font-weight: 600;
@@ -161,7 +171,7 @@ button.secondary.danger:hover:not(:disabled) {
 
 input, select, textarea {
   border: 1px solid var(--input-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 10px 12px;
   font-size: 0.875rem;
   background: var(--input-bg);
@@ -213,6 +223,11 @@ select {
 [data-theme="dark"] .lang-select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%239cacbf' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
 }
+
+[data-theme="dark"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239cacbf' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+}
+
 /* === Custom Scrollbar === */
 ::-webkit-scrollbar {
   width: 10px;
@@ -223,7 +238,7 @@ select {
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(108, 128, 151, 0.35);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 2px solid transparent;
   background-clip: content-box;
 }
@@ -237,14 +252,6 @@ select {
 }
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(108, 152, 208, 0.48);
-}
-
-/* === Select Dropdown Arrow Color Fix === */
-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236c757d' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-}
-[data-theme="dark"] select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239cacbf' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
 }
 
 /* === Smooth Scroll === */
@@ -279,4 +286,3 @@ body {
   background: rgba(108, 152, 208, 0.35);
   color: var(--text-primary);
 }
-

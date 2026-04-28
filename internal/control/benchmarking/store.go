@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -94,6 +95,7 @@ func NewStore(path string) (*Store, error) {
 		suspicion_score              REAL NOT NULL DEFAULT 0,
 		public_gap                   REAL NOT NULL DEFAULT 0,
 		vendor_gap                   REAL NOT NULL DEFAULT 0,
+		overall_score                REAL NOT NULL DEFAULT 0,
 		completion_rate              REAL NOT NULL DEFAULT 0,
 		critical_protocol_failures   INTEGER NOT NULL DEFAULT 0,
 		prompt_tokens                INTEGER NOT NULL DEFAULT 0,
@@ -112,6 +114,14 @@ func NewStore(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create benchmark store schema: %w", err)
+	}
+	if err := execBenchmarkCompatibleDDL(db, `ALTER TABLE benchmark_targets ADD COLUMN overall_score REAL NOT NULL DEFAULT 0`); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := backfillBenchmarkOverallScores(db); err != nil {
+		db.Close()
+		return nil, err
 	}
 	return &Store{db: db, path: path}, nil
 }
@@ -327,10 +337,10 @@ func (s *Store) CreateRun(ctx context.Context, run RunSummary, targets []RunTarg
 		INSERT INTO benchmark_targets
 			(target_id, run_id, status, provider_id, public_model, effective_model, canonical_model_id, protocol,
 			 protocol_adapter, suite_version, judge_model, public_snapshot_id, vendor_snapshot_id, verdict,
-			 suspicion_score, public_gap, vendor_gap, completion_rate, critical_protocol_failures, prompt_tokens,
+			 suspicion_score, public_gap, vendor_gap, overall_score, completion_rate, critical_protocol_failures, prompt_tokens,
 			 cached_prompt_tokens, completion_tokens, estimated_cost_usd, reason_codes_json, dimension_scores_json,
 			 cases_json, started_at, completed_at, error)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("prepare benchmark target insert: %w", err)
 	}
@@ -358,6 +368,7 @@ func (s *Store) CreateRun(ctx context.Context, run RunSummary, targets []RunTarg
 			target.SuspicionScore,
 			target.PublicGap,
 			target.VendorGap,
+			target.OverallScore,
 			target.CompletionRate,
 			target.CriticalProtocolFailures,
 			target.PromptTokens,
@@ -420,7 +431,7 @@ func (s *Store) UpdateTarget(ctx context.Context, target RunTargetDetail) error 
 		UPDATE benchmark_targets
 		SET status = ?, effective_model = ?, canonical_model_id = ?, protocol = ?, protocol_adapter = ?, judge_model = ?,
 			public_snapshot_id = ?, vendor_snapshot_id = ?, verdict = ?, suspicion_score = ?, public_gap = ?, vendor_gap = ?,
-			completion_rate = ?, critical_protocol_failures = ?, prompt_tokens = ?, cached_prompt_tokens = ?, completion_tokens = ?,
+			overall_score = ?, completion_rate = ?, critical_protocol_failures = ?, prompt_tokens = ?, cached_prompt_tokens = ?, completion_tokens = ?,
 			estimated_cost_usd = ?, reason_codes_json = ?, dimension_scores_json = ?, cases_json = ?, completed_at = ?, error = ?
 		WHERE target_id = ?`,
 		target.Status,
@@ -435,6 +446,7 @@ func (s *Store) UpdateTarget(ctx context.Context, target RunTargetDetail) error 
 		target.SuspicionScore,
 		target.PublicGap,
 		target.VendorGap,
+		target.OverallScore,
 		target.CompletionRate,
 		target.CriticalProtocolFailures,
 		target.PromptTokens,
@@ -552,7 +564,7 @@ func (s *Store) GetRun(ctx context.Context, runID string) (*RunDetail, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT target_id, run_id, status, provider_id, public_model, effective_model, canonical_model_id, protocol,
 		       protocol_adapter, suite_version, judge_model, public_snapshot_id, vendor_snapshot_id, verdict,
-		       suspicion_score, public_gap, vendor_gap, completion_rate, critical_protocol_failures,
+		       suspicion_score, public_gap, vendor_gap, overall_score, completion_rate, critical_protocol_failures,
 		       prompt_tokens, cached_prompt_tokens, completion_tokens, estimated_cost_usd,
 		       reason_codes_json, dimension_scores_json, cases_json, started_at, completed_at, error
 		FROM benchmark_targets
@@ -591,6 +603,7 @@ func (s *Store) GetRun(ctx context.Context, runID string) (*RunDetail, error) {
 			&target.SuspicionScore,
 			&target.PublicGap,
 			&target.VendorGap,
+			&target.OverallScore,
 			&target.CompletionRate,
 			&target.CriticalProtocolFailures,
 			&target.PromptTokens,
@@ -643,4 +656,79 @@ func formatOptionalTime(ts time.Time) string {
 		return ""
 	}
 	return ts.UTC().Format(time.RFC3339Nano)
+}
+
+func execBenchmarkCompatibleDDL(db *sql.DB, stmt string) error {
+	if _, err := db.Exec(stmt); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return nil
+		}
+		return fmt.Errorf("apply benchmark schema update %q: %w", stmt, err)
+	}
+	return nil
+}
+
+func backfillBenchmarkOverallScores(db *sql.DB) error {
+	rows, err := db.Query(`
+		SELECT target_id, suite_version, dimension_scores_json
+		FROM benchmark_targets
+		WHERE overall_score = 0
+		  AND TRIM(COALESCE(dimension_scores_json, '')) NOT IN ('', '{}', 'null')`)
+	if err != nil {
+		return fmt.Errorf("query benchmark overall score backfill candidates: %w", err)
+	}
+	defer rows.Close()
+
+	type update struct {
+		targetID string
+		score    float64
+	}
+	updates := make([]update, 0, 32)
+	for rows.Next() {
+		var targetID, suiteVersion, dimensionScoresJSON string
+		if err := rows.Scan(&targetID, &suiteVersion, &dimensionScoresJSON); err != nil {
+			return fmt.Errorf("scan benchmark overall score backfill candidate: %w", err)
+		}
+		dimensionScores := map[string]float64{}
+		if err := json.Unmarshal([]byte(dimensionScoresJSON), &dimensionScores); err != nil || len(dimensionScores) == 0 {
+			continue
+		}
+		suite, err := suiteByName(suiteVersion)
+		if err != nil {
+			suite = generalProtocolSuite()
+		}
+		score := weightedAverage(dimensionScores, suite.DimensionWeights)
+		updates = append(updates, update{targetID: targetID, score: score})
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate benchmark overall score backfill candidates: %w", err)
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin benchmark overall score backfill: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		UPDATE benchmark_targets
+		SET overall_score = ?
+		WHERE target_id = ? AND overall_score = 0`)
+	if err != nil {
+		return fmt.Errorf("prepare benchmark overall score backfill: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, item := range updates {
+		if _, err := stmt.Exec(item.score, item.targetID); err != nil {
+			return fmt.Errorf("update benchmark target %s overall score: %w", item.targetID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit benchmark overall score backfill: %w", err)
+	}
+	return nil
 }

@@ -771,6 +771,7 @@ func TestIntQuery(t *testing.T) {
 		expected int
 	}{
 		{"http://example.com?hours=24", "hours", 1, 24},
+		{"http://example.com?hours=all", "hours", 1, 365 * 24},
 		{"http://example.com?hours=abc", "hours", 10, 10},
 		{"http://example.com", "hours", 5, 5},
 		{"http://example.com?hours=", "hours", 8, 8},

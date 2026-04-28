@@ -19,6 +19,7 @@ const (
 	maxBucketMinutes                 = 7 * 24 * 60
 	defaultOverviewWindow            = 5 * time.Minute
 	projectedModelExpression         = "COALESCE(NULLIF(effective_model, ''), NULLIF(requested_model, ''), '')"
+	projectedPricingModelExpression  = "COALESCE(NULLIF(requested_model, ''), NULLIF(effective_model, ''), '')"
 	nonSyntheticFilterExpression     = "COALESCE(synthetic_kind, '') = ''"
 	projectedPricingStatusExpression = `CASE
 		WHEN COALESCE(NULLIF(pricing_status, ''), '') != '' THEN pricing_status
@@ -108,39 +109,7 @@ func (s *Store) QueryTelemetry(req telemetryquery.TelemetryRequest) ([]telemetry
 		offset = 0
 	}
 
-	where := []string{"timestamp >= ?"}
-	args := []interface{}{time.Now().Add(-time.Duration(windowHours) * time.Hour).UTC().Format(time.RFC3339Nano)}
-	where, args = appendSyntheticTelemetryFilters(where, args, req.Filters)
-
-	if models := cleanStrings(req.Filters.Models); len(models) > 0 {
-		modelPlaceholders := placeholders(len(models))
-		where = append(where, fmt.Sprintf("(%s IN (%s) OR requested_model IN (%s))", projectedModelExpression, modelPlaceholders, modelPlaceholders))
-		args = append(args, stringArgs(models)...)
-		args = append(args, stringArgs(models)...)
-	}
-
-	if providers := cleanStrings(req.Filters.Providers); len(providers) > 0 {
-		where = append(where, "provider_id IN ("+placeholders(len(providers))+")")
-		args = append(args, stringArgs(providers)...)
-	}
-
-	if statusCodes := cleanStatusCodes(req.Filters.StatusCodes); len(statusCodes) > 0 {
-		where = append(where, "status_code IN ("+placeholders(len(statusCodes))+")")
-		args = append(args, intArgs(statusCodes)...)
-	}
-
-	if req.Filters.ErrorsOnly {
-		where = append(where, "(status_code >= 400 OR COALESCE(error_message, '') != '')")
-	}
-	if req.Filters.MinLatencyMs > 0 {
-		where = append(where, "latency_ms >= ?")
-		args = append(args, req.Filters.MinLatencyMs)
-	}
-	if req.Filters.MaxLatencyMs > 0 {
-		where = append(where, "latency_ms <= ?")
-		args = append(args, req.Filters.MaxLatencyMs)
-	}
-
+	where, args := telemetryWhere(req, windowHours, time.Now())
 	whereSQL := strings.Join(where, " AND ")
 
 	var total int64
@@ -226,6 +195,113 @@ LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	}
 
 	return events, total, windowHours, nil
+}
+
+// QueryTelemetryDistributions returns full-window model and upstream distributions.
+func (s *Store) QueryTelemetryDistributions(req telemetryquery.TelemetryRequest) ([]telemetryquery.TelemetryDistributionItem, []telemetryquery.TelemetryDistributionItem, int, error) {
+	windowHours := normalizeWindowHours(req.WindowHours)
+	where, args := telemetryWhere(req, windowHours, time.Now())
+
+	models, err := s.queryTelemetryDistribution(
+		`COALESCE(NULLIF(`+projectedModelExpression+`, ''), 'unknown')`,
+		where,
+		args,
+	)
+	if err != nil {
+		return nil, nil, windowHours, err
+	}
+
+	upstreams, err := s.queryTelemetryDistribution(
+		`COALESCE(NULLIF(provider_id, ''), 'unknown')`,
+		where,
+		args,
+	)
+	if err != nil {
+		return nil, nil, windowHours, err
+	}
+
+	return models, upstreams, windowHours, nil
+}
+
+func (s *Store) queryTelemetryDistribution(groupExpr string, where []string, args []interface{}) ([]telemetryquery.TelemetryDistributionItem, error) {
+	whereSQL := strings.Join(where, " AND ")
+	rows, err := s.db.Query(`
+SELECT
+  `+groupExpr+` AS value,
+  COUNT(*),
+  COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN status_code < 200 OR status_code >= 400 THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(prompt_tokens), 0),
+  COALESCE(SUM(cached_prompt_tokens), 0),
+  COALESCE(SUM(completion_tokens), 0),
+  CASE WHEN COUNT(*) > 0 THEN CAST(SUM(latency_ms) AS REAL) / COUNT(*) ELSE 0 END
+FROM request_facts
+WHERE `+whereSQL+`
+GROUP BY value
+ORDER BY COUNT(*) DESC, value ASC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]telemetryquery.TelemetryDistributionItem, 0, 32)
+	for rows.Next() {
+		var item telemetryquery.TelemetryDistributionItem
+		if err := rows.Scan(
+			&item.Value,
+			&item.Requests,
+			&item.Successes,
+			&item.Failures,
+			&item.InputTokens,
+			&item.CachedPromptTokens,
+			&item.OutputTokens,
+			&item.AvgLatencyMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func telemetryWhere(req telemetryquery.TelemetryRequest, windowHours int, now time.Time) ([]string, []interface{}) {
+	where := []string{"timestamp >= ?"}
+	args := []interface{}{now.Add(-time.Duration(windowHours) * time.Hour).UTC().Format(time.RFC3339Nano)}
+	where, args = appendSyntheticTelemetryFilters(where, args, req.Filters)
+
+	if models := cleanStrings(req.Filters.Models); len(models) > 0 {
+		modelPlaceholders := placeholders(len(models))
+		where = append(where, fmt.Sprintf("(%s IN (%s) OR requested_model IN (%s))", projectedModelExpression, modelPlaceholders, modelPlaceholders))
+		args = append(args, stringArgs(models)...)
+		args = append(args, stringArgs(models)...)
+	}
+
+	if providers := cleanStrings(req.Filters.Providers); len(providers) > 0 {
+		where = append(where, "provider_id IN ("+placeholders(len(providers))+")")
+		args = append(args, stringArgs(providers)...)
+	}
+
+	if statusCodes := cleanStatusCodes(req.Filters.StatusCodes); len(statusCodes) > 0 {
+		where = append(where, "status_code IN ("+placeholders(len(statusCodes))+")")
+		args = append(args, intArgs(statusCodes)...)
+	}
+
+	if req.Filters.ErrorsOnly {
+		where = append(where, "(status_code >= 400 OR COALESCE(error_message, '') != '')")
+	}
+	if req.Filters.MinLatencyMs > 0 {
+		where = append(where, "latency_ms >= ?")
+		args = append(args, req.Filters.MinLatencyMs)
+	}
+	if req.Filters.MaxLatencyMs > 0 {
+		where = append(where, "latency_ms <= ?")
+		args = append(args, req.Filters.MaxLatencyMs)
+	}
+
+	return where, args
 }
 
 func appendSyntheticTelemetryFilters(where []string, args []interface{}, filters telemetryquery.TelemetryFilters) ([]string, []interface{}) {
@@ -362,11 +438,18 @@ ORDER BY grouped_bucket ASC, ` + groupBy + ` ASC`
 func (s *Store) QueryModelBenchmark(req telemetryquery.BenchmarkRequest) ([]telemetryquery.ModelBenchmark, int, error) {
 	start, end, windowHours := resolveBenchmarkRange(req)
 	models := cleanStrings(req.Models)
+	group := normalizeBenchmarkGroup(req.Group)
+	groupExpr := projectedModelExpression
+	groupNotEmpty := projectedModelExpression + " != ''"
+	if group == "upstream" {
+		groupExpr = "COALESCE(provider_id, '')"
+		groupNotEmpty = "COALESCE(provider_id, '') != ''"
+	}
 
 	where := []string{
 		"timestamp >= ?",
 		"timestamp <= ?",
-		projectedModelExpression + " != ''",
+		groupNotEmpty,
 		nonSyntheticFilterExpression,
 	}
 	args := []interface{}{
@@ -380,7 +463,7 @@ func (s *Store) QueryModelBenchmark(req telemetryquery.BenchmarkRequest) ([]tele
 
 	rows, err := s.db.Query(`
 SELECT
-  `+projectedModelExpression+` AS model,
+  `+groupExpr+` AS benchmark_group,
   COUNT(*),
   COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0),
   COALESCE(SUM(CASE WHEN status_code < 200 OR status_code >= 400 THEN 1 ELSE 0 END), 0),
@@ -391,8 +474,8 @@ SELECT
   COALESCE(MAX(latency_ms), 0)
 FROM request_facts
 WHERE `+strings.Join(where, " AND ")+`
-GROUP BY model
-ORDER BY COUNT(*) DESC, model ASC`, args...)
+GROUP BY benchmark_group
+ORDER BY COUNT(*) DESC, benchmark_group ASC`, args...)
 	if err != nil {
 		return nil, windowHours, err
 	}
@@ -401,8 +484,9 @@ ORDER BY COUNT(*) DESC, model ASC`, args...)
 	benchmarks := make([]telemetryquery.ModelBenchmark, 0, 32)
 	for rows.Next() {
 		var benchmark telemetryquery.ModelBenchmark
+		var label string
 		if err := rows.Scan(
-			&benchmark.Model,
+			&label,
 			&benchmark.Requests,
 			&benchmark.Successes,
 			&benchmark.Failures,
@@ -417,42 +501,59 @@ ORDER BY COUNT(*) DESC, model ASC`, args...)
 		if benchmark.Requests > 0 {
 			benchmark.SuccessRate = float64(benchmark.Successes) / float64(benchmark.Requests) * 100
 		}
-		s.populateLatencyPercentiles(&benchmark, start, end)
+		benchmark.Label = label
+		if group == "upstream" {
+			benchmark.Upstream = label
+			benchmark.Model = label
+		} else {
+			benchmark.Model = label
+		}
+		s.populateLatencyPercentiles(&benchmark, start, end, group)
 		benchmarks = append(benchmarks, benchmark)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, windowHours, err
 	}
 
-	costs, err := s.queryBenchmarkCostBreakdown(start, end, models)
+	costs, err := s.queryBenchmarkCostBreakdown(start, end, models, group)
 	if err != nil {
 		return nil, windowHours, err
 	}
 	for i := range benchmarks {
-		benchmarks[i].ExactCostUSD = costs[benchmarks[i].Model][0]
-		benchmarks[i].EstimatedLegacyCostUSD = costs[benchmarks[i].Model][1]
+		key := benchmarks[i].Model
+		if group == "upstream" {
+			key = benchmarks[i].Upstream
+		}
+		benchmarks[i].ExactCostUSD = costs[key][0]
+		benchmarks[i].EstimatedLegacyCostUSD = costs[key][1]
 		benchmarks[i].EstimatedCostUSD = benchmarks[i].ExactCostUSD + benchmarks[i].EstimatedLegacyCostUSD
 	}
 
 	return benchmarks, windowHours, nil
 }
 
-func (s *Store) populateLatencyPercentiles(benchmark *telemetryquery.ModelBenchmark, start, end time.Time) {
+func (s *Store) populateLatencyPercentiles(benchmark *telemetryquery.ModelBenchmark, start, end time.Time, group string) {
 	var (
 		count      int64
 		maxLatency sql.NullInt64
 	)
+	groupExpr := projectedModelExpression
+	groupValue := benchmark.Model
+	if group == "upstream" {
+		groupExpr = "COALESCE(provider_id, '')"
+		groupValue = benchmark.Upstream
+	}
 	err := s.db.QueryRow(`
 SELECT COUNT(*), MAX(latency_ms)
 FROM request_facts
 WHERE timestamp >= ?
   AND timestamp <= ?
-  AND `+projectedModelExpression+` = ?
+  AND `+groupExpr+` = ?
   AND `+nonSyntheticFilterExpression+`
   AND latency_ms > 0`,
 		start.UTC().Format(time.RFC3339Nano),
 		end.UTC().Format(time.RFC3339Nano),
-		benchmark.Model,
+		groupValue,
 	).Scan(&count, &maxLatency)
 	if err != nil || count == 0 {
 		return
@@ -468,14 +569,14 @@ SELECT latency_ms
 FROM request_facts
 WHERE timestamp >= ?
   AND timestamp <= ?
-  AND `+projectedModelExpression+` = ?
+  AND `+groupExpr+` = ?
   AND `+nonSyntheticFilterExpression+`
   AND latency_ms > 0
 ORDER BY latency_ms ASC
 LIMIT 1 OFFSET ?`,
 			start.UTC().Format(time.RFC3339Nano),
 			end.UTC().Format(time.RFC3339Nano),
-			benchmark.Model,
+			groupValue,
 			offset,
 		).Scan(&value)
 		return float64(value), err
@@ -505,6 +606,15 @@ LIMIT 1 OFFSET ?`,
 	}
 	if value, err := percentileAt(p99Offset); err == nil {
 		benchmark.P99LatencyMs = value
+	}
+}
+
+func normalizeBenchmarkGroup(group string) string {
+	switch strings.ToLower(strings.TrimSpace(group)) {
+	case "upstream", "provider", "providers":
+		return "upstream"
+	default:
+		return "model"
 	}
 }
 
@@ -556,11 +666,17 @@ GROUP BY model`, args...)
 	return costs, nil
 }
 
-func (s *Store) queryBenchmarkCostBreakdown(start, end time.Time, models []string) (map[string][2]float64, error) {
+func (s *Store) queryBenchmarkCostBreakdown(start, end time.Time, models []string, group string) (map[string][2]float64, error) {
+	groupExpr := projectedPricingModelExpression
+	groupNotEmpty := projectedModelExpression + " != ''"
+	if group == "upstream" {
+		groupExpr = "COALESCE(provider_id, '')"
+		groupNotEmpty = "COALESCE(provider_id, '') != ''"
+	}
 	where := []string{
 		"timestamp >= ?",
 		"timestamp <= ?",
-		projectedModelExpression + " != ''",
+		groupNotEmpty,
 		nonSyntheticFilterExpression,
 	}
 	args := []interface{}{
@@ -568,15 +684,20 @@ func (s *Store) queryBenchmarkCostBreakdown(start, end time.Time, models []strin
 		end.UTC().Format(time.RFC3339Nano),
 	}
 	if len(models) > 0 {
-		where = append(where, projectedModelExpression+" IN ("+placeholders(len(models))+")")
+		filterExpr := projectedPricingModelExpression
+		if group == "upstream" {
+			filterExpr = projectedModelExpression
+		}
+		where = append(where, filterExpr+" IN ("+placeholders(len(models))+")")
 		args = append(args, stringArgs(models)...)
 	}
 
 	rows, err := s.db.Query(`
 SELECT
-  `+projectedModelExpression+` AS model,
+  `+groupExpr+` AS benchmark_group,
   COALESCE(provider_id, ''),
   COALESCE(requested_model, ''),
+  COALESCE(effective_model, ''),
   `+projectedPricingStatusExpression+` AS pricing_status,
   COALESCE(SUM(prompt_tokens), 0),
   COALESCE(SUM(cached_prompt_tokens), 0),
@@ -584,7 +705,7 @@ SELECT
   COALESCE(SUM(pricing_total_cost_usd), 0)
 FROM request_facts
 WHERE `+strings.Join(where, " AND ")+`
-GROUP BY model, provider_id, requested_model, pricing_status`, args...)
+GROUP BY benchmark_group, provider_id, requested_model, effective_model, pricing_status`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -593,29 +714,30 @@ GROUP BY model, provider_id, requested_model, pricing_status`, args...)
 	result := make(map[string][2]float64, 32)
 	for rows.Next() {
 		var (
-			model              string
+			key                string
 			provider           string
 			requestedModel     string
+			effectiveModel     string
 			pricingStatus      string
 			inputTokens        int64
 			cachedPromptTokens int64
 			outputTokens       int64
 			totalCostUSD       float64
 		)
-		if err := rows.Scan(&model, &provider, &requestedModel, &pricingStatus, &inputTokens, &cachedPromptTokens, &outputTokens, &totalCostUSD); err != nil {
+		if err := rows.Scan(&key, &provider, &requestedModel, &effectiveModel, &pricingStatus, &inputTokens, &cachedPromptTokens, &outputTokens, &totalCostUSD); err != nil {
 			return nil, err
 		}
-		current := result[model]
+		current := result[key]
 		switch normalizePricingStatus(pricingStatus, inputTokens, cachedPromptTokens, outputTokens) {
 		case PricingStatusFixed:
 			current[0] += totalCostUSD
 		case PricingStatusEstimatedLegacy:
 			if totalCostUSD == 0 {
-				_, _, _, _, _, totalCostUSD, _ = estimateLegacyPricing(requestedModel, model, provider, inputTokens, cachedPromptTokens, outputTokens)
+				_, _, _, _, _, totalCostUSD, _ = estimateLegacyPricing(requestedModel, effectiveModel, provider, inputTokens, cachedPromptTokens, outputTokens)
 			}
 			current[1] += totalCostUSD
 		}
-		result[model] = current
+		result[key] = current
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -743,9 +865,10 @@ func (s *Store) QueryPricingEconomics(windowHours int) telemetryquery.PricingEco
 
 	rows, err := s.db.Query(`
 SELECT
-  `+projectedModelExpression+` AS model,
+  `+projectedPricingModelExpression+` AS model,
   COALESCE(provider_id, ''),
   COALESCE(requested_model, ''),
+  COALESCE(effective_model, ''),
   `+projectedPricingStatusExpression+` AS pricing_status,
   COALESCE(pricing_source_id, ''),
   COALESCE(pricing_currency, ''),
@@ -762,9 +885,9 @@ SELECT
   COALESCE(MAX(pricing_cached_input_per_1m), 0)
 FROM request_facts
 WHERE timestamp >= ?
-  AND `+projectedModelExpression+` != ''
+  AND `+projectedPricingModelExpression+` != ''
   AND `+nonSyntheticFilterExpression+`
-GROUP BY model, provider_id, requested_model, pricing_status, pricing_source_id, pricing_currency`,
+GROUP BY model, provider_id, requested_model, effective_model, pricing_status, pricing_source_id, pricing_currency`,
 		time.Now().Add(-time.Duration(windowHours)*time.Hour).UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return telemetryquery.PricingEconomics{}
@@ -786,6 +909,7 @@ GROUP BY model, provider_id, requested_model, pricing_status, pricing_source_id,
 			model              string
 			provider           string
 			requestedModel     string
+			effectiveModel     string
 			pricingStatus      string
 			pricingSourceID    string
 			pricingCurrency    string
@@ -805,6 +929,7 @@ GROUP BY model, provider_id, requested_model, pricing_status, pricing_source_id,
 			&model,
 			&provider,
 			&requestedModel,
+			&effectiveModel,
 			&pricingStatus,
 			&pricingSourceID,
 			&pricingCurrency,
@@ -827,17 +952,20 @@ GROUP BY model, provider_id, requested_model, pricing_status, pricing_source_id,
 		if currency == "" {
 			currency = "USD"
 		}
-		modelKey := strings.TrimSpace(model)
+		modelKey := strings.TrimSpace(requestedModel)
 		if modelKey == "" {
-			modelKey = strings.TrimSpace(requestedModel)
+			modelKey = strings.TrimSpace(effectiveModel)
+		}
+		if modelKey == "" {
+			modelKey = strings.TrimSpace(model)
 		}
 		if pricingStatus == PricingStatusEstimatedLegacy && totalCostUSD == 0 {
 			var ok bool
-			promptCost, completionCost, totalCost, promptCostUSD, completionCostUSD, totalCostUSD, ok = estimateLegacyPricing(requestedModel, model, provider, inputTokens, cachedPromptTokens, outputTokens)
+			promptCost, completionCost, totalCost, promptCostUSD, completionCostUSD, totalCostUSD, ok = estimateLegacyPricing(requestedModel, effectiveModel, provider, inputTokens, cachedPromptTokens, outputTokens)
 			if ok {
 				pricingSourceID = "estimated_legacy_bootstrap"
 				if promptCost > 0 || completionCost > 0 || totalCost > 0 {
-					currency, ok = estimateLegacyCurrency(requestedModel, model, provider)
+					currency, ok = estimateLegacyCurrency(requestedModel, effectiveModel, provider)
 					if !ok {
 						currency = "USD"
 					}
@@ -882,7 +1010,7 @@ GROUP BY model, provider_id, requested_model, pricing_status, pricing_source_id,
 		models = append(models, telemetryquery.PricingModelSummary{
 			DisplayModel:    modelKey,
 			RequestedModel:  requestedModel,
-			EffectiveModel:  model,
+			EffectiveModel:  effectiveModel,
 			Upstream:        provider,
 			PricingModel:    modelKey,
 			PricingStatus:   pricingStatus,

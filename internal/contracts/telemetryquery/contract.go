@@ -156,8 +156,41 @@ type TelemetryResponse struct {
 	// WindowHours is the actual window used.
 	WindowHours int
 
+	// Models contains full-window request distribution by model.
+	Models []TelemetryDistributionItem
+
+	// Upstreams contains full-window request distribution by upstream provider.
+	Upstreams []TelemetryDistributionItem
+
 	// Pricing contains pricing economics snapshot.
 	Pricing PricingEconomics
+}
+
+// TelemetryDistributionItem contains full-window distribution metrics.
+type TelemetryDistributionItem struct {
+	// Value is the model or upstream provider value.
+	Value string
+
+	// Requests is the total requests for the value.
+	Requests int64
+
+	// Successes is the successful requests for the value.
+	Successes int64
+
+	// Failures is the failed requests for the value.
+	Failures int64
+
+	// InputTokens is the input tokens used.
+	InputTokens int64
+
+	// CachedPromptTokens is the cached prompt tokens.
+	CachedPromptTokens int64
+
+	// OutputTokens is the output tokens generated.
+	OutputTokens int64
+
+	// AvgLatencyMs is the average latency.
+	AvgLatencyMs float64
 }
 
 // PricingEconomics contains pricing economics data for the telemetry response.
@@ -365,6 +398,9 @@ type BenchmarkRequest struct {
 	// Models specifies which models to include (empty = all).
 	Models []string
 
+	// Group selects the benchmark grouping dimension: "model" or "upstream".
+	Group string
+
 	// StartTime is an optional explicit start time.
 	StartTime *time.Time
 
@@ -382,12 +418,21 @@ type BenchmarkResponse struct {
 
 	// ModelCount is the number of models included.
 	ModelCount int
+
+	// Group is the grouping dimension used for the response.
+	Group string
 }
 
 // ModelBenchmark contains benchmark metrics for a single model.
 type ModelBenchmark struct {
 	// Model is the model name.
 	Model string
+
+	// Upstream is the upstream provider name when grouped by upstream.
+	Upstream string
+
+	// Label is the display label for the grouped row.
+	Label string
 
 	// Requests is the total requests.
 	Requests int64

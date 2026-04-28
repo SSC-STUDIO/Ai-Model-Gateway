@@ -288,10 +288,10 @@ func pricingSummaryKey(item PricingModelSummary) string {
 }
 
 func pricingGroupModel(requestedModel string, effectiveModel string) string {
-	if pricingModel := strings.TrimSpace(strings.ToLower(effectiveModel)); pricingModel != "" {
+	if pricingModel := strings.TrimSpace(strings.ToLower(requestedModel)); pricingModel != "" {
 		return pricingModel
 	}
-	if pricingModel := strings.TrimSpace(strings.ToLower(requestedModel)); pricingModel != "" {
+	if pricingModel := strings.TrimSpace(strings.ToLower(effectiveModel)); pricingModel != "" {
 		return pricingModel
 	}
 	return ""
@@ -441,8 +441,8 @@ func pricingLookupCandidates(requestedModel string, effectiveModel string) []str
 		}
 	}
 
-	add(effectiveModel)
 	add(requestedModel)
+	add(effectiveModel)
 	return candidates
 }
 

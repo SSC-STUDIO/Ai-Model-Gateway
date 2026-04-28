@@ -123,9 +123,6 @@ func (s *Service) StartRun(ctx context.Context, req StartRunRequest) (*RunDetail
 	if !cfg.Benchmarking.Enabled {
 		return nil, errors.New("benchmarking is disabled")
 	}
-	if strings.TrimSpace(req.PublicSnapshotID) == "" && strings.TrimSpace(req.VendorSnapshotID) == "" {
-		return nil, errors.New("at least one of public_snapshot_id or vendor_snapshot_id is required")
-	}
 	if err := s.validateBaselineSelection(ctx, strings.TrimSpace(req.PublicSnapshotID), BaselineKindPublicStandard); err != nil {
 		return nil, err
 	}
@@ -325,6 +322,7 @@ func (s *Service) executeTarget(ctx context.Context, cfg *core.Config, suite *be
 		}
 		target.DimensionScores[dimension] = total / float64(len(scores))
 	}
+	target.OverallScore = weightedAverage(target.DimensionScores, suite.DimensionWeights)
 	target.CriticalProtocolFailures = criticalFailures
 	target.CompletionRate = float64(completedCases) * 100 / float64(len(suite.Cases))
 	target.ReasonCodes = uniqueStrings(reasonCodes)
@@ -351,7 +349,8 @@ func (s *Service) executeTarget(ctx context.Context, cfg *core.Config, suite *be
 		target.ReasonCodes = uniqueStrings(append(target.ReasonCodes, "vendor_baseline_missing_for_model"))
 	}
 
-	verdict, suspicion, reasons := verdictForTarget(target, cfg.Benchmarking.VerdictThresholds, publicFound, vendorFound)
+	baselineSelected := run.PublicSnapshotID != "" || run.VendorSnapshotID != ""
+	verdict, suspicion, reasons := verdictForTarget(target, cfg.Benchmarking.VerdictThresholds, publicFound, vendorFound, baselineSelected)
 	target.Verdict = verdict
 	target.SuspicionScore = suspicion
 	target.ReasonCodes = uniqueStrings(append(target.ReasonCodes, reasons...))
@@ -549,7 +548,12 @@ func (s *Service) resolveCanonicalModelID(ctx context.Context, run RunSummary, t
 			}
 		}
 	}
-	return "", fmt.Errorf("no canonical baseline mapping found for provider=%s model=%s effective_model=%s", target.ProviderID, target.PublicModel, target.EffectiveModel)
+	for _, candidate := range candidates {
+		if candidate != "" {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no canonical model candidate found for provider=%s model=%s effective_model=%s", target.ProviderID, target.PublicModel, target.EffectiveModel)
 }
 
 func (s *Service) currentConfig() (*core.Config, error) {
@@ -778,11 +782,11 @@ func normalizeBaselineRows(rows []BaselineMetricRow) ([]BaselineMetricRow, error
 	return normalized, nil
 }
 
-func verdictForTarget(target RunTargetDetail, thresholds core.BenchmarkVerdictThresholds, publicFound, vendorFound bool) (string, float64, []string) {
+func verdictForTarget(target RunTargetDetail, thresholds core.BenchmarkVerdictThresholds, publicFound, vendorFound, baselineSelected bool) (string, float64, []string) {
 	if target.CompletionRate < 80 {
 		return VerdictIncomplete, clampScore(maxGap(target.PublicGap, target.VendorGap) + float64(100-target.CompletionRate)/2), []string{"completion_rate_below_80"}
 	}
-	if !publicFound && !vendorFound {
+	if baselineSelected && !publicFound && !vendorFound {
 		return VerdictIncomplete, clampScore(float64(100-target.CompletionRate) / 2), []string{"no_baseline_rows_for_target"}
 	}
 	reasons := make([]string, 0, 8)

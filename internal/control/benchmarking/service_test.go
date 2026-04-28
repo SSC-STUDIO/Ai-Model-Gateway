@@ -179,6 +179,51 @@ func TestStartRunRejectsMissingBaselineSnapshot(t *testing.T) {
 	}
 }
 
+func TestStartRunCompletesWithoutBaselineSelection(t *testing.T) {
+	store, err := NewStore(filepath.Join(t.TempDir(), "benchmark.db"))
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	cfg := benchmarkTestConfig()
+	cfg.Benchmarking.Aliases = nil
+	cfg.Normalize()
+
+	service := NewService(store, staticConfigSource{cfg: cfg}, fakeGatewayRunner{})
+	run, err := service.StartRun(context.Background(), StartRunRequest{
+		ProviderID:  "provider-a",
+		PublicModel: "model-a",
+	})
+	if err != nil {
+		t.Fatalf("StartRun() error = %v", err)
+	}
+
+	final := awaitRun(t, service, run.RunID)
+	if final.Status != RunStatusCompleted {
+		t.Fatalf("final.Status = %s, want %s", final.Status, RunStatusCompleted)
+	}
+	if len(final.Targets) != 1 {
+		t.Fatalf("len(final.Targets) = %d, want 1", len(final.Targets))
+	}
+	target := final.Targets[0]
+	if target.Status != TargetStatusCompleted {
+		t.Fatalf("target.Status = %s, want %s", target.Status, TargetStatusCompleted)
+	}
+	if target.Verdict != VerdictNormal {
+		t.Fatalf("target.Verdict = %s, want %s", target.Verdict, VerdictNormal)
+	}
+	if target.CanonicalModelID != "model-a-upstream" {
+		t.Fatalf("target.CanonicalModelID = %q, want model-a-upstream", target.CanonicalModelID)
+	}
+	if target.PublicGap != 0 || target.VendorGap != 0 {
+		t.Fatalf("target gaps = public %.2f vendor %.2f, want zero gaps without baselines", target.PublicGap, target.VendorGap)
+	}
+	if containsString(target.ReasonCodes, "no_baseline_rows_for_target") {
+		t.Fatalf("target.ReasonCodes = %#v, did not expect no_baseline_rows_for_target", target.ReasonCodes)
+	}
+}
+
 func TestImportBaselineRejectsMalformedCSVNumericFields(t *testing.T) {
 	store, err := NewStore(filepath.Join(t.TempDir(), "benchmark.db"))
 	if err != nil {
@@ -330,12 +375,13 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		target      RunTargetDetail
-		publicFound bool
-		vendorFound bool
-		wantVerdict string
-		wantReasons []string
+		name             string
+		target           RunTargetDetail
+		publicFound      bool
+		vendorFound      bool
+		baselineSelected bool
+		wantVerdict      string
+		wantReasons      []string
 	}{
 		{
 			name: "normal at threshold",
@@ -343,8 +389,9 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 				PublicGap:      8,
 				CompletionRate: 100,
 			},
-			publicFound: true,
-			wantVerdict: VerdictNormal,
+			publicFound:      true,
+			baselineSelected: true,
+			wantVerdict:      VerdictNormal,
 		},
 		{
 			name: "suspect when gap exceeds normal threshold",
@@ -352,9 +399,10 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 				PublicGap:      8.1,
 				CompletionRate: 100,
 			},
-			publicFound: true,
-			wantVerdict: VerdictSuspect,
-			wantReasons: []string{"public_gap_above_normal"},
+			publicFound:      true,
+			baselineSelected: true,
+			wantVerdict:      VerdictSuspect,
+			wantReasons:      []string{"public_gap_above_normal"},
 		},
 		{
 			name: "suspect when one critical protocol failure",
@@ -363,8 +411,9 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 				CompletionRate:           100,
 				CriticalProtocolFailures: 1,
 			},
-			vendorFound: true,
-			wantVerdict: VerdictSuspect,
+			vendorFound:      true,
+			baselineSelected: true,
+			wantVerdict:      VerdictSuspect,
 		},
 		{
 			name: "highly suspect when gap exceeds suspect threshold",
@@ -372,9 +421,10 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 				PublicGap:      20.1,
 				CompletionRate: 100,
 			},
-			publicFound: true,
-			wantVerdict: VerdictHighSuspect,
-			wantReasons: []string{"public_gap_above_normal", "public_gap_above_suspect"},
+			publicFound:      true,
+			baselineSelected: true,
+			wantVerdict:      VerdictHighSuspect,
+			wantReasons:      []string{"public_gap_above_normal", "public_gap_above_suspect"},
 		},
 		{
 			name: "highly suspect when critical protocol failures reach threshold",
@@ -383,8 +433,9 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 				CompletionRate:           100,
 				CriticalProtocolFailures: 2,
 			},
-			vendorFound: true,
-			wantVerdict: VerdictHighSuspect,
+			vendorFound:      true,
+			baselineSelected: true,
+			wantVerdict:      VerdictHighSuspect,
 		},
 		{
 			name: "incomplete when completion rate below eighty",
@@ -392,17 +443,26 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 				PublicGap:      40,
 				CompletionRate: 79.9,
 			},
-			publicFound: true,
-			wantVerdict: VerdictIncomplete,
-			wantReasons: []string{"completion_rate_below_80"},
+			publicFound:      true,
+			baselineSelected: true,
+			wantVerdict:      VerdictIncomplete,
+			wantReasons:      []string{"completion_rate_below_80"},
 		},
 		{
 			name: "incomplete when both baselines missing",
 			target: RunTargetDetail{
 				CompletionRate: 100,
 			},
-			wantVerdict: VerdictIncomplete,
-			wantReasons: []string{"no_baseline_rows_for_target"},
+			baselineSelected: true,
+			wantVerdict:      VerdictIncomplete,
+			wantReasons:      []string{"no_baseline_rows_for_target"},
+		},
+		{
+			name: "normal when no baseline was selected",
+			target: RunTargetDetail{
+				CompletionRate: 100,
+			},
+			wantVerdict: VerdictNormal,
 		},
 		{
 			name: "vendor baseline alone can still drive verdict",
@@ -410,15 +470,16 @@ func TestVerdictForTargetThresholdBoundaries(t *testing.T) {
 				VendorGap:      12,
 				CompletionRate: 100,
 			},
-			vendorFound: true,
-			wantVerdict: VerdictSuspect,
-			wantReasons: []string{"vendor_gap_above_normal"},
+			vendorFound:      true,
+			baselineSelected: true,
+			wantVerdict:      VerdictSuspect,
+			wantReasons:      []string{"vendor_gap_above_normal"},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			verdict, _, reasons := verdictForTarget(tc.target, thresholds, tc.publicFound, tc.vendorFound)
+			verdict, _, reasons := verdictForTarget(tc.target, thresholds, tc.publicFound, tc.vendorFound, tc.baselineSelected)
 			if verdict != tc.wantVerdict {
 				t.Fatalf("verdict = %s, want %s", verdict, tc.wantVerdict)
 			}
@@ -477,6 +538,9 @@ func TestExecuteTargetAggregatesCaseTokensAndCostWithoutJudgePollution(t *testin
 	}
 	if target.CompletionTokens != 33 {
 		t.Fatalf("target.CompletionTokens = %d, want 33", target.CompletionTokens)
+	}
+	if math.Abs(target.OverallScore-95.75) > 1e-9 {
+		t.Fatalf("target.OverallScore = %.4f, want 95.75", target.OverallScore)
 	}
 	if math.Abs(target.EstimatedCostUSD-0.007) > 1e-9 {
 		t.Fatalf("target.EstimatedCostUSD = %f, want 0.007", target.EstimatedCostUSD)

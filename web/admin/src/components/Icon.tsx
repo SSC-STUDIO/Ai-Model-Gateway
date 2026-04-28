@@ -13,6 +13,13 @@ export type IconName =
   | 'history'
   | 'chart'
   | 'search'
+  | 'refresh'
+  | 'download'
+  | 'activity'
+  | 'server'
+  | 'database'
+  | 'check'
+  | 'clock'
   | 'close'
   | 'key'
   | 'shield'
@@ -112,6 +119,52 @@ const icons: Record<IconName, ComponentChildren> = {
     <>
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-4-4" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M21 12a9 9 0 0 1-15.4 6.4L3 16" />
+      <path d="M3 21v-5h5" />
+      <path d="M3 12A9 9 0 0 1 18.4 5.6L21 8" />
+      <path d="M21 3v5h-5" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 15V3" />
+    </>
+  ),
+  activity: (
+    <>
+      <path d="M22 12h-4l-3 8L9 4l-3 8H2" />
+    </>
+  ),
+  server: (
+    <>
+      <rect x="3" y="4" width="18" height="6" rx="2" />
+      <rect x="3" y="14" width="18" height="6" rx="2" />
+      <path d="M7 7h.01" />
+      <path d="M7 17h.01" />
+    </>
+  ),
+  database: (
+    <>
+      <ellipse cx="12" cy="5" rx="8" ry="3" />
+      <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+      <path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+    </>
+  ),
+  check: (
+    <>
+      <path d="M20 6L9 17l-5-5" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
     </>
   ),
   close: (

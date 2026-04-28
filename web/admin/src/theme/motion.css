@@ -1,22 +1,23 @@
 /* ====== motion.css ====== */
 
 /* ============================================
-   UI Polish & Micro-interactions Upgrade
+   Skeleton Loading System
    ============================================ */
 
-/* === Skeleton Loading System === */
 .skeleton {
   position: relative;
   overflow: hidden;
   background: linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-secondary) 50%, var(--bg-tertiary) 100%);
   background-size: 200% 100%;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   animation: skeleton-shimmer 1.6s infinite linear;
 }
+
 [data-theme="dark"] .skeleton {
   background: linear-gradient(90deg, rgba(22, 34, 50, 0.9) 0%, rgba(30, 46, 68, 0.9) 50%, rgba(22, 34, 50, 0.9) 100%);
   background-size: 200% 100%;
 }
+
 @keyframes skeleton-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
@@ -25,22 +26,25 @@
 .skeleton-text {
   height: 0.9em;
   margin-bottom: 0.5em;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
+
 .skeleton-text.short { width: 40%; }
 .skeleton-text.medium { width: 65%; }
 .skeleton-text.long { width: 90%; }
 
 .skeleton-card {
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   min-height: 120px;
 }
+
 .skeleton-metric {
   height: 1.6em;
   width: 60%;
   margin-top: 0.6em;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
+
 .skeleton-label {
   height: 0.7em;
   width: 45%;
@@ -54,11 +58,13 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
+
 .skeleton-grid-2 {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
+
 .skeleton-grid-auto {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -68,178 +74,8 @@
 @media (max-width: 1024px) {
   .skeleton-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
 @media (max-width: 640px) {
   .skeleton-grid { grid-template-columns: 1fr; }
   .skeleton-grid-2 { grid-template-columns: 1fr; }
-}
-
-/* === Tab Content Transitions === */
-.tab-content-wrapper {
-  animation: tab-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes tab-enter {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.995);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* === SSE Status Pulse === */
-/* === Metric Card Number Glow === */
-.metric-value {
-  transition: color 0.35s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.metric-card:hover .metric-value {
-  text-shadow: 0 0 20px var(--accent-glow);
-  transform: translateY(-1px);
-}
-
-/* === Panel Enter Stagger === */
-.panel-stagger > * {
-  animation: panel-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.panel-stagger > *:nth-child(1) { animation-delay: 0ms; }
-.panel-stagger > *:nth-child(2) { animation-delay: 50ms; }
-.panel-stagger > *:nth-child(3) { animation-delay: 100ms; }
-.panel-stagger > *:nth-child(4) { animation-delay: 150ms; }
-.panel-stagger > *:nth-child(5) { animation-delay: 200ms; }
-.panel-stagger > *:nth-child(6) { animation-delay: 250ms; }
-.panel-stagger > *:nth-child(7) { animation-delay: 300ms; }
-.panel-stagger > *:nth-child(8) { animation-delay: 350ms; }
-@keyframes panel-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.992);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* === Button Press Effect === */
-button {
-  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-}
-button:active:not(:disabled) {
-  transform: scale(0.97);
-  transition-duration: 0.08s;
-}
-
-/* === Tab Hover Underline Glow === */
-.tab {
-  overflow: hidden;
-}
-.tab::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  width: 0;
-  height: 2.5px;
-  background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
-  border-radius: 2px;
-  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1), left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  opacity: 0.7;
-  filter: blur(0.5px);
-}
-.tab:hover::after {
-  left: 8%;
-  width: 84%;
-}
-.tab.active::after {
-  width: 0;
-}
-
-/* ============================================
-   UI Polish Round 2 — Login, Background, Metrics, LogViewer
-   ============================================ */
-
-/* === Metric Value Count-Up Flash === */
-.metric-value.flash {
-  animation: metric-flash 0.55s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes metric-flash {
-  0% { color: var(--metric-value-color); text-shadow: none; transform: scale(1); }
-  35% { color: var(--accent-color); text-shadow: 0 0 24px var(--accent-glow); transform: scale(1.02); }
-  100% { color: var(--metric-value-color); text-shadow: none; transform: scale(1); }
-}
-
-/* === Topbar Brand Glow === */
-.topbar-brand svg {
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), filter 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.topbar-brand:hover svg {
-  transform: scale(1.06) rotate(-3deg);
-  filter: drop-shadow(0 0 10px var(--accent-glow));
-}
-
-/* === App Shell Entrance === */
-.app-shell {
-  animation: shell-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes shell-enter {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes toast-slide-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-@keyframes toast-slide-out-right {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(30px);
-  }
-}
-/* === Topbar Title Transition === */
-.topbar h1 {
-  transition: opacity 0.2s ease;
-}
-
-/* === Page Title Animation (subtle) === */
-@keyframes title-fade {
-  from { opacity: 0.7; }
-  to { opacity: 1; }
-}
-
-/* === Reduced Motion Guard === */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-
-  .shine-sweep,
-  .skeleton,
-  .skeleton-text,
-  .toast-enter,
-  .toast-exit,
-  .tab-content-wrapper,
-  .panel-stagger > *,
-  .flash,
-  .btn-spinner,
-  .log-entry {
-    animation: none !important;
-    transition: none !important;
-  }
 }

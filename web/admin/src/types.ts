@@ -1,6 +1,21 @@
 // Shared TypeScript types for the controld admin UI.
 
-export type ControlTabKey = 'overview' | 'telemetry' | 'logs' | 'pricing' | 'benchmark' | 'config'
+// Primary navigation tabs (top-level)
+export type PrimaryTabKey = 'overview' | 'monitoring' | 'logs' | 'ops' | 'config' | 'benchmark'
+
+// All valid tab keys (for routing)
+export type ControlTabKey =
+  | 'overview'
+  | 'monitoring'
+  | 'telemetry'
+  | 'logs'
+  | 'pricing'
+  | 'benchmark'
+  | 'config'
+  | 'ops'
+  | 'audit'
+  | 'probe'
+  | 'diagnostics'
 
 export type ConfigSubTab = 'current' | 'editor' | 'visual' | 'history'
 export type AdminRole = 'admin' | 'viewer'
@@ -179,10 +194,13 @@ export interface PricingSnapshot {
 
 export interface BenchmarkModel {
   model: string
+  upstream?: string
+  label?: string
   requests: number
   successes: number
   failures: number
   input_tokens: number
+  cached_prompt_tokens: number
   output_tokens: number
   avg_latency_ms: number
   p50_latency_ms: number
@@ -197,6 +215,7 @@ export interface BenchmarkModel {
 
 export interface BenchmarkResponse {
   window_hours: number
+  group?: string
   start_time?: string
   end_time?: string
   hours?: number
@@ -251,6 +270,7 @@ export interface VerificationRunTarget {
   vendor_snapshot_id?: string
   verdict?: string
   suspicion_score?: number
+  overall_score?: number
   public_gap?: number
   vendor_gap?: number
   completion_rate?: number
@@ -316,6 +336,9 @@ export interface DataResponse {
     successes?: number
     failures?: number
     avg_latency_ms?: number
+    input_tokens?: number
+    output_tokens?: number
+    total_tokens?: number
   }
   models?: Array<{
     value: string

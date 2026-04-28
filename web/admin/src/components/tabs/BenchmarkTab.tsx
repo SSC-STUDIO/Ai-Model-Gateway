@@ -1,32 +1,43 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'preact/compat'
 import { useI18n } from '../../i18n'
-import type { BenchmarkResponse, ControlStatusView } from '../../types'
-import { formatUsd } from '../../utils/formatting'
-import { BenchmarkVerification } from '../BenchmarkVerification'
-import { BarChart } from '../Charts'
+import type { BenchmarkModel, BenchmarkResponse, ControlStatusView, DonutEntry, VerificationRunDetail, VerificationRunSummary, VerificationRunTarget } from '../../types'
+import { formatInteger, formatUsd } from '../../utils/formatting'
+import { fetchJSON } from '../../utils/fetch'
+import { BarChart, DonutChart } from '../Charts'
 import { Icon } from '../Icon'
 import { ServiceStatePanel } from '../ServiceStatePanel'
-
-const BENCHMARK_CHART_COLORS = {
-  latency: '#2b4f7c',
-  success: '#2f7b5b',
-  warning: '#a5622a',
-  danger: '#c24a3d',
-  cost: '#168257',
-}
+import { BenchmarkVerification } from '../BenchmarkVerification'
 
 interface BenchmarkTabProps {
   benchmark: BenchmarkResponse | null
+  modelBenchmark: BenchmarkResponse | null
+  loading: boolean
+  hours: string
+  onHoursChange: (hours: string) => void
   status?: ControlStatusView | null
-  benchmarkHours: number
-  benchmarkModels: string[]
-  benchmarkLoading: boolean
   canWrite: boolean
-  onHoursChange: (hours: number) => void
-  onModelsChange: (models: string[]) => void
   onRefresh: () => void
   onRetry?: () => void
   onUnauthorized?: () => void
+}
+
+const BENCHMARK_WINDOW_OPTIONS = [
+  { value: '24', key: 'benchmark.last24h' },
+  { value: '168', key: 'benchmark.last7d' },
+  { value: '720', label: '30d' },
+  { value: 'all', key: 'pricing.allHistory' },
+]
+
+const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b']
+const TERMINAL_CAPABILITY_STATUSES = new Set(['completed', 'incomplete'])
+const DIMENSION_ORDER = ['reasoning', 'coding_proxy', 'instruction', 'tool_json', 'stream_protocol']
+
+interface CapabilityRankingRow {
+  key: string
+  rank: number
+  target: VerificationRunTarget
+  score: number | null
+  dimensions: Array<[string, number]>
 }
 
 function formatStatusTime(value: string | null | undefined): string {
@@ -42,258 +53,497 @@ function formatStatusTime(value: string | null | undefined): string {
   }).format(parsed)
 }
 
+function toPercent(rate: number): number {
+  return rate > 1 ? rate : rate * 100
+}
+
+function formatPercent(rate: number): string {
+  return `${toPercent(rate).toFixed(1)}%`
+}
+
+function formatLatency(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '-'
+  return `${value.toFixed(1)} ms`
+}
+
+function modelTokens(item: BenchmarkModel): number {
+  return item.input_tokens + (item.cached_prompt_tokens ?? 0) + item.output_tokens
+}
+
+function benchmarkLabel(item: BenchmarkModel): string {
+  return item.upstream || item.label || item.model || '-'
+}
+
+function formatScore(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return value.toFixed(1)
+}
+
+function formatGap(value: number | undefined, available: boolean): string {
+  if (!available || typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return `${value.toFixed(1)} pts`
+}
+
+function dimensionLabel(value: string): string {
+  return value.replace(/_/g, ' ')
+}
+
+function dimensionEntries(scores: Record<string, number> | undefined): Array<[string, number]> {
+  if (!scores) return []
+  return Object.entries(scores)
+    .filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
+    .sort(([left], [right]) => {
+      const leftIndex = DIMENSION_ORDER.indexOf(left)
+      const rightIndex = DIMENSION_ORDER.indexOf(right)
+      if (leftIndex !== -1 || rightIndex !== -1) {
+        return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex)
+      }
+      return left.localeCompare(right)
+    })
+}
+
+function fallbackOverallScore(target: VerificationRunTarget): number | null {
+  if (typeof target.overall_score === 'number' && Number.isFinite(target.overall_score) && target.overall_score > 0) {
+    return target.overall_score
+  }
+  const dimensions = dimensionEntries(target.dimension_scores)
+  if (dimensions.length === 0) return null
+  return dimensions.reduce((sum, [, value]) => sum + value, 0) / dimensions.length
+}
+
+function hasBaselineGap(target: VerificationRunTarget, kind: 'public' | 'vendor'): boolean {
+  const snapshotID = kind === 'public' ? target.public_snapshot_id : target.vendor_snapshot_id
+  if (!snapshotID) return false
+  const missingCode = kind === 'public' ? 'public_baseline_missing_for_model' : 'vendor_baseline_missing_for_model'
+  const reasons = target.reason_codes ?? []
+  return !reasons.includes(missingCode) && !reasons.includes('no_baseline_rows_for_target')
+}
+
+function latestTerminalRun(runs: VerificationRunSummary[]): VerificationRunSummary | null {
+  const terminalRuns = runs.filter((run) => TERMINAL_CAPABILITY_STATUSES.has(run.status))
+  const completed = terminalRuns.find((run) => run.status === 'completed')
+  if (completed) return completed
+  return terminalRuns.find((run) => run.status === 'incomplete') ?? null
+}
+
+function buildCapabilityRows(run: VerificationRunDetail | null): CapabilityRankingRow[] {
+  if (!run?.targets?.length) return []
+  const bestByRoute = new Map<string, CapabilityRankingRow>()
+  for (const target of run.targets) {
+    const key = `${target.provider_id}::${target.public_model}`
+    const score = fallbackOverallScore(target)
+    const dimensions = dimensionEntries(target.dimension_scores)
+    const existing = bestByRoute.get(key)
+    if (!existing || (score ?? -1) > (existing.score ?? -1)) {
+      bestByRoute.set(key, { key, rank: 0, target, score, dimensions })
+    }
+  }
+  return Array.from(bestByRoute.values())
+    .sort((left, right) => {
+      const scoreDiff = (right.score ?? -1) - (left.score ?? -1)
+      if (scoreDiff !== 0) return scoreDiff
+      const completionDiff = (right.target.completion_rate ?? 0) - (left.target.completion_rate ?? 0)
+      if (completionDiff !== 0) return completionDiff
+      return left.key.localeCompare(right.key)
+    })
+    .map((row, index) => ({ ...row, rank: index + 1 }))
+}
+
 const BenchmarkTabComponent = ({
   benchmark,
-  status,
-  benchmarkHours,
-  benchmarkModels,
-  benchmarkLoading,
-  canWrite,
+  modelBenchmark,
+  loading,
+  hours,
   onHoursChange,
-  onModelsChange,
+  status,
+  canWrite,
   onRefresh,
   onRetry,
   onUnauthorized,
 }: BenchmarkTabProps) => {
   const { t } = useI18n()
-  const [modelInput, setModelInput] = useState(() => benchmarkModels.join(', '))
   const telemetryUnavailable = Boolean(status?.telemetry_status && status.telemetry_status !== 'connected')
-  const hasBenchmarkData = (benchmark?.benchmarks?.length ?? 0) > 0
+  const [capabilityRuns, setCapabilityRuns] = useState<VerificationRunSummary[]>([])
+  const [capabilityRun, setCapabilityRun] = useState<VerificationRunDetail | null>(null)
+  const [capabilityLoading, setCapabilityLoading] = useState(false)
+  const [capabilityError, setCapabilityError] = useState('')
+
+  const loadCapabilityRun = useCallback(async () => {
+    setCapabilityLoading(true)
+    setCapabilityError('')
+    try {
+      const runPayload = await fetchJSON<{ runs: VerificationRunSummary[] }>('/api/admin/benchmark/runs?limit=20', { onUnauthorized })
+      const runs = runPayload.runs ?? []
+      setCapabilityRuns(runs)
+      const selectedRun = latestTerminalRun(runs)
+      if (!selectedRun) {
+        setCapabilityRun(null)
+        return
+      }
+      const detail = await fetchJSON<VerificationRunDetail>(`/api/admin/benchmark/runs/${encodeURIComponent(selectedRun.run_id)}`, { onUnauthorized })
+      setCapabilityRun(detail)
+    } catch (error) {
+      setCapabilityRun(null)
+      setCapabilityError(error instanceof Error ? error.message : 'Failed to load benchmark run')
+    } finally {
+      setCapabilityLoading(false)
+    }
+  }, [onUnauthorized])
 
   useEffect(() => {
-    setModelInput(benchmarkModels.join(', '))
-  }, [benchmarkModels])
+    if (!telemetryUnavailable) {
+      void loadCapabilityRun()
+    }
+  }, [loadCapabilityRun, telemetryUnavailable])
 
-  const handleHoursChange = useCallback(
-    (e: Event) => {
-      onHoursChange(Number((e.currentTarget as HTMLSelectElement).value))
-    },
-    [onHoursChange]
-  )
+  const handleRefresh = useCallback(() => {
+    onRefresh()
+    void loadCapabilityRun()
+  }, [loadCapabilityRun, onRefresh])
 
-  const handleModelsChange = useCallback(
-    (e: Event) => {
-      const value = (e.currentTarget as HTMLInputElement).value
-      setModelInput(value)
-      onModelsChange(
-        value
-          .split(',')
-          .map((model) => model.trim())
-          .filter(Boolean)
-      )
-    },
-    [onModelsChange]
-  )
-
-  const handleExport = useCallback(() => {
-    if (!benchmark) return
-    const blob = new Blob([JSON.stringify(benchmark, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `benchmark-${new Date().toISOString().slice(0, 10)}.json`
-    link.click()
-    URL.revokeObjectURL(url)
+  const rows = useMemo(() => {
+    const source = benchmark?.benchmarks ?? []
+    return source
+      .filter((item) => item.requests > 0)
+      .slice()
+      .sort((left, right) => {
+        const successDiff = right.success_rate - left.success_rate
+        if (successDiff !== 0) return successDiff
+        const latencyDiff = (left.p95_latency_ms || left.avg_latency_ms) - (right.p95_latency_ms || right.avg_latency_ms)
+        if (latencyDiff !== 0) return latencyDiff
+        return right.requests - left.requests
+      })
   }, [benchmark])
 
-  const avgLatencyData = useMemo(() => {
-    if (!benchmark?.benchmarks) return []
-    return benchmark.benchmarks.map((item) => ({ label: item.model, value: item.avg_latency_ms, color: BENCHMARK_CHART_COLORS.latency }))
-  }, [benchmark?.benchmarks])
+  const modelRows = useMemo(() => {
+    const source = modelBenchmark?.benchmarks ?? []
+    return source
+      .filter((item) => item.requests > 0)
+      .slice()
+      .sort((left, right) => right.requests - left.requests || left.model.localeCompare(right.model))
+  }, [modelBenchmark])
 
-  const p50LatencyData = useMemo(() => {
-    if (!benchmark?.benchmarks) return []
-    return benchmark.benchmarks.map((item) => ({ label: item.model, value: item.p50_latency_ms, color: BENCHMARK_CHART_COLORS.latency }))
-  }, [benchmark?.benchmarks])
+  const capabilityRows = useMemo(() => buildCapabilityRows(capabilityRun), [capabilityRun])
 
-  const p95LatencyData = useMemo(() => {
-    if (!benchmark?.benchmarks) return []
-    return benchmark.benchmarks.map((item) => ({ label: item.model, value: item.p95_latency_ms, color: BENCHMARK_CHART_COLORS.warning }))
-  }, [benchmark?.benchmarks])
+  const summary = useMemo(() => {
+    const upstreamCount = rows.length
+    const requests = rows.reduce((sum, item) => sum + item.requests, 0)
+    const successes = rows.reduce((sum, item) => sum + item.successes, 0)
+    const avgLatency = requests > 0
+      ? rows.reduce((sum, item) => sum + (item.avg_latency_ms * item.requests), 0) / requests
+      : 0
+    const tokens = rows.reduce((sum, item) => sum + modelTokens(item), 0)
+    const estimatedCost = rows.reduce((sum, item) => sum + item.estimated_cost_usd, 0)
+    return {
+      upstreamCount,
+      requests,
+      successRate: requests > 0 ? (successes / requests) * 100 : 0,
+      avgLatency,
+      tokens,
+      estimatedCost,
+    }
+  }, [rows])
 
-  const successRateData = useMemo(() => {
-    if (!benchmark?.benchmarks) return []
-    return benchmark.benchmarks.map((item) => {
-      const value = item.success_rate * 100
-      return {
-        label: item.model,
-        value,
-        color: value >= 99 ? BENCHMARK_CHART_COLORS.success : value >= 95 ? BENCHMARK_CHART_COLORS.warning : BENCHMARK_CHART_COLORS.danger,
-      }
-    })
-  }, [benchmark?.benchmarks])
+  const successRateBars = useMemo(
+    () => rows.slice(0, 12).map((item) => ({ label: benchmarkLabel(item), value: toPercent(item.success_rate) })),
+    [rows]
+  )
+  const latencyBars = useMemo(
+    () => rows.slice(0, 12).map((item) => ({ label: benchmarkLabel(item), value: item.p95_latency_ms > 0 ? item.p95_latency_ms : item.avg_latency_ms })),
+    [rows]
+  )
+  const costBars = useMemo(
+    () => rows.slice(0, 12).map((item) => ({ label: benchmarkLabel(item), value: item.estimated_cost_usd })),
+    [rows]
+  )
+  const requestDonut = useMemo<DonutEntry[]>(
+    () => rows.slice(0, 8).map((item, index) => ({ label: benchmarkLabel(item), value: item.requests, color: DONUT_COLORS[index % DONUT_COLORS.length] })),
+    [rows]
+  )
 
-  const costData = useMemo(() => {
-    if (!benchmark?.benchmarks) return []
-    return benchmark.benchmarks
-      .filter((item) => item.estimated_cost_usd > 0)
-      .map((item) => ({ label: item.model, value: item.estimated_cost_usd, color: BENCHMARK_CHART_COLORS.cost }))
-  }, [benchmark?.benchmarks])
+  if (telemetryUnavailable) {
+    return (
+      <section class="panel benchmark-reset-page">
+        <h2>{t('benchmark.title')}</h2>
+        <ServiceStatePanel
+          icon="benchmark"
+          title={t('services.telemetryUnavailableTitle')}
+          message={t('services.telemetryUnavailableMessage')}
+          hint={t('services.telemetryUnavailableHint')}
+          detail={status?.telemetry_error}
+          actionLabel={t('common.retry')}
+          onAction={onRetry ?? handleRefresh}
+          items={[
+            {
+              label: t('header.telemetry'),
+              value: status?.telemetry_status ?? t('header.statusUnknown'),
+              tone: status?.telemetry_status === 'error' ? 'error' : 'warning',
+            },
+            ...(status?.telemetry_last_checked_at
+              ? [{ label: t('services.lastChecked'), value: formatStatusTime(status.telemetry_last_checked_at) }]
+              : []),
+          ]}
+        />
+      </section>
+    )
+  }
 
   return (
-    <section class="panel">
-      <h2>{t('benchmark.title')}</h2>
+    <section class="panel benchmark-reset-page">
+      <div class="workspace-hero benchmark-reset-hero">
+        <div class="workspace-hero-copy">
+          <span class="workspace-kicker">{t('benchmark.title')}</span>
+          <h2 class="workspace-title">{t('benchmark.pageTitle')}</h2>
+          <p class="workspace-subtitle">{t('benchmark.officialComparisonHint')}</p>
+        </div>
+        <div class="workspace-hero-meta">
+          <span class={`status-badge ${canWrite ? 'success' : 'neutral'}`}>
+            {canWrite ? t('ops.adminWrite') : t('ops.viewerReadOnly')}
+          </span>
+          <span class="status-badge neutral">{t('benchmark.currentWindow')}: {hours === 'all' ? t('pricing.allHistory') : `${hours}h`}</span>
+        </div>
+      </div>
 
-      <div class="panel-subsection">
-        <div class="benchmark-toolbar">
-          <label>
-            {t('benchmark.timeRange')}
-            <select value={benchmarkHours} onChange={handleHoursChange}>
-              <option value={1}>{t('benchmark.last1h')}</option>
-              <option value={6}>{t('benchmark.last6h')}</option>
-              <option value={24}>{t('benchmark.last24h')}</option>
-              <option value={168}>{t('benchmark.last7d')}</option>
-            </select>
-          </label>
-
-          <label>
-            {t('benchmark.modelFilter')}
-            <input
-              type="text"
-              value={modelInput}
-              placeholder={t('benchmark.modelFilterPlaceholder')}
-              onInput={handleModelsChange}
-            />
-          </label>
-
-          <button type="button" onClick={onRefresh} disabled={benchmarkLoading}>
-            {benchmarkLoading ? t('benchmark.loading') : t('benchmark.refresh')}
-          </button>
-
-          <button type="button" onClick={handleExport} disabled={!benchmark || benchmarkLoading}>
-            {t('benchmark.export')}
+      <div class="timeseries-header">
+        <h3>{t('benchmark.title')}</h3>
+        <div class="timeseries-controls">
+          <div class="timeseries-selector">
+            <span>{t('benchmark.timeRange')}:</span>
+            {BENCHMARK_WINDOW_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                class={`ts-btn${hours === option.value ? ' active' : ''}`}
+                onClick={() => onHoursChange(option.value)}
+              >
+                {option.label ?? t(option.key!)}
+              </button>
+            ))}
+          </div>
+          <button type="button" class="secondary" onClick={handleRefresh}>
+            <Icon name="refresh" />
+            {t('benchmark.refresh')}
           </button>
         </div>
       </div>
 
-      {benchmarkLoading && (
-        <div class="panel-subsection">
-          <div class="skeleton-grid-auto">
-            <div class="skeleton chart-skeleton" />
-            <div class="skeleton chart-skeleton" />
-            <div class="skeleton chart-skeleton" />
-            <div class="skeleton chart-skeleton" />
+      <BenchmarkVerification canWrite={canWrite} onRunStarted={loadCapabilityRun} onUnauthorized={onUnauthorized} />
+
+      <section class="panel-subsection benchmark-table-section benchmark-capability-section">
+        <div class="panel-header">
+          <div>
+            <h3>{t('benchmark.capability.title')}</h3>
+            <p>{capabilityRun ? `${t('benchmark.capability.run')}: ${capabilityRun.run_id}` : t('benchmark.capability.subtitle')}</p>
+          </div>
+          <div class="benchmark-capability-meta">
+            {capabilityRun ? <span class="status-badge neutral">{t('benchmark.capability.status')}: {capabilityRun.status}</span> : null}
+            {capabilityRun?.completed_at ? <span class="status-badge neutral">{formatStatusTime(capabilityRun.completed_at)}</span> : null}
           </div>
         </div>
-      )}
-
-      {!benchmark && !benchmarkLoading && telemetryUnavailable && (
-        <div class="panel-subsection">
-          <ServiceStatePanel
-            icon="benchmark"
-            title={t('services.telemetryUnavailableTitle')}
-            message={t('services.telemetryUnavailableMessage')}
-            hint={t('services.telemetryUnavailableHint')}
-            detail={status?.telemetry_error}
-            actionLabel={t('common.retry')}
-            onAction={onRetry ?? onRefresh}
-            items={[
-              {
-                label: t('header.telemetry'),
-                value: status?.telemetry_status ?? t('header.statusUnknown'),
-                tone: status?.telemetry_status === 'error' ? 'error' : 'warning',
-              },
-              ...(status?.telemetry_last_checked_at
-                ? [{ label: t('services.lastChecked'), value: formatStatusTime(status.telemetry_last_checked_at) }]
-                : []),
-            ]}
-          />
-        </div>
-      )}
-
-      {!benchmark && !benchmarkLoading && !telemetryUnavailable && (
-        <div class="panel-subsection">
+        {capabilityLoading && !capabilityRun ? (
+          <div class="benchmark-inline-state">{t('benchmark.capability.loading')}</div>
+        ) : capabilityError ? (
           <div class="empty-state-box">
             <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
-            <p class="empty-state-title">{t('benchmark.noData')}</p>
+            <p class="empty-state-title">{t('benchmark.capability.error')}</p>
+            <p class="empty-state-hint">{capabilityError}</p>
           </div>
-        </div>
-      )}
+        ) : capabilityRuns.length === 0 ? (
+          <div class="empty-state-box">
+            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+            <p class="empty-state-title">{t('benchmark.capability.noRuns')}</p>
+            <p class="empty-state-hint">{t('benchmark.capability.noRunsHint')}</p>
+          </div>
+        ) : !capabilityRun ? (
+          <div class="empty-state-box">
+            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+            <p class="empty-state-title">{t('benchmark.capability.noTerminalRun')}</p>
+            <p class="empty-state-hint">{t('benchmark.capability.noTerminalRunHint')}</p>
+          </div>
+        ) : capabilityRows.length === 0 ? (
+          <div class="empty-state-box">
+            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+            <p class="empty-state-title">{t('benchmark.capability.noTargets')}</p>
+            <p class="empty-state-hint">{t('benchmark.capability.noTargetsHint')}</p>
+          </div>
+        ) : (
+          <div class="table-wrap benchmark-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>{t('benchmark.capability.rank')}</th>
+                  <th>{t('benchmark.upstream')}</th>
+                  <th>{t('benchmark.model')}</th>
+                  <th>{t('benchmark.capability.score')}</th>
+                  <th>{t('benchmark.capability.completion')}</th>
+                  <th>{t('benchmark.capability.verdict')}</th>
+                  <th>{t('benchmark.capability.publicGap')}</th>
+                  <th>{t('benchmark.capability.vendorGap')}</th>
+                  <th>{t('benchmark.capability.dimensions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {capabilityRows.map((row) => (
+                  <tr key={row.key}>
+                    <td>#{row.rank}</td>
+                    <td>{row.target.provider_id || '-'}</td>
+                    <td>{row.target.public_model || '-'}</td>
+                    <td><span class="benchmark-score-pill">{formatScore(row.score)}</span></td>
+                    <td>{formatPercent(row.target.completion_rate ?? 0)}</td>
+                    <td><span class={`status-badge ${row.target.verdict === 'normal' ? 'success' : row.target.verdict === 'highly_suspect' ? 'error' : 'warning'}`}>{row.target.verdict || '-'}</span></td>
+                    <td>{formatGap(row.target.public_gap, hasBaselineGap(row.target, 'public'))}</td>
+                    <td>{formatGap(row.target.vendor_gap, hasBaselineGap(row.target, 'vendor'))}</td>
+                    <td>
+                      <div class="benchmark-dimension-list">
+                        {row.dimensions.slice(0, 5).map(([dimension, score]) => (
+                          <span key={dimension}>{dimensionLabel(dimension)} {formatScore(score)}</span>
+                        ))}
+                        {row.dimensions.length === 0 ? <span>-</span> : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
-      {hasBenchmarkData && (
+      {loading && !benchmark ? (
+        <div class="skeleton-grid">
+          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+        </div>
+      ) : null}
+
+      {!loading && rows.length === 0 ? (
+        <div class="empty-state-box">
+          <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+          <p class="empty-state-title">{t('benchmark.upstreamNoData')}</p>
+          <p class="empty-state-hint">{t('benchmark.upstreamPerformanceHint')}</p>
+        </div>
+      ) : null}
+
+      {rows.length > 0 ? (
         <>
-          <div class="panel-subsection">
-            <div class="benchmark-charts-grid">
-              <div class="benchmark-chart benchmark-chart-half">
-                <BarChart data={avgLatencyData} title={t('benchmark.avgLatency')} unit=" ms" />
-              </div>
-              <div class="benchmark-chart benchmark-chart-half">
-                <BarChart data={successRateData} title={t('benchmark.successRate')} unit="%" />
-              </div>
-              <div class="benchmark-chart benchmark-chart-half">
-                <BarChart data={p50LatencyData} title={t('benchmark.p50Latency')} unit=" ms" horizontal />
-              </div>
-              <div class="benchmark-chart benchmark-chart-half">
-                <BarChart data={p95LatencyData} title={t('benchmark.p95Latency')} unit=" ms" horizontal />
-              </div>
-              {costData.length > 0 && (
-                <div class="benchmark-chart benchmark-chart-full">
-                  <BarChart data={costData} title={t('benchmark.estimatedCost')} unit=" USD" />
-                </div>
-              )}
+          <div class="benchmark-summary-grid">
+            <article class="benchmark-summary-card">
+              <span>{t('benchmark.observedUpstreams')}</span>
+              <strong>{formatInteger(summary.upstreamCount)}</strong>
+            </article>
+            <article class="benchmark-summary-card">
+              <span>{t('benchmark.requests')}</span>
+              <strong>{formatInteger(summary.requests)}</strong>
+            </article>
+            <article class="benchmark-summary-card">
+              <span>{t('benchmark.successRate')}</span>
+              <strong>{formatPercent(summary.successRate)}</strong>
+            </article>
+            <article class="benchmark-summary-card">
+              <span>{t('benchmark.avgLatency')}</span>
+              <strong>{formatLatency(summary.avgLatency)}</strong>
+            </article>
+            <article class="benchmark-summary-card">
+              <span>{t('benchmark.tokens')}</span>
+              <strong>{formatInteger(summary.tokens)}</strong>
+            </article>
+            <article class="benchmark-summary-card">
+              <span>{t('benchmark.estimatedCost')}</span>
+              <strong>{formatUsd(summary.estimatedCost)}</strong>
+            </article>
+          </div>
+
+          <div class="benchmark-charts-grid">
+            <div class="benchmark-chart benchmark-chart-half">
+              <BarChart data={successRateBars} title={t('benchmark.upstreamSuccessRateComparison')} unit="%" horizontal />
+            </div>
+            <div class="benchmark-chart benchmark-chart-half">
+              <BarChart data={latencyBars} title={t('benchmark.upstreamLatencyComparison')} unit=" ms" horizontal />
+            </div>
+            <div class="benchmark-chart benchmark-chart-half">
+              <DonutChart data={requestDonut} title={t('benchmark.requests')} singleRowLegend={requestDonut.length > 4} />
+            </div>
+            <div class="benchmark-chart benchmark-chart-half">
+              <BarChart data={costBars} title={t('benchmark.upstreamCostComparison')} unit=" $" horizontal />
             </div>
           </div>
 
-          <div class="panel-subsection">
-            <h3>{t('benchmark.comparisonTable')}</h3>
-            <div class="table-wrap">
+          <section class="panel-subsection benchmark-table-section">
+            <div class="panel-header">
+              <h3>{t('benchmark.upstreamRanking')}</h3>
+            </div>
+            <div class="table-wrap benchmark-table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>{t('benchmark.model')}</th>
+                    <th>{t('benchmark.upstream')}</th>
                     <th>{t('benchmark.requests')}</th>
                     <th>{t('benchmark.successRate')}</th>
                     <th>{t('benchmark.avgLatency')}</th>
-                    <th>{t('benchmark.p50Latency')}</th>
                     <th>{t('benchmark.p95Latency')}</th>
-                    <th>{t('benchmark.p99Latency')}</th>
-                    <th>{t('benchmark.maxLatency')}</th>
                     <th>{t('benchmark.tokens')}</th>
                     <th>{t('benchmark.estimatedCost')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {benchmark?.benchmarks.map((item) => (
-                    <tr key={item.model}>
-                      <td>{item.model}</td>
-                      <td>{(item.requests ?? 0).toLocaleString()}</td>
-                      <td
-                        class={
-                          (item.success_rate ?? 0) >= 0.99
-                            ? 'status-ok'
-                            : (item.success_rate ?? 0) >= 0.95
-                              ? 'status-warn'
-                              : 'status-error'
-                        }
-                      >
-                        {((item.success_rate ?? 0) * 100).toFixed(2)}%
-                      </td>
-                      <td>{(item.avg_latency_ms ?? 0).toFixed(1)}ms</td>
-                      <td>{(item.p50_latency_ms ?? 0).toFixed(1)}ms</td>
-                      <td>{(item.p95_latency_ms ?? 0).toFixed(1)}ms</td>
-                      <td>{(item.p99_latency_ms ?? 0).toFixed(1)}ms</td>
-                      <td>{(item.max_latency_ms ?? 0).toFixed(1)}ms</td>
-                      <td>{((item.input_tokens ?? 0) + (item.output_tokens ?? 0)).toLocaleString()}</td>
-                      <td class="cost-value">{formatUsd(item.estimated_cost_usd ?? 0)}</td>
+                  {rows.map((item) => (
+                    <tr key={benchmarkLabel(item)}>
+                      <td>{benchmarkLabel(item)}</td>
+                      <td>{formatInteger(item.requests)}</td>
+                      <td>{formatPercent(item.success_rate)}</td>
+                      <td>{formatLatency(item.avg_latency_ms)}</td>
+                      <td>{formatLatency(item.p95_latency_ms)}</td>
+                      <td>{formatInteger(modelTokens(item))}</td>
+                      <td>{formatUsd(item.estimated_cost_usd)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
+
+          <section class="panel-subsection benchmark-table-section">
+            <div class="panel-header">
+              <h3>{t('benchmark.modelDetails')}</h3>
+            </div>
+            {modelRows.length === 0 ? (
+              <div class="benchmark-inline-state">{t('benchmark.noModelDetails')}</div>
+            ) : (
+              <div class="table-wrap benchmark-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{t('benchmark.model')}</th>
+                      <th>{t('benchmark.requests')}</th>
+                      <th>{t('benchmark.successRate')}</th>
+                      <th>{t('benchmark.avgLatency')}</th>
+                      <th>{t('benchmark.p95Latency')}</th>
+                      <th>{t('benchmark.tokens')}</th>
+                      <th>{t('benchmark.estimatedCost')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modelRows.map((item) => (
+                      <tr key={item.model}>
+                        <td>{item.model}</td>
+                        <td>{formatInteger(item.requests)}</td>
+                        <td>{formatPercent(item.success_rate)}</td>
+                        <td>{formatLatency(item.avg_latency_ms)}</td>
+                        <td>{formatLatency(item.p95_latency_ms)}</td>
+                        <td>{formatInteger(modelTokens(item))}</td>
+                        <td>{formatUsd(item.estimated_cost_usd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </>
-      )}
+      ) : null}
 
-      {benchmark && !hasBenchmarkData && !benchmarkLoading && (
-        <div class="panel-subsection">
-          <div class="empty-state-box">
-            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
-            <p class="empty-state-title">{t('empty.noBenchmark')}</p>
-          </div>
-        </div>
-      )}
-
-      <BenchmarkVerification canWrite={canWrite} onUnauthorized={onUnauthorized} />
     </section>
   )
 }

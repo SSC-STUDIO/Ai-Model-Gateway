@@ -17,11 +17,12 @@ import {
   useHistoryActions,
   useAutoRefresh,
 } from './hooks'
-import type { ControlTabKey } from './types'
-import { OverviewTab, TelemetryTab, BenchmarkTab, ConfigTab, LogsTab, PricingTab } from './components/tabs'
+import type { ControlTabKey, PrimaryTabKey } from './types'
+import { OverviewTab, MonitoringTab, TelemetryTab, BenchmarkTab, ConfigTab, LogsTab, PricingTab, OpsTab, OperationsTab } from './components/tabs'
 import { fetchJSON } from './utils/fetch'
 import {
   benchmarkURL,
+  normalizeWindowHoursParam,
   telemetryTimeseriesURL,
   telemetryURL,
   logsURL,
@@ -32,28 +33,83 @@ const LOGIN_PATH = '/admin/login'
 
 const tabPaths: Record<ControlTabKey, string> = {
   overview: '/admin',
+  monitoring: '/admin/monitoring',
   telemetry: '/admin/telemetry',
+  logs: '/admin/logs',
   pricing: '/admin/pricing',
   benchmark: '/admin/benchmark',
-  logs: '/admin/logs',
   config: '/admin/config',
+  ops: '/admin/ops',
+  audit: '/admin/audit',
+  probe: '/admin/probe',
+  diagnostics: '/admin/diagnostics',
 }
 
-const TAB_ICONS: Record<ControlTabKey, IconName> = {
+// Primary tab icons used in the top navigation.
+const PRIMARY_TAB_ICONS: Record<PrimaryTabKey, IconName> = {
   overview: 'overview',
-  telemetry: 'telemetry',
-  pricing: 'pricing',
-  benchmark: 'benchmark',
+  monitoring: 'telemetry',
   logs: 'logs',
+  ops: 'shield',
   config: 'config',
+  benchmark: 'benchmark',
+}
+
+// Navigation structure: primary tabs with optional sub-tabs
+interface NavItem {
+  key: PrimaryTabKey
+  label: string
+}
+
+function getNavItems(t: (key: string) => string): NavItem[] {
+  return [
+    { key: 'overview', label: t('tabs.overview') },
+    { key: 'monitoring', label: t('tabs.monitoring') },
+    { key: 'benchmark', label: t('tabs.benchmark') },
+    { key: 'ops', label: t('tabs.ops') },
+    { key: 'config', label: t('tabs.config') },
+    { key: 'logs', label: t('tabs.logs') },
+  ]
+}
+
+function getPrimaryTab(tab: ControlTabKey): PrimaryTabKey {
+  switch (tab) {
+    case 'overview':
+      return 'overview'
+    case 'monitoring':
+      return 'monitoring'
+    case 'telemetry':
+    case 'pricing':
+      return 'monitoring'
+    case 'logs':
+      return 'logs'
+    case 'benchmark':
+      return 'benchmark'
+    case 'config':
+      return 'config'
+    case 'ops':
+      return 'ops'
+    case 'audit':
+    case 'probe':
+    case 'diagnostics':
+      return 'ops'
+    default:
+      // Exhaustive check: if TypeScript complains here, a case is missing
+      return 'ops'
+  }
 }
 
 function inferTab(pathname: string): ControlTabKey {
+  if (pathname.endsWith('/monitoring')) return 'monitoring'
   if (pathname.endsWith('/telemetry')) return 'telemetry'
   if (pathname.endsWith('/logs')) return 'logs'
   if (pathname.endsWith('/pricing')) return 'pricing'
   if (pathname.endsWith('/benchmark')) return 'benchmark'
   if (pathname.endsWith('/config')) return 'config'
+  if (pathname.endsWith('/ops')) return 'ops'
+  if (pathname.endsWith('/audit')) return 'audit'
+  if (pathname.endsWith('/probe')) return 'probe'
+  if (pathname.endsWith('/diagnostics')) return 'diagnostics'
   return 'overview'
 }
 
@@ -102,8 +158,6 @@ export function App() {
   const [refreshInterval, setRefreshInterval] = usePersistentState<number>('admin-refresh-interval', 30000)
   const [telemetryHours, setTelemetryHours] = useUrlState<string>('hours', '168')
   const [telemetryBucket, setTelemetryBucket] = useUrlState<string>('bucket', '1')
-  const [benchmarkHours, setBenchmarkHours] = useUrlState<number>('benchmarkHours', 168)
-  const [benchmarkModels, setBenchmarkModels] = useUrlState<string[]>('models', [])
   const [logsHours, setLogsHours] = useUrlState<string>('logsHours', '24')
   const [selectedRevision, setSelectedRevision] = useState('')
   const isPageVisible = usePageVisibility()
@@ -142,6 +196,7 @@ export function App() {
     controlConfig,
     historyPayload,
     benchmark,
+    benchmarkModels,
     benchmarkLoading,
     logs,
     configError,
@@ -160,25 +215,19 @@ export function App() {
     refetchHistory,
     refetchBenchmark,
     refetchLogs,
-  } = useControlData(tab, telemetryHours, telemetryBucket, benchmarkHours, benchmarkModels, logsHours, canAccessAdmin, handleUnauthorized)
+  } = useControlData(tab, telemetryHours, telemetryBucket, logsHours, canAccessAdmin, handleUnauthorized)
 
-  const tabLabels = useMemo(
-    () => [
-      { key: 'overview' as ControlTabKey, label: t('tabs.overview') },
-      { key: 'telemetry' as ControlTabKey, label: t('tabs.telemetry') },
-      { key: 'pricing' as ControlTabKey, label: t('tabs.pricing') },
-      { key: 'benchmark' as ControlTabKey, label: t('tabs.benchmark') },
-      { key: 'logs' as ControlTabKey, label: t('tabs.logs') },
-      { key: 'config' as ControlTabKey, label: t('tabs.config') },
-    ],
-    [t]
-  )
+  const navItems = useMemo(() => getNavItems(t), [t])
 
   const prefetchTabResources = useCallback((targetTab: ControlTabKey) => {
     switch (targetTab) {
       case 'overview':
         primeCacheSilently('/api/admin/overview', 30000)
         primeCacheSilently('/api/admin/status', 30000)
+        break
+      case 'monitoring':
+        primeCacheSilently(telemetryURL(telemetryHours), 30000)
+        primeCacheSilently(telemetryTimeseriesURL(telemetryHours, telemetryBucket), 30000)
         break
       case 'telemetry':
       case 'pricing':
@@ -194,10 +243,23 @@ export function App() {
         primeCacheSilently('/api/admin/config/history', 60000)
         break
       case 'benchmark':
-        primeCacheSilently(benchmarkURL(benchmarkHours, benchmarkModels), 30000)
+        primeCacheSilently(benchmarkURL(Number(normalizeWindowHoursParam(telemetryHours)), [], 'upstream'), 30000)
+        primeCacheSilently(benchmarkURL(Number(normalizeWindowHoursParam(telemetryHours)), [], 'model'), 30000)
+        break
+      case 'audit':
+        primeCacheSilently('/api/admin/audit?limit=100', 30000)
+        break
+      case 'ops':
+        primeCacheSilently('/api/admin/runtime/status', 30000)
+        primeCacheSilently('/api/admin/audit?limit=20', 30000)
+        break
+      case 'diagnostics':
+        primeCacheSilently('/api/admin/diagnostics', 30000)
+        break
+      case 'probe':
         break
     }
-  }, [telemetryHours, telemetryBucket, logsHours, benchmarkHours, benchmarkModels])
+  }, [telemetryHours, telemetryBucket, logsHours])
 
   const handleTabChange = useCallback((nextTab: ControlTabKey) => {
     navigate(tabPaths[nextTab] + window.location.search, 'push')
@@ -218,10 +280,10 @@ export function App() {
 
   useEffect(() => {
     const title = canAccessAdmin
-      ? tabLabels.find((entry) => entry.key === tab)?.label ?? t('header.title')
+      ? navItems.find((item) => item.key === getPrimaryTab(tab))?.label ?? t('header.title')
       : t('auth.title')
     document.title = `${title} - AI-Model-Gateway Admin`
-  }, [canAccessAdmin, tab, tabLabels, t])
+  }, [canAccessAdmin, tab, navItems, t])
 
   useEffect(() => {
     const handler = () => {
@@ -301,11 +363,14 @@ export function App() {
     if (!canAccessAdmin) return ''
     if (sessionError) return sessionError
     if (tab === 'overview') return overviewError?.message ?? statusError?.message ?? ''
+    if (tab === 'monitoring') return telemetryError?.message ?? telemetryTimeseriesError?.message ?? ''
     if (tab === 'telemetry') return telemetryError?.message ?? telemetryTimeseriesError?.message ?? ''
     if (tab === 'logs') return logsError?.message ?? ''
     if (tab === 'pricing') return telemetryError?.message ?? ''
     if (tab === 'config') return configError?.message ?? statusError?.message ?? historyError?.message ?? actionError
     if (tab === 'benchmark') return benchmarkError?.message ?? ''
+    if (tab === 'ops') return ''
+    if (tab === 'audit' || tab === 'probe' || tab === 'diagnostics') return ''
     return ''
   }, [
     actionError,
@@ -329,7 +394,7 @@ export function App() {
   const inlineTelemetryState = Boolean(
     status?.telemetry_status
     && status.telemetry_status !== 'connected'
-    && (tab === 'overview' || tab === 'telemetry' || tab === 'pricing' || tab === 'logs' || tab === 'benchmark')
+    && (tab === 'overview' || tab === 'monitoring' || tab === 'telemetry' || tab === 'pricing' || tab === 'logs' || tab === 'benchmark')
   )
   const hideActiveError = inlineTelemetryState && isTelemetryConnectionError(activeError)
 
@@ -366,6 +431,21 @@ export function App() {
               onRetry={() => { void retryTelemetryState() }}
             />
           </>
+        )
+      case 'monitoring':
+        return (
+          <MonitoringTab
+            telemetry={telemetry}
+            timeseries={telemetryTimeseries}
+            status={status}
+            telemetryHours={telemetryHours}
+            onTelemetryHoursChange={setTelemetryHours}
+            telemetryBucket={telemetryBucket}
+            onTelemetryBucketChange={setTelemetryBucket}
+            onRefreshPricing={refreshPricingStatus}
+            onRetry={() => { void retryTelemetryState() }}
+            refreshControls={refreshControls}
+          />
         )
       case 'telemetry':
         return (
@@ -438,40 +518,46 @@ export function App() {
         return (
           <BenchmarkTab
             benchmark={benchmark}
+            modelBenchmark={benchmarkModels}
+            loading={benchmarkLoading}
+            hours={telemetryHours}
+            onHoursChange={setTelemetryHours}
             status={status}
-            benchmarkHours={benchmarkHours}
-            benchmarkModels={benchmarkModels}
-            benchmarkLoading={benchmarkLoading}
             canWrite={canWrite}
-            onHoursChange={setBenchmarkHours}
-            onModelsChange={setBenchmarkModels}
             onRefresh={handleBenchmarkRefresh}
             onRetry={() => { void retryTelemetryState() }}
             onUnauthorized={handleUnauthorized}
           />
         )
+      case 'ops':
+        return <OperationsTab canWrite={canWrite} onUnauthorized={handleUnauthorized} />
+      case 'audit':
+        return <OpsTab mode="audit" canWrite={canWrite} onUnauthorized={handleUnauthorized} />
+      case 'probe':
+        return <OpsTab mode="probe" canWrite={canWrite} onUnauthorized={handleUnauthorized} />
+      case 'diagnostics':
+        return <OpsTab mode="diagnostics" canWrite={canWrite} onUnauthorized={handleUnauthorized} />
     }
   }, [
     actionBusy,
     applySelectedRevision,
-    benchmark,
-    benchmarkHours,
-    benchmarkLoading,
-    benchmarkModels,
     canWrite,
     controlConfig,
     currentHistoryEntry,
     handleBenchmarkRefresh,
+    handleUnauthorized,
     historyAction,
     historyActionLabel,
     historyPayload,
+    benchmark,
+    benchmarkModels,
+    benchmarkLoading,
     overview,
+    refreshPricingStatus,
     refreshControls,
     selectedRevision,
     setTelemetryHours,
     setTelemetryBucket,
-    setBenchmarkHours,
-    setBenchmarkModels,
     setLogsHours,
     status,
     t,
@@ -519,21 +605,25 @@ export function App() {
 
           <div class="topbar-nav">
             <div class="tabbar">
-              {tabLabels.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  class={`tab${tab === item.key ? ' active' : ''}`}
-                  onClick={() => handleTabChange(item.key)}
-                  onMouseEnter={() => prefetchTabResources(item.key)}
-                  onFocus={() => prefetchTabResources(item.key)}
-                  title={item.label}
-                  aria-current={tab === item.key ? 'page' : undefined}
-                >
-                  <Icon name={TAB_ICONS[item.key]} class="tab-icon" />
-                  <span>{item.label}</span>
-                </button>
-              ))}
+              {navItems.map((item) => {
+                const primaryTab = getPrimaryTab(tab)
+                const isActive = primaryTab === item.key
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    class={`tab${isActive ? ' active' : ''}`}
+                    onClick={() => handleTabChange(item.key as ControlTabKey)}
+                    onMouseEnter={() => prefetchTabResources(item.key as ControlTabKey)}
+                    onFocus={() => prefetchTabResources(item.key as ControlTabKey)}
+                    title={item.label}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    <Icon name={PRIMARY_TAB_ICONS[item.key]} class="tab-icon" />
+                    <span>{item.label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 

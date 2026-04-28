@@ -51,6 +51,16 @@ interface TelemetryEventView {
   error: string
 }
 
+type TelemetryDistributionView = NonNullable<DataResponse['models']>[number]
+type DistributionAccumulator = {
+  requests: number
+  successes: number
+  failures: number
+  input: number
+  output: number
+  latency: number
+}
+
 function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null
 }
@@ -237,6 +247,22 @@ function normalizeTelemetryEvent(value: unknown): TelemetryEventView | null {
   }
 }
 
+function normalizeTelemetryDistribution(value: unknown): TelemetryDistributionView | null {
+  const record = asRecord(value)
+  const rawValue = asString(record?.Value ?? record?.value)
+  if (!record || !rawValue) return null
+
+  return {
+    value: rawValue,
+    requests: metricNumber(record, 'Requests', 'requests'),
+    successes: metricNumber(record, 'Successes', 'successes'),
+    failures: metricNumber(record, 'Failures', 'failures'),
+    input_tokens: metricNumber(record, 'InputTokens', 'input_tokens'),
+    output_tokens: metricNumber(record, 'OutputTokens', 'output_tokens'),
+    avg_latency_ms: metricNumber(record, 'AvgLatencyMs', 'avg_latency_ms'),
+  }
+}
+
 function normalizeRevision(value: unknown): ConfigVersionSummary | null {
   const record = asRecord(value)
   const id = asString(record?.revision_id ?? record?.RevisionID ?? record?.id)
@@ -255,18 +281,23 @@ function normalizeRevision(value: unknown): ConfigVersionSummary | null {
 
 function normalizeBenchmarkModel(value: unknown): BenchmarkModel | null {
   const record = asRecord(value)
-  const model = asString(record?.model ?? record?.Model)
-  if (!model) return null
+  const upstream = asString(record?.upstream ?? record?.Upstream)
+  const label = asString(record?.label ?? record?.Label ?? upstream ?? record?.model ?? record?.Model)
+  const model = asString(record?.model ?? record?.Model ?? label)
+  if (!model && !upstream && !label) return null
 
   const successRateRaw = asNumber(record?.success_rate ?? record?.SuccessRate) ?? 0
   const successRate = successRateRaw > 1 ? successRateRaw / 100 : successRateRaw
 
   return {
-    model,
+    model: model ?? label ?? upstream ?? '',
+    upstream,
+    label,
     requests: metricNumber(record, 'Requests', 'requests'),
     successes: metricNumber(record, 'Successes', 'successes'),
     failures: metricNumber(record, 'Failures', 'failures'),
     input_tokens: metricNumber(record, 'InputTokens', 'input_tokens'),
+    cached_prompt_tokens: metricNumber(record, 'CachedPromptTokens', 'cached_prompt_tokens'),
     output_tokens: metricNumber(record, 'OutputTokens', 'output_tokens'),
     avg_latency_ms: metricNumber(record, 'AvgLatencyMs', 'avg_latency_ms'),
     p50_latency_ms: metricNumber(record, 'P50LatencyMs', 'p50_latency_ms'),
@@ -280,9 +311,12 @@ function normalizeBenchmarkModel(value: unknown): BenchmarkModel | null {
   }
 }
 
-export function benchmarkURL(hours: number, models: string[]): string {
+export function benchmarkURL(hours: number, models: string[], group: 'model' | 'upstream' = 'model'): string {
   const params = new URLSearchParams()
   params.set('hours', String(hours))
+  if (group !== 'model') {
+    params.set('group', group)
+  }
 
   const normalizedModels = [...models]
     .map((model) => model.trim())
@@ -454,8 +488,8 @@ export function normalizeTelemetryResponse(payload: unknown): DataResponse | nul
 
   const requests: RequestEntry[] = []
   const errors: ErrorEntry[] = []
-  const modelMap = new Map<string, { requests: number; successes: number; failures: number; input: number; output: number; latency: number }>()
-  const upstreamMap = new Map<string, { requests: number; successes: number; failures: number; input: number; output: number; latency: number }>()
+  const modelMap = new Map<string, DistributionAccumulator>()
+  const upstreamMap = new Map<string, DistributionAccumulator>()
 
   let successes = 0
   let failures = 0
@@ -504,7 +538,7 @@ export function normalizeTelemetryResponse(payload: unknown): DataResponse | nul
     }
 
     const updateAgg = (
-      target: Map<string, { requests: number; successes: number; failures: number; input: number; output: number; latency: number }>,
+      target: Map<string, DistributionAccumulator>,
       key: string
     ) => {
       const current = target.get(key) ?? { requests: 0, successes: 0, failures: 0, input: 0, output: 0, latency: 0 }
@@ -532,7 +566,7 @@ export function normalizeTelemetryResponse(payload: unknown): DataResponse | nul
   }
 
   const toDistribution = (
-    source: Map<string, { requests: number; successes: number; failures: number; input: number; output: number; latency: number }>
+    source: Map<string, DistributionAccumulator>
   ) => Array.from(source.entries()).map(([value, agg]) => ({
     value,
     requests: agg.requests,
@@ -543,16 +577,43 @@ export function normalizeTelemetryResponse(payload: unknown): DataResponse | nul
     avg_latency_ms: agg.requests > 0 ? agg.latency / agg.requests : 0,
   }))
 
+  const backendModels = asArray(record.Models ?? record.models)
+    .map((item) => normalizeTelemetryDistribution(item))
+    .filter((item): item is TelemetryDistributionView => item !== null)
+  const backendUpstreams = asArray(record.Upstreams ?? record.upstreams)
+    .map((item) => normalizeTelemetryDistribution(item))
+    .filter((item): item is TelemetryDistributionView => item !== null)
+  const models = backendModels.length > 0 ? backendModels : toDistribution(modelMap)
+  const upstreams = backendUpstreams.length > 0 ? backendUpstreams : toDistribution(upstreamMap)
+
+  const summarySource = models.length > 0 ? models : toDistribution(modelMap)
+  const summaryRequests = asNumber(record.Total ?? record.total) ?? summarySource.reduce((sum, item) => sum + item.requests, 0)
+  const summarySuccesses = summarySource.reduce((sum, item) => sum + item.successes, 0)
+  const summaryFailures = summarySource.reduce((sum, item) => sum + item.failures, 0)
+  const summaryInputTokens = summarySource.length > 0
+    ? summarySource.reduce((sum, item) => sum + item.input_tokens, 0)
+    : events.reduce((sum, item) => sum + item.input_tokens, 0)
+  const summaryOutputTokens = summarySource.length > 0
+    ? summarySource.reduce((sum, item) => sum + item.output_tokens, 0)
+    : events.reduce((sum, item) => sum + item.output_tokens, 0)
+  const summaryLatencyWeight = summarySource.reduce((sum, item) => sum + item.avg_latency_ms * item.requests, 0)
+  const summaryLatencySamples = summarySource.reduce((sum, item) => sum + item.requests, 0)
+
   return {
     window_hours: asNumber(record.WindowHours ?? record.window_hours),
     summary: {
-      requests: events.length,
-      successes,
-      failures,
-      avg_latency_ms: latencySamples > 0 ? totalLatency / latencySamples : 0,
+      requests: summarySource.length > 0 ? summaryRequests : events.length,
+      successes: summarySource.length > 0 ? summarySuccesses : successes,
+      failures: summarySource.length > 0 ? summaryFailures : failures,
+      input_tokens: summaryInputTokens,
+      output_tokens: summaryOutputTokens,
+      total_tokens: summaryInputTokens + summaryOutputTokens,
+      avg_latency_ms: summarySource.length > 0
+        ? summaryLatencySamples > 0 ? summaryLatencyWeight / summaryLatencySamples : 0
+        : latencySamples > 0 ? totalLatency / latencySamples : 0,
     },
-    models: toDistribution(modelMap),
-    upstreams: toDistribution(upstreamMap),
+    models,
+    upstreams,
     requests,
     errors,
     pricing_economics: (asRecord(record.pricing_economics ?? record.PricingEconomics ?? record.Pricing) ?? undefined) as DataResponse['pricing_economics'],
@@ -587,6 +648,7 @@ export function normalizeBenchmarkResponse(payload: unknown): BenchmarkResponse 
 
   return {
     window_hours: windowHours,
+    group: asString(record.group ?? record.Group),
     hours: windowHours,
     benchmarks,
   }

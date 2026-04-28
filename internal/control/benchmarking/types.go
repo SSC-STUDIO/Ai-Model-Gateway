@@ -109,6 +109,7 @@ type RunTargetDetail struct {
 	VendorSnapshotID         string             `json:"vendor_snapshot_id,omitempty"`
 	Verdict                  string             `json:"verdict,omitempty"`
 	SuspicionScore           float64            `json:"suspicion_score,omitempty"`
+	OverallScore             float64            `json:"overall_score,omitempty"`
 	PublicGap                float64            `json:"public_gap,omitempty"`
 	VendorGap                float64            `json:"vendor_gap,omitempty"`
 	CompletionRate           float64            `json:"completion_rate,omitempty"`

@@ -642,8 +642,8 @@ func TestPricingGroupModel(t *testing.T) {
 		{"both empty", "", "", ""},
 		{"effective only", "", "gpt-4o", "gpt-4o"},
 		{"requested only", "gpt-4o", "", "gpt-4o"},
-		{"both set", "gpt-4", "gpt-4o", "gpt-4o"},
-		{"with whitespace", "  gpt-4o  ", "  gpt-4o-mini  ", "gpt-4o-mini"},
+		{"both set", "gpt-4", "gpt-4o", "gpt-4"},
+		{"with whitespace", "  gpt-4o  ", "  gpt-4o-mini  ", "gpt-4o"},
 	}
 
 	for _, tt := range tests {
@@ -1202,7 +1202,7 @@ func TestPricingSummaryKey(t *testing.T) {
 				RequestedModel: "gpt-4",
 				EffectiveModel: "gpt-4o",
 			},
-			want: "gpt-4o|gpt-4o",
+			want: "gpt-4o|gpt-4",
 		},
 		{
 			name: "no upstream",
@@ -1268,9 +1268,9 @@ func TestPricingLookupCandidates(t *testing.T) {
 		t.Fatal("expected non-empty candidates")
 	}
 
-	// Effective model should come first
-	if candidates[0] != "gpt-4o-mini" {
-		t.Fatalf("first candidate = %q, want gpt-4o-mini", candidates[0])
+	// Requested model should come first
+	if candidates[0] != "gpt-4o" {
+		t.Fatalf("first candidate = %q, want gpt-4o", candidates[0])
 	}
 }
 

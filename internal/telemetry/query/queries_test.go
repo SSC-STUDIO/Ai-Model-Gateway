@@ -224,6 +224,118 @@ func TestQueryTelemetryFiltersAndPagination(t *testing.T) {
 	}
 }
 
+func TestQueryTelemetryDistributionsUseFullWindow(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	for i := 0; i < 4; i++ {
+		insertRequestFact(t, store, testRequestFact{
+			EventID:        fmt.Sprintf("evt-model-a-%d", i),
+			RequestID:      fmt.Sprintf("req-model-a-%d", i),
+			Timestamp:      now.Add(-time.Duration(i+1) * time.Minute),
+			Path:           "/v1/chat/completions",
+			EffectiveModel: "gpt-4o",
+			ProviderID:     "openai",
+			StatusCode:     200,
+			LatencyMs:      int64(100 + i),
+			PromptTokens:   100,
+			OutputTokens:   20,
+		})
+	}
+	insertRequestFact(t, store, testRequestFact{
+		EventID:        "evt-model-b",
+		RequestID:      "req-model-b",
+		Timestamp:      now.Add(-10 * time.Minute),
+		Path:           "/v1/messages",
+		EffectiveModel: "claude-sonnet-4-5",
+		ProviderID:     "anthropic",
+		StatusCode:     500,
+		LatencyMs:      900,
+		PromptTokens:   50,
+		OutputTokens:   5,
+		ErrorMessage:   "upstream failed",
+	})
+
+	events, total, _, err := store.QueryTelemetry(telemetryquery.TelemetryRequest{
+		WindowHours: 24,
+		Limit:       2,
+	})
+	if err != nil {
+		t.Fatalf("QueryTelemetry returned error: %v", err)
+	}
+	if total != 5 || len(events) != 2 {
+		t.Fatalf("expected paginated events len=2 total=5, got len=%d total=%d", len(events), total)
+	}
+
+	models, upstreams, windowHours, err := store.QueryTelemetryDistributions(telemetryquery.TelemetryRequest{
+		WindowHours: 24,
+		Limit:       2,
+	})
+	if err != nil {
+		t.Fatalf("QueryTelemetryDistributions returned error: %v", err)
+	}
+	if windowHours != 24 {
+		t.Fatalf("windowHours = %d, want 24", windowHours)
+	}
+	if len(models) != 2 || models[0].Value != "gpt-4o" || models[0].Requests != 4 || models[1].Value != "claude-sonnet-4-5" || models[1].Failures != 1 {
+		t.Fatalf("unexpected model distributions: %+v", models)
+	}
+	if len(upstreams) != 2 || upstreams[0].Value != "openai" || upstreams[0].Requests != 4 || upstreams[1].Value != "anthropic" || upstreams[1].Failures != 1 {
+		t.Fatalf("unexpected upstream distributions: %+v", upstreams)
+	}
+}
+
+func TestQueryTelemetryDistributionsExcludeSyntheticByDefault(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertRequestFact(t, store, testRequestFact{
+		EventID:        "evt-real",
+		RequestID:      "req-real",
+		Timestamp:      now.Add(-time.Minute),
+		Path:           "/v1/chat/completions",
+		EffectiveModel: "gpt-4o",
+		ProviderID:     "openai",
+		StatusCode:     200,
+		LatencyMs:      100,
+	})
+	insertRequestFact(t, store, testRequestFact{
+		EventID:        "evt-probe",
+		RequestID:      "req-probe",
+		Timestamp:      now.Add(-time.Minute),
+		Path:           "/v1/chat/completions",
+		EffectiveModel: "gpt-4o",
+		ProviderID:     "openai",
+		StatusCode:     200,
+		LatencyMs:      100,
+		SyntheticKind:  "probe",
+	})
+
+	models, upstreams, _, err := store.QueryTelemetryDistributions(telemetryquery.TelemetryRequest{WindowHours: 24})
+	if err != nil {
+		t.Fatalf("QueryTelemetryDistributions returned error: %v", err)
+	}
+	if len(models) != 1 || models[0].Requests != 1 {
+		t.Fatalf("default distributions should exclude synthetic traffic, got models=%+v", models)
+	}
+	if len(upstreams) != 1 || upstreams[0].Requests != 1 {
+		t.Fatalf("default distributions should exclude synthetic traffic, got upstreams=%+v", upstreams)
+	}
+
+	models, _, _, err = store.QueryTelemetryDistributions(telemetryquery.TelemetryRequest{
+		WindowHours: 24,
+		Filters: telemetryquery.TelemetryFilters{
+			SyntheticKind: "probe",
+		},
+	})
+	if err != nil {
+		t.Fatalf("QueryTelemetryDistributions(synthetic) returned error: %v", err)
+	}
+	if len(models) != 1 || models[0].Requests != 1 {
+		t.Fatalf("synthetic distributions should include filtered synthetic traffic, got models=%+v", models)
+	}
+}
+
 func TestQueryTimeSeriesAndModelBenchmark(t *testing.T) {
 	store := newTestStore(t)
 	now := time.Now().UTC().Truncate(time.Minute)
@@ -364,6 +476,114 @@ func TestQueryTimeSeriesAndModelBenchmark(t *testing.T) {
 	}
 	if !approxEqual(benchmark.EstimatedCostUSD, 0.02175, 1e-9) {
 		t.Fatalf("unexpected estimated cost: %+v", benchmark)
+	}
+}
+
+func TestQueryModelBenchmarkGroupsByUpstream(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Minute)
+	start := now.Add(-30 * time.Minute)
+	end := now
+
+	for i, fact := range []testRequestFact{
+		{
+			EffectiveModel:       "gpt-4o",
+			ProviderID:           "provider-a",
+			StatusCode:           200,
+			LatencyMs:            100,
+			PromptTokens:         100,
+			OutputTokens:         20,
+			PricingStatus:        PricingStatusFixed,
+			PricingTotalCostUSD:  0.10,
+			PricingPromptCostUSD: 0.06,
+		},
+		{
+			EffectiveModel:      "gpt-4o",
+			ProviderID:          "provider-a",
+			StatusCode:          200,
+			LatencyMs:           300,
+			PromptTokens:        120,
+			OutputTokens:        30,
+			PricingStatus:       PricingStatusEstimatedLegacy,
+			PricingTotalCostUSD: 0.20,
+		},
+		{
+			EffectiveModel:      "gpt-4o-mini",
+			ProviderID:          "provider-a",
+			StatusCode:          500,
+			LatencyMs:           500,
+			PromptTokens:        80,
+			OutputTokens:        15,
+			PricingStatus:       PricingStatusFixed,
+			PricingTotalCostUSD: 0.05,
+		},
+		{
+			EffectiveModel:      "claude-sonnet-4-5",
+			ProviderID:          "provider-b",
+			StatusCode:          200,
+			LatencyMs:           50,
+			PromptTokens:        90,
+			OutputTokens:        10,
+			PricingStatus:       PricingStatusFixed,
+			PricingTotalCostUSD: 0.01,
+		},
+		{
+			EffectiveModel:      "claude-sonnet-4-5",
+			ProviderID:          "provider-b",
+			StatusCode:          200,
+			LatencyMs:           150,
+			PromptTokens:        110,
+			OutputTokens:        25,
+			PricingStatus:       PricingStatusFixed,
+			PricingTotalCostUSD: 0.02,
+		},
+	} {
+		fact.EventID = fmt.Sprintf("upstream-bench-%d", i)
+		fact.RequestID = fmt.Sprintf("upstream-req-%d", i)
+		fact.Timestamp = now.Add(-time.Duration(i+1) * time.Minute)
+		fact.Path = "/v1/chat/completions"
+		fact.Attempts = 1
+		insertRequestFact(t, store, fact)
+	}
+
+	benchmarks, benchmarkHours, err := store.QueryModelBenchmark(telemetryquery.BenchmarkRequest{
+		Group:     "upstream",
+		StartTime: &start,
+		EndTime:   &end,
+	})
+	if err != nil {
+		t.Fatalf("QueryModelBenchmark(group=upstream) returned error: %v", err)
+	}
+	if benchmarkHours != 1 {
+		t.Fatalf("expected explicit range to normalize to 1 hour, got %d", benchmarkHours)
+	}
+	if len(benchmarks) != 2 {
+		t.Fatalf("expected two upstream benchmark rows, got %d: %+v", len(benchmarks), benchmarks)
+	}
+
+	providerA := benchmarks[0]
+	if providerA.Upstream != "provider-a" || providerA.Model != "provider-a" || providerA.Label != "provider-a" {
+		t.Fatalf("unexpected upstream labels: %+v", providerA)
+	}
+	if providerA.Requests != 3 || providerA.Successes != 2 || providerA.Failures != 1 {
+		t.Fatalf("unexpected provider-a counts: %+v", providerA)
+	}
+	if !approxEqual(providerA.SuccessRate, 66.6666666667, 1e-6) {
+		t.Fatalf("unexpected provider-a success rate: %+v", providerA)
+	}
+	if providerA.P50LatencyMs != 300 || providerA.P95LatencyMs != 500 || providerA.P99LatencyMs != 500 || providerA.MaxLatencyMs != 500 {
+		t.Fatalf("unexpected provider-a latency percentiles: %+v", providerA)
+	}
+	if !approxEqual(providerA.ExactCostUSD, 0.15, 1e-9) || !approxEqual(providerA.EstimatedLegacyCostUSD, 0.20, 1e-9) || !approxEqual(providerA.EstimatedCostUSD, 0.35, 1e-9) {
+		t.Fatalf("unexpected provider-a costs: %+v", providerA)
+	}
+
+	providerB := benchmarks[1]
+	if providerB.Upstream != "provider-b" || providerB.Requests != 2 || providerB.P95LatencyMs != 150 {
+		t.Fatalf("unexpected provider-b row: %+v", providerB)
+	}
+	if !approxEqual(providerB.EstimatedCostUSD, 0.03, 1e-9) {
+		t.Fatalf("unexpected provider-b total cost: %+v", providerB)
 	}
 }
 
@@ -579,6 +799,45 @@ func TestQueryPricingEconomicsCountsDistinctPricedModelsAndPerCurrencyTotals(t *
 		if total.PricedModels != 1 {
 			t.Fatalf("currency %s priced_models = %d, want 1", total.Currency, total.PricedModels)
 		}
+	}
+}
+
+func TestQueryPricingEconomicsUsesRequestedModelForBridgeTraffic(t *testing.T) {
+	store := newTestStore(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertRequestFact(t, store, testRequestFact{
+		EventID:        "evt-bridge-requested-pricing",
+		RequestID:      "req-bridge-requested-pricing",
+		Timestamp:      now.Add(-1 * time.Minute),
+		RequestedModel: "gpt-5.5",
+		EffectiveModel: "gpt-4o-mini",
+		ProviderID:     "openai",
+		StatusCode:     200,
+		PromptTokens:   1_000,
+		OutputTokens:   500,
+	})
+
+	economics := store.QueryPricingEconomics(24)
+	if len(economics.Models) != 1 {
+		t.Fatalf("models len = %d, want 1", len(economics.Models))
+	}
+
+	model := economics.Models[0]
+	if model.DisplayModel != "gpt-5.5" {
+		t.Fatalf("display model = %q, want gpt-5.5", model.DisplayModel)
+	}
+	if model.PricingModel != "gpt-5.5" {
+		t.Fatalf("pricing model = %q, want gpt-5.5", model.PricingModel)
+	}
+	if model.EffectiveModel != "gpt-4o-mini" {
+		t.Fatalf("effective model = %q, want gpt-4o-mini", model.EffectiveModel)
+	}
+	if model.PricingStatus != PricingStatusEstimatedLegacy {
+		t.Fatalf("pricing status = %q, want %q", model.PricingStatus, PricingStatusEstimatedLegacy)
+	}
+	if !approxEqual(model.Cost.TotalUsd, 0.02, 1e-9) {
+		t.Fatalf("total usd = %f, want 0.02", model.Cost.TotalUsd)
 	}
 }
 

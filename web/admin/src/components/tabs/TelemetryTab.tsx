@@ -273,6 +273,8 @@ function SummaryMetrics({ summary, t }: { summary: NonNullable<DataResponse['sum
   const successesFlash = useFlashValue(summary.successes)
   const failuresFlash = useFlashValue(summary.failures)
   const latencyFlash = useFlashValue(summary.avg_latency_ms)
+  const totalTokens = summary.total_tokens ?? ((summary.input_tokens ?? 0) + (summary.output_tokens ?? 0))
+  const tokensFlash = useFlashValue(totalTokens)
 
   return (
     <div class="metrics-grid panel-stagger">
@@ -291,6 +293,10 @@ function SummaryMetrics({ summary, t }: { summary: NonNullable<DataResponse['sum
       <article class="metric-card">
         <div class="metric-label">{t('overview.avgLatency')}</div>
         <div class={`metric-value ${latencyFlash ? 'flash' : ''}`}>{formatLatency(summary.avg_latency_ms)}</div>
+      </article>
+      <article class="metric-card">
+        <div class="metric-label">{t('telemetry.totalTokens')}</div>
+        <div class={`metric-value ${tokensFlash ? 'flash' : ''}`}>{formatInteger(totalTokens)}</div>
       </article>
     </div>
   )

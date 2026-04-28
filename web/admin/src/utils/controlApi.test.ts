@@ -18,6 +18,10 @@ describe('controlApi', () => {
       expect(benchmarkURL(24, [])).toBe('/api/admin/benchmark?hours=24')
     })
 
+    it('builds URL with upstream grouping', () => {
+      expect(benchmarkURL(24, [], 'upstream')).toBe('/api/admin/benchmark?hours=24&group=upstream')
+    })
+
     it('builds URL with hours and sorted models', () => {
       expect(benchmarkURL(168, ['gpt-4o', 'gpt-4o-mini'])).toBe(
         '/api/admin/benchmark?hours=168&models=gpt-4o%2Cgpt-4o-mini'
@@ -268,9 +272,46 @@ describe('controlApi', () => {
       expect(result!.summary!.requests).toBe(2)
       expect(result!.summary!.successes).toBe(1)
       expect(result!.summary!.failures).toBe(1)
+      expect(result!.summary!.input_tokens).toBe(15)
+      expect(result!.summary!.output_tokens).toBe(20)
+      expect(result!.summary!.total_tokens).toBe(35)
       expect(result!.requests!.length).toBe(2)
       expect(result!.requests![0].BenchmarkTargetID).toBe('target-1')
       expect(result!.errors!.length).toBe(1)
+    })
+
+    it('uses backend full-window distributions when present', () => {
+      const payload = {
+        Total: 600,
+        Events: [
+          {
+            Timestamp: '2024-01-01T00:00:00Z',
+            Path: '/v1/chat',
+            EffectiveModel: 'sampled-model',
+            Provider: 'sampled-provider',
+            StatusCode: 200,
+            LatencyMs: 20,
+          },
+        ],
+        Models: [
+          { Value: 'gpt-4o', Requests: 500, Successes: 490, Failures: 10, InputTokens: 1000, OutputTokens: 2000, AvgLatencyMs: 120 },
+          { Value: 'claude', Requests: 100, Successes: 95, Failures: 5, InputTokens: 300, OutputTokens: 600, AvgLatencyMs: 240 },
+        ],
+        Upstreams: [
+          { Value: 'openai', Requests: 500, Successes: 490, Failures: 10, InputTokens: 1000, OutputTokens: 2000, AvgLatencyMs: 120 },
+          { Value: 'anthropic', Requests: 100, Successes: 95, Failures: 5, InputTokens: 300, OutputTokens: 600, AvgLatencyMs: 240 },
+        ],
+      }
+
+      const result = normalizeTelemetryResponse(payload)
+
+      expect(result?.summary?.requests).toBe(600)
+      expect(result?.summary?.successes).toBe(585)
+      expect(result?.summary?.input_tokens).toBe(1300)
+      expect(result?.summary?.output_tokens).toBe(2600)
+      expect(result?.summary?.total_tokens).toBe(3900)
+      expect(result?.models?.map((item) => item.value)).toEqual(['gpt-4o', 'claude'])
+      expect(result?.upstreams?.map((item) => item.value)).toEqual(['openai', 'anthropic'])
     })
   })
 
@@ -312,6 +353,30 @@ describe('controlApi', () => {
       }
       const result = normalizeBenchmarkResponse(payload)
       expect(result?.benchmarks[0].success_rate).toBe(0.985)
+    })
+
+    it('normalizes upstream and legacy Model fields', () => {
+      const payload = {
+        Group: 'upstream',
+        Benchmarks: [
+          {
+            Upstream: 'provider-a',
+            Label: 'provider-a',
+            Model: 'provider-a',
+            Requests: 12,
+            CachedPromptTokens: 3,
+          },
+        ],
+      }
+      const result = normalizeBenchmarkResponse(payload)
+      expect(result?.group).toBe('upstream')
+      expect(result?.benchmarks[0]).toMatchObject({
+        model: 'provider-a',
+        upstream: 'provider-a',
+        label: 'provider-a',
+        requests: 12,
+        cached_prompt_tokens: 3,
+      })
     })
   })
 

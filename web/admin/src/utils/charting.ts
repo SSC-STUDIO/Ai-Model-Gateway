@@ -8,6 +8,12 @@ export type TooltipState = {
   label?: string
 }
 
+export type LabeledValue = {
+  label: string
+  value: number
+  color: string
+}
+
 export const MAX_POINT_LABELS = 12
 export const MAX_HISTORY_POINT_LABELS = 14
 
@@ -43,6 +49,26 @@ export function sanitizeDataPoints<T extends DataPoint>(points: T[]): T[] {
 
 export function sanitizeLabeledValues<T extends { label: string; value: number }>(items: T[]): T[] {
   return items.filter((item) => item.label.trim().length > 0 && isFiniteNumber(item.value))
+}
+
+export function collapseLabeledValues<T extends LabeledValue>(
+  items: T[],
+  maxItems: number,
+  otherLabel: string,
+  otherColor: string
+): LabeledValue[] {
+  if (items.length <= maxItems || maxItems <= 0) return items
+
+  const visible = items.slice(0, maxItems)
+  const otherValue = items.slice(maxItems).reduce((sum, item) => sum + item.value, 0)
+  return [
+    ...visible,
+    {
+      label: otherLabel,
+      value: otherValue,
+      color: otherColor,
+    },
+  ]
 }
 
 export function formatPointLabel(value: number): string {
@@ -235,6 +261,24 @@ export function describeDonutArc(
   startAngle: number,
   endAngle: number
 ): string {
+  const sweep = Math.max(0, endAngle - startAngle)
+  const fullCircle = sweep >= Math.PI * 2 - 0.000001
+  if (fullCircle) {
+    const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle)
+    const outerMid = polarToCartesian(cx, cy, outerRadius, startAngle + Math.PI)
+    const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle)
+    const innerMid = polarToCartesian(cx, cy, innerRadius, startAngle + Math.PI)
+    return [
+      `M ${outerStart.x} ${outerStart.y}`,
+      `A ${outerRadius} ${outerRadius} 0 1 1 ${outerMid.x} ${outerMid.y}`,
+      `A ${outerRadius} ${outerRadius} 0 1 1 ${outerStart.x} ${outerStart.y}`,
+      `L ${innerStart.x} ${innerStart.y}`,
+      `A ${innerRadius} ${innerRadius} 0 1 0 ${innerMid.x} ${innerMid.y}`,
+      `A ${innerRadius} ${innerRadius} 0 1 0 ${innerStart.x} ${innerStart.y}`,
+      'Z',
+    ].join(' ')
+  }
+
   const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle)
   const outerEnd = polarToCartesian(cx, cy, outerRadius, endAngle)
   const innerEnd = polarToCartesian(cx, cy, innerRadius, endAngle)

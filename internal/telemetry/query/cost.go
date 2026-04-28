@@ -46,13 +46,13 @@ type costRow struct {
 func (q *CostQuery) ByModel(ctx context.Context, start, end time.Time) ([]CostEntry, error) {
 	rows, err := q.db.QueryContext(ctx, `
 SELECT
-  `+projectedModelExpression+` AS model,
+  `+projectedPricingModelExpression+` AS model,
   COALESCE(SUM(prompt_tokens), 0),
   COALESCE(SUM(cached_prompt_tokens), 0),
   COALESCE(SUM(completion_tokens), 0)
 FROM request_facts
 WHERE timestamp >= ? AND timestamp <= ?
-  AND `+projectedModelExpression+` != ''
+  AND `+projectedPricingModelExpression+` != ''
   AND `+nonSyntheticFilterExpression+`
 GROUP BY model
 ORDER BY model ASC`,
@@ -83,14 +83,14 @@ ORDER BY model ASC`,
 func (q *CostQuery) ByProvider(ctx context.Context, start, end time.Time) ([]CostEntry, error) {
 	rows, err := q.db.QueryContext(ctx, `
 SELECT
-  `+projectedModelExpression+` AS model,
+  `+projectedPricingModelExpression+` AS model,
   COALESCE(provider_id, ''),
   COALESCE(SUM(prompt_tokens), 0),
   COALESCE(SUM(cached_prompt_tokens), 0),
   COALESCE(SUM(completion_tokens), 0)
 FROM request_facts
 WHERE timestamp >= ? AND timestamp <= ?
-  AND `+projectedModelExpression+` != ''
+  AND `+projectedPricingModelExpression+` != ''
   AND `+nonSyntheticFilterExpression+`
 GROUP BY model, provider_id
 ORDER BY provider_id ASC, model ASC`,
@@ -127,14 +127,14 @@ func (q *CostQuery) ByTimeRange(ctx context.Context, start, end time.Time, bucke
 SELECT
   strftime('%Y-%m-%dT%H:%M:%SZ',
            datetime((CAST(strftime('%s', timestamp) AS INTEGER) / ?) * ?, 'unixepoch')) AS grouped_bucket,
-  `+projectedModelExpression+` AS model,
+  `+projectedPricingModelExpression+` AS model,
   COALESCE(provider_id, ''),
   COALESCE(SUM(prompt_tokens), 0),
   COALESCE(SUM(cached_prompt_tokens), 0),
   COALESCE(SUM(completion_tokens), 0)
 FROM request_facts
 WHERE timestamp >= ? AND timestamp <= ?
-  AND `+projectedModelExpression+` != ''
+  AND `+projectedPricingModelExpression+` != ''
   AND `+nonSyntheticFilterExpression+`
 GROUP BY grouped_bucket, model, provider_id
 ORDER BY grouped_bucket ASC, model ASC`,
