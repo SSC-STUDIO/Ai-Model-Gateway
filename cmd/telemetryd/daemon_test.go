@@ -156,6 +156,7 @@ func TestAppendEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eventlog.New() error = %v", err)
 	}
+	defer eventLog.Close()
 
 	d := &Daemon{eventLog: eventLog}
 
@@ -181,6 +182,7 @@ func TestDaemonWithEventLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eventlog.New() error = %v", err)
 	}
+	defer eventLog.Close()
 
 	d := &Daemon{
 		config:    Config{DataDir: dataDir},
@@ -213,10 +215,6 @@ func TestDaemonWithEventLog(t *testing.T) {
 		t.Fatalf("GetEventCount() = %d, want 2", count)
 	}
 
-	// Close event log
-	if err := d.eventLog.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
 }
 
 func TestShutdownWithEventLogAndQueryStore(t *testing.T) {
