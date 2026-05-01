@@ -44,9 +44,8 @@ jobs:
           args: --timeout=5m
 
       - name: Run govulncheck
-        uses: golang.org/x/vuln/cmd/govulncheck@latest
-        with:
-          args: ./...
+        shell: bash
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: Reject TODO and FIXME markers
         shell: pwsh
