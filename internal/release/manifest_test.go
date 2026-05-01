@@ -95,7 +95,11 @@ func TestVerifyIncomingBundleAllowsNewerBundleIdentity(t *testing.T) {
 	}
 	// Include all required binaries for an update bundle (including aigw).
 	for _, name := range []string{"aigw", "gatewayd", "controld", "telemetryd", "gateway-cli"} {
-		if err := os.WriteFile(filepath.Join(binDir, name), []byte(name), 0755); err != nil {
+		path := filepath.Join(binDir, name)
+		if runtime.GOOS == "windows" {
+			path += ".exe"
+		}
+		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -125,7 +129,11 @@ func TestVerifyIncomingBundleRejectsMissingAigw(t *testing.T) {
 	}
 	// Only include daemon binaries, omit aigw.
 	for _, name := range []string{"gatewayd", "controld", "telemetryd"} {
-		if err := os.WriteFile(filepath.Join(binDir, name), []byte(name), 0755); err != nil {
+		path := filepath.Join(binDir, name)
+		if runtime.GOOS == "windows" {
+			path += ".exe"
+		}
+		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}

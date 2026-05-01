@@ -2047,8 +2047,12 @@ func TestApplyProjectionBatchCheckpointUpdate(t *testing.T) {
 }
 
 func TestNewStoreInvalidPath(t *testing.T) {
-	// Test creating a store at an invalid path
-	_, err := NewStore("/nonexistent/path/that/cannot/be/created/query.db")
+	dir := t.TempDir()
+	notDir := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(notDir, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file parent: %v", err)
+	}
+	_, err := NewStore(filepath.Join(notDir, "query.db"))
 	if err == nil {
 		t.Fatal("expected error for invalid path")
 	}

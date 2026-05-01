@@ -95,15 +95,18 @@ func TestValidateFileName(t *testing.T) {
 }
 
 func TestSanitizePath(t *testing.T) {
+	clean := func(path string) string {
+		return filepath.Clean(path)
+	}
 	tests := []struct {
 		name     string
 		input    string
 		expected string
 	}{
-		{"normal path", "path/to/file", "path/to/file"},
-		{"null byte removal", "path\x00/to/file", "path/to/file"},
+		{"normal path", "path/to/file", clean("path/to/file")},
+		{"null byte removal", "path\x00/to/file", clean("path/to/file")},
 		{"dot dot prefix", "../etc/passwd", ""},
-		{"clean path", "path/./to/../file", "path/file"},
+		{"clean path", "path/./to/../file", clean("path/file")},
 	}
 
 	for _, tt := range tests {

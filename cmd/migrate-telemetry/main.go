@@ -352,7 +352,12 @@ func fileFingerprint(path string) (string, error) {
 }
 
 func openSource(path string) (*sql.DB, error) {
-	sourceURI := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
+	sourceURI := url.URL{Scheme: "file", RawQuery: "mode=ro"}
+	if filepath.IsAbs(path) && filepath.VolumeName(path) != "" {
+		sourceURI.Path = filepath.ToSlash(path)
+	} else {
+		sourceURI.Path = path
+	}
 	db, err := sql.Open("sqlite", sourceURI.String())
 	if err != nil {
 		return nil, fmt.Errorf("open source: %w", err)

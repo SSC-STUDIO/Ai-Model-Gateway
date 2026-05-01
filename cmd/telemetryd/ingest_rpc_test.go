@@ -22,6 +22,7 @@ func TestTelemetryIngestRPCAppendBatchEmptyEventsWithEventLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eventlog.New() error = %v", err)
 	}
+	defer eventLog.Close()
 
 	rpc := &TelemetryIngestRPC{daemon: &Daemon{eventLog: eventLog}}
 
@@ -74,6 +75,7 @@ func TestTelemetryIngestRPCAppendBatchSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eventlog.New() error = %v", err)
 	}
+	defer eventLog.Close()
 
 	rpc := &TelemetryIngestRPC{daemon: &Daemon{eventLog: eventLog}}
 
@@ -126,6 +128,7 @@ func TestTelemetryIngestRPCPingWithEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("eventlog.New() error = %v", err)
 	}
+	defer eventLog.Close()
 
 	// Add some events
 	eventLog.Append([]telemetryingest.Event{
