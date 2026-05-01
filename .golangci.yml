@@ -1,75 +1,66 @@
-# golangci-lint 配置
-
+version: "2"
 run:
-  timeout: 5m
   issues-exit-code: 1
   tests: true
 
-output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
-
 linters:
   enable:
-    # 静态分析
-    - staticcheck
-    - gosec
-    - ineffassign
-    - typecheck
-    - unused
-
-    # 代码质量
     - gocyclo
     - dupl
     - misspell
-    - gofmt
-    - goimports
-
-    # 性能
     - prealloc
-
-    # 简化
-    - simplify
-
+    - gosec
   disable:
-    - exhaustivestruct
     - exhaustruct
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-
-  gofmt:
-    simplify: true
-
-  goimports:
-    local-prefixes: ai-model-gateway
-
-  gosec:
-    excludes:
-      - G104  # 审计错误检查
-      - G304  # 文件路径检查（配置加载需要）
-
-  misspell:
-    locale: US
-
-  dupl:
-    threshold: 100
+  settings:
+    dupl:
+      threshold: 100
+    gocyclo:
+      min-complexity: 15
+    gosec:
+      excludes:
+        - G104
+        - G304
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - dupl
+      - path: generated\.go
+        linters:
+          - all
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 
 issues:
-  exclude-rules:
-    # 测试文件允许较低的复杂度
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - dupl
-
-    # 生成的文件跳过检查
-    - path: generated\.go
-      linters:
-        - all
-
   max-issues-per-linter: 0
   max-same-issues: 0
   new: false
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - ai-model-gateway
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
