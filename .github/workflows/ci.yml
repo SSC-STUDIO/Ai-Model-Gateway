@@ -54,6 +54,7 @@ jobs:
         run: .\scripts\check-no-todo.ps1 -RepoRoot .
 
       - name: Run tests with coverage
+        shell: bash
         run: go test -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage report
