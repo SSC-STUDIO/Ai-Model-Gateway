@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/rpc"
+	"strings"
 	"time"
 
 	"ai-model-gateway/internal/contracts"
@@ -77,6 +78,13 @@ func (r *TelemetryQueryRPC) GetTelemetry(req telemetryquery.TelemetryRequest, re
 	resp.Events = events
 	resp.Total = total
 	resp.WindowHours = windowHours
+
+	models, upstreams, _, err := r.daemon.queryStore.QueryTelemetryDistributions(req)
+	if err != nil {
+		return err
+	}
+	resp.Models = models
+	resp.Upstreams = upstreams
 	if req.Filters.SyntheticKind == "" && req.Filters.BenchmarkRunID == "" && req.Filters.BenchmarkCaseID == "" {
 		resp.Pricing = r.daemon.queryStore.QueryPricingEconomics(windowHours)
 	}
@@ -103,7 +111,7 @@ func (r *TelemetryQueryRPC) GetTimeSeries(req telemetryquery.TimeSeriesRequest, 
 
 // GetModelBenchmark returns model benchmark metrics.
 func (r *TelemetryQueryRPC) GetModelBenchmark(req telemetryquery.BenchmarkRequest, resp *telemetryquery.BenchmarkResponse) error {
-	log.Printf("[telemetryd] RPC: GetModelBenchmark window=%dh models=%v", req.WindowHours, req.Models)
+	log.Printf("[telemetryd] RPC: GetModelBenchmark window=%dh group=%s models=%v", req.WindowHours, req.Group, req.Models)
 
 	if r.daemon.queryStore == nil {
 		return fmt.Errorf("query store not initialized")
@@ -116,7 +124,17 @@ func (r *TelemetryQueryRPC) GetModelBenchmark(req telemetryquery.BenchmarkReques
 	resp.Benchmarks = benchmarks
 	resp.WindowHours = windowHours
 	resp.ModelCount = len(benchmarks)
+	resp.Group = normalizeBenchmarkResponseGroup(req.Group)
 	return nil
+}
+
+func normalizeBenchmarkResponseGroup(group string) string {
+	switch strings.ToLower(strings.TrimSpace(group)) {
+	case "upstream", "provider", "providers":
+		return "upstream"
+	default:
+		return "model"
+	}
 }
 
 // Ping checks if telemetryd is healthy.

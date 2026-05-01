@@ -2,7 +2,6 @@
 package publish
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -541,8 +540,9 @@ func randomSuffix() string {
 }
 
 func serializeSnapshot(snap *snapshot.Snapshot) ([]byte, error) {
-	// Use JSON for efficient serialization (more compact than YAML for IPC)
-	return json.Marshal(snap)
+	// Snapshot credentials are intentionally omitted from JSON for API/display
+	// safety, but the private control-plane RPC must deliver them to gatewayd.
+	return yaml.Marshal(snap)
 }
 
 func cloneRevision(rev Revision) (Revision, error) {

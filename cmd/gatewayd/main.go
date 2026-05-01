@@ -11,11 +11,14 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -29,10 +32,11 @@ import (
 	"ai-model-gateway/internal/gateway/telemetry"
 	"ai-model-gateway/internal/infra/logger"
 	pricinginfra "ai-model-gateway/internal/infra/pricing"
+	"ai-model-gateway/internal/version"
 )
 
 const (
-	Version    = "1.2.0"
+	Version    = version.ProductVersion
 	modelOwner = "ai-model-gateway"
 )
 
@@ -53,6 +57,10 @@ type Config struct {
 
 	// LogLevel is the logging level.
 	LogLevel string `json:"log_level"`
+
+	// AdminProxyURL optionally preserves legacy single-port admin URLs by
+	// forwarding /admin and /api/admin traffic to controld.
+	AdminProxyURL string `json:"admin_proxy_url"`
 
 	// HTTP timeouts (in seconds)
 	ReadTimeoutSec  int `json:"read_timeout_sec"`
@@ -346,6 +354,13 @@ func (d *Daemon) createHandler() http.Handler {
 	// Health endpoint
 	mux.HandleFunc("/-/health", d.healthHandler)
 
+	if adminProxy := d.adminProxyHandler(); adminProxy != nil {
+		mux.Handle("/admin", adminProxy)
+		mux.Handle("/admin/", adminProxy)
+		mux.Handle("/api/admin", adminProxy)
+		mux.Handle("/api/admin/", adminProxy)
+	}
+
 	// Models endpoint
 	mux.HandleFunc("/v1/models", d.modelsHandler)
 
@@ -355,6 +370,24 @@ func (d *Daemon) createHandler() http.Handler {
 	mux.HandleFunc("/v1/messages", d.messagesHandler)
 
 	return mux
+}
+
+func (d *Daemon) adminProxyHandler() http.Handler {
+	rawURL := strings.TrimSpace(d.config.AdminProxyURL)
+	if rawURL == "" {
+		return nil
+	}
+	target, err := url.Parse(rawURL)
+	if err != nil || target.Scheme == "" || target.Host == "" {
+		logger.Warn("invalid admin proxy URL", "url", rawURL, "error", err)
+		return nil
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		logger.Warn("admin proxy error", "path", r.URL.Path, "error", err)
+		http.Error(w, "admin plane unavailable", http.StatusBadGateway)
+	}
+	return proxy
 }
 
 // healthHandler handles health check requests.

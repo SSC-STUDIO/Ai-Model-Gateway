@@ -58,8 +58,13 @@ kimi_test*.json
 
 # Build artifacts
 /gateway
+/aigw
 /gatewayd
+/controld
+/telemetryd
+/gateway-cli
 /dist/
+.playwright-mcp/
 
 # IDE
 .idea/

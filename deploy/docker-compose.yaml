@@ -1,114 +1,53 @@
-# AI Model Gateway - Docker Compose Configuration
+# AI Model Gateway - unified Docker Compose runtime
 #
 # Usage:
-#   docker compose up -d
-#   docker compose logs -f
-#   docker compose down
+#   docker compose -f deploy/docker-compose.yaml up -d
+#   docker compose -f deploy/docker-compose.yaml logs -f
 
 services:
-  # Control Plane - Admin API and Configuration Management
-  controld:
+  aigw:
     build:
       context: ..
       dockerfile: Dockerfile
       target: runtime
-    command: ["/bin/controld", "-config", "/etc/ai-model-gateway/config.yaml"]
-    container_name: ai-gateway-control
+    container_name: ai-model-gateway
     restart: unless-stopped
+    command:
+      - supervise
+      - -runtime-root
+      - /opt/ai-model-gateway/.gateway-runtime
+      - -config-dir
+      - /opt/ai-model-gateway/configs/docker
+      - -bin-dir
+      - /opt/ai-model-gateway/bin
+      - -manifest
+      - /opt/ai-model-gateway/aigw-manifest.json
+      - -strict-manifest=true
     ports:
-      - "18081:18081"  # Admin API
+      - "18080:18080" # data plane
+      - "18081:18081" # admin/control plane
     volumes:
-      - ./config.yaml:/etc/ai-model-gateway/config.yaml:ro
-      - ./secrets.env:/etc/ai-model-gateway/secrets.env:ro
-      - control-data:/var/lib/ai-model-gateway
+      - ../configs:/opt/ai-model-gateway/configs:ro
+      - aigw-runtime:/opt/ai-model-gateway/.gateway-runtime
+    env_file:
+      - path: ./secrets.env
+        required: false
     environment:
       - TZ=UTC
-    env_file:
-      - ./secrets.env
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18081/api/admin/status"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18081/-/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 20s
     networks:
       - ai-gateway-net
     deploy:
       resources:
         limits:
-          memory: 512M
-        reservations:
-          memory: 128M
-
-  # Data Plane - API Gateway
-  gatewayd:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-      target: runtime
-    command: ["/bin/gatewayd", "-config", "/etc/ai-model-gateway/config.yaml"]
-    container_name: ai-gateway-data
-    restart: unless-stopped
-    ports:
-      - "18080:18080"  # Gateway API
-    volumes:
-      - ./config.yaml:/etc/ai-model-gateway/config.yaml:ro
-      - ./secrets.env:/etc/ai-model-gateway/secrets.env:ro
-    environment:
-      - TZ=UTC
-    env_file:
-      - ./secrets.env
-    depends_on:
-      controld:
-        condition: service_healthy
-      telemetryd:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18080/-/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - ai-gateway-net
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+          memory: 2G
         reservations:
           memory: 256M
-
-  # Telemetry Plane - Metrics and Events
-  telemetryd:
-    build:
-      context: ..
-      dockerfile: Dockerfile
-      target: runtime
-    command: ["/bin/telemetryd", "-config", "/etc/ai-model-gateway/config.yaml"]
-    container_name: ai-gateway-telemetry
-    restart: unless-stopped
-    volumes:
-      - ./config.yaml:/etc/ai-model-gateway/config.yaml:ro
-      - ./secrets.env:/etc/ai-model-gateway/secrets.env:ro
-      - telemetry-data:/var/lib/ai-model-gateway
-    environment:
-      - TZ=UTC
-    env_file:
-      - ./secrets.env
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18082/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - ai-gateway-net
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 128M
 
 networks:
   ai-gateway-net:
@@ -116,7 +55,5 @@ networks:
     name: ai-gateway-network
 
 volumes:
-  control-data:
-    name: ai-gateway-control-data
-  telemetry-data:
-    name: ai-gateway-telemetry-data
+  aigw-runtime:
+    name: ai-gateway-runtime

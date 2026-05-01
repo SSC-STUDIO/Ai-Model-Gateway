@@ -21,10 +21,11 @@ import (
 	"ai-model-gateway/internal/telemetry/eventlog"
 	"ai-model-gateway/internal/telemetry/project"
 	"ai-model-gateway/internal/telemetry/query"
+	"ai-model-gateway/internal/version"
 )
 
 const (
-	Version = "1.2.0"
+	Version = version.ProductVersion
 )
 
 // Config is the bootstrap configuration for telemetryd.

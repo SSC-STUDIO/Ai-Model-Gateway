@@ -1,7 +1,9 @@
 {
-  "listen": "127.0.0.1:18085",
+  "listen": "127.0.0.1:18086",
   "gateway_socket": "/run/user/1000/test-gateway-control.sock",
   "telemetry_socket": "/run/user/1000/test-telemetry-query.sock",
   "data_dir": "data/test-control",
-  "config_path": "configs/test-config.yaml"
+  "config_path": "configs/test-config.yaml",
+  "rpc_retry_count": 1,
+  "rpc_retry_interval_sec": 1
 }

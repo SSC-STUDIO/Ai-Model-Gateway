@@ -348,6 +348,99 @@ type ProviderStatus struct {
 	LastError     string   `json:"last_error,omitempty"`
 }
 
+// GetRuntimeStatus fetches v1.3 runtime status.
+func (c *ControlPlaneClient) GetRuntimeStatus(ctx context.Context) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/runtime/status", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// RuntimePreflight runs v1.3 runtime preflight checks.
+func (c *ControlPlaneClient) RuntimePreflight(ctx context.Context) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/runtime/preflight", map[string]interface{}{}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ListAudit fetches recent audit events.
+func (c *ControlPlaneClient) ListAudit(ctx context.Context, limit int) (map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/admin/audit?limit=%d", limit), nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *ControlPlaneClient) ConfigPreview(ctx context.Context, req map[string]interface{}) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/config/preview", req, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *ControlPlaneClient) ConfigDiff(ctx context.Context, req map[string]interface{}) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/config/diff", req, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *ControlPlaneClient) ProbeProvider(ctx context.Context, req map[string]interface{}) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/probe/provider", req, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *ControlPlaneClient) ProbeModel(ctx context.Context, req map[string]interface{}) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/probe/model", req, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *ControlPlaneClient) Replay(ctx context.Context, requestID string) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		if err := c.doRequest(ctx, http.MethodGet, "/api/admin/replay", nil, &resp); err != nil {
+			return nil, err
+		}
+		return resp, nil
+	}
+	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/replay", map[string]interface{}{"request_id": requestID}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *ControlPlaneClient) Diagnostics(ctx context.Context) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/diagnostics", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *ControlPlaneClient) SecretsStatus(ctx context.Context) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/secrets/status", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // GetConfig fetches current config
 func (c *ControlPlaneClient) GetConfig(ctx context.Context) (*ConfigResponse, error) {
 	var resp ConfigResponse

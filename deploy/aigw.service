@@ -1,0 +1,36 @@
+[Unit]
+Description=AI Model Gateway
+Documentation=https://github.com/your-org/ai-model-gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gateway
+Group=gateway
+WorkingDirectory=/opt/ai-model-gateway
+ExecStart=/opt/ai-model-gateway/bin/aigw supervise -runtime-root /var/lib/ai-model-gateway -config-dir /etc/ai-model-gateway -bin-dir /opt/ai-model-gateway/bin -strict-manifest=true -manifest /opt/ai-model-gateway/aigw-manifest.json
+Restart=on-failure
+RestartSec=5
+
+# Environment variables for secrets
+EnvironmentFile=/etc/ai-model-gateway/secrets.env
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ai-model-gateway /var/log/ai-model-gateway
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=3G
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aigw
+
+[Install]
+WantedBy=multi-user.target

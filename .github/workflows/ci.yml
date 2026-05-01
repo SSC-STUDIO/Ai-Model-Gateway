@@ -62,12 +62,14 @@ jobs:
           path: coverage.out
           if-no-files-found: warn
 
-      - name: Verify plane binaries build
+      - name: Verify shipped binaries build
         shell: pwsh
         run: |
+          go build ./cmd/aigw
           go build ./cmd/gatewayd
           go build ./cmd/controld
           go build ./cmd/telemetryd
+          go build ./cmd/gateway-cli
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -83,6 +85,58 @@ jobs:
           npm ci
           npm run build
           npm test
+
+      - name: Release bundle smoke
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          ADMIN_BOOTSTRAP_TOKEN: 0123456789abcdef0123456789abcdef
+          COOKIE_SIGNING_KEY: 0123456789abcdef0123456789abcdef
+          ADMIN_TOKEN: 0123456789abcdef0123456789abcdef
+          VIEWER_TOKEN: 0123456789abcdef0123456789abcdef
+          OPENAI_API_KEY: dummy
+          ANTHROPIC_API_KEY: dummy
+          STATION_A_API_KEY: dummy
+          STATION_B_API_KEY: dummy
+          KIMI_OFFICIAL_API_KEY: dummy
+        run: |
+          set -euo pipefail
+          rm -rf dist /tmp/aigw-ci-runtime
+          mkdir -p dist/bin
+          for bin in aigw gatewayd controld telemetryd gateway-cli; do
+            go build -trimpath -ldflags="-s -w" -o "dist/bin/${bin}" "./cmd/${bin}"
+          done
+          dist/bin/aigw bundle build -root dist -out dist/aigw-manifest.json
+          dist/bin/aigw bundle verify -root dist -manifest dist/aigw-manifest.json
+          created_config=0
+          if [ ! -f configs/config.yaml ]; then
+            cp configs/config.example.yaml configs/config.yaml
+            created_config=1
+          fi
+          dist/bin/aigw supervise \
+            -runtime-root /tmp/aigw-ci-runtime \
+            -config-dir configs/docker \
+            -bin-dir dist/bin \
+            -manifest dist/aigw-manifest.json \
+            -strict-manifest=true \
+            > /tmp/aigw-supervise.log 2>&1 &
+          pid=$!
+          cleanup() {
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            if [ "$created_config" = "1" ]; then
+              rm -f configs/config.yaml
+            fi
+            cat /tmp/aigw-supervise.log
+          }
+          trap cleanup EXIT
+          for _ in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18081/-/health >/dev/null && curl -fsS http://127.0.0.1:18080/-/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
 
       - name: Smoke test direct three-plane startup
         if: runner.os == 'Windows'
@@ -106,10 +160,12 @@ jobs:
 
       - name: Build current Linux runtime bundle
         run: |
-          mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o ./dist/gatewayd ./cmd/gatewayd
-          go build -trimpath -ldflags="-s -w" -o ./dist/controld ./cmd/controld
-          go build -trimpath -ldflags="-s -w" -o ./dist/telemetryd ./cmd/telemetryd
+          mkdir -p dist/bin
+          for bin in aigw gatewayd controld telemetryd gateway-cli; do
+            go build -trimpath -ldflags="-s -w" -o "./dist/bin/${bin}" "./cmd/${bin}"
+          done
+          dist/bin/aigw bundle build -root dist -out dist/aigw-manifest.json
+          dist/bin/aigw bundle verify -root dist -manifest dist/aigw-manifest.json
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -136,10 +192,12 @@ jobs:
       - name: Build current Windows runtime bundle
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          go build -trimpath -ldflags="-s -w" -o .\dist\gatewayd.exe .\cmd\gatewayd
-          go build -trimpath -ldflags="-s -w" -o .\dist\controld.exe .\cmd\controld
-          go build -trimpath -ldflags="-s -w" -o .\dist\telemetryd.exe .\cmd\telemetryd
+          New-Item -ItemType Directory -Force -Path dist\bin | Out-Null
+          foreach ($bin in @("aigw", "gatewayd", "controld", "telemetryd", "gateway-cli")) {
+            go build -trimpath -ldflags="-s -w" -o ".\dist\bin\$bin.exe" ".\cmd\$bin"
+          }
+          .\dist\bin\aigw.exe bundle build -root dist -out dist\aigw-manifest.json
+          .\dist\bin\aigw.exe bundle verify -root dist -manifest dist\aigw-manifest.json
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -147,3 +205,15 @@ jobs:
           name: ai-model-gateway-windows-amd64
           path: dist/
           if-no-files-found: error
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build runtime image
+        run: docker build --target runtime -t ai-model-gateway:ci .

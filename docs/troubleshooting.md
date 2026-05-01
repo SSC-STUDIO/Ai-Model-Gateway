@@ -1,10 +1,13 @@
 # 故障排查指南
 
-当前运行模型只有三个 daemon，没有 `gateway` launcher。排障时请分别检查：
+当前运行模型默认是 `aigw supervise`，内部仍包含三个 daemon。排障时先检查 `aigw`，再分别检查：
 
+- `aigw`
 - `gatewayd`
 - `controld`
 - `telemetryd`
+
+本机特别注意：如果 `127.0.0.1:18080` 已经由 live legacy monolith 服务占用，开发三面 runtime 的 `gatewayd` 不会正常绑定该端口。先确认当前服务归属，再决定停止 live 服务、改端口，或只做离线构建测试。
 
 ## 1. 数据面健康检查失败
 
@@ -21,6 +24,7 @@ curl http://127.0.0.1:18080/-/health
 ```bash
 # Linux
 ps aux | grep gatewayd
+ps aux | grep aigw
 ss -tlnp | grep 18080
 
 # Windows
@@ -31,8 +35,10 @@ netstat -ano | findstr 18080
 常见原因：
 
 - `gatewayd -listen` 与预期端口不一致
+- live legacy monolith 已占用 `127.0.0.1:18080`
 - `controld` 没有成功连接 `gatewayd`
 - 还没有 active snapshot 被发布到 `gatewayd`
+- `aigw supervise` 因 manifest 或 daemon 版本混装拒绝启动
 
 ## 2. 控制面无法访问
 
@@ -67,7 +73,7 @@ netstat -ano | findstr 18081
 症状：
 
 - `/admin` 中 overview / telemetry / timeseries / benchmark 没有数据
-- `/api/admin/status` 中 `telemetry_status` 不是 `connected`
+- `/api/admin/runtime/status` 中 `telemetry_status` 不是 `connected`
 
 排查：
 
@@ -124,7 +130,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 ## 6. 日志与运行目录
 
-仓库不再提供 `gateway.log` 这一类单进程日志视角。建议分别收集三个 daemon 的 stdout/stderr。
+`aigw supervise` 会把内部 daemon 日志统一写到运行目录：
 
 如果你采用共享运行目录，至少应检查：
 
@@ -132,31 +138,34 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 .gateway-runtime/
 ├── telemetry/
 ├── gateway/
-└── control/
+├── control/
+└── logs/
 ```
 
 重点文件：
 
 - `control/publisher-state.db`
 - telemetry 数据目录中的 SQLite 文件
+- `logs/gatewayd.log`、`logs/controld.log`、`logs/telemetryd.log`
+- `aigw` 自身输出通常在 systemd journal、Windows service wrapper 日志或 `deploy/start.sh` 的 `logs/aigw.log`
 
 ## 7. Windows 服务
 
-仓库已经移除单一 `AIModelGateway` 服务包装器。请使用：
+仓库默认提供一个 `aigw.service`，只包装 `aigw supervise`。Windows 请使用：
 
 - NSSM
 - 自定义 Windows Service Wrapper
 - Task Scheduler
 - 容器/虚拟机编排
 
-分别管理 `gatewayd.exe`、`controld.exe`、`telemetryd.exe`。
+包装 `aigw.exe supervise`。分别管理 `gatewayd.exe`、`controld.exe`、`telemetryd.exe` 只建议用于高级调试。
 
 ## 获取帮助
 
 提交问题时请附上：
 
-- 三个 daemon 的启动命令
-- 三个 daemon 的 stdout/stderr
+- `aigw supervise` 的启动命令
+- `aigw logs` 输出或 `.gateway-runtime/logs/` 内容
 - `config.yaml`（隐藏敏感信息）
 - `publisher-state.db` 是否存在
 - 使用的 socket / named pipe 名称

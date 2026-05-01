@@ -1,29 +1,43 @@
 # 安装指南
 
-本仓库当前只交付三个 daemon：
+本仓库当前交付一个本地运维入口和三个内部 daemon：
 
+- `aigw`
 - `gatewayd`
 - `controld`
 - `telemetryd`
 
-不再提供 `gateway` / `gateway.exe` launcher。
+不再提供旧的 `gateway` / `gateway.exe` launcher。默认启动方式是 `aigw supervise`。
+
+本机开发注意：如果 live legacy monolith 已经监听 `127.0.0.1:18080`，不要同时启动开发三面 runtime 绑定同一端口。先停掉其中一个，或改用测试端口。
 
 ## 构建
 
 Windows:
 
 ```powershell
+go build -o .\dist\aigw.exe .\cmd\aigw
 go build -o .\dist\gatewayd.exe .\cmd\gatewayd
 go build -o .\dist\controld.exe .\cmd\controld
 go build -o .\dist\telemetryd.exe .\cmd\telemetryd
+go build -o .\dist\gateway-cli.exe .\cmd\gateway-cli
 ```
 
 Linux/macOS:
 
 ```bash
+go build -o ./dist/aigw ./cmd/aigw
 go build -o ./dist/gatewayd ./cmd/gatewayd
 go build -o ./dist/controld ./cmd/controld
 go build -o ./dist/telemetryd ./cmd/telemetryd
+go build -o ./dist/gateway-cli ./cmd/gateway-cli
+```
+
+发布/部署前生成 manifest：
+
+```bash
+./dist/aigw bundle build -root . -out aigw-manifest.json
+./dist/aigw bundle verify -root . -manifest aigw-manifest.json
 ```
 
 ## 配置
@@ -67,24 +81,7 @@ Linux/macOS:
 
 ```bash
 mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
-
-./dist/telemetryd \
-  -ingest ./.gateway-runtime/telemetry-ingest.sock \
-  -query ./.gateway-runtime/telemetry-query.sock \
-  -data-dir ./.gateway-runtime/telemetry
-
-./dist/gatewayd \
-  -listen 127.0.0.1:18080 \
-  -control ./.gateway-runtime/gateway-control.sock \
-  -telemetry ./.gateway-runtime/telemetry-ingest.sock \
-  -data-dir ./.gateway-runtime/gateway
-
-./dist/controld \
-  -listen 127.0.0.1:18081 \
-  -gateway ./.gateway-runtime/gateway-control.sock \
-  -telemetry ./.gateway-runtime/telemetry-query.sock \
-  -data-dir ./.gateway-runtime/control \
-  -authoring-config ./configs/config.yaml
+./dist/aigw supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir ./dist
 ```
 
 Windows PowerShell:
@@ -96,30 +93,7 @@ New-Item -ItemType Directory -Force -Path `
   (Join-Path $runtimeRoot "gateway"), `
   (Join-Path $runtimeRoot "control") | Out-Null
 
-$gatewayPipe = "aigw-gateway-control-local"
-$ingestPipe = "aigw-telemetry-ingest-local"
-$queryPipe = "aigw-telemetry-query-local"
-
-Start-Process .\dist\telemetryd.exe -ArgumentList @(
-  "-ingest", $ingestPipe,
-  "-query", $queryPipe,
-  "-data-dir", (Join-Path $runtimeRoot "telemetry")
-)
-
-Start-Process .\dist\gatewayd.exe -ArgumentList @(
-  "-listen", "127.0.0.1:18080",
-  "-control", $gatewayPipe,
-  "-telemetry", $ingestPipe,
-  "-data-dir", (Join-Path $runtimeRoot "gateway")
-)
-
-Start-Process .\dist\controld.exe -ArgumentList @(
-  "-listen", "127.0.0.1:18081",
-  "-gateway", $gatewayPipe,
-  "-telemetry", $queryPipe,
-  "-data-dir", (Join-Path $runtimeRoot "control"),
-  "-authoring-config", ".\configs\config.yaml"
-)
+.\dist\aigw.exe supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir .\dist
 ```
 
 ## 验证
@@ -128,8 +102,9 @@ Start-Process .\dist\controld.exe -ArgumentList @(
 curl.exe http://127.0.0.1:18080/-/health
 curl.exe http://127.0.0.1:18080/v1/models
 curl.exe http://127.0.0.1:18081/admin
-curl.exe http://127.0.0.1:18081/api/admin/status
-curl.exe http://127.0.0.1:18081/api/admin/config/history
+curl.exe http://127.0.0.1:18081/-/health
+curl.exe -H "Authorization: Bearer $env:ADMIN_TOKEN" http://127.0.0.1:18081/api/admin/runtime/status
+curl.exe -H "Authorization: Bearer $env:ADMIN_TOKEN" http://127.0.0.1:18081/api/admin/config/history
 ```
 
 Windows 下可以直接运行：
@@ -143,4 +118,4 @@ Windows 下可以直接运行：
 - `publisher-state.db` 位于 `controld` 的 `-data-dir`
 - 当 `publisher-state.db` 不存在时，`controld` 会从 `-authoring-config` 种出初始 revision
 - 当 `publisher-state.db` 已存在时，`controld` 会优先恢复已有 revision/history
-- 仓库不再提供单一 Windows 服务。请用你自己的 supervisor 管理三个 daemon
+- 生产服务默认只包装 `aigw supervise`。单独管理 daemon 仅作为高级调试模式。

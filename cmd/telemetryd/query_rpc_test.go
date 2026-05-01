@@ -117,6 +117,12 @@ INSERT INTO request_facts (
 	if telemetryResp.Events[0].EventID != "evt-rpc-2" {
 		t.Fatalf("expected most recent event first, got %+v", telemetryResp.Events)
 	}
+	if len(telemetryResp.Models) != 1 || telemetryResp.Models[0].Value != "gpt-4o" || telemetryResp.Models[0].Requests != 2 {
+		t.Fatalf("unexpected model distribution: %+v", telemetryResp.Models)
+	}
+	if len(telemetryResp.Upstreams) != 1 || telemetryResp.Upstreams[0].Value != "openai" || telemetryResp.Upstreams[0].Failures != 1 {
+		t.Fatalf("unexpected upstream distribution: %+v", telemetryResp.Upstreams)
+	}
 
 	var timeSeries telemetryquery.TimeSeriesResponse
 	if err := rpc.GetTimeSeries(telemetryquery.TimeSeriesRequest{

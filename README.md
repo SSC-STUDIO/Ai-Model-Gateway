@@ -1,10 +1,13 @@
 [![CI](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](VERSION)
 
 # AI Model Gateway
 
-仓库现在只保留三面运行时：
+仓库现在采用单一运维入口加三面内部运行时：
+
+- `aigw`
+  本地运维入口，负责 supervise、doctor/status/logs/backup、bundle verify、update/rollback
 
 - `gatewayd`
   数据面，负责 `/-/health`、`/v1/models`、`/v1/chat/completions`
@@ -13,7 +16,7 @@
 - `telemetryd`
   telemetry 面，负责事件落盘、投影、查询 RPC
 
-`gateway` / `gateway.exe` 已经移除。仓库不再提供单一 launcher 或单一 Windows 服务包装器，运维必须直接管理三个 daemon。
+`gateway` / `gateway.exe` 已经移除。生产运维默认只管理 `aigw supervise`，三个 daemon 保留为内部进程边界和高级调试入口。
 
 ## 当前运行模型
 
@@ -28,22 +31,35 @@
   - telemetry 数据目录
   - control 数据目录中的 `publisher-state.db`
 
+本机开发注意：这台工作站的 live legacy monolith 可能已经占用 `127.0.0.1:18080`。除非明确要切换运行时，不要在 live 服务运行时再启动开发三面 runtime 抢占同一个端口。
+
 ## 构建
 
 Windows:
 
 ```powershell
+go build -o .\dist\aigw.exe .\cmd\aigw
 go build -o .\dist\gatewayd.exe .\cmd\gatewayd
 go build -o .\dist\controld.exe .\cmd\controld
 go build -o .\dist\telemetryd.exe .\cmd\telemetryd
+go build -o .\dist\gateway-cli.exe .\cmd\gateway-cli
 ```
 
 Linux/macOS:
 
 ```bash
+go build -o ./dist/aigw ./cmd/aigw
 go build -o ./dist/gatewayd ./cmd/gatewayd
 go build -o ./dist/controld ./cmd/controld
 go build -o ./dist/telemetryd ./cmd/telemetryd
+go build -o ./dist/gateway-cli ./cmd/gateway-cli
+```
+
+正式发布包应生成并校验 manifest：
+
+```bash
+./dist/aigw bundle build -root . -out aigw-manifest.json
+./dist/aigw bundle verify -root . -manifest aigw-manifest.json
 ```
 
 ## 快速开始
@@ -60,65 +76,19 @@ $env:VIEWER_TOKEN = "<viewer token>"
 
 配置加载器会在校验前展开 `config.yaml` 里的 `$VAR` / `${VAR}`。
 
-2. 启动三个 daemon。
+2. 启动统一 supervisor。
 
 Linux/macOS:
 
 ```bash
 mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
-
-./dist/telemetryd \
-  -ingest ./.gateway-runtime/telemetry-ingest.sock \
-  -query ./.gateway-runtime/telemetry-query.sock \
-  -data-dir ./.gateway-runtime/telemetry &
-
-./dist/gatewayd \
-  -listen 127.0.0.1:18080 \
-  -control ./.gateway-runtime/gateway-control.sock \
-  -telemetry ./.gateway-runtime/telemetry-ingest.sock \
-  -data-dir ./.gateway-runtime/gateway &
-
-./dist/controld \
-  -listen 127.0.0.1:18081 \
-  -gateway ./.gateway-runtime/gateway-control.sock \
-  -telemetry ./.gateway-runtime/telemetry-query.sock \
-  -data-dir ./.gateway-runtime/control \
-  -authoring-config ./configs/config.yaml &
+./dist/aigw supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir ./dist
 ```
 
 Windows PowerShell:
 
 ```powershell
-$runtimeRoot = Join-Path $PWD ".gateway-runtime"
-New-Item -ItemType Directory -Force -Path `
-  (Join-Path $runtimeRoot "telemetry"), `
-  (Join-Path $runtimeRoot "gateway"), `
-  (Join-Path $runtimeRoot "control") | Out-Null
-
-$gatewayPipe = "aigw-gateway-control-local"
-$ingestPipe = "aigw-telemetry-ingest-local"
-$queryPipe = "aigw-telemetry-query-local"
-
-Start-Process .\dist\telemetryd.exe -ArgumentList @(
-  "-ingest", $ingestPipe,
-  "-query", $queryPipe,
-  "-data-dir", (Join-Path $runtimeRoot "telemetry")
-)
-
-Start-Process .\dist\gatewayd.exe -ArgumentList @(
-  "-listen", "127.0.0.1:18080",
-  "-control", $gatewayPipe,
-  "-telemetry", $ingestPipe,
-  "-data-dir", (Join-Path $runtimeRoot "gateway")
-)
-
-Start-Process .\dist\controld.exe -ArgumentList @(
-  "-listen", "127.0.0.1:18081",
-  "-gateway", $gatewayPipe,
-  "-telemetry", $queryPipe,
-  "-data-dir", (Join-Path $runtimeRoot "control"),
-  "-authoring-config", ".\configs\config.yaml"
-)
+.\dist\aigw.exe supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir .\dist
 ```
 
 3. 验证：
@@ -127,7 +97,8 @@ Start-Process .\dist\controld.exe -ArgumentList @(
 curl.exe http://127.0.0.1:18080/-/health
 curl.exe http://127.0.0.1:18080/v1/models
 curl.exe http://127.0.0.1:18081/admin
-curl.exe http://127.0.0.1:18081/api/admin/status
+curl.exe http://127.0.0.1:18081/-/health
+curl.exe -H "Authorization: Bearer $env:ADMIN_TOKEN" http://127.0.0.1:18081/api/admin/runtime/status
 ```
 
 Windows 下推荐直接运行：
@@ -136,7 +107,17 @@ Windows 下推荐直接运行：
 .\scripts\verify-default-runtime.ps1
 ```
 
-这个脚本现在会直接构建并启动 `telemetryd`、`gatewayd`、`controld` 三个进程。
+这个脚本会验证默认三面 runtime。部署脚本 `deploy/start.sh` 默认构建并启动 `aigw supervise`。
+
+## 管理界面截图
+
+### Overview
+
+![Admin overview](docs/screenshots/admin-overview.png)
+
+### Config
+
+![Admin config](docs/assets/admin-settings.png)
 
 ## 端口与接口
 
@@ -165,11 +146,22 @@ Windows 下推荐直接运行：
 - `GET /api/admin/timeseries`
 - `GET /api/admin/benchmark`
 - `GET /api/admin/status`
+- `GET /api/admin/runtime/status`
+- `POST /api/admin/runtime/preflight`
+- `GET /api/admin/audit`
+- `POST /api/admin/config/preview`
+- `POST /api/admin/config/diff`
+- `POST /api/admin/probe/provider`
+- `POST /api/admin/probe/model`
+- `GET|POST /api/admin/replay`
+- `GET /api/admin/diagnostics`
+- `GET /api/admin/secrets/status`
+- `GET /metrics`
 - `POST /api/admin/login`
 - `POST /api/admin/logout`
 - `GET /api/admin/session`
 
-`/admin` 当前正式支持的页面范围是 overview、telemetry、timeseries、history、benchmark。旧单体里的完整 config 编辑、logs、probe、audit、diff 不再属于默认交付面。
+`/admin` 默认提供 overview、telemetry、pricing、logs、benchmark、config，并新增 Runtime、Audit、Probe、Diagnostics 运维入口。
 
 ## CLI 工具
 
@@ -186,7 +178,16 @@ go build -o ./dist/gateway-cli ./cmd/gateway-cli
 ```bash
 # 配置管理
 ./dist/gateway-cli config show                    # 显示当前配置
-./dist/gateway-cli config show -format json       # JSON 格式输出
+./dist/gateway-cli -format json config show       # JSON 格式输出
+./dist/gateway-cli config preview configs/config.yaml
+./dist/gateway-cli config diff --file configs/config.yaml
+./dist/gateway-cli runtime status
+./dist/gateway-cli runtime preflight
+./dist/gateway-cli audit 50
+./dist/gateway-cli probe model gpt-4 openai-demo
+./dist/gateway-cli replay list
+./dist/gateway-cli diagnostics
+./dist/gateway-cli secrets check
 
 # Provider 管理
 ./dist/gateway-cli provider list                  # 列出所有 providers
@@ -194,7 +195,7 @@ go build -o ./dist/gateway-cli ./cmd/gateway-cli
 
 # 遥测查询
 ./dist/gateway-cli telemetry events               # 查询最近 24 小时事件
-./dist/gateway-cli telemetry events -format json  # JSON 格式输出
+./dist/gateway-cli -format json telemetry events  # JSON 格式输出
 
 # 发布管理
 ./dist/gateway-cli publish history                # 查看配置发布历史
@@ -212,7 +213,7 @@ go build -o ./dist/gateway-cli ./cmd/gateway-cli
 
 - `-server url` - 控制面 URL（默认：http://127.0.0.1:18081）
 - `-token token` - Admin token（或设置 ADMIN_TOKEN 环境变量）
-- `-format text|json` - 输出格式（默认：text）
+- `-format text|json|csv` - 输出格式（默认：text；CSV 仅用于 benchmark telemetry 类命令）
 
 ### 环境变量
 
@@ -239,13 +240,10 @@ export ADMIN_TOKEN="your-admin-token"
 
 ## 运维约束
 
-- 仓库不再提供 `gateway validate`、`gateway health`、`gateway status`、`gateway install` 这类单一入口命令。
-- 仓库不再提供单一 Windows 服务 `AIModelGateway`。
-- 请使用你自己的 supervisor / service manager：
-  - systemd
-  - NSSM / Windows Service Wrapper
-  - Docker Compose / Kubernetes
-  - 自定义守护脚本
+- 仓库不再提供 `gateway validate`、`gateway health`、`gateway status`、`gateway install` 这类旧 launcher 命令。
+- 生产服务默认只包装 `aigw supervise`。Linux 使用 `deploy/aigw.service` 或 `aigw service print` 生成的 unit；Windows 使用 NSSM / Windows Service Wrapper 包装 `aigw.exe supervise`。
+- 不要在正常升级中单独替换 `gatewayd`、`controld` 或 `telemetryd`。发布包必须通过同一个 manifest 校验，混装版本会被 `aigw` 拒绝。
+- 单独运行 daemon 只作为高级调试模式。
 
 ## 仓库布局
 

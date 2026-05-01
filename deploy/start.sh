@@ -6,9 +6,9 @@
 #   ./start.sh [command] [options]
 #
 # Commands:
-#   start       Start all services
-#   stop        Stop all services
-#   restart     Restart all services
+#   start       Start unified aigw supervisor
+#   stop        Stop unified aigw supervisor
+#   restart     Restart unified aigw supervisor
 #   status      Show service status
 #   build       Build binaries
 #   logs        Show logs (follow mode)
@@ -16,9 +16,6 @@
 #
 # Environment:
 #   AUTHORING_CONFIG   Path to operator authoring YAML (default: ./configs/config.yaml)
-#   GATEWAYD_CONFIG    Path to gatewayd bootstrap JSON (default: ./configs/gatewayd.json)
-#   CONTROLD_CONFIG    Path to controld bootstrap JSON (default: ./configs/controld.json)
-#   TELEMETRYD_CONFIG  Path to telemetryd bootstrap JSON (default: ./configs/telemetryd.json)
 #   BIN_DIR        Path to binary directory (default: ./bin)
 #   LOG_DIR        Path to log directory (default: ./logs)
 
@@ -27,10 +24,8 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-AUTHORING_CONFIG="${AUTHORING_CONFIG:-$PROJECT_ROOT/configs/config.yaml}"
-GATEWAYD_CONFIG="${GATEWAYD_CONFIG:-$PROJECT_ROOT/configs/gatewayd.json}"
-CONTROLD_CONFIG="${CONTROLD_CONFIG:-$PROJECT_ROOT/configs/controld.json}"
-TELEMETRYD_CONFIG="${TELEMETRYD_CONFIG:-$PROJECT_ROOT/configs/telemetryd.json}"
+CONFIG_DIR="${CONFIG_DIR:-$PROJECT_ROOT/configs}"
+RUNTIME_ROOT="${RUNTIME_ROOT:-$PROJECT_ROOT/.gateway-runtime}"
 BIN_DIR="${BIN_DIR:-$PROJECT_ROOT/bin}"
 LOG_DIR="${LOG_DIR:-$PROJECT_ROOT/logs}"
 PID_DIR="$PROJECT_ROOT/.run"
@@ -65,24 +60,19 @@ ensure_directories() {
         "$BIN_DIR" \
         "$LOG_DIR" \
         "$PID_DIR" \
-        "$PROJECT_ROOT/.gateway-runtime/telemetry" \
-        "$PROJECT_ROOT/.gateway-runtime/gateway" \
-        "$PROJECT_ROOT/.gateway-runtime/control"
+        "$RUNTIME_ROOT/telemetry" \
+        "$RUNTIME_ROOT/gateway" \
+        "$RUNTIME_ROOT/control"
 }
 
 build_binaries() {
     log_info "Building binaries..."
     cd "$PROJECT_ROOT"
 
-    # Build all daemons
-    for daemon in gatewayd controld telemetryd; do
-        log_info "Building $daemon..."
-        go build -o "$BIN_DIR/$daemon" "./cmd/$daemon"
+    for binary in aigw gatewayd controld telemetryd gateway-cli; do
+        log_info "Building $binary..."
+        go build -o "$BIN_DIR/$binary" "./cmd/$binary"
     done
-
-    # Build CLI
-    log_info "Building gateway-cli..."
-    go build -o "$BIN_DIR/gateway-cli" "./cmd/gateway-cli"
 
     log_info "Build complete"
 }
@@ -104,14 +94,8 @@ start_service() {
     local log_file="$LOG_DIR/$name.log"
     local args=()
     case "$name" in
-        telemetryd)
-            args=(-config "$TELEMETRYD_CONFIG")
-            ;;
-        gatewayd)
-            args=(-config "$GATEWAYD_CONFIG")
-            ;;
-        controld)
-            args=(-config "$CONTROLD_CONFIG" -authoring-config "$AUTHORING_CONFIG")
+        aigw)
+            args=(supervise -runtime-root "$RUNTIME_ROOT" -config-dir "$CONFIG_DIR" -bin-dir "$BIN_DIR")
             ;;
         *)
             log_error "Unknown service: $name"
@@ -218,16 +202,12 @@ show_logs() {
 case "${1:-help}" in
     start)
         ensure_directories
-        start_service telemetryd
-        start_service gatewayd
-        start_service controld
-        log_info "All services started"
+        start_service aigw
+        log_info "AI Model Gateway started"
         ;;
     stop)
-        stop_service controld
-        stop_service gatewayd
-        stop_service telemetryd
-        log_info "All services stopped"
+        stop_service aigw
+        log_info "AI Model Gateway stopped"
         ;;
     restart)
         $0 stop
@@ -236,9 +216,7 @@ case "${1:-help}" in
         ;;
     status)
         status_code=0
-        show_status telemetryd || status_code=1
-        show_status gatewayd || status_code=1
-        show_status controld || status_code=1
+        show_status aigw || status_code=1
         exit "$status_code"
         ;;
     build)
@@ -257,19 +235,17 @@ case "${1:-help}" in
         echo "Usage: $0 <command> [options]"
         echo ""
         echo "Commands:"
-        echo "  start       Start all services"
-        echo "  stop        Stop all services"
-        echo "  restart     Restart all services"
+        echo "  start       Start aigw supervisor"
+        echo "  stop        Stop aigw supervisor"
+        echo "  restart     Restart aigw supervisor"
         echo "  status      Show service status"
         echo "  build       Build binaries"
         echo "  logs [svc]  Show logs (optional: service name)"
         echo "  health      Run health check"
         echo ""
         echo "Environment Variables:"
-        echo "  AUTHORING_CONFIG   Operator YAML path (default: ./configs/config.yaml)"
-        echo "  GATEWAYD_CONFIG    gatewayd bootstrap JSON (default: ./configs/gatewayd.json)"
-        echo "  CONTROLD_CONFIG    controld bootstrap JSON (default: ./configs/controld.json)"
-        echo "  TELEMETRYD_CONFIG  telemetryd bootstrap JSON (default: ./configs/telemetryd.json)"
+        echo "  CONFIG_DIR    Config directory (default: ./configs)"
+        echo "  RUNTIME_ROOT  Runtime directory (default: ./.gateway-runtime)"
         echo "  BIN_DIR       Binary directory (default: ./bin)"
         echo "  LOG_DIR       Log directory (default: ./logs)"
         exit 1

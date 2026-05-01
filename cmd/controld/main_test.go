@@ -14,6 +14,8 @@ import (
 	"ai-model-gateway/internal/control/compiler"
 	"ai-model-gateway/internal/control/publish"
 	"ai-model-gateway/internal/gateway/snapshot"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoadConfigDefaultsToOperatorYAML(t *testing.T) {
@@ -98,8 +100,8 @@ func TestLoadInitialRevisionIsDeterministicAndSeedPublishesCompiledConfig(t *tes
 	}
 
 	var published snapshot.Snapshot
-	if err := json.Unmarshal(req.SnapshotBytes, &published); err != nil {
-		t.Fatalf("json.Unmarshal(snapshot) error = %v", err)
+	if err := yaml.Unmarshal(req.SnapshotBytes, &published); err != nil {
+		t.Fatalf("yaml.Unmarshal(snapshot) error = %v", err)
 	}
 	if published.Ingress.Listen != "127.0.0.1:19090" {
 		t.Fatalf("snapshot.Ingress.Listen = %q, want %q", published.Ingress.Listen, "127.0.0.1:19090")
@@ -596,8 +598,8 @@ providers:
 	}
 
 	var published snapshot.Snapshot
-	if err := json.Unmarshal(gateway.requests[0].SnapshotBytes, &published); err != nil {
-		t.Fatalf("json.Unmarshal(snapshot) error = %v", err)
+	if err := yaml.Unmarshal(gateway.requests[0].SnapshotBytes, &published); err != nil {
+		t.Fatalf("yaml.Unmarshal(snapshot) error = %v", err)
 	}
 	if published.Ingress.Listen != "127.0.0.1:29090" {
 		t.Fatalf("snapshot.Ingress.Listen = %q, want %q", published.Ingress.Listen, "127.0.0.1:29090")

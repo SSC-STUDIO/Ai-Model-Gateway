@@ -111,6 +111,7 @@ func (c *Compiler) CompileFromConfig(cfg interface{}) (*snapshot.Snapshot, error
 		},
 		Providers:     make([]snapshot.ProviderSnapshot, 0, len(normalized.Providers)),
 		RoutingPolicy: compileRoutingPolicy(normalized.Routing),
+		CompatPolicy:  compileCompatPolicy(normalized.Compat),
 		TelemetryEmit: snapshot.TelemetryEmitConfig{
 			Channel: telemetryChannel,
 			Batching: snapshot.BatchingConfig{
@@ -136,6 +137,25 @@ func (c *Compiler) CompileFromConfig(cfg interface{}) (*snapshot.Snapshot, error
 		return nil, err
 	}
 	return snap, nil
+}
+
+func compileCompatPolicy(cfg core.CompatConfig) snapshot.CompatPolicy {
+	rules := make([]snapshot.BridgeRule, 0, len(cfg.Bridge.Rules))
+	for _, rule := range cfg.Bridge.Rules {
+		from := strings.TrimSpace(rule.From)
+		to := strings.TrimSpace(rule.To)
+		if from == "" || to == "" {
+			continue
+		}
+		rules = append(rules, snapshot.BridgeRule{From: from, To: to})
+	}
+	return snapshot.CompatPolicy{
+		Bridge: snapshot.BridgePolicy{
+			Enabled:           cfg.Bridge.Enabled,
+			Rules:             rules,
+			ExcludeUserAgents: append([]string(nil), cfg.Bridge.ExcludeUserAgents...),
+		},
+	}
 }
 
 // Validate validates a snapshot.

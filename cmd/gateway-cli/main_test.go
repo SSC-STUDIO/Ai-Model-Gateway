@@ -1,6 +1,189 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestParseConfigDiffArgsWithFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("server:\n  listen: :18080\nproviders: []\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	req, err := parseConfigDiffArgs([]string{"--from", "rev_a", "--file", path})
+	if err != nil {
+		t.Fatalf("parseConfigDiffArgs() error = %v", err)
+	}
+	if req["from_revision_id"] != "rev_a" {
+		t.Fatalf("from_revision_id = %#v", req["from_revision_id"])
+	}
+	if req["config"] == nil {
+		t.Fatal("config payload is nil")
+	}
+}
+
+func TestParseConfigDiffArgsRequiresTarget(t *testing.T) {
+	if _, err := parseConfigDiffArgs([]string{"--from", "rev_a"}); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestAuditCommandUsesPositionalLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/audit" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("limit"); got != "7" {
+			t.Fatalf("limit = %q, want 7", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"events": []any{}, "count": 0})
+	}))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := runCLI([]string{"gateway-cli", "-server", server.URL, "audit", "7"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI(audit) code = %d stderr=%s", code, stderr.String())
+	}
+}
+
+func TestGenericCommandsUseTextOutput(t *testing.T) {
+	cases := []struct {
+		name       string
+		args       []string
+		method     string
+		pathPrefix string
+		response   map[string]any
+		want       string
+	}{
+		{
+			name:       "runtime status",
+			args:       []string{"runtime", "status"},
+			method:     http.MethodGet,
+			pathPrefix: "/api/admin/runtime/status",
+			response:   map[string]any{"status": "ok", "bundle_version": "1.3.0"},
+			want:       "status: ok",
+		},
+		{
+			name:       "runtime preflight",
+			args:       []string{"runtime", "preflight"},
+			method:     http.MethodPost,
+			pathPrefix: "/api/admin/runtime/preflight",
+			response:   map[string]any{"ok": true, "checks": []any{}},
+			want:       "ok: true",
+		},
+		{
+			name:       "audit",
+			args:       []string{"audit", "3"},
+			method:     http.MethodGet,
+			pathPrefix: "/api/admin/audit",
+			response:   map[string]any{"count": 0, "events": []any{}},
+			want:       "count: 0",
+		},
+		{
+			name:       "probe provider",
+			args:       []string{"probe", "provider", "station-a"},
+			method:     http.MethodPost,
+			pathPrefix: "/api/admin/probe/provider",
+			response:   map[string]any{"provider_id": "station-a", "healthy": true},
+			want:       "healthy: true",
+		},
+		{
+			name:       "diagnostics",
+			args:       []string{"diagnostics"},
+			method:     http.MethodGet,
+			pathPrefix: "/api/admin/diagnostics",
+			response:   map[string]any{"redacted": true, "items": []any{"runtime"}},
+			want:       "redacted: true",
+		},
+		{
+			name:       "secrets",
+			args:       []string{"secrets", "check"},
+			method:     http.MethodGet,
+			pathPrefix: "/api/admin/secrets/status",
+			response:   map[string]any{"ok": true, "missing": []any{}},
+			want:       "ok: true",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != tc.method {
+					t.Fatalf("method = %s, want %s", r.Method, tc.method)
+				}
+				if !strings.HasPrefix(r.URL.Path, tc.pathPrefix) {
+					t.Fatalf("path = %s, want prefix %s", r.URL.Path, tc.pathPrefix)
+				}
+				_ = json.NewEncoder(w).Encode(tc.response)
+			}))
+			defer server.Close()
+
+			args := append([]string{"gateway-cli", "-server", server.URL, "-format", "text"}, tc.args...)
+			var stdout, stderr bytes.Buffer
+			code := runCLI(args, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("runCLI(%s) code = %d stderr=%s", tc.name, code, stderr.String())
+			}
+			out := strings.TrimSpace(stdout.String())
+			if strings.HasPrefix(out, "{") {
+				t.Fatalf("text output looks like JSON:\n%s", out)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Fatalf("expected output to contain %q, got:\n%s", tc.want, stdout.String())
+			}
+		})
+	}
+}
+
+func TestGenericCommandsUseJSONOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/runtime/status" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+	}))
+	defer server.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := runCLI([]string{"gateway-cli", "-server", server.URL, "-format", "json", "runtime", "status"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runCLI(runtime status json) code = %d stderr=%s", code, stderr.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout.String())
+	}
+	if payload["status"] != "ok" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestInvalidFormatRejected(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runCLI([]string{"gateway-cli", "-format", "xml", "runtime", "status"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("runCLI invalid format code = 0 stdout=%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unsupported format: xml") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestCSVFormatScope(t *testing.T) {
+	if err := validateCLIFormat("csv", []string{"benchmark", "telemetry", "run-1"}); err != nil {
+		t.Fatalf("benchmark telemetry csv rejected: %v", err)
+	}
+	if err := validateCLIFormat("csv", []string{"runtime", "status"}); err == nil {
+		t.Fatal("runtime csv accepted, want error")
+	}
+}
 
 func TestParseBenchmarkTelemetryArgsDefaults(t *testing.T) {
 	runID, query, err := parseBenchmarkTelemetryArgs([]string{"run-1"})

@@ -3,5 +3,6 @@
   "control_socket": ".gateway-runtime/gateway-control.sock",
   "telemetry_socket": ".gateway-runtime/telemetry-ingest.sock",
   "data_dir": ".gateway-runtime/gateway",
-  "log_level": "info"
+  "log_level": "info",
+  "admin_proxy_url": "http://127.0.0.1:18081"
 }

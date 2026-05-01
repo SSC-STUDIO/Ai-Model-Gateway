@@ -95,6 +95,31 @@ func TestModelsHandlerReturnsOpenAIStyleModelObjects(t *testing.T) {
 	}
 }
 
+func TestCreateHandlerProxiesLegacyAdminPaths(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Backend-Path", r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer backend.Close()
+
+	d := &Daemon{config: Config{AdminProxyURL: backend.URL}}
+	handler := d.createHandler()
+
+	for _, path := range []string{"/admin", "/admin/ops", "/api/admin/runtime/status"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("%s status = %d, want %d", path, rec.Code, http.StatusNoContent)
+		}
+		if got := rec.Header().Get("X-Backend-Path"); got != path {
+			t.Fatalf("%s proxied path = %q, want %q", path, got, path)
+		}
+	}
+}
+
 func TestSnapshotStateDrivesHealthAndStatusReadiness(t *testing.T) {
 	startedAt := time.Unix(1712000000, 0).UTC()
 	withSnapshot := &snapshot.Snapshot{

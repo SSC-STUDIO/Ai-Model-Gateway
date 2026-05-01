@@ -1,7 +1,6 @@
 package publish
 
 import (
-	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"ai-model-gateway/internal/control/compiler"
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/snapshot"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestReplaceRevisionsStoresClonedConfigAndReportsHistory(t *testing.T) {
@@ -284,8 +285,8 @@ func TestPublishUsesSeededRevisionConfigAndRecordsResults(t *testing.T) {
 	}
 
 	var published snapshot.Snapshot
-	if err := json.Unmarshal(req.SnapshotBytes, &published); err != nil {
-		t.Fatalf("json.Unmarshal(snapshot bytes) error = %v", err)
+	if err := yaml.Unmarshal(req.SnapshotBytes, &published); err != nil {
+		t.Fatalf("yaml.Unmarshal(snapshot bytes) error = %v", err)
 	}
 	if published.Meta.RevisionID != "rev_cfg" {
 		t.Fatalf("snapshot.Meta.RevisionID = %q, want %q", published.Meta.RevisionID, "rev_cfg")
@@ -295,6 +296,9 @@ func TestPublishUsesSeededRevisionConfigAndRecordsResults(t *testing.T) {
 	}
 	if published.Ingress.Listen != "127.0.0.1:19090" {
 		t.Fatalf("snapshot.Ingress.Listen = %q, want %q", published.Ingress.Listen, "127.0.0.1:19090")
+	}
+	if got := published.Providers[0].Credentials.Value; got != "secret-runtime-key" {
+		t.Fatalf("snapshot credential value = %q, want runtime credential preserved", got)
 	}
 	if publisher.activeIdx != 0 {
 		t.Fatalf("activeIdx = %d, want 0", publisher.activeIdx)
@@ -367,8 +371,8 @@ func TestPublishUsesCompilerWithStoredRevisionConfigByDefault(t *testing.T) {
 	}
 
 	var published snapshot.Snapshot
-	if err := json.Unmarshal(gateway.applyRequests[0].SnapshotBytes, &published); err != nil {
-		t.Fatalf("json.Unmarshal(snapshot bytes) error = %v", err)
+	if err := yaml.Unmarshal(gateway.applyRequests[0].SnapshotBytes, &published); err != nil {
+		t.Fatalf("yaml.Unmarshal(snapshot bytes) error = %v", err)
 	}
 	if published.Meta.RevisionID != "rev_default_compile" {
 		t.Fatalf("snapshot.Meta.RevisionID = %q, want %q", published.Meta.RevisionID, "rev_default_compile")
@@ -780,6 +784,10 @@ func testSnapshot(revisionID, listen string) *snapshot.Snapshot {
 					Weight:        1,
 					TimeoutMs:     30000,
 					ProviderClass: "quota_limited",
+				},
+				Credentials: snapshot.Credentials{
+					Kind:  "bearer",
+					Value: "secret-runtime-key",
 				},
 			},
 		},

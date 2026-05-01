@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -126,6 +127,8 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 		writeError(w, http.StatusBadRequest, "model is required")
 		return
 	}
+	requestedModel := reqMeta.Model
+	routingModel := resolveBridgeModel(snap, requestedModel, r.UserAgent())
 
 	// Check request cache for non-streaming requests.
 	if !reqMeta.Stream && snap.RoutingPolicy.Cache.Enabled && (opts == nil || !opts.DisableCache) {
@@ -149,13 +152,13 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 	if opts != nil && opts.DisableSticky {
 		stickyKey = ""
 	}
-	candidates, unsupportedMatches := collectProviderCandidatesForRequest(snap, reqMeta.Model, isAnthropic)
+	candidates, unsupportedMatches := collectProviderCandidatesForRequest(snap, routingModel, isAnthropic)
 	if len(candidates) == 0 {
 		if isAnthropic && unsupportedMatches {
 			writeError(w, http.StatusNotImplemented, errMessagesAPIRequiresAnthropicProvider.Error())
 			return
 		}
-		writeError(w, http.StatusNotFound, "model not found: "+reqMeta.Model)
+		writeError(w, http.StatusNotFound, "model not found: "+routingModel)
 		return
 	}
 	pinnedProviderID := ""
@@ -180,11 +183,14 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 	if pinnedProviderID != "" {
 		orderedCandidates = orderProviderCandidates(candidates)
 	} else if runtimeState != nil {
-		orderedCandidates = runtimeState.orderCandidates(snap, reqMeta.Model, stickyKey, candidates)
+		orderedCandidates = runtimeState.orderCandidates(snap, routingModel, stickyKey, candidates)
 	} else {
 		orderedCandidates = orderProviderCandidates(candidates)
 	}
 	routeMode := determineRouteMode(orderedCandidates, snap)
+	if routingModel != requestedModel {
+		routeMode = "model_bridge"
+	}
 	maxAttempts := maxTotalAttempts(snap)
 	if opts != nil && opts.DisableRetries {
 		maxAttempts = 1
@@ -199,7 +205,7 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 		finalLatency        time.Duration
 		finalForwardErr     error
 		finalProvider       *snapshot.ProviderSnapshot
-		finalEffectiveModel = reqMeta.Model
+		finalEffectiveModel = routingModel
 		finalErrorMessage   string
 		finalCompatPlan     compatPlan
 	)
@@ -207,7 +213,7 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 attemptLoop:
 	for i := range orderedCandidates {
 		candidate := orderedCandidates[i]
-		compatPlan, compatErr := buildCompatPlan(isAnthropic, candidate.provider, reqMeta.Model, candidate.upstreamModel, body)
+		compatPlan, compatErr := buildCompatPlan(isAnthropic, candidate.provider, requestedModel, candidate.upstreamModel, body)
 		if compatErr != nil {
 			finalStatusCode = http.StatusBadRequest
 			if errors.Is(compatErr, errMessagesAPIRequiresAnthropicProvider) {
@@ -229,7 +235,7 @@ attemptLoop:
 			attempts++
 
 			log.Printf("[gatewayd] request_id=%s model=%s upstream_model=%s provider=%s attempt=%d/%d",
-				requestID, reqMeta.Model, candidate.upstreamModel, candidate.provider.ProviderID, attempts, maxAttempts)
+				requestID, requestedModel, candidate.upstreamModel, candidate.provider.ProviderID, attempts, maxAttempts)
 
 			statusCode, respBody, streamBody, streamContentType, latency, forwardErr := forwardToUpstream(
 				ctx,
@@ -276,7 +282,7 @@ attemptLoop:
 		return
 	}
 	if runtimeState != nil && finalForwardErr == nil && finalStatusCode < http.StatusBadRequest {
-		runtimeState.rememberSticky(reqMeta.Model, stickyKey, finalProvider.ProviderID, snap)
+		runtimeState.rememberSticky(routingModel, stickyKey, finalProvider.ProviderID, snap)
 	}
 
 	if finalForwardErr != nil || finalStatusCode >= http.StatusBadRequest {
@@ -297,10 +303,11 @@ attemptLoop:
 			}
 		}
 
-		emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID,
-			routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), finalStatusCode, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, finalErrorMessage,
-			resolveFixedPricing(pricingResolver, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID, 0, 0, 0, false, finalStatusCode), opts)
-		captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, 0, 0, 0, finalProvider.ProviderID, finalEffectiveModel, routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), 0, finalErrorMessage)
+		attemptRouteMode := routeModeForAttempt(routeMode, false, isAnthropic, finalProvider)
+		emitTelemetry(telClient, requestID, start, r.URL.Path, requestedModel, finalEffectiveModel, finalProvider.ProviderID,
+			attemptRouteMode, finalStatusCode, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, finalErrorMessage,
+			resolveFixedPricing(pricingResolver, requestedModel, finalEffectiveModel, finalProvider.ProviderID, 0, 0, 0, false, finalStatusCode), opts)
+		captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, 0, 0, 0, finalProvider.ProviderID, finalEffectiveModel, attemptRouteMode, 0, finalErrorMessage)
 
 		if len(errorBody) > 0 {
 			if strings.TrimSpace(finalContentType) == "" {
@@ -324,10 +331,11 @@ attemptLoop:
 		clientRespBody, clientContentType, adaptErr := adaptResponseBodyForClient(finalCompatPlan, finalStatusCode, finalRespBody)
 		if adaptErr != nil {
 			writeError(w, http.StatusBadGateway, "failed to adapt upstream response")
-			emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID,
-				routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), http.StatusBadGateway, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, adaptErr.Error(),
-				resolveFixedPricing(pricingResolver, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID, 0, 0, 0, false, http.StatusBadGateway), opts)
-			captureExecutionResult(opts, http.StatusBadGateway, "application/json", finalLatency, 0, 0, 0, finalProvider.ProviderID, finalEffectiveModel, routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), 0, adaptErr.Error())
+			attemptRouteMode := routeModeForAttempt(routeMode, false, isAnthropic, finalProvider)
+			emitTelemetry(telClient, requestID, start, r.URL.Path, requestedModel, finalEffectiveModel, finalProvider.ProviderID,
+				attemptRouteMode, http.StatusBadGateway, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, adaptErr.Error(),
+				resolveFixedPricing(pricingResolver, requestedModel, finalEffectiveModel, finalProvider.ProviderID, 0, 0, 0, false, http.StatusBadGateway), opts)
+			captureExecutionResult(opts, http.StatusBadGateway, "application/json", finalLatency, 0, 0, 0, finalProvider.ProviderID, finalEffectiveModel, attemptRouteMode, 0, adaptErr.Error())
 			return
 		}
 		// Non-streaming: pass through response
@@ -351,10 +359,44 @@ attemptLoop:
 	}
 
 	// Emit telemetry
-	fixedPricing := resolveFixedPricing(pricingResolver, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID, promptTokens, cachedPromptTokens, completionTokens, false, finalStatusCode)
-	emitTelemetry(telClient, requestID, start, r.URL.Path, reqMeta.Model, finalEffectiveModel, finalProvider.ProviderID,
-		routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), finalStatusCode, finalLatency, attempts, promptTokens, cachedPromptTokens, completionTokens, reqMeta.Stream, "", fixedPricing, opts)
-	captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, promptTokens, cachedPromptTokens, completionTokens, finalProvider.ProviderID, finalEffectiveModel, routeModeForAttempt(routeMode, false, isAnthropic, finalProvider), fixedPricing.TotalCostUSD, "")
+	fixedPricing := resolveFixedPricing(pricingResolver, requestedModel, finalEffectiveModel, finalProvider.ProviderID, promptTokens, cachedPromptTokens, completionTokens, false, finalStatusCode)
+	attemptRouteMode := routeModeForAttempt(routeMode, false, isAnthropic, finalProvider)
+	emitTelemetry(telClient, requestID, start, r.URL.Path, requestedModel, finalEffectiveModel, finalProvider.ProviderID,
+		attemptRouteMode, finalStatusCode, finalLatency, attempts, promptTokens, cachedPromptTokens, completionTokens, reqMeta.Stream, "", fixedPricing, opts)
+	captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, promptTokens, cachedPromptTokens, completionTokens, finalProvider.ProviderID, finalEffectiveModel, attemptRouteMode, fixedPricing.TotalCostUSD, "")
+}
+
+func resolveBridgeModel(snap *snapshot.Snapshot, model string, userAgent string) string {
+	model = strings.TrimSpace(model)
+	if snap == nil || !snap.CompatPolicy.Bridge.Enabled || model == "" {
+		return model
+	}
+	for _, exclude := range snap.CompatPolicy.Bridge.ExcludeUserAgents {
+		if wildcardMatch(strings.TrimSpace(exclude), userAgent) {
+			return model
+		}
+	}
+	for _, rule := range snap.CompatPolicy.Bridge.Rules {
+		if strings.TrimSpace(rule.To) == "" {
+			continue
+		}
+		if wildcardMatch(strings.TrimSpace(rule.From), model) {
+			return strings.TrimSpace(rule.To)
+		}
+	}
+	return model
+}
+
+func wildcardMatch(pattern string, value string) bool {
+	pattern = strings.TrimSpace(pattern)
+	value = strings.TrimSpace(value)
+	if pattern == "" {
+		return false
+	}
+	if ok, err := path.Match(pattern, value); err == nil && ok {
+		return true
+	}
+	return strings.EqualFold(pattern, value)
 }
 
 // forwardToUpstream forwards the request to the upstream provider.

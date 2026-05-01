@@ -37,6 +37,20 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/admin/package-lock.json
+
+      - name: Build admin frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix web/admin ci
+          npm --prefix web/admin run build
+
       - name: Build runtime bundle
         shell: bash
         env:
@@ -45,23 +59,74 @@ jobs:
           EXT: ${{ matrix.ext }}
         run: |
           set -euo pipefail
-          mkdir -p dist
-          for bin in gatewayd controld telemetryd; do
-            go build -trimpath -ldflags="-s -w" -o "dist/${bin}${EXT}" "./cmd/${bin}"
+          rm -rf bundle dist
+          mkdir -p bundle/bin dist
+          for bin in aigw gatewayd controld telemetryd gateway-cli; do
+            go build -trimpath -ldflags="-s -w" -o "bundle/bin/${bin}${EXT}" "./cmd/${bin}"
           done
+          cp -R configs bundle/configs
+          cp -R deploy bundle/deploy
+          mkdir -p bundle/web/admin
+          cp -R web/admin/dist bundle/web/admin/dist
+          cp README.md VERSION bundle/
+          "bundle/bin/aigw${EXT}" bundle build -root bundle -out bundle/aigw-manifest.json
+          "bundle/bin/aigw${EXT}" bundle verify -root bundle -manifest bundle/aigw-manifest.json
+
+      - name: Release smoke
+        if: matrix.goos == 'linux'
+        shell: bash
+        env:
+          ADMIN_BOOTSTRAP_TOKEN: 0123456789abcdef0123456789abcdef
+          COOKIE_SIGNING_KEY: 0123456789abcdef0123456789abcdef
+          ADMIN_TOKEN: 0123456789abcdef0123456789abcdef
+          VIEWER_TOKEN: 0123456789abcdef0123456789abcdef
+          OPENAI_API_KEY: dummy
+          ANTHROPIC_API_KEY: dummy
+          STATION_A_API_KEY: dummy
+          STATION_B_API_KEY: dummy
+          KIMI_OFFICIAL_API_KEY: dummy
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/aigw-release-runtime
+          cp bundle/configs/config.example.yaml bundle/configs/config.yaml
+          (
+            cd bundle
+            bin/aigw supervise \
+              -runtime-root /tmp/aigw-release-runtime \
+              -config-dir configs/docker \
+              -bin-dir bin \
+              -manifest aigw-manifest.json \
+              -strict-manifest=true
+          ) \
+            > /tmp/aigw-release-supervise.log 2>&1 &
+          pid=$!
+          cleanup() {
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            rm -f bundle/configs/config.yaml
+            cat /tmp/aigw-release-supervise.log
+          }
+          trap cleanup EXIT
+          for _ in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18081/-/health >/dev/null && curl -fsS http://127.0.0.1:18080/-/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
 
       - name: Package zip
         if: matrix.goos == 'windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path .\dist\* -DestinationPath ".\dist\${{ matrix.archive }}" -Force
+          Compress-Archive -Path .\bundle\* -DestinationPath ".\dist\${{ matrix.archive }}" -Force
 
       - name: Package tar.gz
         if: matrix.goos != 'windows'
         shell: bash
         run: |
           set -euo pipefail
-          tar -czf "dist/${{ matrix.archive }}" -C dist .
+          tar -czf "dist/${{ matrix.archive }}" -C bundle .
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4

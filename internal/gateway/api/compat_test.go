@@ -778,10 +778,30 @@ func TestHandleChatCompletionReturnsGatewayTimeoutOnAnthropicTimeout(t *testing.
 	}
 }
 
-func TestHandleMessagesRejectsOpenAIOnlyProvider(t *testing.T) {
+func TestHandleMessagesBridgesOpenAIOnlyProvider(t *testing.T) {
 	routingSequence.Store(0)
+	allowLocalAnthropicTestUpstreams(t)
+
+	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
+		if req.Path != "/v1/chat/completions" {
+			t.Fatalf("upstream path = %q, want /v1/chat/completions", req.Path)
+		}
+		var forwarded map[string]any
+		if err := json.Unmarshal(req.Body, &forwarded); err != nil {
+			t.Fatalf("decode forwarded body: %v", err)
+		}
+		if forwarded["model"] != testUpstreamModel {
+			t.Fatalf("forwarded model = %v, want %s", forwarded["model"], testUpstreamModel)
+		}
+		return fakeupstream.Response{
+			StatusCode: http.StatusOK,
+			Body:       []byte(`{"id":"chatcmpl_glm","object":"chat.completion","model":"glm-upstream","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`),
+		}
+	})
+	defer upstream.Close()
 
 	snap := testGatewaySnapshot()
+	snap.Providers[0].BaseURL = upstream.URL()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		HandleMessages(context.Background(), snap, NewRuntimeState(), nil, nil, w, r)
 	}))
@@ -794,12 +814,97 @@ func TestHandleMessagesRejectsOpenAIOnlyProvider(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "anthropic_messages") {
-		t.Fatalf("expected unsupported provider message, got %s", body)
+	var decoded anthropicResponsePayload
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode response: %v; body=%s", err, body)
+	}
+	if decoded.Model != testPublicModel || anthropicBlocksToText(decoded.Content) != "ok" {
+		t.Fatalf("unexpected bridged response: %#v", decoded)
+	}
+}
+
+func TestHandleMessagesAppliesModelBridgeBeforeProviderSelection(t *testing.T) {
+	routingSequence.Store(0)
+	allowLocalAnthropicTestUpstreams(t)
+
+	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
+		if req.Path != "/v1/chat/completions" {
+			t.Fatalf("upstream path = %q, want /v1/chat/completions", req.Path)
+		}
+		var forwarded map[string]any
+		if err := json.Unmarshal(req.Body, &forwarded); err != nil {
+			t.Fatalf("decode forwarded body: %v", err)
+		}
+		if forwarded["model"] != "GLM-5.1" {
+			t.Fatalf("forwarded model = %v, want GLM-5.1", forwarded["model"])
+		}
+		return fakeupstream.Response{
+			StatusCode: http.StatusOK,
+			Body:       []byte(`{"id":"chatcmpl_glm","object":"chat.completion","model":"GLM-5.1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`),
+		}
+	})
+	defer upstream.Close()
+
+	snap := &snapshot.Snapshot{
+		Ingress: snapshot.IngressConfig{MaxBodyBytes: 1 << 20},
+		CompatPolicy: snapshot.CompatPolicy{
+			Bridge: snapshot.BridgePolicy{
+				Enabled: true,
+				Rules: []snapshot.BridgeRule{
+					{From: "claude-opus-4-*", To: "GLM-5.1"},
+				},
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "glm-provider",
+				BaseURL:    upstream.URL(),
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "GLM-5.1", UpstreamModel: "GLM-5.1"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1, TimeoutMs: 5000},
+			},
+		},
+	}
+	tel := &capturingTelemetryEmitter{events: make(chan telemetryingest.Event, 1)}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleMessages(context.Background(), snap, NewRuntimeState(), tel, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"claude-opus-4-6[1m]","messages":[{"role":"user","content":"hello"}]}`
+	resp, err := server.Client().Post(server.URL+"/v1/messages", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	var decoded anthropicResponsePayload
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode response: %v; body=%s", err, body)
+	}
+	if decoded.Model != "claude-opus-4-6[1m]" || anthropicBlocksToText(decoded.Content) != "ok" {
+		t.Fatalf("unexpected bridged response: %#v", decoded)
+	}
+
+	select {
+	case event := <-tel.events:
+		if event.Payload.ProviderID != "glm-provider" || event.Payload.RequestedModel != "claude-opus-4-6[1m]" || event.Payload.EffectiveModel != "GLM-5.1" {
+			t.Fatalf("unexpected telemetry payload: %#v", event.Payload)
+		}
+		if event.Payload.RouteMode != "model_bridge" {
+			t.Fatalf("route_mode = %q, want model_bridge", event.Payload.RouteMode)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected telemetry event")
 	}
 }
 

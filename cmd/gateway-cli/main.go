@@ -2,18 +2,22 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"ai-model-gateway/cmd/gateway/commands"
 	"ai-model-gateway/internal/cli"
+	"ai-model-gateway/internal/version"
+	"gopkg.in/yaml.v3"
 )
 
-const Version = "1.2.0"
+const Version = version.ProductVersion
 
 func main() {
 	os.Exit(runCLI(os.Args, os.Stdout, os.Stderr))
@@ -42,6 +46,10 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	cmdArgs := fs.Args()
 	if len(cmdArgs) == 0 {
 		printUsage(stderr)
+		return 1
+	}
+	if err := validateCLIFormat(*format, cmdArgs); err != nil {
+		fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 1
 	}
 
@@ -96,8 +104,120 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		switch cmdArgs[1] {
 		case "show":
 			err = cmd.Show(ctx, *format)
+		case "preview":
+			req := map[string]interface{}{}
+			if len(cmdArgs) > 2 {
+				cfg, readErr := readYAMLMap(cmdArgs[2])
+				if readErr != nil {
+					err = readErr
+					break
+				}
+				req["config"] = cfg
+			}
+			var resp map[string]interface{}
+			resp, err = client.ConfigPreview(ctx, req)
+			if err == nil {
+				err = printGeneric(stdout, resp, *format)
+			}
+		case "diff":
+			req, parseErr := parseConfigDiffArgs(cmdArgs[2:])
+			if parseErr != nil {
+				fmt.Fprintln(stderr, "Usage: gateway-cli config diff [--from rev] [--to rev] [--file config.yaml]")
+				fmt.Fprintf(stderr, "Error: %v\n", parseErr)
+				return 1
+			}
+			var resp map[string]interface{}
+			resp, err = client.ConfigDiff(ctx, req)
+			if err == nil {
+				err = printGeneric(stdout, resp, *format)
+			}
 		default:
 			err = fmt.Errorf("unknown config subcommand: %s", cmdArgs[1])
+		}
+
+	case "runtime":
+		if len(cmdArgs) < 2 {
+			fmt.Fprintln(stderr, "Usage: gateway-cli runtime <status|preflight>")
+			return 1
+		}
+		var resp map[string]interface{}
+		switch cmdArgs[1] {
+		case "status":
+			resp, err = client.GetRuntimeStatus(ctx)
+		case "preflight":
+			resp, err = client.RuntimePreflight(ctx)
+		default:
+			err = fmt.Errorf("unknown runtime subcommand: %s", cmdArgs[1])
+		}
+		if err == nil {
+			err = printGeneric(stdout, resp, *format)
+		}
+
+	case "audit":
+		limit := 100
+		if len(cmdArgs) > 1 {
+			fmt.Sscanf(cmdArgs[1], "%d", &limit)
+		}
+		var resp map[string]interface{}
+		resp, err = client.ListAudit(ctx, limit)
+		if err == nil {
+			err = printGeneric(stdout, resp, *format)
+		}
+
+	case "probe":
+		if len(cmdArgs) < 3 {
+			fmt.Fprintln(stderr, "Usage: gateway-cli probe <provider|model> <name> [model-or-provider]")
+			return 1
+		}
+		req := map[string]interface{}{}
+		var resp map[string]interface{}
+		switch cmdArgs[1] {
+		case "provider":
+			req["provider_id"] = cmdArgs[2]
+			if len(cmdArgs) > 3 {
+				req["model"] = cmdArgs[3]
+			}
+			resp, err = client.ProbeProvider(ctx, req)
+		case "model":
+			req["model"] = cmdArgs[2]
+			if len(cmdArgs) > 3 {
+				req["provider_id"] = cmdArgs[3]
+			}
+			resp, err = client.ProbeModel(ctx, req)
+		default:
+			err = fmt.Errorf("unknown probe subcommand: %s", cmdArgs[1])
+		}
+		if err == nil {
+			err = printGeneric(stdout, resp, *format)
+		}
+
+	case "replay":
+		requestID := ""
+		if len(cmdArgs) > 1 && cmdArgs[1] != "list" {
+			requestID = cmdArgs[1]
+		}
+		var resp map[string]interface{}
+		resp, err = client.Replay(ctx, requestID)
+		if err == nil {
+			err = printGeneric(stdout, resp, *format)
+		}
+
+	case "diagnostics":
+		var resp map[string]interface{}
+		resp, err = client.Diagnostics(ctx)
+		if err == nil {
+			err = printGeneric(stdout, resp, *format)
+		}
+
+	case "secrets":
+		if len(cmdArgs) < 2 || cmdArgs[1] != "check" {
+			fmt.Fprintln(stderr, "Usage: gateway-cli secrets check")
+			return 1
+		}
+		var resp map[string]interface{}
+		resp, err = client.SecretsStatus(ctx)
+		if err == nil {
+			err = printGeneric(stdout, resp, *format)
 		}
 
 	case "provider":
@@ -259,6 +379,16 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  validate <file>          Validate configuration file")
 	fmt.Fprintln(w, "  reload                   Reload configuration")
 	fmt.Fprintln(w, "  config show              Show current configuration")
+	fmt.Fprintln(w, "  config preview [file]    Preview active or draft configuration")
+	fmt.Fprintln(w, "  config diff [--from rev] [--to rev] [--file file]")
+	fmt.Fprintln(w, "  runtime status           Show bundle and daemon runtime status")
+	fmt.Fprintln(w, "  runtime preflight        Run runtime preflight checks")
+	fmt.Fprintln(w, "  audit [limit]            List audit events")
+	fmt.Fprintln(w, "  probe provider <id> [model]")
+	fmt.Fprintln(w, "  probe model <model> [provider]")
+	fmt.Fprintln(w, "  replay list|<request-id>")
+	fmt.Fprintln(w, "  diagnostics              Generate redacted diagnostics")
+	fmt.Fprintln(w, "  secrets check            Check configured secret presence")
 	fmt.Fprintln(w, "  provider list            List all providers")
 	fmt.Fprintln(w, "  provider test <name>     Test provider connection")
 	fmt.Fprintln(w, "  telemetry events         Query event logs")
@@ -279,6 +409,133 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  -format text|json|csv    Output format (default: text; csv for benchmark telemetry)")
 	fmt.Fprintln(w, "  -server url              Control plane URL (default: http://127.0.0.1:18081)")
 	fmt.Fprintln(w, "  -token token             Admin token (or ADMIN_TOKEN env)")
+}
+
+func printGeneric(w io.Writer, value interface{}, format string) error {
+	switch format {
+	case "", "text":
+		return printGenericText(w, value)
+	case "json":
+		formatter := cli.NewOutputFormatter(cli.FormatJSON, w)
+		return formatter.WriteJSON(value)
+	default:
+		return fmt.Errorf("unsupported format: %s", format)
+	}
+}
+
+func validateCLIFormat(format string, cmdArgs []string) error {
+	switch format {
+	case "", "text", "json":
+		return nil
+	case "csv":
+		if len(cmdArgs) >= 2 && cmdArgs[0] == "benchmark" {
+			switch cmdArgs[1] {
+			case "telemetry", "telemetry-summary", "target-summary":
+				return nil
+			}
+		}
+		return fmt.Errorf("csv format is only supported for benchmark telemetry commands")
+	default:
+		return fmt.Errorf("unsupported format: %s", format)
+	}
+}
+
+func printGenericText(w io.Writer, value interface{}) error {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if _, err := fmt.Fprintf(w, "%s: %s\n", key, formatGenericValue(v[key])); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []interface{}:
+		for i, item := range v {
+			if _, err := fmt.Fprintf(w, "%d: %s\n", i+1, formatGenericValue(item)); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		_, err := fmt.Fprintln(w, formatGenericValue(v))
+		return err
+	}
+}
+
+func formatGenericValue(value interface{}) string {
+	switch v := value.(type) {
+	case nil:
+		return "-"
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return "-"
+		}
+		return v
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case float64:
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%.0f", v)
+		}
+		return fmt.Sprintf("%.3f", v)
+	default:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprint(v)
+		}
+		return string(data)
+	}
+}
+
+func readYAMLMap(path string) (map[string]interface{}, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg map[string]interface{}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func parseConfigDiffArgs(args []string) (map[string]interface{}, error) {
+	fs := flag.NewFlagSet("config-diff", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	from := fs.String("from", "", "source revision")
+	to := fs.String("to", "", "target revision")
+	file := fs.String("file", "", "target config file")
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	req := map[string]interface{}{}
+	if strings.TrimSpace(*from) != "" {
+		req["from_revision_id"] = strings.TrimSpace(*from)
+	}
+	if strings.TrimSpace(*to) != "" {
+		req["to_revision_id"] = strings.TrimSpace(*to)
+	}
+	if strings.TrimSpace(*file) != "" {
+		cfg, err := readYAMLMap(*file)
+		if err != nil {
+			return nil, err
+		}
+		req["config"] = cfg
+	}
+	if _, hasTo := req["to_revision_id"]; !hasTo {
+		if _, hasConfig := req["config"]; !hasConfig {
+			return nil, fmt.Errorf("--to or --file is required")
+		}
+	}
+	return req, nil
 }
 
 func parseBenchmarkRunArgs(args []string) (*cli.VerificationRunRequest, error) {

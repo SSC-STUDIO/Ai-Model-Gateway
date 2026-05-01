@@ -13,6 +13,8 @@ import (
 
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/snapshot"
+
+	"github.com/google/uuid"
 )
 
 var errMessagesAPIRequiresAnthropicProvider = errors.New("messages API requires anthropic_messages provider")
@@ -22,6 +24,7 @@ type responseCompatMode int
 const (
 	responseCompatPassthrough responseCompatMode = iota
 	responseCompatAnthropicToOpenAI
+	responseCompatOpenAIToAnthropic
 )
 
 type compatPlan struct {
@@ -29,6 +32,7 @@ type compatPlan struct {
 	forwardBody         []byte
 	upstreamIsAnthropic bool
 	responseMode        responseCompatMode
+	clientModel         string
 }
 
 type anthropicUsage struct {
@@ -121,6 +125,36 @@ type anthropicStreamState struct {
 	done          bool
 }
 
+type openAIUsagePayload struct {
+	PromptTokens        int64 `json:"prompt_tokens"`
+	CompletionTokens    int64 `json:"completion_tokens"`
+	TotalTokens         int64 `json:"total_tokens"`
+	PromptTokensDetails struct {
+		CachedTokens int64 `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+}
+
+type openAIStreamToolState struct {
+	id        string
+	name      string
+	block     int
+	started   bool
+	arguments bytes.Buffer
+}
+
+type openAIToAnthropicStreamState struct {
+	id             string
+	model          string
+	created        int64
+	usage          openAIUsagePayload
+	messageStarted bool
+	textStarted    bool
+	textBlock      int
+	nextBlock      int
+	tools          map[int]*openAIStreamToolState
+	done           bool
+}
+
 func collectProviderCandidatesForRequest(snap *snapshot.Snapshot, model string, clientAnthropic bool) ([]providerCandidate, bool) {
 	if snap == nil {
 		return nil, false
@@ -135,10 +169,6 @@ func collectProviderCandidatesForRequest(snap *snapshot.Snapshot, model string, 
 		for _, m := range p.ModelTable {
 			if m.PublicModel != model {
 				continue
-			}
-			if clientAnthropic && providerProtocolAdapter(p) != core.ProtocolAdapterAnthropicMessages {
-				unsupportedMatches = true
-				break
 			}
 			candidates = append(candidates, providerCandidate{
 				provider:      p,
@@ -163,6 +193,7 @@ func buildCompatPlan(
 		forwardBody:         body,
 		upstreamIsAnthropic: false,
 		responseMode:        responseCompatPassthrough,
+		clientModel:         requestedModel,
 	}
 	if provider == nil {
 		return plan, fmt.Errorf("provider is required")
@@ -171,7 +202,15 @@ func buildCompatPlan(
 	adapter := providerProtocolAdapter(provider)
 	if clientAnthropic {
 		if adapter != core.ProtocolAdapterAnthropicMessages {
-			return compatPlan{}, errMessagesAPIRequiresAnthropicProvider
+			converted, err := convertAnthropicRequestToOpenAIChat(body, upstreamModel)
+			if err != nil {
+				return compatPlan{}, err
+			}
+			plan.forwardPath = "/v1/chat/completions"
+			plan.forwardBody = converted
+			plan.upstreamIsAnthropic = false
+			plan.responseMode = responseCompatOpenAIToAnthropic
+			return plan, nil
 		}
 		plan.forwardPath = "/v1/messages"
 		plan.upstreamIsAnthropic = true
@@ -207,6 +246,16 @@ func providerProtocolAdapter(provider *snapshot.ProviderSnapshot) string {
 }
 
 func adaptResponseBodyForClient(plan compatPlan, statusCode int, respBody []byte) ([]byte, string, error) {
+	if plan.responseMode == responseCompatOpenAIToAnthropic {
+		if statusCode >= http.StatusBadRequest {
+			return adaptOpenAIErrorToAnthropic(respBody), "application/json", nil
+		}
+		converted, err := adaptOpenAIResponseToAnthropic(respBody, plan.clientModel)
+		if err != nil {
+			return nil, "", err
+		}
+		return converted, "application/json", nil
+	}
 	if plan.responseMode != responseCompatAnthropicToOpenAI {
 		return respBody, "", nil
 	}
@@ -221,10 +270,397 @@ func adaptResponseBodyForClient(plan compatPlan, statusCode int, respBody []byte
 }
 
 func writeCompatStreamResponse(w http.ResponseWriter, statusCode int, contentType string, respBody io.ReadCloser, plan compatPlan) (promptTokens, cachedPromptTokens, completionTokens int64) {
+	if plan.responseMode == responseCompatOpenAIToAnthropic {
+		return bridgeOpenAIStreamToAnthropic(w, statusCode, respBody, plan.clientModel)
+	}
 	if plan.responseMode == responseCompatAnthropicToOpenAI {
 		return bridgeAnthropicStreamToOpenAI(w, statusCode, respBody)
 	}
 	return handleStreamResponse(w, statusCode, contentType, respBody)
+}
+
+func convertAnthropicRequestToOpenAIChat(body []byte, upstreamModel string) ([]byte, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode anthropic request: %w", err)
+	}
+
+	out := make(map[string]any)
+	copyRawField := func(from, to string) {
+		if value, ok := raw[from]; ok {
+			var decoded any
+			if err := json.Unmarshal(value, &decoded); err == nil {
+				out[to] = decoded
+			}
+		}
+	}
+	copyRawField("model", "model")
+	copyRawField("max_tokens", "max_tokens")
+	copyRawField("temperature", "temperature")
+	copyRawField("top_p", "top_p")
+	copyRawField("stream", "stream")
+	copyRawField("user", "user")
+	copyRawField("metadata", "metadata")
+	copyRawField("stop_sequences", "stop")
+	if strings.TrimSpace(upstreamModel) != "" {
+		out["model"] = strings.TrimSpace(upstreamModel)
+	}
+
+	messages := make([]map[string]any, 0)
+	if systemRaw, ok := raw["system"]; ok {
+		if systemText := anthropicRawContentToText(systemRaw); strings.TrimSpace(systemText) != "" {
+			messages = append(messages, map[string]any{
+				"role":    "system",
+				"content": systemText,
+			})
+		}
+	}
+
+	var anthropicMessages []struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	}
+	if err := json.Unmarshal(raw["messages"], &anthropicMessages); err != nil {
+		return nil, fmt.Errorf("decode anthropic messages: %w", err)
+	}
+	for _, message := range anthropicMessages {
+		switch message.Role {
+		case "assistant":
+			messages = append(messages, convertAnthropicAssistantMessageToOpenAI(message.Content))
+		case "user":
+			messages = append(messages, convertAnthropicUserMessageToOpenAI(message.Content)...)
+		default:
+			messages = append(messages, map[string]any{
+				"role":    message.Role,
+				"content": anthropicRawContentToText(message.Content),
+			})
+		}
+	}
+	out["messages"] = messages
+
+	if toolsRaw, ok := raw["tools"]; ok {
+		tools, err := convertAnthropicToolsToOpenAI(toolsRaw)
+		if err != nil {
+			return nil, err
+		}
+		if len(tools) > 0 {
+			out["tools"] = tools
+		}
+	}
+	if toolChoiceRaw, ok := raw["tool_choice"]; ok {
+		if toolChoice := convertAnthropicToolChoiceToOpenAI(toolChoiceRaw); toolChoice != nil {
+			out["tool_choice"] = toolChoice
+		}
+	}
+
+	return json.Marshal(out)
+}
+
+func anthropicRawContentToText(raw json.RawMessage) string {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(raw, &blocks); err == nil {
+		parts := make([]string, 0, len(blocks))
+		for _, block := range blocks {
+			switch strings.TrimSpace(fmt.Sprint(block["type"])) {
+			case "text":
+				if text := strings.TrimSpace(fmt.Sprint(block["text"])); text != "" {
+					parts = append(parts, text)
+				}
+			case "tool_result":
+				if content, ok := block["content"]; ok {
+					parts = append(parts, stringifyContentValue(content))
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return stringifyContentValue(value)
+	}
+	return ""
+}
+
+func convertAnthropicAssistantMessageToOpenAI(raw json.RawMessage) map[string]any {
+	message := map[string]any{
+		"role":    "assistant",
+		"content": nil,
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		message["content"] = text
+		return message
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		message["content"] = anthropicRawContentToText(raw)
+		return message
+	}
+	textParts := make([]string, 0, len(blocks))
+	toolCalls := make([]map[string]any, 0)
+	for i, block := range blocks {
+		switch strings.TrimSpace(fmt.Sprint(block["type"])) {
+		case "text":
+			if text := strings.TrimSpace(fmt.Sprint(block["text"])); text != "" {
+				textParts = append(textParts, text)
+			}
+		case "tool_use":
+			id := strings.TrimSpace(fmt.Sprint(block["id"]))
+			if id == "" {
+				id = fmt.Sprintf("toolu_%d", i)
+			}
+			toolCalls = append(toolCalls, map[string]any{
+				"id":   id,
+				"type": "function",
+				"function": map[string]any{
+					"name":      strings.TrimSpace(fmt.Sprint(block["name"])),
+					"arguments": compactJSONValue(block["input"]),
+				},
+			})
+		}
+	}
+	if len(textParts) > 0 {
+		message["content"] = strings.Join(textParts, "\n")
+	}
+	if len(toolCalls) > 0 {
+		message["tool_calls"] = toolCalls
+	}
+	return message
+}
+
+func convertAnthropicUserMessageToOpenAI(raw json.RawMessage) []map[string]any {
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return []map[string]any{{"role": "user", "content": text}}
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return []map[string]any{{"role": "user", "content": anthropicRawContentToText(raw)}}
+	}
+	var messages []map[string]any
+	textParts := make([]string, 0, len(blocks))
+	flushText := func() {
+		if len(textParts) == 0 {
+			return
+		}
+		messages = append(messages, map[string]any{
+			"role":    "user",
+			"content": strings.Join(textParts, "\n"),
+		})
+		textParts = textParts[:0]
+	}
+	for _, block := range blocks {
+		switch strings.TrimSpace(fmt.Sprint(block["type"])) {
+		case "text":
+			if text := strings.TrimSpace(fmt.Sprint(block["text"])); text != "" {
+				textParts = append(textParts, text)
+			}
+		case "tool_result":
+			flushText()
+			toolCallID := strings.TrimSpace(fmt.Sprint(block["tool_use_id"]))
+			if toolCallID == "" {
+				toolCallID = strings.TrimSpace(fmt.Sprint(block["id"]))
+			}
+			messages = append(messages, map[string]any{
+				"role":         "tool",
+				"tool_call_id": toolCallID,
+				"content":      stringifyContentValue(block["content"]),
+			})
+		}
+	}
+	flushText()
+	if len(messages) == 0 {
+		messages = append(messages, map[string]any{"role": "user", "content": ""})
+	}
+	return messages
+}
+
+func convertAnthropicToolsToOpenAI(raw json.RawMessage) ([]map[string]any, error) {
+	var tools []map[string]any
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return nil, fmt.Errorf("decode anthropic tools: %w", err)
+	}
+	converted := make([]map[string]any, 0, len(tools))
+	for _, tool := range tools {
+		converted = append(converted, map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        tool["name"],
+				"description": tool["description"],
+				"parameters":  tool["input_schema"],
+			},
+		})
+	}
+	return converted, nil
+}
+
+func convertAnthropicToolChoiceToOpenAI(raw json.RawMessage) any {
+	var choice map[string]any
+	if err := json.Unmarshal(raw, &choice); err != nil {
+		return nil
+	}
+	switch strings.TrimSpace(fmt.Sprint(choice["type"])) {
+	case "auto":
+		return "auto"
+	case "any":
+		return "required"
+	case "tool":
+		name := strings.TrimSpace(fmt.Sprint(choice["name"]))
+		if name == "" {
+			return "required"
+		}
+		return map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name": name,
+			},
+		}
+	case "none":
+		return "none"
+	default:
+		return nil
+	}
+}
+
+func stringifyContentValue(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	default:
+		return compactJSONValue(v)
+	}
+}
+
+func adaptOpenAIResponseToAnthropic(respBody []byte, clientModel string) ([]byte, error) {
+	var payload struct {
+		ID      string `json:"id"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Content   any              `json:"content"`
+				ToolCalls []openAIToolCall `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage openAIUsagePayload `json:"usage"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return nil, fmt.Errorf("decode openai response: %w", err)
+	}
+	model := strings.TrimSpace(clientModel)
+	if model == "" {
+		model = payload.Model
+	}
+	content := make([]anthropicContentBlock, 0)
+	stopReason := "end_turn"
+	if len(payload.Choices) > 0 {
+		choice := payload.Choices[0]
+		if text := strings.TrimSpace(stringifyContentValue(choice.Message.Content)); text != "" {
+			content = append(content, anthropicContentBlock{Type: "text", Text: text})
+		}
+		for _, toolCall := range choice.Message.ToolCalls {
+			input := parseJSONOrString(toolCall.Function.Arguments)
+			content = append(content, anthropicContentBlock{
+				Type:  "tool_use",
+				ID:    toolCall.ID,
+				Name:  toolCall.Function.Name,
+				Input: input,
+			})
+		}
+		stopReason = mapOpenAIFinishReasonToAnthropic(choice.FinishReason)
+	}
+	if len(content) == 0 {
+		content = append(content, anthropicContentBlock{Type: "text", Text: ""})
+	}
+	resp := anthropicResponsePayload{
+		ID:         payload.ID,
+		Type:       "message",
+		Role:       "assistant",
+		Model:      model,
+		Content:    content,
+		StopReason: stopReason,
+		Usage: anthropicUsage{
+			InputTokens:          payload.Usage.PromptTokens,
+			OutputTokens:         payload.Usage.CompletionTokens,
+			CacheReadInputTokens: payload.Usage.PromptTokensDetails.CachedTokens,
+		},
+	}
+	if resp.ID == "" {
+		resp.ID = "msg_" + uuid.NewString()
+	}
+	return json.Marshal(resp)
+}
+
+func adaptOpenAIErrorToAnthropic(respBody []byte) []byte {
+	var payload struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    any    `json:"code"`
+		} `json:"error"`
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	}
+	message := strings.TrimSpace(string(respBody))
+	errorType := "api_error"
+	if err := json.Unmarshal(respBody, &payload); err == nil {
+		if payload.Error.Message != "" {
+			message = payload.Error.Message
+		} else if payload.Message != "" {
+			message = payload.Message
+		}
+		if payload.Error.Type != "" {
+			errorType = payload.Error.Type
+		} else if payload.Type != "" {
+			errorType = payload.Type
+		}
+	}
+	if message == "" {
+		message = "upstream request failed"
+	}
+	converted, err := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"type":    errorType,
+			"message": message,
+		},
+	})
+	if err != nil {
+		return respBody
+	}
+	return converted
+}
+
+func parseJSONOrString(value string) any {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return map[string]any{}
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+		return parsed
+	}
+	return trimmed
+}
+
+func mapOpenAIFinishReasonToAnthropic(reason string) string {
+	switch strings.TrimSpace(reason) {
+	case "length":
+		return "max_tokens"
+	case "tool_calls", "function_call":
+		return "tool_use"
+	default:
+		return "end_turn"
+	}
 }
 
 func adaptAnthropicResponseToOpenAI(respBody []byte) ([]byte, error) {
@@ -379,6 +815,346 @@ func bridgeAnthropicStreamToOpenAI(w http.ResponseWriter, statusCode int, respBo
 
 	promptTokens, cachedPromptTokens, completionTokens = state.usage.tokenTriplet()
 	return promptTokens, cachedPromptTokens, completionTokens
+}
+
+func bridgeOpenAIStreamToAnthropic(w http.ResponseWriter, statusCode int, respBody io.ReadCloser, clientModel string) (promptTokens, cachedPromptTokens, completionTokens int64) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(statusCode)
+
+	flusher, _ := w.(http.Flusher)
+	if respBody == nil {
+		return 0, 0, 0
+	}
+	defer respBody.Close()
+
+	reader := bufio.NewReader(respBody)
+	var eventData bytes.Buffer
+	state := openAIToAnthropicStreamState{
+		model:   strings.TrimSpace(clientModel),
+		created: time.Now().Unix(),
+	}
+
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	emit := func(event string, payload []byte) {
+		if len(payload) == 0 {
+			return
+		}
+		if event != "" {
+			_, _ = w.Write([]byte("event: "))
+			_, _ = w.Write([]byte(event))
+			_, _ = w.Write([]byte("\n"))
+		}
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(payload)
+		_, _ = w.Write([]byte("\n\n"))
+		flush()
+	}
+
+	emitPayloads := func(payloads []anthropicStreamPayload) {
+		for _, payload := range payloads {
+			emit(payload.event, payload.data)
+		}
+	}
+
+	handleEvent := func(data []byte) {
+		payloads, done := translateOpenAIEventToAnthropic(data, &state)
+		emitPayloads(payloads)
+		if done {
+			emitPayloads(finalizeOpenAIToAnthropicStream(&state, "end_turn"))
+		}
+	}
+
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			trimmedLine := strings.TrimRight(string(line), "\r\n")
+			if strings.TrimSpace(trimmedLine) == "" {
+				if eventData.Len() > 0 {
+					handleEvent(eventData.Bytes())
+					eventData.Reset()
+				}
+			} else if strings.HasPrefix(trimmedLine, "data:") {
+				data := strings.TrimSpace(strings.TrimPrefix(trimmedLine, "data:"))
+				if eventData.Len() > 0 {
+					eventData.WriteByte('\n')
+				}
+				eventData.WriteString(data)
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				if eventData.Len() > 0 {
+					handleEvent(eventData.Bytes())
+				}
+				emitPayloads(finalizeOpenAIToAnthropicStream(&state, "end_turn"))
+			}
+			break
+		}
+	}
+
+	return state.usage.PromptTokens, state.usage.PromptTokensDetails.CachedTokens, state.usage.CompletionTokens
+}
+
+type anthropicStreamPayload struct {
+	event string
+	data  []byte
+}
+
+func translateOpenAIEventToAnthropic(data []byte, state *openAIToAnthropicStreamState) ([]anthropicStreamPayload, bool) {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return nil, false
+	}
+	if trimmed == "[DONE]" {
+		return nil, true
+	}
+
+	var chunk struct {
+		ID      string               `json:"id"`
+		Model   string               `json:"model"`
+		Created int64                `json:"created"`
+		Choices []openAIStreamChoice `json:"choices"`
+		Usage   openAIUsagePayload   `json:"usage"`
+		Error   struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &chunk); err != nil {
+		return nil, false
+	}
+	if chunk.Error.Message != "" {
+		payload, _ := json.Marshal(map[string]any{
+			"type": "error",
+			"error": map[string]any{
+				"type":    firstNonEmpty(chunk.Error.Type, "api_error"),
+				"message": chunk.Error.Message,
+			},
+		})
+		return []anthropicStreamPayload{{event: "error", data: payload}}, true
+	}
+	if chunk.ID != "" {
+		state.id = chunk.ID
+	}
+	if state.model == "" && chunk.Model != "" {
+		state.model = chunk.Model
+	}
+	if chunk.Created > 0 {
+		state.created = chunk.Created
+	}
+	state.mergeUsage(chunk.Usage)
+
+	payloads := ensureOpenAIToAnthropicMessageStarted(state)
+	for _, choice := range chunk.Choices {
+		if choice.Delta.Content != "" {
+			payloads = append(payloads, openAITextDeltaToAnthropic(choice.Delta.Content, state)...)
+		}
+		for _, toolDelta := range choice.Delta.ToolCalls {
+			payloads = append(payloads, openAIToolDeltaToAnthropic(toolDelta, state)...)
+		}
+		if choice.FinishReason != "" {
+			payloads = append(payloads, finalizeOpenAIToAnthropicStream(state, mapOpenAIFinishReasonToAnthropic(choice.FinishReason))...)
+		}
+	}
+	return payloads, false
+}
+
+type openAIStreamChoice struct {
+	Delta struct {
+		Role      string                  `json:"role"`
+		Content   string                  `json:"content"`
+		ToolCalls []openAIStreamToolDelta `json:"tool_calls"`
+	} `json:"delta"`
+	FinishReason string `json:"finish_reason"`
+}
+
+type openAIStreamToolDelta struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+func ensureOpenAIToAnthropicMessageStarted(state *openAIToAnthropicStreamState) []anthropicStreamPayload {
+	if state.messageStarted {
+		return nil
+	}
+	state.messageStarted = true
+	if state.id == "" {
+		state.id = "msg_" + uuid.NewString()
+	}
+	if state.model == "" {
+		state.model = "unknown"
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"type": "message_start",
+		"message": map[string]any{
+			"id":            state.id,
+			"type":          "message",
+			"role":          "assistant",
+			"model":         state.model,
+			"content":       []any{},
+			"stop_reason":   nil,
+			"stop_sequence": nil,
+			"usage": map[string]any{
+				"input_tokens":  0,
+				"output_tokens": 0,
+			},
+		},
+	})
+	return []anthropicStreamPayload{{event: "message_start", data: payload}}
+}
+
+func openAITextDeltaToAnthropic(text string, state *openAIToAnthropicStreamState) []anthropicStreamPayload {
+	payloads := make([]anthropicStreamPayload, 0, 2)
+	if !state.textStarted {
+		state.textStarted = true
+		state.textBlock = state.nextBlock
+		state.nextBlock++
+		startPayload, _ := json.Marshal(map[string]any{
+			"type":  "content_block_start",
+			"index": state.textBlock,
+			"content_block": map[string]any{
+				"type": "text",
+				"text": "",
+			},
+		})
+		payloads = append(payloads, anthropicStreamPayload{event: "content_block_start", data: startPayload})
+	}
+	deltaPayload, _ := json.Marshal(map[string]any{
+		"type":  "content_block_delta",
+		"index": state.textBlock,
+		"delta": map[string]any{
+			"type": "text_delta",
+			"text": text,
+		},
+	})
+	payloads = append(payloads, anthropicStreamPayload{event: "content_block_delta", data: deltaPayload})
+	return payloads
+}
+
+func openAIToolDeltaToAnthropic(delta openAIStreamToolDelta, state *openAIToAnthropicStreamState) []anthropicStreamPayload {
+	if state.tools == nil {
+		state.tools = make(map[int]*openAIStreamToolState)
+	}
+	tool := state.tools[delta.Index]
+	if tool == nil {
+		tool = &openAIStreamToolState{block: state.nextBlock}
+		state.nextBlock++
+		state.tools[delta.Index] = tool
+	}
+	if strings.TrimSpace(delta.ID) != "" {
+		tool.id = strings.TrimSpace(delta.ID)
+	}
+	if strings.TrimSpace(delta.Function.Name) != "" {
+		tool.name = strings.TrimSpace(delta.Function.Name)
+	}
+	if tool.id == "" {
+		tool.id = fmt.Sprintf("toolu_%d", delta.Index)
+	}
+	payloads := make([]anthropicStreamPayload, 0, 2)
+	if !tool.started {
+		tool.started = true
+		startPayload, _ := json.Marshal(map[string]any{
+			"type":  "content_block_start",
+			"index": tool.block,
+			"content_block": map[string]any{
+				"type":  "tool_use",
+				"id":    tool.id,
+				"name":  tool.name,
+				"input": map[string]any{},
+			},
+		})
+		payloads = append(payloads, anthropicStreamPayload{event: "content_block_start", data: startPayload})
+	}
+	if delta.Function.Arguments != "" {
+		tool.arguments.WriteString(delta.Function.Arguments)
+		deltaPayload, _ := json.Marshal(map[string]any{
+			"type":  "content_block_delta",
+			"index": tool.block,
+			"delta": map[string]any{
+				"type":         "input_json_delta",
+				"partial_json": delta.Function.Arguments,
+			},
+		})
+		payloads = append(payloads, anthropicStreamPayload{event: "content_block_delta", data: deltaPayload})
+	}
+	return payloads
+}
+
+func finalizeOpenAIToAnthropicStream(state *openAIToAnthropicStreamState, stopReason string) []anthropicStreamPayload {
+	if state.done {
+		return nil
+	}
+	state.done = true
+	payloads := make([]anthropicStreamPayload, 0)
+	if state.textStarted {
+		payload, _ := json.Marshal(map[string]any{
+			"type":  "content_block_stop",
+			"index": state.textBlock,
+		})
+		payloads = append(payloads, anthropicStreamPayload{event: "content_block_stop", data: payload})
+	}
+	if len(state.tools) > 0 {
+		for _, tool := range state.tools {
+			if !tool.started {
+				continue
+			}
+			payload, _ := json.Marshal(map[string]any{
+				"type":  "content_block_stop",
+				"index": tool.block,
+			})
+			payloads = append(payloads, anthropicStreamPayload{event: "content_block_stop", data: payload})
+		}
+	}
+	deltaPayload, _ := json.Marshal(map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   firstNonEmpty(stopReason, "end_turn"),
+			"stop_sequence": nil,
+		},
+		"usage": map[string]any{
+			"output_tokens": state.usage.CompletionTokens,
+		},
+	})
+	payloads = append(payloads, anthropicStreamPayload{event: "message_delta", data: deltaPayload})
+	stopPayload, _ := json.Marshal(map[string]any{"type": "message_stop"})
+	payloads = append(payloads, anthropicStreamPayload{event: "message_stop", data: stopPayload})
+	return payloads
+}
+
+func (s *openAIToAnthropicStreamState) mergeUsage(usage openAIUsagePayload) {
+	if usage.PromptTokens > s.usage.PromptTokens {
+		s.usage.PromptTokens = usage.PromptTokens
+	}
+	if usage.CompletionTokens > s.usage.CompletionTokens {
+		s.usage.CompletionTokens = usage.CompletionTokens
+	}
+	if usage.TotalTokens > s.usage.TotalTokens {
+		s.usage.TotalTokens = usage.TotalTokens
+	}
+	if usage.PromptTokensDetails.CachedTokens > s.usage.PromptTokensDetails.CachedTokens {
+		s.usage.PromptTokensDetails.CachedTokens = usage.PromptTokensDetails.CachedTokens
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func translateAnthropicEventToOpenAI(data []byte, state *anthropicStreamState) ([][]byte, bool) {

@@ -2,13 +2,14 @@
 
 ## 概述
 
-AI Model Gateway 当前采用纯三面架构：
+AI Model Gateway 当前采用单入口运维、三面内部架构：
 
+- 运维入口：`aigw`
 - 数据面：`gatewayd`
 - 控制面：`controld`
 - Telemetry 面：`telemetryd`
 
-`gateway` launcher 已移除。三个 daemon 直接由外部 supervisor、service manager 或容器编排负责启动和拉起。
+`gateway` launcher 已移除。外部 supervisor、service manager 或容器编排默认只启动 `aigw supervise`，由它按 `telemetryd -> gatewayd -> controld` 拉起内部 daemon。
 
 ## 架构图
 
@@ -16,8 +17,13 @@ AI Model Gateway 当前采用纯三面架构：
             ┌──────────────────────────────────────┐
             │ 外部运维层 / Supervisor / Orchestrator │
             │ systemd / NSSM / Compose / k8s 等     │
-            └──────────────┬──────────────┬────────┘
-                           │              │
+            └───────────────────┬──────────────────┘
+                                │
+                         ┌──────▼──────┐
+                         │    aigw     │
+                         │  supervise  │
+                         └──────┬──────┘
+                                │
               ┌────────────▼──┐  ┌───────▼──────┐
               │   数据面       │  │   控制面      │
               │   gatewayd    │  │   controld   │
@@ -59,6 +65,17 @@ AI Model Gateway 当前采用纯三面架构：
   - `GET /api/admin/timeseries`
   - `GET /api/admin/benchmark`
   - `GET /api/admin/status`
+  - `GET /api/admin/runtime/status`
+  - `POST /api/admin/runtime/preflight`
+  - `GET /api/admin/audit`
+  - `POST /api/admin/config/preview`
+  - `POST /api/admin/config/diff`
+  - `POST /api/admin/probe/provider`
+  - `POST /api/admin/probe/model`
+  - `GET|POST /api/admin/replay`
+  - `GET /api/admin/diagnostics`
+  - `GET /api/admin/secrets/status`
+  - `GET /metrics`
   - `POST /api/admin/login`
   - `POST /api/admin/logout`
   - `GET /api/admin/session`
@@ -109,5 +126,5 @@ controld ──GetOverview/GetTelemetry/
 1. `controld` 是唯一配置 owner。
 2. `gatewayd` 只执行已编译 snapshot。
 3. `telemetryd` 是唯一 telemetry owner。
-4. 三个 daemon 不再依赖单一 launcher。
-5. 运维层需要自己管理 daemon 生命周期、日志和重启策略。
+4. `aigw` 是默认生命周期、日志、bundle 和升级入口。
+5. 单独替换任意 daemon 不是正常升级路径，manifest 校验应拒绝混装运行。

@@ -25,6 +25,9 @@ type Snapshot struct {
 	// RoutingPolicy contains the routing and retry configuration.
 	RoutingPolicy RoutingPolicy `yaml:"routing_policy" json:"routing_policy"`
 
+	// CompatPolicy contains protocol/model compatibility rewrites.
+	CompatPolicy CompatPolicy `yaml:"compat_policy" json:"compat_policy"`
+
 	// TelemetryEmit contains the telemetry emission configuration.
 	TelemetryEmit TelemetryEmitConfig `yaml:"telemetry_emit" json:"telemetry_emit"`
 
@@ -213,6 +216,24 @@ type RoutingPolicy struct {
 
 	// Compression contains the compression configuration.
 	Compression CompressionConfig `yaml:"compression" json:"compression"`
+}
+
+// CompatPolicy contains compatibility rules compiled for gatewayd.
+type CompatPolicy struct {
+	Bridge BridgePolicy `yaml:"bridge" json:"bridge"`
+}
+
+// BridgePolicy controls model name rewriting before provider selection.
+type BridgePolicy struct {
+	Enabled           bool         `yaml:"enabled" json:"enabled"`
+	Rules             []BridgeRule `yaml:"rules" json:"rules"`
+	ExcludeUserAgents []string     `yaml:"exclude_user_agents" json:"exclude_user_agents,omitempty"`
+}
+
+// BridgeRule defines a model name rewrite rule.
+type BridgeRule struct {
+	From string `yaml:"from" json:"from"`
+	To   string `yaml:"to" json:"to"`
 }
 
 // StickySessionConfig contains sticky-session configuration.
