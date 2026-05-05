@@ -28,6 +28,15 @@ func TestIsPrivateIP(t *testing.T) {
 		{"public", "8.8.8.8", false},
 		{"public cloudflare", "1.1.1.1", false},
 		{"ipv6 loopback", "::1", true},
+		{"ipv4-mapped loopback", "::ffff:127.0.0.1", true},
+		{"ipv4-mapped private 10", "::ffff:10.0.0.1", true},
+		{"ipv4-mapped private 172.16", "::ffff:172.16.0.1", true},
+		{"ipv4-mapped private 192.168", "::ffff:192.168.1.1", true},
+		{"ipv4-mapped link-local", "::ffff:169.254.1.1", true},
+		{"ipv4-mapped metadata", "::ffff:169.254.169.254", true},
+		{"ipv4-mapped public", "::ffff:8.8.8.8", false},
+		{"ipv6 unique local", "fc00::1", true},
+		{"ipv6 link-local", "fe80::1", true},
 	}
 
 	for _, tt := range tests {

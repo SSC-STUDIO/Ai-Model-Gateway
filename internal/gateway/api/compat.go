@@ -17,14 +17,32 @@ import (
 	"github.com/google/uuid"
 )
 
-var errMessagesAPIRequiresAnthropicProvider = errors.New("messages API requires anthropic_messages provider")
+// clientFormat identifies the API format the client is speaking.
+type clientFormat int
+
+const (
+	formatChatCompletions clientFormat = iota
+	formatAnthropic
+	formatResponses
+)
 
 type responseCompatMode int
+
+var errMessagesAPIRequiresAnthropicProvider = errors.New("messages API requires an Anthropic-compatible provider")
+
+// clientFormatFor converts a boolean isAnthropic flag to clientFormat.
+func clientFormatFor(isAnthropic bool) clientFormat {
+	if isAnthropic {
+		return formatAnthropic
+	}
+	return formatChatCompletions
+}
 
 const (
 	responseCompatPassthrough responseCompatMode = iota
 	responseCompatAnthropicToOpenAI
 	responseCompatOpenAIToAnthropic
+	responseCompatChatToResponses
 )
 
 type compatPlan struct {
@@ -155,12 +173,11 @@ type openAIToAnthropicStreamState struct {
 	done           bool
 }
 
-func collectProviderCandidatesForRequest(snap *snapshot.Snapshot, model string, clientAnthropic bool) ([]providerCandidate, bool) {
+func collectProviderCandidatesForRequest(snap *snapshot.Snapshot, model string) []providerCandidate {
 	if snap == nil {
-		return nil, false
+		return nil
 	}
 	candidates := make([]providerCandidate, 0, len(snap.Providers))
-	unsupportedMatches := false
 	for i := range snap.Providers {
 		p := &snap.Providers[i]
 		if !p.ExecutionPolicy.Enabled {
@@ -178,11 +195,11 @@ func collectProviderCandidatesForRequest(snap *snapshot.Snapshot, model string, 
 			break
 		}
 	}
-	return candidates, unsupportedMatches
+	return candidates
 }
 
 func buildCompatPlan(
-	clientAnthropic bool,
+	clientFmt clientFormat,
 	provider *snapshot.ProviderSnapshot,
 	requestedModel string,
 	upstreamModel string,
@@ -200,7 +217,21 @@ func buildCompatPlan(
 	}
 
 	adapter := providerProtocolAdapter(provider)
-	if clientAnthropic {
+
+	// Responses API clients: convert to Chat Completions for upstream, then back.
+	if clientFmt == formatResponses {
+		converted, err := convertResponsesRequestToChat(body, upstreamModel)
+		if err != nil {
+			return compatPlan{}, err
+		}
+		plan.forwardPath = "/v1/chat/completions"
+		plan.forwardBody = converted
+		plan.upstreamIsAnthropic = false
+		plan.responseMode = responseCompatChatToResponses
+		return plan, nil
+	}
+
+	if clientFmt == formatAnthropic {
 		if adapter != core.ProtocolAdapterAnthropicMessages {
 			converted, err := convertAnthropicRequestToOpenAIChat(body, upstreamModel)
 			if err != nil {
@@ -246,6 +277,16 @@ func providerProtocolAdapter(provider *snapshot.ProviderSnapshot) string {
 }
 
 func adaptResponseBodyForClient(plan compatPlan, statusCode int, respBody []byte) ([]byte, string, error) {
+	if plan.responseMode == responseCompatChatToResponses {
+		if statusCode >= http.StatusBadRequest {
+			return respBody, "application/json", nil
+		}
+		converted, err := adaptChatResponseToResponses(respBody, plan.clientModel)
+		if err != nil {
+			return nil, "", err
+		}
+		return converted, "application/json", nil
+	}
 	if plan.responseMode == responseCompatOpenAIToAnthropic {
 		if statusCode >= http.StatusBadRequest {
 			return adaptOpenAIErrorToAnthropic(respBody), "application/json", nil
@@ -270,6 +311,9 @@ func adaptResponseBodyForClient(plan compatPlan, statusCode int, respBody []byte
 }
 
 func writeCompatStreamResponse(w http.ResponseWriter, statusCode int, contentType string, respBody io.ReadCloser, plan compatPlan) (promptTokens, cachedPromptTokens, completionTokens int64) {
+	if plan.responseMode == responseCompatChatToResponses {
+		return bridgeChatStreamToResponses(w, statusCode, respBody, plan.clientModel)
+	}
 	if plan.responseMode == responseCompatOpenAIToAnthropic {
 		return bridgeOpenAIStreamToAnthropic(w, statusCode, respBody, plan.clientModel)
 	}
@@ -277,6 +321,19 @@ func writeCompatStreamResponse(w http.ResponseWriter, statusCode int, contentTyp
 		return bridgeAnthropicStreamToOpenAI(w, statusCode, respBody)
 	}
 	return handleStreamResponse(w, statusCode, contentType, respBody)
+}
+
+func writeCompatStreamResponseStarted(w http.ResponseWriter, flusher http.Flusher, respBody io.ReadCloser, plan compatPlan) (promptTokens, cachedPromptTokens, completionTokens int64) {
+	if plan.responseMode == responseCompatChatToResponses {
+		return bridgeChatStreamToResponsesStarted(w, flusher, respBody, plan.clientModel)
+	}
+	if plan.responseMode == responseCompatOpenAIToAnthropic {
+		return bridgeOpenAIStreamToAnthropicStarted(w, flusher, respBody, plan.clientModel)
+	}
+	if plan.responseMode == responseCompatAnthropicToOpenAI {
+		return bridgeAnthropicStreamToOpenAIStarted(w, flusher, respBody)
+	}
+	return handleStartedStreamResponse(w, respBody, flusher)
 }
 
 func convertAnthropicRequestToOpenAIChat(body []byte, upstreamModel string) ([]byte, error) {
@@ -738,6 +795,10 @@ func bridgeAnthropicStreamToOpenAI(w http.ResponseWriter, statusCode int, respBo
 	w.WriteHeader(statusCode)
 
 	flusher, _ := w.(http.Flusher)
+	return bridgeAnthropicStreamToOpenAIStarted(w, flusher, respBody)
+}
+
+func bridgeAnthropicStreamToOpenAIStarted(w http.ResponseWriter, flusher http.Flusher, respBody io.ReadCloser) (promptTokens, cachedPromptTokens, completionTokens int64) {
 	if respBody == nil {
 		return 0, 0, 0
 	}
@@ -824,6 +885,10 @@ func bridgeOpenAIStreamToAnthropic(w http.ResponseWriter, statusCode int, respBo
 	w.WriteHeader(statusCode)
 
 	flusher, _ := w.(http.Flusher)
+	return bridgeOpenAIStreamToAnthropicStarted(w, flusher, respBody, clientModel)
+}
+
+func bridgeOpenAIStreamToAnthropicStarted(w http.ResponseWriter, flusher http.Flusher, respBody io.ReadCloser, clientModel string) (promptTokens, cachedPromptTokens, completionTokens int64) {
 	if respBody == nil {
 		return 0, 0, 0
 	}
@@ -1925,4 +1990,564 @@ func convertOpenAIFunctionsToAnthropic(raw json.RawMessage) ([]map[string]any, e
 		})
 	}
 	return converted, nil
+}
+
+// convertResponsesRequestToChat converts an OpenAI Responses API request body
+// to a Chat Completions API request body.
+//
+// Responses API input format:
+//
+//	{"model":"gpt-4o","input":"hello","stream":false}
+//	{"model":"gpt-4o","input":[{"role":"user","content":"hello"}],"stream":false}
+//
+// Chat Completions output format:
+//
+//	{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}],"stream":false}
+func convertResponsesRequestToChat(body []byte, upstreamModel string) ([]byte, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("decode responses request: %w", err)
+	}
+
+	out := make(map[string]any)
+
+	// Copy model, stream, and other passthrough fields.
+	copyRawField := func(from, to string) {
+		if value, ok := raw[from]; ok {
+			var decoded any
+			if err := json.Unmarshal(value, &decoded); err == nil {
+				out[to] = decoded
+			}
+		}
+	}
+	copyRawField("model", "model")
+	copyRawField("stream", "stream")
+	copyRawField("temperature", "temperature")
+	copyRawField("top_p", "top_p")
+	copyRawField("max_output_tokens", "max_tokens")
+	copyRawField("tool_choice", "tool_choice")
+
+	// Filter tools: Chat Completions only supports type="function".
+	// Responses API also allows "custom", "web_search", "file_search", etc.
+	if toolsRaw, ok := raw["tools"]; ok {
+		var tools []map[string]any
+		if err := json.Unmarshal(toolsRaw, &tools); err == nil {
+			functionTools := make([]map[string]any, 0, len(tools))
+			for _, tool := range tools {
+				if strings.TrimSpace(fmt.Sprint(tool["type"])) == "function" {
+					functionTools = append(functionTools, tool)
+				}
+			}
+			if len(functionTools) > 0 {
+				out["tools"] = functionTools
+			}
+		}
+	}
+
+	if strings.TrimSpace(upstreamModel) != "" {
+		out["model"] = strings.TrimSpace(upstreamModel)
+	}
+
+	// Convert "input" to "messages".
+	inputRaw, ok := raw["input"]
+	if !ok {
+		return nil, fmt.Errorf("responses request missing 'input' field")
+	}
+
+	// input can be a string or an array of message objects.
+	var inputStr string
+	if err := json.Unmarshal(inputRaw, &inputStr); err == nil {
+		// Simple string input → single user message.
+		out["messages"] = []map[string]any{
+			{"role": "user", "content": inputStr},
+		}
+	} else {
+		// Array of message objects.
+		var messages []map[string]any
+		if err := json.Unmarshal(inputRaw, &messages); err != nil {
+			return nil, fmt.Errorf("decode responses input: %w", err)
+		}
+		normalized, err := sanitizeResponsesInputToChatMessages(messages)
+		if err != nil {
+			return nil, err
+		}
+		out["messages"] = normalized
+	}
+
+	return json.Marshal(out)
+}
+
+// sanitizeResponsesInputToChatMessages normalizes OpenAI Responses-style "input"
+// arrays into Chat Completions "messages" shape. Codex and other clients may
+// send Responses item wrappers (type=message), input_text/input_image parts, or
+// JSON null content (e.g. assistant turns with only tool_calls). Upstream
+// chat bridges may map messages back to Responses and reject null content with
+// errors like Invalid type for 'input[0].content'.
+func sanitizeResponsesInputToChatMessages(messages []map[string]any) ([]map[string]any, error) {
+	if len(messages) == 0 {
+		return nil, fmt.Errorf("responses input message list is empty")
+	}
+	out := make([]map[string]any, 0, len(messages))
+	for _, raw := range messages {
+		msg := make(map[string]any, len(raw)+2)
+		for k, v := range raw {
+			msg[k] = v
+		}
+		if typ, ok := msg["type"].(string); ok && typ == "message" {
+			delete(msg, "type")
+		}
+		role, _ := msg["role"].(string)
+		if strings.TrimSpace(role) == "" {
+			// Skip Responses-only items (reasoning, etc.) that are not chat roles.
+			continue
+		}
+		content, hasContent := msg["content"]
+		if !hasContent || content == nil {
+			msg["content"] = ""
+		} else if parts, ok := coerceJSONSlice(content); ok {
+			norm, err := normalizeResponsesStyleContentToChatContent(parts)
+			if err != nil {
+				return nil, err
+			}
+			msg["content"] = norm
+		}
+		out = append(out, msg)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("responses input contained no messages with a role")
+	}
+	return out, nil
+}
+
+func coerceJSONSlice(v any) ([]any, bool) {
+	switch t := v.(type) {
+	case []any:
+		return t, true
+	case []map[string]any:
+		out := make([]any, len(t))
+		for i := range t {
+			out[i] = t[i]
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+func normalizeResponsesStyleContentToChatContent(parts []any) (any, error) {
+	if len(parts) == 0 {
+		return "", nil
+	}
+	chatParts := make([]map[string]any, 0, len(parts))
+	for _, p := range parts {
+		block, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		pt, _ := block["type"].(string)
+		switch pt {
+		case "input_text":
+			txt, _ := block["text"].(string)
+			chatParts = append(chatParts, map[string]any{"type": "text", "text": txt})
+		case "input_image":
+			part := map[string]any{"type": "image_url"}
+			switch u := block["image_url"].(type) {
+			case string:
+				part["image_url"] = map[string]any{"url": u}
+			case map[string]any:
+				part["image_url"] = u
+			default:
+				return nil, fmt.Errorf("responses input_image: image_url must be string or object")
+			}
+			chatParts = append(chatParts, part)
+		case "text", "image_url":
+			chatParts = append(chatParts, cloneStringAnyMap(block))
+		default:
+			// Best-effort passthrough for uncommon part types.
+			chatParts = append(chatParts, cloneStringAnyMap(block))
+		}
+	}
+	if len(chatParts) == 0 {
+		return "", nil
+	}
+	if len(chatParts) == 1 {
+		if tp, _ := chatParts[0]["type"].(string); tp == "text" {
+			if txt, ok := chatParts[0]["text"].(string); ok {
+				return txt, nil
+			}
+		}
+	}
+	return chatParts, nil
+}
+
+// adaptChatResponseToResponses converts a Chat Completions API response body
+// to the OpenAI Responses API format.
+//
+// Chat Completions input:
+//
+//	{"id":"chatcmpl-123","object":"chat.completion","created":123,"model":"gpt-4o",
+//	 "choices":[{"index":0,"message":{"role":"assistant","content":"Hi!"},"finish_reason":"stop"}],
+//	 "usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}
+//
+// Responses API output:
+//
+//	{"id":"resp_chatcmpl-123","object":"response","created_at":123,"model":"gpt-4o",
+//	 "output":[{"type":"message","id":"msg_chatcmpl-123","status":"completed","role":"assistant",
+//	 "content":[{"type":"output_text","text":"Hi!"}]}],
+//	 "usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8},"status":"completed"}
+func adaptChatResponseToResponses(respBody []byte, clientModel string) ([]byte, error) {
+	var payload struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Index        int    `json:"index"`
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
+				Role      string          `json:"role"`
+				Content   json.RawMessage `json:"content"`
+				ToolCalls []openAIToolCall `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+			TotalTokens      int64 `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return nil, fmt.Errorf("decode chat response: %w", err)
+	}
+
+	model := strings.TrimSpace(clientModel)
+	if model == "" {
+		model = payload.Model
+	}
+
+	// Build output content from the first choice.
+	outputContent := make([]map[string]any, 0)
+	var msgID string
+	if len(payload.Choices) > 0 {
+		choice := payload.Choices[0]
+		msgID = payload.ID
+		if msgID == "" {
+			msgID = "msg_" + uuid.NewString()
+		} else if !strings.HasPrefix(msgID, "msg_") {
+			msgID = "msg_" + msgID
+		}
+
+		// Extract text content.
+		if len(choice.Message.Content) > 0 {
+			var text string
+			if err := json.Unmarshal(choice.Message.Content, &text); err == nil && strings.TrimSpace(text) != "" {
+				outputContent = append(outputContent, map[string]any{
+					"type": "output_text",
+					"text": text,
+				})
+			}
+		}
+
+		// Extract tool calls.
+		for _, tc := range choice.Message.ToolCalls {
+			outputContent = append(outputContent, map[string]any{
+				"type":      "tool_call",
+				"id":        tc.ID,
+				"name":      tc.Function.Name,
+				"arguments": tc.Function.Arguments,
+			})
+		}
+	}
+
+	if len(outputContent) == 0 {
+		outputContent = append(outputContent, map[string]any{
+			"type": "output_text",
+			"text": "",
+		})
+	}
+
+	respID := payload.ID
+	if respID == "" {
+		respID = "resp_" + uuid.NewString()
+	} else if !strings.HasPrefix(respID, "resp_") {
+		respID = "resp_" + respID
+	}
+
+	resp := map[string]any{
+		"id":         respID,
+		"object":     "response",
+		"created_at": payload.Created,
+		"model":      model,
+		"output": []map[string]any{
+			{
+				"type":    "message",
+				"id":      msgID,
+				"status":  "completed",
+				"role":    "assistant",
+				"content": outputContent,
+			},
+		},
+		"usage": map[string]any{
+			"input_tokens":  payload.Usage.PromptTokens,
+			"output_tokens": payload.Usage.CompletionTokens,
+			"total_tokens":  payload.Usage.TotalTokens,
+		},
+		"status": "completed",
+	}
+
+	return json.Marshal(resp)
+}
+
+// bridgeChatStreamToResponses converts a Chat Completions SSE stream into
+// Responses API SSE format.
+func bridgeChatStreamToResponses(w http.ResponseWriter, statusCode int, respBody io.ReadCloser, clientModel string) (promptTokens, cachedPromptTokens, completionTokens int64) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(statusCode)
+
+	flusher, _ := w.(http.Flusher)
+	return bridgeChatStreamToResponsesStarted(w, flusher, respBody, clientModel)
+}
+
+func bridgeChatStreamToResponsesStarted(w http.ResponseWriter, flusher http.Flusher, respBody io.ReadCloser, clientModel string) (promptTokens, cachedPromptTokens, completionTokens int64) {
+	if respBody == nil {
+		return 0, 0, 0
+	}
+	defer respBody.Close()
+
+	reader := bufio.NewReader(respBody)
+	var eventData bytes.Buffer
+
+	state := responsesStreamState{
+		model:   strings.TrimSpace(clientModel),
+		created: time.Now().Unix(),
+	}
+
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	emit := func(payload []byte) {
+		if len(payload) == 0 {
+			return
+		}
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(payload)
+		_, _ = w.Write([]byte("\n\n"))
+		flush()
+	}
+
+	handleEvent := func(data []byte) {
+		payloads, done := translateChatStreamEventToResponses(data, &state)
+		for _, p := range payloads {
+			emit(p)
+		}
+		if done {
+			if state.usageEmitted {
+				return
+			}
+			state.usageEmitted = true
+			emitDone := map[string]any{
+				"type":     "response.completed",
+				"response": state.buildFinalResponse(),
+			}
+			if payload, err := json.Marshal(emitDone); err == nil {
+				emit(payload)
+			}
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			flush()
+		}
+	}
+
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			trimmedLine := strings.TrimRight(string(line), "\r\n")
+			if strings.TrimSpace(trimmedLine) == "" {
+				if eventData.Len() > 0 {
+					handleEvent(eventData.Bytes())
+					eventData.Reset()
+				}
+			} else if strings.HasPrefix(trimmedLine, "data:") {
+				data := strings.TrimSpace(strings.TrimPrefix(trimmedLine, "data:"))
+				if eventData.Len() > 0 {
+					eventData.WriteByte('\n')
+				}
+				eventData.WriteString(data)
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				if eventData.Len() > 0 {
+					handleEvent(eventData.Bytes())
+				}
+				if !state.usageEmitted {
+					state.usageEmitted = true
+					emitDone := map[string]any{
+						"type":     "response.completed",
+						"response": state.buildFinalResponse(),
+					}
+					if payload, err := json.Marshal(emitDone); err == nil {
+						emit(payload)
+					}
+					_, _ = w.Write([]byte("data: [DONE]\n\n"))
+					flush()
+				}
+			}
+			break
+		}
+	}
+
+	return state.promptTokens, state.cachedPromptTokens, state.completionTokens
+}
+
+type responsesStreamState struct {
+	model             string
+	created           int64
+	promptTokens      int64
+	completionTokens  int64
+	cachedPromptTokens int64
+	textStarted       bool
+	textDone          bool
+	toolCallsStarted  map[int]bool
+	toolCallsDone     map[int]bool
+	responseID        string
+	finishReason      string
+	usageEmitted      bool
+}
+
+func (s *responsesStreamState) buildFinalResponse() map[string]any {
+	return map[string]any{
+		"id":         s.responseID,
+		"object":     "response",
+		"created_at": s.created,
+		"model":      s.model,
+		"status":     "completed",
+		"usage": map[string]any{
+			"input_tokens":  s.promptTokens,
+			"output_tokens": s.completionTokens,
+			"total_tokens":  s.promptTokens + s.completionTokens,
+		},
+	}
+}
+
+func translateChatStreamEventToResponses(data []byte, state *responsesStreamState) ([][]byte, bool) {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return nil, false
+	}
+	if trimmed == "[DONE]" {
+		return nil, true
+	}
+
+	var chunk struct {
+		ID      string `json:"id"`
+		Model   string `json:"model"`
+		Created int64  `json:"created"`
+		Choices []struct {
+			Delta struct {
+				Role      string `json:"role"`
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					Index    int    `json:"index"`
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"delta"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+			TotalTokens      int64 `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &chunk); err != nil {
+		return nil, false
+	}
+
+	if chunk.ID != "" && state.responseID == "" {
+		state.responseID = "resp_" + chunk.ID
+	}
+	if chunk.Model != "" && state.model == "" {
+		state.model = chunk.Model
+	}
+	if chunk.Created > 0 {
+		state.created = chunk.Created
+	}
+	if chunk.Usage.PromptTokens > 0 {
+		state.promptTokens = chunk.Usage.PromptTokens
+	}
+	if chunk.Usage.CompletionTokens > 0 {
+		state.completionTokens = chunk.Usage.CompletionTokens
+	}
+
+	payloads := make([][]byte, 0)
+
+	for _, choice := range chunk.Choices {
+		// Text delta → response.output_text.delta
+		if choice.Delta.Content != "" {
+			if !state.textStarted {
+				state.textStarted = true
+				// Emit response.output_text.started
+				startPayload, _ := json.Marshal(map[string]any{
+					"type":   "response.output_text.delta",
+					"delta":  choice.Delta.Content,
+					"offset": 0,
+				})
+				payloads = append(payloads, startPayload)
+			} else {
+				deltaPayload, _ := json.Marshal(map[string]any{
+					"type":   "response.output_text.delta",
+					"delta":  choice.Delta.Content,
+					"offset": 0,
+				})
+				payloads = append(payloads, deltaPayload)
+			}
+		}
+
+		// Tool call deltas
+		for _, tc := range choice.Delta.ToolCalls {
+			if state.toolCallsStarted == nil {
+				state.toolCallsStarted = make(map[int]bool)
+			}
+			if !state.toolCallsStarted[tc.Index] {
+				state.toolCallsStarted[tc.Index] = true
+				startPayload, _ := json.Marshal(map[string]any{
+					"type": "response.function_call_arguments.delta",
+					"index": tc.Index,
+					"name":  tc.Function.Name,
+					"delta": tc.Function.Arguments,
+				})
+				payloads = append(payloads, startPayload)
+			} else if tc.Function.Arguments != "" {
+				deltaPayload, _ := json.Marshal(map[string]any{
+					"type":  "response.function_call_arguments.delta",
+					"index": tc.Index,
+					"delta": tc.Function.Arguments,
+				})
+				payloads = append(payloads, deltaPayload)
+			}
+		}
+
+		if choice.FinishReason != "" {
+			state.finishReason = choice.FinishReason
+			if state.textStarted && !state.textDone {
+				state.textDone = true
+				donePayload, _ := json.Marshal(map[string]any{
+					"type": "response.output_text.done",
+				})
+				payloads = append(payloads, donePayload)
+			}
+		}
+	}
+
+	return payloads, false
 }

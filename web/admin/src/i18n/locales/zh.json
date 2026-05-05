@@ -172,11 +172,60 @@
       "upstreamModel": "上游模型名",
       "noModels": "暂无模型映射",
       "selectProvider": "选择 Provider",
-      "selectProviderHint": "点击左侧 Provider 查看详情"
+      "selectProviderHint": "点击左侧 Provider 查看详情",
+      "anthropicBaseUrl": "Anthropic 基础 URL",
+      "providerClass": "提供商类型",
+      "classDefault": "默认",
+      "classFree": "免费",
+      "classQuotaLimited": "配额受限",
+      "timeoutMs": "超时 (毫秒)",
+      "sameUpstreamRetries": "同上游重试次数"
     },
     "visualEditor": "图形化配置",
     "visualEditorComingSoon": "图形化编辑器即将推出",
-    "visualEditorHint": "使用可视化界面编辑路由规则、Provider 配置和模型映射"
+    "visualEditorHint": "使用可视化界面编辑路由规则、Provider 配置和模型映射",
+    "server": {
+      "title": "服务器",
+      "listenAddress": "监听地址",
+      "readTimeoutMs": "读取超时 (毫秒)",
+      "writeTimeoutMs": "写入超时 (毫秒)",
+      "idleTimeoutMs": "空闲超时 (毫秒)",
+      "maxBodyBytes": "最大请求体大小"
+    },
+    "admin": {
+      "title": "管理",
+      "language": "语言",
+      "publishHistoryLimit": "发布历史限制",
+      "rateLimitRps": "速率限制 (RPS)",
+      "rateLimitBurst": "速率限制突发"
+    },
+    "common": {
+      "enabled": "已启用"
+    },
+    "bridge": {
+      "title": "桥接",
+      "rules": "桥接规则",
+      "toModel": "目标模型"
+    },
+    "fallback": {
+      "title": "回退",
+      "detectRepetition": "检测重复",
+      "models": "回退模型"
+    },
+    "telemetry": {
+      "title": "遥测",
+      "retentionDays": "保留天数"
+    },
+    "pricing": {
+      "title": "定价",
+      "refreshIntervalHours": "刷新间隔 (小时)",
+      "requestTimeoutMs": "请求超时 (毫秒)"
+    },
+    "intercept": {
+      "title": "拦截规则",
+      "rules": "规则",
+      "ruleName": "规则名称"
+    }
   },
   "common": {
     "remove": "移除",

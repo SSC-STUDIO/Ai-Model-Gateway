@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+### Added
+
+- **`aigw clients print|apply`**：从 `configs/gatewayd.json`（或 `-gateway-url`）解析数据面地址，打印或写入 Codex（`openai_base_url`）、Claude Code（`~/.claude/settings.json` 中 `ANTHROPIC_*`）、OpenClaw（`~/.openclaw/openclaw.json` 中自定义 OpenAI 兼容 provider），便于本机工具一键指向本网关。
+
 ### Security
 
 - **移除 URL token 登录**: `/admin?token=...` 登录方式已移除，改用 `POST /api/admin/login` JSON 请求登录，防止 token 泄露到浏览器历史和代理日志
@@ -18,6 +22,18 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 - 修复 SSRF 检查器变量重复声明问题
 - 修复缓存测试中未定义的 entrySize 变量
 - 添加 daemon JSON 配置文件用于服务启动
+- **修复 Logger 并发安全问题**: `SetLevel` 与热路径 `Debug`/`Info`/`Warn`/`Error` 之间添加 `sync.RWMutex` 保护，消除 data race
+- **WebSocket DNS Pinning 安全增强**: `NewProxy()` 创建 `pinnedIPDialer` 防止 DNS 重绑定攻击，移除死代码 `ssrfSafeDialer` 接口
+- **WebSocket Origin 校验**: 添加 `SetAllowedOrigin` 配置接口和 `NewProxyWithOrigin` 便捷构造函数，为同源校验提供扩展点
+- **修复基准测试状态静默丢失**: `_ = s.store.UpdateRunStatus(...)` 改为 `logger.Error` 日志记录，确保异步 goroutine 中的失败可见
+- **修复无限重试循环逻辑**: `handler.go` 中 `maxAttempts == 0` 时内层循环可无限制重试同一 provider（非流式请求），修复 5 个无限重试测试
+- **修复 HandleResponses API 转换**: `handleChatOrMessages` 参数从 `isAnthropic bool` 改为 `clientFmt clientFormat`，确保 `/v1/responses` 请求正确执行 Responses→Chat 格式转换
+- **消除 handler.go 约 30 个重复声明**: 移除与 `forward.go`/`streaming.go`/`routing.go`/`compat_body.go` 冲突的重复函数/结构体
+
+### Added
+
+- **forward_test.go — 9 个直接单元测试**: SSRF 阻断、正常非流式、SSE 检测、响应过大(>10MB)、超时、500 上游、User-Agent 转发、anthropic-version 头、AnthropicBaseURL 覆盖
+- **streaming_test.go — 14 个直接单元测试**: Content-Type SSE 检测、桥接模型解析、通配符匹配、客户端断开、nil body、usage 提取、响应头写入、心跳内容验证、非流式 keep-alive、cancelOnClose
 
 ## [1.2.0] — 2026-04-19
 

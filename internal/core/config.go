@@ -65,8 +65,8 @@ type RoutingConfig struct {
 	Intercepts     []InterceptRule     `yaml:"intercepts"      json:"intercepts"`
 	RateLimit      RateLimitConfig     `yaml:"rate_limit"      json:"rate_limit"`
 	Cache          CacheConfig         `yaml:"cache"           json:"cache"`
-	Queue          QueueConfig         `yaml:"queue"           json:"queue"`
 	KeyRotation    KeyRotationConfig   `yaml:"key_rotation"    json:"key_rotation"`
+	Queue          QueueConfig         `yaml:"queue"           json:"queue"`
 	Compression    CompressionConfig   `yaml:"compression"     json:"compression"`
 }
 
@@ -96,11 +96,13 @@ type FailurePolicyConfig struct {
 	CooldownSec              int `yaml:"cooldown_sec"                json:"cooldown_sec"`
 	PassthroughAfterSec      int `yaml:"passthrough_after_sec"       json:"passthrough_after_sec"`
 	QuotaRecoveryIntervalMin int `yaml:"quota_recovery_interval_min" json:"quota_recovery_interval_min"`
+	DisableCooldown          bool `yaml:"disable_cooldown"           json:"disable_cooldown"`
 }
 
 // RetryPolicyConfig defines when requests should be retried.
 type RetryPolicyConfig struct {
 	InfiniteOnError bool     `yaml:"infinite_on_error" json:"infinite_on_error"`
+	AllErrors       bool     `yaml:"all_errors"        json:"all_errors"`
 	StatusCodes     []int    `yaml:"status_codes"      json:"status_codes"`
 	StatusCodeMin   *int     `yaml:"status_code_min"   json:"status_code_min,omitempty"`
 	MessageKeywords []string `yaml:"message_keywords"  json:"message_keywords"`
@@ -131,23 +133,21 @@ type CacheConfig struct {
 	TTLSec     int  `yaml:"ttl_seconds" json:"ttl_seconds"`
 }
 
-// QueueConfig controls request queuing.
-type QueueConfig struct {
-	Enabled         bool `yaml:"enabled"          json:"enabled"`
-	MaxConcurrent   int  `yaml:"max_concurrent"   json:"max_concurrent"`
-	HighPriorityPct int  `yaml:"high_priority_pct" json:"high_priority_pct"`
-}
-
 // KeyRotationConfig controls API key rotation.
 type KeyRotationConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
+// QueueConfig controls request queuing.
+type QueueConfig struct {
+	MaxConcurrent    int `yaml:"max_concurrent"    json:"max_concurrent"`
+	HighPriorityPct  int `yaml:"high_priority_pct" json:"high_priority_pct"`
+}
+
 // CompressionConfig controls response compression.
 type CompressionConfig struct {
-	Enabled      bool `yaml:"enabled"        json:"enabled"`
-	MinSizeBytes int  `yaml:"min_size_bytes" json:"min_size_bytes"`
-	Level        int  `yaml:"level"          json:"level"`
+	Level       int `yaml:"level"         json:"level"`
+	MinSizeBytes int `yaml:"min_size_bytes" json:"min_size_bytes"`
 }
 
 // IsEnabled returns whether the intercept rule is enabled (defaults to true).
@@ -676,7 +676,9 @@ const (
 	StrategyWeightedRR                   = "weighted_rr"
 	ProtocolAdapterOpenAIChatCompletions = "openai_chat_completions"
 	ProtocolAdapterAnthropicMessages     = "anthropic_messages"
-	BenchmarkSuiteGeneralProtocolV1      = "general_protocol_v1"
+	// BenchmarkProtocolOpenAIResponses is the protocol string for RunBenchmarkCase to exercise POST /v1/responses.
+	BenchmarkProtocolOpenAIResponses = "openai_responses"
+	BenchmarkSuiteGeneralProtocolV1  = "general_protocol_v1"
 
 	DefaultAdminPublishHistoryLimit = 256
 

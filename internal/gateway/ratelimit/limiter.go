@@ -7,15 +7,23 @@ import (
 	"time"
 )
 
-// staleBucketTTL is how long an inactive bucket is kept before cleanup.
-const staleBucketTTL = 5 * time.Minute
+const (
+	// staleBucketTTL is how long an inactive bucket is kept before cleanup.
+	staleBucketTTL = 5 * time.Minute
+	// defaultMaxBuckets limits memory usage for random-key attacks.
+	defaultMaxBuckets = 65_536
+	// cleanupInterval triggers stale-bucket sweep every N Allow() calls.
+	cleanupInterval = 256
+)
 
 // Limiter implements a per-API-key token-bucket rate limiter.
 type Limiter struct {
-	buckets map[string]*bucket
-	mu      sync.RWMutex
-	rps     float64
-	burst   int
+	buckets    map[string]*bucket
+	mu         sync.RWMutex
+	rps        float64
+	burst      int
+	maxBuckets int
+	callCount  uint64
 }
 
 // bucket represents a single token bucket for one API key.
@@ -28,9 +36,10 @@ type bucket struct {
 // and maximum burst capacity.
 func NewLimiter(rps float64, burst int) *Limiter {
 	return &Limiter{
-		buckets: make(map[string]*bucket),
-		rps:     rps,
-		burst:   burst,
+		buckets:    make(map[string]*bucket),
+		rps:        rps,
+		burst:      burst,
+		maxBuckets: defaultMaxBuckets,
 	}
 }
 
@@ -40,10 +49,22 @@ func (l *Limiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	l.cleanupStaleBucketsLocked()
+	// Run stale-bucket cleanup periodically instead of every call.
+	l.callCount++
+	if l.callCount%cleanupInterval == 0 {
+		l.cleanupStaleBucketsLocked()
+	}
 
 	b, ok := l.buckets[key]
 	if !ok {
+		// Enforce max bucket count to prevent memory exhaustion from random keys.
+		if len(l.buckets) >= l.maxBuckets {
+			l.cleanupStaleBucketsLocked()
+			if len(l.buckets) >= l.maxBuckets {
+				// Still at capacity after cleanup — reject new keys.
+				return false
+			}
+		}
 		b = &bucket{tokens: float64(l.burst)}
 		l.buckets[key] = b
 	}

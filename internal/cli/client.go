@@ -322,6 +322,8 @@ type GatewayStatusResponse struct {
 	ProviderHealth   map[string]ProviderHealth `json:"provider_health"`
 	Uptime           string                    `json:"uptime"`
 	StartedAt        time.Time                 `json:"started_at"`
+	LastAutoRemediationReason string           `json:"last_auto_remediation_reason,omitempty"`
+	LastAutoRemediationAt     time.Time        `json:"last_auto_remediation_at,omitempty"`
 }
 
 // ProviderHealth represents provider health status

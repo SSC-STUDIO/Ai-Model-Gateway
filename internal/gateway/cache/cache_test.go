@@ -28,7 +28,7 @@ func TestNewCacheUsesProvidedValues(t *testing.T) {
 
 func TestPutAndGet(t *testing.T) {
 	c := NewCache(1, 60)
-	key := c.MakeKey([]byte(`{"model":"gpt-4"}`), "gpt-4")
+	key := c.MakeKey([]byte(`{"model":"gpt-4"}`), "gpt-4", "")
 	value := []byte(`{"id":"chatcmpl-123","choices":[]}`)
 
 	c.Put(key, value)
@@ -52,7 +52,7 @@ func TestGetMiss(t *testing.T) {
 
 func TestGetExpired(t *testing.T) {
 	c := NewCache(1, 1) // 1 second TTL
-	key := c.MakeKey([]byte("body"), "model")
+	key := c.MakeKey([]byte("body"), "model", "")
 	c.Put(key, []byte("value"))
 
 	// Advance time past TTL.
@@ -64,8 +64,9 @@ func TestGetExpired(t *testing.T) {
 	if ok {
 		t.Fatal("expected expired entry to be a miss")
 	}
+	// Get() eagerly removes expired entries.
 	if c.Len() != 0 {
-		t.Fatalf("expected 0 entries after expiry, got %d", c.Len())
+		t.Fatalf("expected 0 entries after expiry eviction, got %d", c.Len())
 	}
 }
 
@@ -141,32 +142,45 @@ func TestLRUEviction(t *testing.T) {
 	}
 }
 
-func TestLRUPromotionOnGet(t *testing.T) {
-	// Cache with max 3 items
+func TestLRUPromotion(t *testing.T) {
+	// Cache with max 3 items — Get() promotes to front, so eviction is LRU.
 	c := NewCache(3, 60)
 
 	c.Put("old", []byte("value1"))
 	c.Put("mid", []byte("value2"))
 	c.Put("new", []byte("value3"))
 
-	// Accessing "old" promotes it to the front, making "mid" the LRU.
+	// Accessing "old" promotes it to the front of LRU.
 	_, ok := c.Get("old")
 	if !ok {
 		t.Fatal("expected old to be present")
 	}
 
-	// Adding two new entries: the first fits (total = 4), the second must
-	// evict the LRU entry, which is "mid" after "old" was promoted.
+	// Adding two new entries: the first evicts "mid" (now least recently used),
+	// the second evicts "new" (now least recently used).
+	// "old" survives because it was promoted by the Get above.
 	c.Put("extra1", []byte("v1"))
 	c.Put("extra2", []byte("v2"))
 
-	_, ok = c.Get("mid")
-	if ok {
-		t.Fatal("expected mid to be evicted")
-	}
 	_, ok = c.Get("old")
 	if !ok {
-		t.Fatal("expected old to survive after promotion")
+		t.Fatal("expected old to survive (promoted by recent access)")
+	}
+	_, ok = c.Get("mid")
+	if ok {
+		t.Fatal("expected mid to be evicted (least recently used)")
+	}
+	_, ok = c.Get("new")
+	if ok {
+		t.Fatal("expected new to be evicted (least recently used)")
+	}
+	_, ok = c.Get("extra1")
+	if !ok {
+		t.Fatal("expected extra1 to survive")
+	}
+	_, ok = c.Get("extra2")
+	if !ok {
+		t.Fatal("expected extra2 to survive")
 	}
 }
 
@@ -213,8 +227,8 @@ func TestMakeKeyDeterministic(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":"hello"}]}`)
 	model := "gpt-4"
 
-	key1 := c.MakeKey(body, model)
-	key2 := c.MakeKey(body, model)
+	key1 := c.MakeKey(body, model, "")
+	key2 := c.MakeKey(body, model, "")
 	if key1 != key2 {
 		t.Fatal("expected deterministic keys for identical inputs")
 	}
@@ -224,8 +238,8 @@ func TestMakeKeyDiffersOnModel(t *testing.T) {
 	c := NewCache(1, 60)
 	body := []byte("same-body")
 
-	key1 := c.MakeKey(body, "model-a")
-	key2 := c.MakeKey(body, "model-b")
+	key1 := c.MakeKey(body, "model-a", "")
+	key2 := c.MakeKey(body, "model-b", "")
 	if key1 == key2 {
 		t.Fatal("expected different keys for different models")
 	}
@@ -234,8 +248,8 @@ func TestMakeKeyDiffersOnModel(t *testing.T) {
 func TestMakeKeyDiffersOnBody(t *testing.T) {
 	c := NewCache(1, 60)
 
-	key1 := c.MakeKey([]byte("body-a"), "same-model")
-	key2 := c.MakeKey([]byte("body-b"), "same-model")
+	key1 := c.MakeKey([]byte("body-a"), "same-model", "")
+	key2 := c.MakeKey([]byte("body-b"), "same-model", "")
 	if key1 == key2 {
 		t.Fatal("expected different keys for different bodies")
 	}

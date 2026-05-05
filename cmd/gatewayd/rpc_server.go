@@ -4,10 +4,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/rpc"
@@ -19,8 +17,9 @@ import (
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/api"
 	"ai-model-gateway/internal/gateway/snapshot"
+	"ai-model-gateway/internal/infra/logger"
+
 	"github.com/google/uuid"
-	"gopkg.in/yaml.v3"
 )
 
 // RPCServer handles RPC calls from controld.
@@ -51,37 +50,22 @@ type GatewayControlRPC struct {
 
 // ApplySnapshot applies a new runtime snapshot.
 func (r *GatewayControlRPC) ApplySnapshot(req gatewaycontrol.ApplySnapshotRequest, resp *gatewaycontrol.ApplySnapshotResponse) error {
-	log.Printf("[gatewayd] RPC: ApplySnapshot snapshot_id=%s", req.SnapshotID)
+	logger.Info("RPC: ApplySnapshot", "snapshot_id", req.SnapshotID)
 
 	// Validate request
 	if req.SnapshotID == "" {
 		resp.Applied = false
 		resp.Error = "snapshot_id is required"
-		log.Printf("[gatewayd] RPC ApplySnapshot error: %s", resp.Error)
+		logger.Error("RPC ApplySnapshot error", "error", resp.Error)
 		return nil
 	}
 
 	if len(req.SnapshotBytes) == 0 {
 		resp.Applied = false
 		resp.Error = "snapshot_bytes is required"
-		log.Printf("[gatewayd] RPC ApplySnapshot error: %s", resp.Error)
+		logger.Error("RPC ApplySnapshot error", "error", resp.Error)
 		return nil
 	}
-
-	// Parse snapshot
-	var snap snapshot.Snapshot
-	if err := parseSnapshot(req.SnapshotBytes, &snap); err != nil {
-		resp.Applied = false
-		resp.Error = fmt.Sprintf("parse snapshot: %v", err)
-		log.Printf("[gatewayd] RPC ApplySnapshot error: %s", resp.Error)
-		return nil
-	}
-
-	// Override metadata from request
-	snap.Meta.SnapshotID = req.SnapshotID
-	snap.Meta.RevisionID = req.RevisionID
-	snap.Meta.SchemaVersion = req.SchemaVersion
-	snap.Meta.GeneratedAt = req.GeneratedAt
 
 	// Get previous snapshot ID
 	r.daemon.snapshotMu.RLock()
@@ -92,17 +76,19 @@ func (r *GatewayControlRPC) ApplySnapshot(req gatewaycontrol.ApplySnapshotReques
 	r.daemon.snapshotMu.RUnlock()
 
 	// Apply snapshot
-	if err := r.daemon.ApplySnapshot(&snap); err != nil {
+	if err := r.daemon.applySnapshotFromControlRequest(req); err != nil {
 		resp.Applied = false
 		resp.Error = err.Error()
-		log.Printf("[gatewayd] RPC ApplySnapshot error: %s", resp.Error)
+		logger.Error("RPC ApplySnapshot error", "error", resp.Error)
 		return nil
 	}
+
+	r.daemon.persistLastAppliedSnapshot(req)
 
 	resp.Applied = true
 	resp.ActiveSnapshotID = req.SnapshotID
 	resp.PreviousSnapshotID = prevID
-	log.Printf("[gatewayd] RPC ApplySnapshot success: %s", req.SnapshotID)
+	logger.Info("RPC ApplySnapshot success", "snapshot_id", req.SnapshotID)
 	return nil
 }
 
@@ -115,7 +101,7 @@ func (r *GatewayControlRPC) GetStatus(req gatewaycontrol.GetStatusRequest, resp 
 
 // Drain signals gatewayd to drain connections.
 func (r *GatewayControlRPC) Drain(req gatewaycontrol.DrainRequest, resp *gatewaycontrol.DrainResponse) error {
-	log.Printf("[gatewayd] RPC: Drain timeout=%v force=%v", req.Timeout, req.Force)
+	logger.Info("RPC: Drain", "timeout", req.Timeout, "force", req.Force)
 
 	timeout := req.Timeout
 	if timeout == 0 {
@@ -132,19 +118,19 @@ func (r *GatewayControlRPC) Drain(req gatewaycontrol.DrainRequest, resp *gateway
 			resp.Success = true
 			resp.RemainingRequests = 0
 			resp.DrainedAt = timeNow()
-			log.Printf("[gatewayd] drain complete: all requests finished")
+			logger.Info("drain complete: all requests finished")
 			return nil
 		}
 
 		if time.Now().After(deadline) {
 			resp.RemainingRequests = int(active)
 			if req.Force {
-				log.Printf("[gatewayd] drain timeout, force terminating with %d requests remaining", active)
+				logger.Warn("drain timeout, force terminating", "remaining", active)
 				resp.Success = true
 				resp.DrainedAt = timeNow()
 				return nil
 			}
-			log.Printf("[gatewayd] drain timeout: %d requests still active", active)
+			logger.Warn("drain timeout", "remaining", active)
 			resp.Success = false
 			resp.DrainedAt = timeNow()
 			resp.Error = fmt.Sprintf("timeout: %d requests still active", active)
@@ -205,6 +191,9 @@ func (r *GatewayControlRPC) RunBenchmarkCase(req gatewaycontrol.RunBenchmarkCase
 	case core.ProtocolAdapterAnthropicMessages:
 		path = "/v1/messages"
 		handler = api.HandleMessages
+	case core.BenchmarkProtocolOpenAIResponses:
+		path = "/v1/responses"
+		handler = api.HandleResponses
 	default:
 		resp.Error = fmt.Sprintf("unsupported benchmark protocol: %s", req.Protocol)
 		return nil
@@ -286,19 +275,6 @@ func (r *GatewayControlRPC) RunBenchmarkCase(req gatewaycontrol.RunBenchmarkCase
 	}
 	return nil
 }
-
-// parseSnapshot parses snapshot bytes into a Snapshot struct.
-func parseSnapshot(data []byte, snap *snapshot.Snapshot) error {
-	// Try JSON first
-	if err := json.Unmarshal(data, snap); err == nil {
-		return nil
-	}
-	// Try YAML
-	return yaml.Unmarshal(data, snap)
-}
-
-// yamlUnmarshal is an alias for yaml.Unmarshal.
-var yamlUnmarshal = yaml.Unmarshal
 
 // timeNow returns the current time.
 var timeNow = func() time.Time { return time.Now() }

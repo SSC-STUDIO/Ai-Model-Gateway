@@ -267,6 +267,46 @@ func TestCompileFromConfig_PreservesConfiguredRoutingStrategy(t *testing.T) {
 	}
 }
 
+func TestCompileFromConfig_PreservesDisableCooldownAndInfiniteRetry(t *testing.T) {
+	cfg := core.Config{
+		Routing: core.RoutingConfig{
+			FailurePolicy: core.FailurePolicyConfig{
+				DisableCooldown:          true,
+				CooldownSec:              0,
+				QuotaRecoveryIntervalMin: 0,
+			},
+			Retry: core.RetryPolicyConfig{
+				InfiniteOnError: true,
+				AllErrors:       true,
+			},
+		},
+		Providers: []core.Provider{
+			{
+				Name:    "primary",
+				BaseURL: "https://example.com/v1",
+				Models:  []string{"gpt-4o"},
+			},
+		},
+	}
+
+	snap, err := NewCompiler().CompileFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("CompileFromConfig() error = %v", err)
+	}
+	if !snap.RoutingPolicy.FailurePolicy.DisableCooldown {
+		t.Fatal("expected disable_cooldown to compile through to snapshot")
+	}
+	if snap.RoutingPolicy.FailurePolicy.QuotaRecoveryIntervalMin != 0 {
+		t.Fatalf("expected quota recovery interval to stay disabled, got %d", snap.RoutingPolicy.FailurePolicy.QuotaRecoveryIntervalMin)
+	}
+	if !snap.RoutingPolicy.Retry.InfiniteOnError {
+		t.Fatal("expected infinite_on_error to compile through to snapshot")
+	}
+	if !snap.RoutingPolicy.Retry.AllErrors {
+		t.Fatal("expected all_errors to compile through to snapshot")
+	}
+}
+
 func TestCompileFromConfig_RejectsEnabledProviderWithoutModels(t *testing.T) {
 	cfg := core.Config{
 		Providers: []core.Provider{

@@ -2,12 +2,12 @@ package configloader
 
 import (
 	"crypto/sha256"
-	"log"
 	"os"
 	"sync"
 	"time"
 
 	"ai-model-gateway/internal/core"
+	"ai-model-gateway/internal/infra/logger"
 )
 
 var (
@@ -101,7 +101,7 @@ func (w *Watcher) check() {
 
 	data, hash, err := readHashedFile(w.path)
 	if err != nil {
-		log.Printf("[config] watch read error: %v", err)
+		logger.Error("watch read error", "error", err)
 		return
 	}
 	if hash == lastHash {
@@ -113,7 +113,7 @@ func (w *Watcher) check() {
 
 		nextData, nextHash, err := readHashedFile(w.path)
 		if err != nil {
-			log.Printf("[config] watch read error: %v", err)
+			logger.Error("watch read error", "error", err)
 			return
 		}
 		if nextHash == lastHash {
@@ -135,7 +135,7 @@ func (w *Watcher) check() {
 
 	cfg, err := loadFromBytes(w.path, data)
 	if err != nil {
-		log.Printf("[config] watch reload error (keeping old config): %v", err)
+		logger.Error("watch reload error (keeping old config)", "error", err)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (w *Watcher) check() {
 	copy(callbacks, w.onChange)
 	w.mu.Unlock()
 
-	log.Printf("[config] config reloaded from %s", w.path)
+	logger.Info("config reloaded", "path", w.path)
 
 	for _, fn := range callbacks {
 		fn(cfg)

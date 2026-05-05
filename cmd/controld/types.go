@@ -47,6 +47,11 @@ type Config struct {
 	// RPC retry settings
 	RPCRetryCount    int `json:"rpc_retry_count"`
 	RPCRetryInterval int `json:"rpc_retry_interval_sec"`
+
+	// GatewayReadinessRepublishMinIntervalSec is the minimum time between
+	// automatic snapshot republish attempts while gatewayd reports a non-ready
+	// readiness state but the RPC link is still healthy. Zero defaults to 15s.
+	GatewayReadinessRepublishMinIntervalSec int `json:"gateway_readiness_republish_min_interval_sec"`
 }
 
 // Daemon represents the controld daemon.
@@ -69,4 +74,10 @@ type Daemon struct {
 	runCancel      context.CancelFunc
 	frontendBundle *api.AdminFrontendBundle
 	configWatcher  *configloader.Watcher
+
+	gwReadinessRepublishMu       sync.Mutex
+	lastGatewayReadinessRepublish time.Time
+
+	// testRepublishHook is invoked at the start of each republish attempt (including no-ops); tests only.
+	testRepublishHook func(reason string)
 }

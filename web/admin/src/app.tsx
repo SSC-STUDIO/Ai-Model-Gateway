@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/compat'
 import { useI18n } from './i18n'
 import { ThemeToggle } from './theme/ThemeToggle'
 import { LanguageSelector } from './theme/LanguageSelector'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastContainer } from './components/ToastContainer'
 import { BrandMark } from './components/BrandMark'
 import { LoginScreen } from './components/LoginScreen'
@@ -512,6 +513,10 @@ export function App() {
             onVersionChange={setSelectedRevision}
             onApplySelection={applySelectedRevision}
             busy={actionBusy}
+            onConfigUpdated={() => {
+              refetchConfig()
+              primeCacheSilently('/api/admin/status', 0)
+            }}
           />
         )
       case 'benchmark':
@@ -664,7 +669,9 @@ export function App() {
         )}
 
         <div key={tab} class="tab-content-wrapper">
-          {tabContent}
+          <ErrorBoundary>
+            {tabContent}
+          </ErrorBoundary>
         </div>
       </main>
 

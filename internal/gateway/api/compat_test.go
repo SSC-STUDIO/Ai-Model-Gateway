@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/snapshot"
 	pricinginfra "ai-model-gateway/internal/infra/pricing"
-	"ai-model-gateway/internal/proxy"
 	"ai-model-gateway/internal/telemetry"
 	"ai-model-gateway/internal/testkit/fakeupstream"
 )
@@ -28,8 +28,9 @@ func (r staticPricingResolver) Snapshot() pricinginfra.Snapshot {
 }
 
 func TestHandleChatCompletionBridgesAnthropicJSONResponseAndTelemetry(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
 	routingSequence.Store(0)
-	allowLocalAnthropicTestUpstreams(t)
 
 	tel := &capturingTelemetryEmitter{events: make(chan telemetryingest.Event, 1)}
 	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
@@ -271,6 +272,8 @@ func TestConvertOpenAIChatRequestToAnthropicPreservesToolConversation(t *testing
 }
 
 func TestHandleChatCompletionBridgesAnthropicToolUseJSONResponse(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
 	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
 
@@ -330,6 +333,8 @@ func TestHandleChatCompletionBridgesAnthropicToolUseJSONResponse(t *testing.T) {
 }
 
 func TestHandleChatCompletionBridgesAnthropicStreamAndUsage(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
 	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
 
@@ -393,6 +398,8 @@ func TestHandleChatCompletionBridgesAnthropicStreamAndUsage(t *testing.T) {
 }
 
 func TestHandleChatCompletionBridgesAnthropicToolUseStream(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
 	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
 
@@ -615,6 +622,8 @@ func TestHandleChatCompletionAdaptsAnthropicErrorsToOpenAI(t *testing.T) {
 }
 
 func TestHandleChatCompletionBridgeFallbackWritesBridgeFallbackTelemetry(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
 	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
 
@@ -779,6 +788,8 @@ func TestHandleChatCompletionReturnsGatewayTimeoutOnAnthropicTimeout(t *testing.
 }
 
 func TestHandleMessagesBridgesOpenAIOnlyProvider(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
 	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
 
@@ -828,6 +839,8 @@ func TestHandleMessagesBridgesOpenAIOnlyProvider(t *testing.T) {
 }
 
 func TestHandleMessagesAppliesModelBridgeBeforeProviderSelection(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
 	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
 
@@ -908,14 +921,445 @@ func TestHandleMessagesAppliesModelBridgeBeforeProviderSelection(t *testing.T) {
 	}
 }
 
+func TestConvertResponsesRequestToChatWithStringInput(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{"model":"gpt-4o","input":"hello","stream":false}`), "gpt-4o-turbo")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	if payload["model"] != "gpt-4o-turbo" {
+		t.Fatalf("model = %#v, want gpt-4o-turbo", payload["model"])
+	}
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("messages = %#v, want 1 message", payload["messages"])
+	}
+	msg := messages[0].(map[string]any)
+	if msg["role"] != "user" || msg["content"] != "hello" {
+		t.Fatalf("message = %#v, want role=user content=hello", msg)
+	}
+	if payload["stream"] != false {
+		t.Fatalf("stream = %#v, want false", payload["stream"])
+	}
+}
+
+func TestConvertResponsesRequestToChatWithArrayInput(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-4o",
+		"input":[
+			{"role":"system","content":"You are helpful"},
+			{"role":"user","content":"hello"}
+		],
+		"stream":true,
+		"max_output_tokens":100
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	if payload["model"] != "gpt-4o" {
+		t.Fatalf("model = %#v, want gpt-4o", payload["model"])
+	}
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages = %#v, want 2 messages", payload["messages"])
+	}
+	if payload["max_tokens"] != float64(100) {
+		t.Fatalf("max_tokens = %#v, want 100", payload["max_tokens"])
+	}
+	if payload["stream"] != true {
+		t.Fatalf("stream = %#v, want true", payload["stream"])
+	}
+}
+
+func TestConvertResponsesRequestToChatMissingInput(t *testing.T) {
+	_, err := convertResponsesRequestToChat([]byte(`{"model":"gpt-4o"}`), "")
+	if err == nil {
+		t.Fatal("expected error for missing input field")
+	}
+}
+
+func TestConvertResponsesRequestToChatWithTools(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-4o",
+		"input":"what's the weather?",
+		"tools":[{"type":"function","function":{"name":"get_weather","description":"Get weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools = %#v, want 1 tool", payload["tools"])
+	}
+}
+
+func TestAdaptChatResponseToResponses(t *testing.T) {
+	chatResp := `{
+		"id":"chatcmpl-123",
+		"object":"chat.completion",
+		"created":1700000000,
+		"model":"gpt-4o",
+		"choices":[{
+			"index":0,
+			"message":{"role":"assistant","content":"Hi there!"},
+			"finish_reason":"stop"
+		}],
+		"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}
+	}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "")
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode responses body: %v", err)
+	}
+	if payload["id"] != "resp_chatcmpl-123" {
+		t.Fatalf("id = %#v, want resp_chatcmpl-123", payload["id"])
+	}
+	if payload["object"] != "response" {
+		t.Fatalf("object = %#v, want response", payload["object"])
+	}
+	if payload["model"] != "gpt-4o" {
+		t.Fatalf("model = %#v, want gpt-4o", payload["model"])
+	}
+	if payload["status"] != "completed" {
+		t.Fatalf("status = %#v, want completed", payload["status"])
+	}
+
+	output, ok := payload["output"].([]any)
+	if !ok || len(output) != 1 {
+		t.Fatalf("output = %#v, want 1 element", payload["output"])
+	}
+	msg := output[0].(map[string]any)
+	if msg["type"] != "message" {
+		t.Fatalf("output[0].type = %#v, want message", msg["type"])
+	}
+	if msg["role"] != "assistant" {
+		t.Fatalf("output[0].role = %#v, want assistant", msg["role"])
+	}
+
+	content, ok := msg["content"].([]any)
+	if !ok || len(content) != 1 {
+		t.Fatalf("output[0].content = %#v, want 1 element", msg["content"])
+	}
+	textBlock := content[0].(map[string]any)
+	if textBlock["type"] != "output_text" || textBlock["text"] != "Hi there!" {
+		t.Fatalf("content[0] = %#v, want type=output_text text=Hi there!", textBlock)
+	}
+
+	usage, ok := payload["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("usage = %#v, want map", payload["usage"])
+	}
+	if usage["input_tokens"] != float64(5) {
+		t.Fatalf("input_tokens = %#v, want 5", usage["input_tokens"])
+	}
+	if usage["output_tokens"] != float64(3) {
+		t.Fatalf("output_tokens = %#v, want 3", usage["output_tokens"])
+	}
+	if usage["total_tokens"] != float64(8) {
+		t.Fatalf("total_tokens = %#v, want 8", usage["total_tokens"])
+	}
+}
+
+func TestAdaptChatResponseToResponsesPreservesClientModel(t *testing.T) {
+	chatResp := `{"id":"chatcmpl-456","model":"gpt-4o","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "my-custom-model")
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	json.Unmarshal(body, &payload)
+	if payload["model"] != "my-custom-model" {
+		t.Fatalf("model = %#v, want my-custom-model", payload["model"])
+	}
+}
+
+func TestHandleResponsesConvertsAndForwards(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
+	routingSequence.Store(0)
+
+	forwardBodyCh := make(chan []byte, 1)
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/v1/chat/completions" {
+				t.Errorf("upstream path = %q, want /v1/chat/completions", req.URL.Path)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				return nil, err
+			}
+			forwardBodyCh <- body
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl-789","object":"chat.completion","model":"upstream-model","created":1700000000,"choices":[{"index":0,"message":{"role":"assistant","content":"Hello!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`)),
+			}, nil
+		}),
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleResponses(r.Context(), testGatewaySnapshot(), NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","input":"hello","stream":false}`
+	resp, err := server.Client().Post(server.URL+"/v1/responses", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	// Verify the upstream received Chat Completions format.
+	fwdBody := <-forwardBodyCh
+	var fwdPayload map[string]any
+	if err := json.Unmarshal(fwdBody, &fwdPayload); err != nil {
+		t.Fatalf("decode forwarded body: %v", err)
+	}
+	if fwdPayload["model"] != testUpstreamModel {
+		t.Fatalf("forwarded model = %#v, want %s", fwdPayload["model"], testUpstreamModel)
+	}
+	messages, ok := fwdPayload["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("forwarded messages = %#v, want 1 message", fwdPayload["messages"])
+	}
+
+	// Verify the client received Responses API format.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response body: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if payload["object"] != "response" {
+		t.Fatalf("object = %#v, want response", payload["object"])
+	}
+	if payload["status"] != "completed" {
+		t.Fatalf("status = %#v, want completed", payload["status"])
+	}
+
+	output, ok := payload["output"].([]any)
+	if !ok || len(output) != 1 {
+		t.Fatalf("output = %#v, want 1 element", payload["output"])
+	}
+	msg := output[0].(map[string]any)
+	content := msg["content"].([]any)
+	textBlock := content[0].(map[string]any)
+	if textBlock["text"] != "Hello!" {
+		t.Fatalf("output text = %#v, want Hello!", textBlock["text"])
+	}
+
+	usage, _ := payload["usage"].(map[string]any)
+	if usage["input_tokens"] != float64(5) || usage["output_tokens"] != float64(3) {
+		t.Fatalf("usage = %#v, want input=5 output=3", usage)
+	}
+}
+
+func TestConvertResponsesRequestToChatCoercesNullAssistantContent(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","input":[{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"bash","arguments":"{}"}}]},{"role":"user","content":"hi"}],"stream":false}`)
+	out, err := convertResponsesRequestToChat(body, "upstream")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	msgs, _ := payload["messages"].([]any)
+	if len(msgs) != 2 {
+		t.Fatalf("len(messages) = %d, want 2", len(msgs))
+	}
+	a0 := msgs[0].(map[string]any)
+	if a0["content"] != "" {
+		t.Fatalf("assistant content = %#v, want empty string", a0["content"])
+	}
+}
+
+func TestConvertResponsesRequestToChatUnwrapsMessageItems(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
+	out, err := convertResponsesRequestToChat(body, "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	msgs, _ := payload["messages"].([]any)
+	if len(msgs) != 1 {
+		t.Fatalf("len(messages) = %d", len(msgs))
+	}
+	m0 := msgs[0].(map[string]any)
+	if _, ok := m0["type"]; ok {
+		t.Fatalf("expected type field stripped from chat message, got %#v", m0)
+	}
+	if m0["content"] != "hello" {
+		t.Fatalf("content = %#v, want hello", m0["content"])
+	}
+}
+
+func TestHandleResponsesReturnsResponsesFormatOnError(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
+	routingSequence.Store(0)
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"bad request"}}`)),
+			}, nil
+		}),
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleResponses(r.Context(), testGatewaySnapshot(), NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","input":"hello"}`
+	resp, err := server.Client().Post(server.URL+"/v1/responses", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestHandleResponsesStreamingEmitsCompletedAndDoneMarker(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
+	routingSequence.Store(0)
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			stream := strings.Join([]string{
+				`data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":22,"completion_tokens":5,"total_tokens":27}}`,
+				"",
+				`data: [DONE]`,
+				"",
+			}, "\n")
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+				},
+				Body: io.NopCloser(strings.NewReader(stream)),
+			}, nil
+		}),
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleResponses(r.Context(), testGatewaySnapshot(), NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","input":"hello","stream":true}`
+	resp, err := server.Client().Post(server.URL+"/v1/responses", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
+
+	var payloads []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			payloads = append(payloads, strings.TrimPrefix(line, "data: "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream: %v", err)
+	}
+
+	if len(payloads) < 4 {
+		t.Fatalf("payload count = %d, want at least 4; payloads=%v", len(payloads), payloads)
+	}
+
+	if payloads[len(payloads)-1] != "[DONE]" {
+		t.Fatalf("last payload = %q, want [DONE]", payloads[len(payloads)-1])
+	}
+
+	foundCompleted := false
+	foundDoneLegacy := false
+	for _, p := range payloads {
+		if p == "[DONE]" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(p), &event); err != nil {
+			t.Fatalf("decode event %q: %v", p, err)
+		}
+		switch event["type"] {
+		case "response.completed":
+			foundCompleted = true
+			respPayload, _ := event["response"].(map[string]any)
+			if respPayload["status"] != "completed" {
+				t.Fatalf("completed response status = %#v, want completed", respPayload["status"])
+			}
+		case "response.done":
+			foundDoneLegacy = true
+		}
+	}
+
+	if !foundCompleted {
+		t.Fatalf("expected response.completed event; payloads=%v", payloads)
+	}
+	if foundDoneLegacy {
+		t.Fatalf("unexpected legacy response.done event; payloads=%v", payloads)
+	}
+}
+
 func allowLocalAnthropicTestUpstreams(t *testing.T) {
 	t.Helper()
-	restore := SetSSRFCheckerForTesting(proxy.NewSSRFCheckerWithConfig(proxy.SSRFConfig{
-		AllowLocalhost: true,
-		AllowPrivateIP: true,
-	}))
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
 	t.Cleanup(restore)
 }
+
+type mockSSRFChecker struct{}
+
+func (m *mockSSRFChecker) ValidateURL(_ string) error { return nil }
 
 func anthropicBridgeSnapshot(baseURL string) *snapshot.Snapshot {
 	return &snapshot.Snapshot{

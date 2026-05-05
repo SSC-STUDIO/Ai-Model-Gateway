@@ -88,6 +88,7 @@ func TestResolveFallbackModelsNilSnapshot(t *testing.T) {
 }
 
 func TestHandleChatCompletionFallbackModelOnPrimaryFailure(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var upstreamHosts []string
@@ -181,6 +182,7 @@ func TestHandleChatCompletionFallbackModelOnPrimaryFailure(t *testing.T) {
 }
 
 func TestHandleChatCompletionNoFallbackWhenPrimarySucceeds(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var upstreamHosts []string
@@ -254,6 +256,7 @@ func TestHandleChatCompletionNoFallbackWhenPrimarySucceeds(t *testing.T) {
 }
 
 func TestHandleChatCompletionFallbackWithNoFallbackModels(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var upstreamHosts []string
@@ -312,6 +315,7 @@ func TestHandleChatCompletionFallbackWithNoFallbackModels(t *testing.T) {
 }
 
 func TestHandleChatCompletionFallbackBodyModelRewrite(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var forwardedBodies []string
@@ -386,6 +390,7 @@ func TestHandleChatCompletionFallbackBodyModelRewrite(t *testing.T) {
 }
 
 func TestHandleChatCompletionFallbackWithTelemetry(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	tel := &capturingTelemetryEmitter{events: make(chan telemetryingest.Event, 2)}
@@ -479,6 +484,7 @@ func TestHandleChatCompletionFallbackWithTelemetry(t *testing.T) {
 }
 
 func TestHandleChatCompletionFallbackSkipsUnavailableFallbackModel(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var upstreamHosts []string
@@ -567,6 +573,7 @@ func TestHandleChatCompletionFallbackSkipsUnavailableFallbackModel(t *testing.T)
 }
 
 func TestHandleChatCompletionFallbackReturnsErrorWhenAllFail(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var upstreamHosts []string

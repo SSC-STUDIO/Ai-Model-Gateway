@@ -44,8 +44,10 @@ routing:
     cooldown_sec: 60
     passthrough_after_sec: 600
     quota_recovery_interval_min: 0
+    disable_cooldown: false
   retry:
     infinite_on_error: false
+    all_errors: false
     status_codes:
       - 408
       - 429
@@ -65,6 +67,17 @@ routing:
       - please try again later
       - service unavailable
   intercepts: []
+
+  # For clients that must never receive transient upstream 429/504 style errors,
+  # enable both switches below:
+  # failure_policy:
+  #   disable_cooldown: true
+  # retry:
+  #   infinite_on_error: true
+  #   all_errors: true
+  # retry_backoff:
+  #   initial_ms: 0
+  #   max_ms: 0
 
 providers:
   - name: station-a

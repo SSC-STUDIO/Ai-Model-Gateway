@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
@@ -133,5 +134,48 @@ func TestProviderHealthFields(t *testing.T) {
 	}
 	if health.LatencyMs != 150 {
 		t.Errorf("expected latency 150ms, got %d", health.LatencyMs)
+	}
+}
+
+func TestRuntimeStateDisableCooldownKeepsProviderRoutable(t *testing.T) {
+	state := NewRuntimeState()
+	now := time.Date(2026, time.May, 4, 12, 0, 0, 0, time.UTC)
+	state.now = func() time.Time { return now }
+
+	snap := &snapshot.Snapshot{
+		RoutingPolicy: snapshot.RoutingPolicy{
+			FailurePolicy: snapshot.FailurePolicy{
+				Threshold:                1,
+				CooldownSec:              60,
+				PassthroughAfterSec:      600,
+				QuotaRecoveryIntervalMin: 30,
+				DisableCooldown:          true,
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "provider-1",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "model-a", UpstreamModel: "model-a-upstream"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled: true,
+					Weight:  1,
+				},
+			},
+		},
+	}
+	state.ApplySnapshot(snap)
+	state.reportAttemptResult("provider-1", http.StatusTooManyRequests, 10*time.Millisecond, nil, snap)
+
+	health := state.ProviderHealthSnapshot(snap)
+	if got := health["provider-1"]; !got.Healthy {
+		t.Fatalf("expected provider to remain healthy when cooldown is disabled, got %#v", got)
+	}
+
+	candidates := collectProviderCandidatesForRequest(snap, "model-a")
+	ordered := state.orderCandidates(snap, "model-a", "", candidates)
+	if len(ordered) != 1 || ordered[0].provider.ProviderID != "provider-1" {
+		t.Fatalf("expected provider to remain routable, got %#v", ordered)
 	}
 }

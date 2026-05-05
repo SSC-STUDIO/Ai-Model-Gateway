@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"html"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,6 +16,7 @@ import (
 	"ai-model-gateway/internal/control/api"
 	"ai-model-gateway/internal/control/audit"
 	authinfra "ai-model-gateway/internal/infra/auth"
+	"ai-model-gateway/internal/infra/logger"
 	_ "modernc.org/sqlite"
 )
 
@@ -94,11 +94,11 @@ func (d *Daemon) replayHandler() http.Handler {
 		}
 		db, err := sql.Open("sqlite", candidate)
 		if err != nil {
-			log.Printf("[controld] warning: could not open replay query store %s: %v", candidate, err)
+			logger.Warn("could not open replay query store", "path", candidate, "error", err)
 			continue
 		}
 		if err := db.Ping(); err != nil {
-			log.Printf("[controld] warning: could not ping replay query store %s: %v", candidate, err)
+			logger.Warn("could not ping replay query store", "path", candidate, "error", err)
 			_ = db.Close()
 			continue
 		}

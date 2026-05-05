@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,8 +18,10 @@ import (
 	"ai-model-gateway/internal/control/benchmarking"
 	"ai-model-gateway/internal/control/compiler"
 	"ai-model-gateway/internal/control/publish"
+	"ai-model-gateway/internal/contracts/gatewaycontrol"
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/infra/configloader"
+	"ai-model-gateway/internal/infra/logger"
 )
 
 // NewDaemon creates a new controld daemon.
@@ -62,14 +63,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 			},
 		})
 	} else {
-		log.Printf("[controld] warning: could not initialize audit log: %v", err)
+		logger.Warn("could not initialize audit log", "error", err)
 	}
 
 	if err := d.connectGateway(d.runCtx); err != nil {
-		log.Printf("[controld] warning: could not connect to gateway: %v", err)
+		logger.Warn("could not connect to gateway", "error", err)
 	}
 	if err := d.connectTelemetry(d.runCtx); err != nil {
-		log.Printf("[controld] warning: could not connect to telemetry: %v", err)
+		logger.Warn("could not connect to telemetry", "error", err)
 	}
 
 	d.compiler = compiler.NewCompiler()
@@ -84,12 +85,12 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("restore or seed initial revision: %w", err)
 	}
 	if err := d.publishInitialRevision(); err != nil {
-		log.Printf("[controld] warning: could not publish initial revision: %v", err)
+		logger.Warn("could not publish initial revision", "error", err)
 	}
 
 	frontendBundle, err := api.NewAdminFrontendBundle("web/admin/dist")
 	if err != nil {
-		log.Printf("[controld] warning: %v, using embedded assets", err)
+		logger.Warn("frontend bundle not available, using embedded assets", "error", err)
 		frontendBundle, _ = api.NewAdminFrontendBundle("")
 	}
 	d.frontendBundle = frontendBundle
@@ -98,23 +99,24 @@ func (d *Daemon) Start(ctx context.Context) error {
 		if watcher, err := configloader.NewWatcher(d.config.ConfigPath, 5*time.Second); err == nil {
 			watcher.OnChange(func(cfg *core.Config) {
 				_ = cfg
-				log.Printf("[controld] config file changed, reloading...")
+				logger.Info("config file changed, reloading")
 				if err := d.reloadWatchedConfig(); err != nil {
-					log.Printf("[controld] config reload error: %v", err)
+					logger.Error("config reload error", "error", err)
 				} else {
-					log.Printf("[controld] config reloaded from %s", d.config.ConfigPath)
+					logger.Info("config reloaded", "path", d.config.ConfigPath)
 				}
 			})
 			watcher.Start()
 			d.configWatcher = watcher
-			log.Printf("[controld] watching config file: %s", d.config.ConfigPath)
+			logger.Info("watching config file", "path", d.config.ConfigPath)
 		} else {
-			log.Printf("[controld] warning: could not watch config file: %v", err)
+			logger.Warn("could not watch config file", "error", err)
 		}
 	}
 
 	go d.maintainGatewayConnection(d.runCtx)
 	go d.maintainTelemetryConnection(d.runCtx)
+	go d.pushSnapshotUntilGatewayReady(d.runCtx)
 
 	readTimeout := time.Duration(d.config.ReadTimeoutSec) * time.Second
 	if readTimeout == 0 {
@@ -138,9 +140,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 
 	go func() {
-		log.Printf("[controld] listening on %s", d.config.Listen)
+		logger.Info("listening", "address", d.config.Listen)
 		if err := d.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[controld] HTTP server error: %v", err)
+			logger.Error("HTTP server error", "error", err)
 		}
 	}()
 
@@ -196,7 +198,7 @@ func (d *Daemon) restoreOrSeedInitialRevision() error {
 		return err
 	}
 	if loaded {
-		log.Printf("[controld] restored publisher state from %s", d.publisherSQLiteStatePath())
+		logger.Info("restored publisher state", "path", d.publisherSQLiteStatePath())
 		return nil
 	}
 	return d.seedInitialRevision()
@@ -207,7 +209,7 @@ func (d *Daemon) publishInitialRevision() error {
 		return fmt.Errorf("publisher not initialized")
 	}
 	if d.currentGatewayRPC() == nil {
-		log.Printf("[controld] warning: skipping initial publish because gateway is not connected")
+		logger.Warn("skipping initial publish because gateway is not connected")
 		return nil
 	}
 
@@ -227,6 +229,66 @@ func (d *Daemon) publishInitialRevision() error {
 		return fmt.Errorf("publish %s failed: %s", current.RevisionID, result.ErrorMessage)
 	}
 	return nil
+}
+
+// republishCurrentRevisionToGateway pushes the active revision to gatewayd.
+// Used after the data plane reconnects (e.g. gatewayd restart) so gatewayd
+// does not sit without a snapshot until the next manual publish.
+func (d *Daemon) republishCurrentRevisionToGateway(reason string) {
+	if d.testRepublishHook != nil {
+		d.testRepublishHook(reason)
+	}
+	if d.publisher == nil || d.currentGatewayRPC() == nil {
+		return
+	}
+	current, err := d.publisher.GetCurrentRevision()
+	if err != nil {
+		logger.Error("republish failed to get current revision", "reason", reason, "error", err)
+		return
+	}
+	if current == nil || current.RevisionID == "" {
+		logger.Warn("republish has no active revision", "reason", reason)
+		return
+	}
+	result, err := d.publisher.Publish(current.RevisionID)
+	if err != nil {
+		logger.Error("republish error", "reason", reason, "error", err)
+		return
+	}
+	if result != nil && !result.Success {
+		logger.Error("republish publish failed", "reason", reason, "message", result.ErrorMessage)
+		return
+	}
+	logger.Info("republished revision to gateway", "revision", current.RevisionID, "reason", reason)
+}
+
+// pushSnapshotUntilGatewayReady periodically re-publishes the active revision until
+// gatewayd reports ReadinessReady or ctx is cancelled. Covers races where gatewayd
+// starts after controld's initial publish, or transient ApplySnapshot failures.
+func (d *Daemon) pushSnapshotUntilGatewayReady(ctx context.Context) {
+	deadline := time.NewTimer(3 * time.Minute)
+	defer deadline.Stop()
+	next := time.NewTimer(0)
+	defer next.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-deadline.C:
+			logger.Warn("gateway still not ready after bootstrap window")
+			return
+		case <-next.C:
+		}
+		client := d.currentGatewayRPC()
+		if client != nil {
+			st, err := client.GetStatus()
+			if err == nil && st.Readiness == gatewaycontrol.ReadinessReady {
+				return
+			}
+			d.republishCurrentRevisionToGateway("bootstrap")
+		}
+		next.Reset(2 * time.Second)
+	}
 }
 
 func (d *Daemon) reloadWatchedConfig() error {
@@ -253,7 +315,7 @@ func (d *Daemon) applyWatchedRevision(revision publish.Revision) (*publish.Publi
 		return nil, err
 	}
 	if d.currentGatewayRPC() == nil {
-		log.Printf("[controld] warning: skipping watched config publish because gateway is not connected")
+		logger.Warn("skipping watched config publish because gateway is not connected")
 		return &publish.PublishResult{
 			Success:    true,
 			RevisionID: revision.RevisionID,
@@ -321,7 +383,7 @@ func (d *Daemon) setGatewayRPC(client *GatewayClient) {
 
 	if previous != nil && previous != client {
 		if err := previous.Close(); err != nil {
-			log.Printf("[controld] gateway RPC close error: %v", err)
+			logger.Error("gateway RPC close error", "error", err)
 		}
 	}
 }
@@ -334,7 +396,7 @@ func (d *Daemon) setTelemetryRPC(client *TelemetryClient) {
 
 	if previous != nil && previous != client {
 		if err := previous.Close(); err != nil {
-			log.Printf("[controld] telemetry RPC close error: %v", err)
+			logger.Error("telemetry RPC close error", "error", err)
 		}
 	}
 }
@@ -353,6 +415,31 @@ func (d *Daemon) rpcRetryCount() int {
 		return 10
 	}
 	return retryCount
+}
+
+func (d *Daemon) gatewayReadinessRepublishMinInterval() time.Duration {
+	sec := d.config.GatewayReadinessRepublishMinIntervalSec
+	if sec <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(sec) * time.Second
+}
+
+// maybeRepublishForGatewayReadiness republishes the active revision when gatewayd
+// is reachable but not yet ready (e.g. no snapshot), subject to throttling.
+func (d *Daemon) maybeRepublishForGatewayReadiness(st *gatewaycontrol.GetStatusResponse, now time.Time) {
+	if st == nil || st.Readiness == gatewaycontrol.ReadinessReady {
+		return
+	}
+	minGap := d.gatewayReadinessRepublishMinInterval()
+	d.gwReadinessRepublishMu.Lock()
+	if !d.lastGatewayReadinessRepublish.IsZero() && now.Sub(d.lastGatewayReadinessRepublish) < minGap {
+		d.gwReadinessRepublishMu.Unlock()
+		return
+	}
+	d.lastGatewayReadinessRepublish = now
+	d.gwReadinessRepublishMu.Unlock()
+	d.republishCurrentRevisionToGateway("gateway readiness")
 }
 
 func sleepWithContext(ctx context.Context, wait time.Duration) bool {
@@ -392,7 +479,7 @@ func (d *Daemon) connectGateway(ctx context.Context) error {
 		if err = d.connectGatewayOnce(); err == nil {
 			return nil
 		}
-		log.Printf("[controld] waiting for gateway... (%d/%d)", i+1, d.rpcRetryCount())
+		logger.Debug("waiting for gateway", "attempt", i+1, "max", d.rpcRetryCount())
 		if !sleepWithContext(ctx, d.rpcRetryInterval()) {
 			return ctx.Err()
 		}
@@ -407,7 +494,7 @@ func (d *Daemon) connectTelemetry(ctx context.Context) error {
 		if err = d.connectTelemetryOnce(); err == nil {
 			return nil
 		}
-		log.Printf("[controld] waiting for telemetry... (%d/%d)", i+1, d.rpcRetryCount())
+		logger.Debug("waiting for telemetry", "attempt", i+1, "max", d.rpcRetryCount())
 		if !sleepWithContext(ctx, d.rpcRetryInterval()) {
 			return ctx.Err()
 		}
@@ -429,18 +516,26 @@ func (d *Daemon) maintainGatewayConnection(ctx context.Context) {
 
 		client := d.currentGatewayRPC()
 		if client != nil {
-			if _, err := client.GetStatus(); err == nil {
+			st, err := client.GetStatus()
+			if err == nil {
 				wasDisconnected = false
+				if st != nil && st.Readiness != gatewaycontrol.ReadinessReady {
+					d.maybeRepublishForGatewayReadiness(st, time.Now())
+				}
 				continue
 			} else if !wasDisconnected {
-				log.Printf("[controld] gateway connection lost: %v", err)
+				logger.Warn("gateway connection lost", "error", err)
 			}
 			d.setGatewayRPC(nil)
 			wasDisconnected = true
 		}
 
 		if err := d.connectGatewayOnce(); err == nil {
-			log.Printf("[controld] gateway connected")
+			logger.Info("gateway connected")
+			// Always republish after a successful dial. Initial Start() may have
+			// failed to connect while gatewayd was still waiting on telemetry;
+			// this path runs on the maintain loop and restores snapshot delivery.
+			d.republishCurrentRevisionToGateway("gateway connect")
 			wasDisconnected = false
 		}
 	}
@@ -464,14 +559,14 @@ func (d *Daemon) maintainTelemetryConnection(ctx context.Context) {
 				wasDisconnected = false
 				continue
 			} else if !wasDisconnected {
-				log.Printf("[controld] telemetry connection lost: %v", err)
+				logger.Warn("telemetry connection lost", "error", err)
 			}
 			d.setTelemetryRPC(nil)
 			wasDisconnected = true
 		}
 
 		if err := d.connectTelemetryOnce(); err == nil {
-			log.Printf("[controld] telemetry connected")
+			logger.Info("telemetry connected")
 			wasDisconnected = false
 		}
 	}
@@ -493,7 +588,7 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 
 	if d.httpServer != nil {
 		if err := d.httpServer.Shutdown(ctx); err != nil {
-			log.Printf("[controld] HTTP shutdown error: %v", err)
+			logger.Error("HTTP shutdown error", "error", err)
 		}
 	}
 
@@ -501,12 +596,12 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	d.setTelemetryRPC(nil)
 	if d.benchmarkStore != nil {
 		if err := d.benchmarkStore.Close(); err != nil {
-			log.Printf("[controld] benchmark store close error: %v", err)
+			logger.Error("benchmark store close error", "error", err)
 		}
 	}
 	if d.replayDB != nil {
 		if err := d.replayDB.Close(); err != nil {
-			log.Printf("[controld] replay db close error: %v", err)
+			logger.Error("replay db close error", "error", err)
 		}
 	}
 

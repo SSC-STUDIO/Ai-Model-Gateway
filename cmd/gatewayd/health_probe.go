@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"ai-model-gateway/internal/gateway/snapshot"
+	"ai-model-gateway/internal/infra/logger"
 )
 
 func newHealthHTTPClient() *http.Client {
@@ -31,6 +31,10 @@ func newHealthHTTPClient() *http.Client {
 			TLSClientConfig: &tls.Config{
 				MinVersion: tls.VersionTLS12,
 			},
+		},
+		// Health probes target known providers; block redirects to prevent SSRF.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}
 }
@@ -109,7 +113,13 @@ func (d *Daemon) runHealthProbeLoop(ctx context.Context, snap *snapshot.Snapshot
 }
 
 func (d *Daemon) runHealthProbeOnce(ctx context.Context, snap *snapshot.Snapshot) {
-	if d == nil || d.runtime == nil || snap == nil || !snap.RoutingPolicy.Health.Enabled {
+	if d == nil || d.runtime == nil || snap == nil {
+		return
+	}
+	if d.runtime.TryRecoverAPIKeys(snap, 5*time.Minute) {
+		d.recordAutoRemediation("api_key_try_recover")
+	}
+	if !snap.RoutingPolicy.Health.Enabled {
 		return
 	}
 
@@ -173,7 +183,7 @@ func (d *Daemon) probeProviderHealth(
 		return 0, latency, err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		return resp.StatusCode, latency, errHealthStatus(resp.StatusCode)
@@ -235,5 +245,5 @@ func logHealthProbeError(providerID string, statusCode int, err error) {
 	if err == nil {
 		return
 	}
-	log.Printf("[gatewayd] health probe failed provider=%s status=%d err=%v", providerID, statusCode, err)
+	logger.Warn("health probe failed", "provider", providerID, "status", statusCode, "error", err)
 }

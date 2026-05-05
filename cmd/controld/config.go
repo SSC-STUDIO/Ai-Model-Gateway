@@ -2,8 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"os"
+
+	"ai-model-gateway/internal/infra/logger"
 	"path/filepath"
 	"runtime"
 )
@@ -20,9 +21,9 @@ func loadConfig(configPath, listen, gatewaySocket, telemetrySocket, dataDir, aut
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			log.Printf("[controld] warning: could not read config file: %v", err)
+			logger.Warn("could not read config file", "error", err)
 		} else if err := json.Unmarshal(data, &cfg); err != nil {
-			log.Printf("[controld] warning: could not parse config file: %v", err)
+			logger.Warn("could not parse config file", "error", err)
 		}
 	}
 

@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const Version = version.ProductVersion
+var Version = version.ProductVersion
 
 func main() {
 	os.Exit(runCLI(os.Args, os.Stdout, os.Stderr))

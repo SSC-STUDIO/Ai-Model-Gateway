@@ -160,6 +160,14 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 
 包装 `aigw.exe supervise`。分别管理 `gatewayd.exe`、`controld.exe`、`telemetryd.exe` 只建议用于高级调试。
 
+## 8. 自动恢复与进程外重启
+
+**控制面**：`controld` 在到 `gatewayd` 的 RPC 断线后会重连并自动重新发布当前 revision；若 RPC 正常但 `gatewayd` 长期处于非 `ready` 就绪状态（例如尚未应用 snapshot），会按 `gateway_readiness_republish_min_interval_sec`（默认 15 秒）节流重试发布，直到数据面就绪。
+
+**数据面**：`gatewayd` 在启动时会尝试从 `data_dir` 下的磁盘缓存恢复最后一次成功应用的 snapshot；多 API key 的 provider 在收到 401/403 时会递增失败计数并切换到其他 key，健康探针周期内还会对长期失败的 key 做冷却恢复（`TryRecover`）。`/api/admin/runtime/status` 与 gateway 的 `GetStatus` 可查看 `last_auto_remediation_reason` / `last_auto_remediation_at`（以及扁平字段 `gateway_last_auto_remediation_*`）了解最近一次自动纠偏。
+
+**进程外**：生产环境建议用 systemd、supervisor 或 Windows 服务包装 `aigw supervise`（或三面进程），并配置 `Restart=on-failure`（或等价策略）。仓库中的 `ensure-gateway-running.ps1` 用于本机 WSL 场景下拉起与连通性自检，可与上述机制配合使用。
+
 ## 获取帮助
 
 提交问题时请附上：

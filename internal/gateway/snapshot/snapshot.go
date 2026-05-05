@@ -282,12 +282,18 @@ type FailurePolicy struct {
 
 	// QuotaRecoveryIntervalMin is the quota recovery interval in minutes.
 	QuotaRecoveryIntervalMin int `yaml:"quota_recovery_interval_min" json:"quota_recovery_interval_min"`
+
+	// DisableCooldown bypasses runtime provider blocking after upstream failures.
+	DisableCooldown bool `yaml:"disable_cooldown" json:"disable_cooldown"`
 }
 
 // RetryPolicy contains the retry policy configuration.
 type RetryPolicy struct {
 	// InfiniteOnError enables infinite retries on retryable errors.
 	InfiniteOnError bool `yaml:"infinite_on_error" json:"infinite_on_error"`
+
+	// AllErrors retries every upstream HTTP error response.
+	AllErrors bool `yaml:"all_errors" json:"all_errors"`
 
 	// StatusCodes is the list of retryable status codes.
 	StatusCodes []int `yaml:"status_codes" json:"status_codes"`
@@ -368,6 +374,8 @@ type CacheConfig struct {
 	Enabled    bool `yaml:"enabled"     json:"enabled"`
 	MaxEntries int  `yaml:"max_entries" json:"max_entries"`
 	TTLSec     int  `yaml:"ttl_seconds" json:"ttl_seconds"`
+	// MaxBytesMB is the maximum total cached bytes in megabytes (0 = no byte limit).
+	MaxBytesMB int `yaml:"max_bytes_mb" json:"max_bytes_mb"`
 }
 
 // QueueConfig contains queue configuration.

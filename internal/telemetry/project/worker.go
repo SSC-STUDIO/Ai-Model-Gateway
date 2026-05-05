@@ -5,9 +5,9 @@ package project
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
+	"ai-model-gateway/internal/infra/logger"
 	"ai-model-gateway/internal/telemetry/eventlog"
 	"ai-model-gateway/internal/telemetry/query"
 )
@@ -72,7 +72,7 @@ func (p *Projector) Run(ctx context.Context) {
 	if p.queryStore != nil {
 		checkpoint, err := p.queryStore.LoadProjectionCheckpoint(ctx, projectionCheckpointName)
 		if err != nil {
-			log.Printf("[projector] load checkpoint error: %v", err)
+			logger.Warn("load checkpoint error", "error", err)
 		} else {
 			lastID = checkpoint
 		}
@@ -85,14 +85,14 @@ func (p *Projector) Run(ctx context.Context) {
 		case <-ticker.C:
 			count, maxID, err := p.projectNewEvents(ctx, lastID)
 			if err != nil {
-				log.Printf("[projector] projection error: %v", err)
+				logger.Error("projection error", "error", err)
 				continue
 			}
 			if maxID > lastID {
 				lastID = maxID
 			}
 			if count > 0 {
-				log.Printf("[projector] projected %d events (last_id=%d)", count, lastID)
+				logger.Info("projected events", "count", count, "last_id", lastID)
 			}
 		}
 	}
@@ -140,7 +140,7 @@ func (p *Projector) projectNewEvents(ctx context.Context, lastID int64) (count i
 		// Parse payload
 		var payload eventPayload
 		if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
-			log.Printf("[projector] parse payload error: %v", err)
+			logger.Warn("parse payload error", "error", err)
 			continue
 		}
 

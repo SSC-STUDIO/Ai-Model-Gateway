@@ -4,6 +4,7 @@ package logger
 import (
 	"log/slog"
 	"os"
+	"sync"
 )
 
 var (
@@ -12,6 +13,9 @@ var (
 
 	// Level controls the logging verbosity.
 	Level = slog.LevelInfo
+
+	// mu protects concurrent access to DefaultLogger and Level.
+	mu sync.RWMutex
 )
 
 func init() {
@@ -22,6 +26,8 @@ func init() {
 
 // SetLevel changes the global logging level.
 func SetLevel(lvl slog.Level) {
+	mu.Lock()
+	defer mu.Unlock()
 	Level = lvl
 	DefaultLogger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: Level,
@@ -30,25 +36,40 @@ func SetLevel(lvl slog.Level) {
 
 // Debug logs a debug message.
 func Debug(msg string, args ...any) {
-	DefaultLogger.Debug(msg, args...)
+	mu.RLock()
+	l := DefaultLogger
+	mu.RUnlock()
+	l.Debug(msg, args...)
 }
 
 // Info logs an info message.
 func Info(msg string, args ...any) {
-	DefaultLogger.Info(msg, args...)
+	mu.RLock()
+	l := DefaultLogger
+	mu.RUnlock()
+	l.Info(msg, args...)
 }
 
 // Warn logs a warning message.
 func Warn(msg string, args ...any) {
-	DefaultLogger.Warn(msg, args...)
+	mu.RLock()
+	l := DefaultLogger
+	mu.RUnlock()
+	l.Warn(msg, args...)
 }
 
 // Error logs an error message.
 func Error(msg string, args ...any) {
-	DefaultLogger.Error(msg, args...)
+	mu.RLock()
+	l := DefaultLogger
+	mu.RUnlock()
+	l.Error(msg, args...)
 }
 
 // With returns a logger with additional context.
 func With(args ...any) *slog.Logger {
-	return DefaultLogger.With(args...)
+	mu.RLock()
+	l := DefaultLogger
+	mu.RUnlock()
+	return l.With(args...)
 }

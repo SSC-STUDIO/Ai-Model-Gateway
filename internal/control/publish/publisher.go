@@ -4,7 +4,6 @@ package publish
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"ai-model-gateway/internal/control/compiler"
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/snapshot"
+	"ai-model-gateway/internal/infra/logger"
 
 	"gopkg.in/yaml.v3"
 )
@@ -269,7 +269,7 @@ func (p *Publisher) Publish(revisionID string) (*PublishResult, error) {
 		return nil, err
 	}
 
-	log.Printf("[publisher] published revision %s as snapshot %s", revisionID, result.SnapshotID)
+	logger.Info("published revision", "revision_id", revisionID, "snapshot_id", result.SnapshotID)
 
 	return result, nil
 }
@@ -290,7 +290,7 @@ func (p *Publisher) Rollback(revisionID string) (*PublishResult, error) {
 		return nil, err
 	}
 
-	log.Printf("[publisher] rolled back to revision %s", revisionID)
+	logger.Info("rolled back to revision", "revision_id", revisionID)
 	return result, nil
 }
 
@@ -333,7 +333,7 @@ func (p *Publisher) publishRevisionLocked(rev *Revision, revisionIdx int, kind s
 	p.trimPublishesLocked()
 	pub := &p.publishes[len(p.publishes)-1]
 	if err := p.persistStateLocked(); err != nil {
-		log.Printf("[publisher] warning: could not persist staged publish state: %v", err)
+		logger.Warn("could not persist staged publish state", "error", err)
 	}
 
 	req := gatewaycontrol.ApplySnapshotRequest{
@@ -348,7 +348,7 @@ func (p *Publisher) publishRevisionLocked(rev *Revision, revisionIdx int, kind s
 		pub.Status = "failed"
 		pub.Error = "gateway not configured"
 		if err := p.persistStateLocked(); err != nil {
-			log.Printf("[publisher] warning: could not persist failed publish state: %v", err)
+			logger.Warn("could not persist failed publish state", "error", err)
 		}
 		return nil, errors.New("gateway not configured")
 	}
@@ -358,7 +358,7 @@ func (p *Publisher) publishRevisionLocked(rev *Revision, revisionIdx int, kind s
 		pub.Status = "failed"
 		pub.Error = err.Error()
 		if persistErr := p.persistStateLocked(); persistErr != nil {
-			log.Printf("[publisher] warning: could not persist failed publish state: %v", persistErr)
+			logger.Warn("could not persist failed publish state", "error", persistErr)
 		}
 		return &PublishResult{
 			Success:      false,
@@ -371,7 +371,7 @@ func (p *Publisher) publishRevisionLocked(rev *Revision, revisionIdx int, kind s
 		pub.Status = "failed"
 		pub.Error = resp.Error
 		if err := p.persistStateLocked(); err != nil {
-			log.Printf("[publisher] warning: could not persist failed publish state: %v", err)
+			logger.Warn("could not persist failed publish state", "error", err)
 		}
 		return &PublishResult{
 			Success:      false,
@@ -385,7 +385,7 @@ func (p *Publisher) publishRevisionLocked(rev *Revision, revisionIdx int, kind s
 	p.activeIdx = revisionIdx
 	p.syncPolicyFromActiveRevisionLocked()
 	if err := p.persistStateLocked(); err != nil {
-		log.Printf("[publisher] warning: could not persist observed publish state: %v", err)
+		logger.Warn("could not persist observed publish state", "error", err)
 	}
 
 	return &PublishResult{
@@ -800,10 +800,10 @@ func (p *Publisher) UpdateConfig(cfg interface{}, description string) (*PublishR
 	}
 
 	if err := p.persistStateLocked(); err != nil {
-		log.Printf("[publisher] warning: could not persist state after update: %v", err)
+		logger.Warn("could not persist state after update", "error", err)
 	}
 
-	log.Printf("[publisher] updated config as revision %s", revisionID)
+	logger.Info("updated config", "revision_id", revisionID)
 	return result, nil
 }
 

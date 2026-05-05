@@ -305,14 +305,16 @@ func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
 			Enabled: cfg.StickySessions.Enabled,
 			TTLSec:  cfg.StickySessions.TTLSec,
 		},
-		FailurePolicy: snapshot.FailurePolicy{
-			Threshold:                cfg.FailurePolicy.Threshold,
-			CooldownSec:              cfg.FailurePolicy.CooldownSec,
-			PassthroughAfterSec:      cfg.FailurePolicy.PassthroughAfterSec,
-			QuotaRecoveryIntervalMin: resolveQuotaRecoveryIntervalMin(cfg.FailurePolicy.QuotaRecoveryIntervalMin),
-		},
+			FailurePolicy: snapshot.FailurePolicy{
+				Threshold:                cfg.FailurePolicy.Threshold,
+				CooldownSec:              cfg.FailurePolicy.CooldownSec,
+				PassthroughAfterSec:      cfg.FailurePolicy.PassthroughAfterSec,
+				QuotaRecoveryIntervalMin: resolveQuotaRecoveryIntervalMin(cfg.FailurePolicy),
+				DisableCooldown:          cfg.FailurePolicy.DisableCooldown,
+			},
 		Retry: snapshot.RetryPolicy{
 			InfiniteOnError: cfg.Retry.InfiniteOnError,
+			AllErrors:       cfg.Retry.AllErrors,
 			StatusCodes:     append([]int(nil), cfg.Retry.StatusCodes...),
 			StatusCodeMin:   statusCodeMin,
 			MessageKeywords: append([]string(nil), cfg.Retry.MessageKeywords...),
@@ -328,7 +330,6 @@ func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
 			TTLSec:     cfg.Cache.TTLSec,
 		},
 		Queue: snapshot.QueueConfig{
-			Enabled:         cfg.Queue.Enabled,
 			MaxConcurrent:   cfg.Queue.MaxConcurrent,
 			HighPriorityPct: cfg.Queue.HighPriorityPct,
 		},
@@ -336,14 +337,17 @@ func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
 			Enabled: cfg.KeyRotation.Enabled,
 		},
 		Compression: snapshot.CompressionConfig{
-			Enabled:      cfg.Compression.Enabled,
 			MinSizeBytes: cfg.Compression.MinSizeBytes,
 			Level:        cfg.Compression.Level,
 		},
 	}
 }
 
-func resolveQuotaRecoveryIntervalMin(configured int) int {
+func resolveQuotaRecoveryIntervalMin(policy core.FailurePolicyConfig) int {
+	if policy.DisableCooldown {
+		return 0
+	}
+	configured := policy.QuotaRecoveryIntervalMin
 	if configured <= 0 {
 		return defaultQuotaRecoveryIntervalMin
 	}
