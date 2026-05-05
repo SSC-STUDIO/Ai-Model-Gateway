@@ -2,12 +2,12 @@
 package main
 
 import (
-	"log"
 	"net/rpc"
 	"time"
 
 	"ai-model-gateway/internal/contracts"
 	"ai-model-gateway/internal/contracts/telemetryingest"
+	"ai-model-gateway/internal/infra/logger"
 )
 
 // IngestRPCServer handles RPC calls from gatewayd for event ingestion.
@@ -38,13 +38,13 @@ type TelemetryIngestRPC struct {
 
 // AppendBatch appends a batch of events to the event log.
 func (r *TelemetryIngestRPC) AppendBatch(req telemetryingest.AppendBatchRequest, resp *telemetryingest.AppendBatchResponse) error {
-	log.Printf("[telemetryd] RPC: AppendBatch batch_id=%s count=%d", req.BatchID, len(req.Events))
+	logger.Debug("RPC: AppendBatch", "batch_id", req.BatchID, "count", len(req.Events))
 
 	if r.daemon.eventLog == nil {
 		resp.Accepted = 0
 		resp.Dropped = len(req.Events)
 		resp.Error = "event log not initialized"
-		log.Printf("[telemetryd] RPC AppendBatch error: %s", resp.Error)
+		logger.Error("RPC AppendBatch error", "error", resp.Error)
 		return nil
 	}
 
@@ -60,20 +60,20 @@ func (r *TelemetryIngestRPC) AppendBatch(req telemetryingest.AppendBatchRequest,
 		resp.Accepted = 0
 		resp.Dropped = len(req.Events)
 		resp.Error = err.Error()
-		log.Printf("[telemetryd] RPC AppendBatch error: %s", err)
+		logger.Error("RPC AppendBatch error", "error", err)
 		return nil
 	}
 
 	resp.Accepted = accepted
 	resp.Dropped = dropped
 	resp.HighWatermark = generateHighWatermark()
-	log.Printf("[telemetryd] RPC AppendBatch success: %d accepted, %d dropped", accepted, dropped)
+	logger.Info("RPC AppendBatch success", "accepted", accepted, "dropped", dropped)
 	return nil
 }
 
 // Flush flushes all buffered events.
 func (r *TelemetryIngestRPC) Flush(req telemetryingest.FlushRequest, resp *telemetryingest.FlushResponse) error {
-	log.Printf("[telemetryd] RPC: Flush")
+	logger.Debug("RPC: Flush")
 
 	resp.Success = false
 	resp.FlushedCount = 0

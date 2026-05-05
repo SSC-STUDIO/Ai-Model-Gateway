@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'preact/compat'
+import { Fragment, memo, useCallback, useMemo, useState } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import type { DataResponse, ErrorEntry, RequestEntry } from '../../types'
 import { formatInteger } from '../../utils/formatting'
@@ -90,16 +90,23 @@ interface UnifiedLogEntry {
 
 function unifyEntries(requests: RequestEntry[] | undefined, errors: ErrorEntry[] | undefined): UnifiedLogEntry[] {
   const result: UnifiedLogEntry[] = []
+  const index = new Map<string, UnifiedLogEntry>()
   let id = 0
+
+  const makeKey = (timestamp: string, model: string, upstream: string) =>
+    `${timestamp}\x00${model}\x00${upstream}`
 
   if (requests) {
     for (const req of requests) {
-      result.push({
+      const timestamp = req.Timestamp ?? req.time ?? ''
+      const model = req.Model ?? req.model ?? '-'
+      const upstream = req.Upstream ?? req.upstream ?? '-'
+      const entry: UnifiedLogEntry = {
         id: id++,
-        timestamp: req.Timestamp ?? req.time ?? '',
+        timestamp,
         path: req.Path ?? req.path ?? '-',
-        model: req.Model ?? req.model ?? '-',
-        upstream: req.Upstream ?? req.upstream ?? '-',
+        model,
+        upstream,
         statusCode: req.StatusCode ?? req.status ?? 0,
         latencyMs: req.LatencyMs ?? req.latency_ms ?? 0,
         inputTokens: req.InputTokens ?? req.input_tokens,
@@ -108,30 +115,42 @@ function unifyEntries(requests: RequestEntry[] | undefined, errors: ErrorEntry[]
         attempts: req.Attempts ?? req.attempts,
         errorMessage: undefined,
         isError: false,
-      })
+      }
+      result.push(entry)
+      index.set(makeKey(timestamp, model, upstream), entry)
     }
   }
 
   if (errors) {
     for (const err of errors) {
-      const existing = result.find(
-        (r) =>
-          r.timestamp === (err.Timestamp ?? err.time) &&
-          r.model === (err.Model ?? err.model) &&
-          r.upstream === (err.Upstream ?? err.upstream) &&
-          !r.isError
-      )
+      const timestamp = err.Timestamp ?? err.time ?? ''
+      const model = err.Model ?? err.model ?? '-'
+      const upstream = err.Upstream ?? err.upstream ?? '-'
+      const existing = index.get(makeKey(timestamp, model, upstream))
       if (existing) {
-        existing.errorMessage = err.Message ?? err.message
-        existing.isError = true
+        const errStatus = err.StatusCode ?? err.status ?? 0
+        const errMsg = err.Message ?? err.message ?? ''
+        if (!existing.isError) {
+          // Merge error into matching request entry
+          existing.errorMessage = errMsg
+          existing.isError = true
+          // Update status code if error provides a non-zero one
+          if (errStatus > 0) existing.statusCode = errStatus
+        } else if (errMsg) {
+          // Append subsequent error messages for duplicate keys
+          existing.errorMessage = existing.errorMessage
+            ? `${existing.errorMessage}; ${errMsg}`
+            : errMsg
+        }
       } else {
+        const errStatus = err.StatusCode ?? err.status
         result.push({
           id: id++,
-          timestamp: err.Timestamp ?? err.time ?? '',
+          timestamp,
           path: '-',
-          model: err.Model ?? err.model ?? '-',
-          upstream: err.Upstream ?? err.upstream ?? '-',
-          statusCode: err.StatusCode ?? err.status ?? 0,
+          model,
+          upstream,
+          statusCode: errStatus && errStatus > 0 ? errStatus : 500,
           latencyMs: 0,
           inputTokens: undefined,
           outputTokens: undefined,
@@ -375,14 +394,14 @@ const LogsTabComponent = ({
                     entry.cachedPromptTokens && entry.cachedPromptTokens > 0 ? `cached ${formatInteger(entry.cachedPromptTokens)}` : undefined,
                   ])
                   const attemptCount = entry.attempts ?? 1
-                  const hasError = entry.isError || entry.statusCode >= 400
+                  const hasError = entry.isError || entry.statusCode >= 500
+                  const hasWarning = !hasError && entry.statusCode >= 400
                   const tone = statusTone(entry.statusCode)
 
                   return (
-                    <>
+                    <Fragment key={entry.id}>
                       <tr
-                        key={entry.id}
-                        class={`data-row logs-row${hasError ? ' error-row' : ''}${isExpanded ? ' expanded' : ''}`}
+                        class={`data-row logs-row${hasError ? ' error-row' : ''}${hasWarning ? ' warning-row' : ''}${isExpanded ? ' expanded' : ''}`}
                         onClick={() => handleRowClick(entry.id)}
                       >
                         <td class="logs-time" title={formatAbsoluteTime(entry.timestamp)}>
@@ -480,7 +499,7 @@ const LogsTabComponent = ({
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   )
                 })}
               </tbody>

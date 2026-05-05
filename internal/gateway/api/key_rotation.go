@@ -133,20 +133,27 @@ func (kr *KeyRotator) IsEnabled() bool {
 
 // TryRecover attempts to recover keys that have been marked as failed.
 // It resets the fail count for keys whose last failure is older than the given cooldown.
-func (kr *KeyRotator) TryRecover(cooldown time.Duration) {
-	if kr == nil || len(kr.keys) == 0 {
-		return
+// Returns true if at least one key was reset.
+func (kr *KeyRotator) TryRecover(cooldown time.Duration) bool {
+	if kr == nil {
+		return false
+	}
+	if len(kr.keys) == 0 {
+		return false
 	}
 
 	kr.mu.Lock()
 	defer kr.mu.Unlock()
 
+	var recovered bool
 	now := time.Now()
 	for i := range kr.keys {
 		if kr.keys[i].failCount >= maxFailCount && !kr.keys[i].lastFail.IsZero() {
 			if cooldown > 0 && now.Sub(kr.keys[i].lastFail) >= cooldown {
 				kr.keys[i].failCount = 0
+				recovered = true
 			}
 		}
 	}
+	return recovered
 }

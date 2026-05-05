@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
 
 	"ai-model-gateway/internal/contracts/gatewaycontrol"
+	"ai-model-gateway/internal/gateway/queue"
 	"ai-model-gateway/internal/gateway/snapshot"
 )
 
@@ -14,6 +16,10 @@ type RuntimeState struct {
 	now       func() time.Time
 	providers map[string]*providerRuntimeState
 	sticky    map[string]stickyBinding
+	// keyRotators holds live API key rotation state per provider (multi-key only).
+	keyRotators map[string]*KeyRotator
+	requestQueue *queue.Queue
+	queueConfig  snapshot.QueueConfig
 }
 
 type providerRuntimeState struct {
@@ -38,9 +44,10 @@ type providerGateState struct {
 
 func NewRuntimeState() *RuntimeState {
 	return &RuntimeState{
-		now:       time.Now,
-		providers: make(map[string]*providerRuntimeState),
-		sticky:    make(map[string]stickyBinding),
+		now:           time.Now,
+		providers:     make(map[string]*providerRuntimeState),
+		sticky:        make(map[string]stickyBinding),
+		keyRotators:   make(map[string]*KeyRotator),
 	}
 }
 
@@ -72,6 +79,17 @@ func (s *RuntimeState) ApplySnapshot(snap *snapshot.Snapshot) {
 			delete(s.sticky, key)
 		}
 	}
+
+	s.keyRotators = make(map[string]*KeyRotator)
+	if snap != nil {
+		for i := range snap.Providers {
+			p := &snap.Providers[i]
+			if len(p.APIKeys) > 0 {
+				s.keyRotators[p.ProviderID] = NewKeyRotator(p)
+			}
+		}
+	}
+	s.applyQueueConfigLocked(snap)
 }
 
 func (s *RuntimeState) ProviderHealthSnapshot(snap *snapshot.Snapshot) map[string]gatewaycontrol.ProviderHealth {
@@ -236,6 +254,93 @@ func (s *RuntimeState) ReportProbeResult(
 	s.reportAttemptResult(providerID, statusCode, latency, forwardErr, snap)
 }
 
+// KeyRotatorForProvider returns the live rotator for multi-key providers, or a
+// fresh rotator when API keys are not configured (no cross-request state).
+func (s *RuntimeState) KeyRotatorForProvider(provider *snapshot.ProviderSnapshot) *KeyRotator {
+	if provider == nil {
+		return NewKeyRotator(nil)
+	}
+	if len(provider.APIKeys) == 0 {
+		return NewKeyRotator(provider)
+	}
+	if s == nil {
+		return NewKeyRotator(provider)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.keyRotators == nil {
+		return NewKeyRotator(provider)
+	}
+	if kr, ok := s.keyRotators[provider.ProviderID]; ok && kr != nil {
+		return kr
+	}
+	return NewKeyRotator(provider)
+}
+
+// TryRecoverAPIKeys resets exhausted API keys after cooldown. Returns true if
+// any key state changed.
+func (s *RuntimeState) TryRecoverAPIKeys(snap *snapshot.Snapshot, cooldown time.Duration) bool {
+	if s == nil || snap == nil {
+		return false
+	}
+	changed := false
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range snap.Providers {
+		p := &snap.Providers[i]
+		if len(p.APIKeys) == 0 {
+			continue
+		}
+		kr := s.keyRotators[p.ProviderID]
+		if kr == nil {
+			continue
+		}
+		if kr.TryRecover(cooldown) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+func (s *RuntimeState) EnqueueRequest(ctx context.Context, snap *snapshot.Snapshot, priority queue.Priority, execute func() error) error {
+	if execute == nil {
+		return nil
+	}
+	if s == nil || snap == nil || !snap.RoutingPolicy.Queue.Enabled {
+		return execute()
+	}
+
+	s.mu.Lock()
+	q := s.requestQueue
+	s.mu.Unlock()
+	if q == nil {
+		return execute()
+	}
+
+	done := make(chan error, 1)
+	err := q.Enqueue(ctx, priority, queue.PendingRequest{
+		Priority: priority,
+		Execute: func() error {
+			err := execute()
+			select {
+			case done <- err:
+			default:
+			}
+			return err
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (s *RuntimeState) clockNow() time.Time {
 	if s == nil || s.now == nil {
 		return time.Now()
@@ -284,10 +389,13 @@ func stickyBindingKey(model string, stickyKey string) string {
 
 func providerGateStateFromLocked(st *providerRuntimeState, policy snapshot.FailurePolicy, now time.Time) providerGateState {
 	var state providerGateState
+	if policy.DisableCooldown {
+		return state
+	}
 
-	cooldownSec := maxInt(policy.CooldownSec, 0)
-	threshold := maxInt(policy.Threshold, 0)
-	passthroughAfter := time.Duration(maxInt(policy.PassthroughAfterSec, 0)) * time.Second
+	cooldownSec := max(policy.CooldownSec, 0)
+	threshold := max(policy.Threshold, 0)
+	passthroughAfter := time.Duration(max(policy.PassthroughAfterSec, 0)) * time.Second
 
 	if threshold > 0 && st.consecutiveFailures >= threshold && !st.lastFailure.IsZero() && cooldownSec > 0 {
 		until := st.lastFailure.Add(time.Duration(cooldownSec) * time.Second)
@@ -301,7 +409,7 @@ func providerGateStateFromLocked(st *providerRuntimeState, policy snapshot.Failu
 	}
 
 	if !st.quotaBlockedAt.IsZero() {
-		recoveryMin := maxInt(policy.QuotaRecoveryIntervalMin, 1)
+		recoveryMin := max(policy.QuotaRecoveryIntervalMin, 0)
 		until := st.quotaBlockedAt.Add(time.Duration(recoveryMin) * time.Minute)
 		if now.Before(until) {
 			state.blocked = true
@@ -330,4 +438,34 @@ func maxTime(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+func (s *RuntimeState) applyQueueConfigLocked(snap *snapshot.Snapshot) {
+	var cfg snapshot.QueueConfig
+	if snap != nil {
+		cfg = snap.RoutingPolicy.Queue
+	}
+
+	if !cfg.Enabled || cfg.MaxConcurrent <= 0 {
+		if s.requestQueue != nil {
+			s.requestQueue.Close()
+			s.requestQueue = nil
+		}
+		s.queueConfig = snapshot.QueueConfig{}
+		return
+	}
+
+	if s.requestQueue != nil &&
+		s.queueConfig.Enabled &&
+		s.queueConfig.MaxConcurrent == cfg.MaxConcurrent &&
+		s.queueConfig.HighPriorityPct == cfg.HighPriorityPct {
+		s.queueConfig = cfg
+		return
+	}
+
+	if s.requestQueue != nil {
+		s.requestQueue.Close()
+	}
+	s.requestQueue = queue.NewQueue(cfg.MaxConcurrent, cfg.HighPriorityPct)
+	s.queueConfig = cfg
 }

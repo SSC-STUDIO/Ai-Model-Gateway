@@ -2,11 +2,11 @@ package api
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"time"
 
 	"ai-model-gateway/internal/gateway/snapshot"
+	"ai-model-gateway/internal/infra/logger"
 )
 
 // ResolveFallbackModels returns fallback model names for the given primary model.
@@ -63,7 +63,7 @@ func tryFallbackModels(
 	pricingResolver PricingResolver,
 	w http.ResponseWriter,
 	r *http.Request,
-	isAnthropic bool,
+	clientFmt clientFormat,
 	reqMeta chatCompletionRequestMeta,
 	body []byte,
 	requestID string,
@@ -76,7 +76,7 @@ func tryFallbackModels(
 	}
 
 	for _, fallbackModel := range fallbacks {
-		candidates, _ := collectProviderCandidatesForRequest(snap, fallbackModel, isAnthropic)
+		candidates := collectProviderCandidatesForRequest(snap, fallbackModel)
 		if len(candidates) == 0 {
 			continue
 		}
@@ -91,18 +91,17 @@ func tryFallbackModels(
 		for i := range orderedCandidates {
 			candidate := orderedCandidates[i]
 
-			log.Printf("[gatewayd] request_id=%s fallback model=%s upstream_model=%s provider=%s",
-				requestID, fallbackModel, candidate.upstreamModel, candidate.provider.ProviderID)
+			logger.Info("fallback request attempt", "request_id", requestID, "model", fallbackModel, "upstream_model", candidate.upstreamModel, "provider", candidate.provider.ProviderID)
 
-			compatPlan, compatErr := buildCompatPlan(isAnthropic, candidate.provider, reqMeta.Model, candidate.upstreamModel, body)
+			compatPlan, compatErr := buildCompatPlan(clientFmt, candidate.provider, reqMeta.Model, candidate.upstreamModel, body)
 			if compatErr != nil {
-				log.Printf("[gatewayd] request_id=%s fallback compat failed: model=%s provider=%s err=%v",
-					requestID, fallbackModel, candidate.provider.ProviderID, compatErr)
+				logger.Warn("fallback compat failed", "request_id", requestID, "model", fallbackModel, "provider", candidate.provider.ProviderID, "error", compatErr)
 				continue
 			}
 
 			statusCode, respBody, streamBody, streamContentType, latency, forwardErr := forwardToUpstream(
 				ctx,
+				runtimeState,
 				candidate.provider,
 				compatPlan.forwardPath,
 				compatPlan.forwardBody,
@@ -119,8 +118,7 @@ func tryFallbackModels(
 				if streamBody != nil {
 					_ = streamBody.Close()
 				}
-				log.Printf("[gatewayd] request_id=%s fallback failed: model=%s status=%d err=%v",
-					requestID, fallbackModel, statusCode, forwardErr)
+				logger.Warn("fallback failed", "request_id", requestID, "model", fallbackModel, "status", statusCode, "error", forwardErr)
 				continue
 			}
 
@@ -132,8 +130,7 @@ func tryFallbackModels(
 			} else {
 				clientRespBody, clientContentType, adaptErr := adaptResponseBodyForClient(compatPlan, statusCode, respBody)
 				if adaptErr != nil {
-					log.Printf("[gatewayd] request_id=%s fallback adapt failed: model=%s provider=%s err=%v",
-						requestID, fallbackModel, candidate.provider.ProviderID, adaptErr)
+					logger.Warn("fallback adapt failed", "request_id", requestID, "model", fallbackModel, "provider", candidate.provider.ProviderID, "error", adaptErr)
 					continue
 				}
 				if clientContentType == "" {
@@ -150,12 +147,11 @@ func tryFallbackModels(
 			fixedPricing := resolveFixedPricing(pricingResolver, reqMeta.Model, candidate.upstreamModel, candidate.provider.ProviderID, promptTokens, cachedPromptTokens, completionTokens, false, statusCode)
 			emitTelemetry(telClient, requestID, start, r.URL.Path,
 				reqMeta.Model, candidate.upstreamModel, candidate.provider.ProviderID,
-				routeModeForAttempt("model_fallback", true, isAnthropic, candidate.provider), statusCode, latency, 1, promptTokens, cachedPromptTokens, completionTokens, reqMeta.Stream, "",
+				routeModeForAttempt("model_fallback", true, clientFmt == formatAnthropic, candidate.provider), statusCode, latency, 1, promptTokens, cachedPromptTokens, completionTokens, reqMeta.Stream, "",
 				fixedPricing, opts)
-			captureExecutionResult(opts, statusCode, capturedContentType, latency, promptTokens, cachedPromptTokens, completionTokens, candidate.provider.ProviderID, candidate.upstreamModel, routeModeForAttempt("model_fallback", true, isAnthropic, candidate.provider), fixedPricing.TotalCostUSD, "")
+			captureExecutionResult(opts, statusCode, capturedContentType, latency, promptTokens, cachedPromptTokens, completionTokens, candidate.provider.ProviderID, candidate.upstreamModel, routeModeForAttempt("model_fallback", true, clientFmt == formatAnthropic, candidate.provider), fixedPricing.TotalCostUSD, "")
 
-			log.Printf("[gatewayd] request_id=%s fallback succeeded: model=%s provider=%s latency=%s",
-				requestID, fallbackModel, candidate.provider.ProviderID, latency)
+			logger.Info("fallback succeeded", "request_id", requestID, "model", fallbackModel, "provider", candidate.provider.ProviderID, "latency", latency)
 			return true
 		}
 	}

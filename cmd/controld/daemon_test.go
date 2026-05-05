@@ -9,13 +9,50 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"ai-model-gateway/internal/contracts/gatewaycontrol"
 	"ai-model-gateway/internal/control/compiler"
 
 	authinfra "ai-model-gateway/internal/infra/auth"
 )
+
+func TestGatewayReadinessRepublishDefaultMinInterval(t *testing.T) {
+	d := &Daemon{config: Config{}}
+	if got := d.gatewayReadinessRepublishMinInterval(); got != 15*time.Second {
+		t.Fatalf("default min interval = %v, want 15s", got)
+	}
+}
+
+func TestMaybeRepublishForGatewayReadinessThrottles(t *testing.T) {
+	var calls atomic.Int32
+	d := &Daemon{config: Config{GatewayReadinessRepublishMinIntervalSec: 10}}
+	d.testRepublishHook = func(string) { calls.Add(1) }
+	t0 := time.Unix(1700000000, 0)
+	st := &gatewaycontrol.GetStatusResponse{Readiness: gatewaycontrol.ReadinessStarting}
+
+	d.maybeRepublishForGatewayReadiness(st, t0)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("after first tick calls = %d, want 1", got)
+	}
+	d.maybeRepublishForGatewayReadiness(st, t0.Add(5*time.Second))
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("inside throttle window calls = %d, want 1", got)
+	}
+	d.maybeRepublishForGatewayReadiness(st, t0.Add(10*time.Second))
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("after throttle window calls = %d, want 2", got)
+	}
+
+	d.maybeRepublishForGatewayReadiness(&gatewaycontrol.GetStatusResponse{
+		Readiness: gatewaycontrol.ReadinessReady,
+	}, t0.Add(300*time.Second))
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("when ready calls = %d, want 2", got)
+	}
+}
 
 func TestNewDaemonCreatesDataDir(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "control-data")

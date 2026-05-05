@@ -19,8 +19,8 @@ linters:
       min-complexity: 15
     gosec:
       excludes:
-        - G104
-        - G304
+        - G104 # Unchecked errors — noisy for io.Writer/ReadFrom patterns; handled explicitly in security-critical paths
+        - G304 # File path from variable — mitigated by internal/pathsecurity package (IsSafePath, NormalizeAndValidatePath)
     misspell:
       locale: US
   exclusions:

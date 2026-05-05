@@ -35,10 +35,9 @@ import (
 	"ai-model-gateway/internal/version"
 )
 
-const (
-	Version    = version.ProductVersion
-	modelOwner = "ai-model-gateway"
-)
+var Version = version.ProductVersion
+
+const modelOwner = "ai-model-gateway"
 
 // Config is the bootstrap configuration for gatewayd.
 // This is minimal - just enough to start the daemon and connect to other planes.
@@ -95,6 +94,10 @@ type Daemon struct {
 	healthProbeDone   chan struct{}
 	startedAt         time.Time
 	activeReqs        atomic.Int64
+
+	remediationMu               sync.Mutex
+	lastAutoRemediationReason   string
+	lastAutoRemediationAt       time.Time
 }
 
 func main() {
@@ -226,11 +229,16 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("start RPC server: %w", err)
 	}
 
-	// Connect to telemetry plane
-	if err := d.connectTelemetry(d.runCtx); err != nil {
-		logger.Warn("could not connect to telemetry", "error", err)
-		// Continue without telemetry - it's not critical
-	}
+	// Connect to telemetry in the background. Blocking here delays the HTTP
+	// server and lets controld miss its initial publish window while gatewayd
+	// retries telemetryd (up to rpc_retry_count * rpc_retry_interval).
+	go func() {
+		if err := d.connectTelemetry(d.runCtx); err != nil {
+			logger.Warn("could not connect to telemetry", "error", err)
+		}
+	}()
+
+	d.tryRestoreSnapshotFromDisk()
 
 	// Start HTTP server
 	readTimeout := time.Duration(d.config.ReadTimeoutSec) * time.Second
@@ -368,6 +376,8 @@ func (d *Daemon) createHandler() http.Handler {
 	mux.HandleFunc("/v1/chat/completions", d.chatCompletionsHandler)
 	// Anthropic Messages API endpoint
 	mux.HandleFunc("/v1/messages", d.messagesHandler)
+	// OpenAI Responses API endpoint
+	mux.HandleFunc("/v1/responses", d.responsesHandler)
 
 	return mux
 }
@@ -544,6 +554,25 @@ func (d *Daemon) messagesHandler(w http.ResponseWriter, r *http.Request) {
 	api.HandleMessages(r.Context(), snap, d.runtime, d.telClient, d.pricingCatalog, w, r)
 }
 
+// responsesHandler handles OpenAI Responses API requests.
+func (d *Daemon) responsesHandler(w http.ResponseWriter, r *http.Request) {
+	d.snapshotMu.RLock()
+	snap := d.snapshot
+	d.snapshotMu.RUnlock()
+
+	if snap == nil {
+		http.Error(w, `{"error":"no snapshot loaded"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	// Track active requests
+	d.activeReqs.Add(1)
+	defer d.activeReqs.Add(-1)
+
+	// Handle the request using the pipeline
+	api.HandleResponses(r.Context(), snap, d.runtime, d.telClient, d.pricingCatalog, w, r)
+}
+
 // Shutdown gracefully shuts down the daemon.
 func (d *Daemon) Shutdown(ctx context.Context) error {
 	if d.runCancel != nil {
@@ -599,6 +628,25 @@ func (d *Daemon) ApplySnapshot(snap *snapshot.Snapshot) error {
 	return nil
 }
 
+func (d *Daemon) recordAutoRemediation(reason string) {
+	if d == nil || strings.TrimSpace(reason) == "" {
+		return
+	}
+	d.remediationMu.Lock()
+	d.lastAutoRemediationReason = reason
+	d.lastAutoRemediationAt = time.Now()
+	d.remediationMu.Unlock()
+}
+
+func (d *Daemon) autoRemediationForStatus() (reason string, at time.Time) {
+	if d == nil {
+		return "", time.Time{}
+	}
+	d.remediationMu.Lock()
+	defer d.remediationMu.Unlock()
+	return d.lastAutoRemediationReason, d.lastAutoRemediationAt
+}
+
 // GetStatus returns the current daemon status.
 func (d *Daemon) GetStatus() gatewaycontrol.GetStatusResponse {
 	d.snapshotMu.RLock()
@@ -620,6 +668,10 @@ func (d *Daemon) GetStatus() gatewaycontrol.GetStatusResponse {
 			resp.ProviderHealth = d.runtime.ProviderHealthSnapshot(snap)
 		}
 	}
+
+	reason, at := d.autoRemediationForStatus()
+	resp.LastAutoRemediationReason = reason
+	resp.LastAutoRemediationAt = at
 
 	return resp
 }

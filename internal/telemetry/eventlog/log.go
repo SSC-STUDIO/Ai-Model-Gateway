@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"ai-model-gateway/internal/contracts/telemetryingest"
+	"ai-model-gateway/internal/infra/logger"
 	_ "modernc.org/sqlite"
 )
 
@@ -123,7 +123,7 @@ func (l *EventLog) Append(events []telemetryingest.Event) (accepted, dropped int
 			payload,
 		)
 		if err != nil {
-			log.Printf("[eventlog] insert error: %v", err)
+			logger.Error("insert error", "error", err)
 			dropped++
 			continue
 		}

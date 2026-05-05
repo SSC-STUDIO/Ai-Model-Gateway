@@ -172,11 +172,60 @@
       "upstreamModel": "Upstream Model Name",
       "noModels": "No model mappings",
       "selectProvider": "Select a Provider",
-      "selectProviderHint": "Click a provider on the left to view details"
+      "selectProviderHint": "Click a provider on the left to view details",
+      "anthropicBaseUrl": "Anthropic Base URL",
+      "providerClass": "Provider Class",
+      "classDefault": "Default",
+      "classFree": "Free",
+      "classQuotaLimited": "Quota Limited",
+      "timeoutMs": "Timeout (ms)",
+      "sameUpstreamRetries": "Same Upstream Retries"
     },
     "visualEditor": "Visual Editor",
     "visualEditorComingSoon": "Visual Editor Coming Soon",
-    "visualEditorHint": "Use visual interface to edit routing rules, provider configs and model mappings"
+    "visualEditorHint": "Use visual interface to edit routing rules, provider configs and model mappings",
+    "server": {
+      "title": "Server",
+      "listenAddress": "Listen Address",
+      "readTimeoutMs": "Read Timeout (ms)",
+      "writeTimeoutMs": "Write Timeout (ms)",
+      "idleTimeoutMs": "Idle Timeout (ms)",
+      "maxBodyBytes": "Max Body Bytes"
+    },
+    "admin": {
+      "title": "Admin",
+      "language": "Language",
+      "publishHistoryLimit": "Publish History Limit",
+      "rateLimitRps": "Rate Limit RPS",
+      "rateLimitBurst": "Rate Limit Burst"
+    },
+    "common": {
+      "enabled": "Enabled"
+    },
+    "bridge": {
+      "title": "Bridge",
+      "rules": "Bridge Rules",
+      "toModel": "To model"
+    },
+    "fallback": {
+      "title": "Fallback",
+      "detectRepetition": "Detect Repetition",
+      "models": "Fallback Models"
+    },
+    "telemetry": {
+      "title": "Telemetry",
+      "retentionDays": "Retention Days"
+    },
+    "pricing": {
+      "title": "Pricing",
+      "refreshIntervalHours": "Refresh Interval (hours)",
+      "requestTimeoutMs": "Request Timeout (ms)"
+    },
+    "intercept": {
+      "title": "Intercept Rules",
+      "rules": "Rules",
+      "ruleName": "Rule name"
+    }
   },
   "common": {
     "remove": "Remove",

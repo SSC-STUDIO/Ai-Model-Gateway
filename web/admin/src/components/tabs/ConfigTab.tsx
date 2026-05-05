@@ -1,3 +1,4 @@
+import { fetchJSON } from '../../utils/fetch'
 import { memo, useCallback, useEffect, useMemo, useState } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import type { ControlConfigView, ProviderHealthView, ConfigHistoryResponse, ConfigVersionSummary, ConfigSubTab } from '../../types'
@@ -52,6 +53,7 @@ interface ConfigTabProps {
   onVersionChange: (version: string) => void
   onApplySelection: () => void
   busy: boolean
+  onConfigUpdated?: () => void
 }
 
 function formatDate(value: string | undefined): string {
@@ -86,6 +88,7 @@ const ConfigTabComponent = ({
   onVersionChange,
   onApplySelection,
   busy,
+  onConfigUpdated,
 }: ConfigTabProps) => {
   const { t } = useI18n()
   const [subTab, setSubTab] = useState<ConfigSubTab>('current')
@@ -198,23 +201,10 @@ const ConfigTabComponent = ({
     setValidation({ isValidating: true, result: null, error: null })
 
     try {
-      const response = await fetch('/api/admin/config/validate', {
+      const result = (await fetchJSON('/api/admin/config/validate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config }),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        setValidation({
-          isValidating: false,
-          result: null,
-          error: `Validation failed: ${response.status} ${errorText}`,
-        })
-        return
-      }
-
-      const result = (await response.json()) as ConfigValidationResult
+      })) as ConfigValidationResult
       setValidation({ isValidating: false, result, error: null })
     } catch (err) {
       setValidation({
@@ -270,7 +260,7 @@ const ConfigTabComponent = ({
           error: null,
         })
         // Refresh the page to show updated config
-        window.location.reload()
+        onConfigUpdated?.()
       } else {
         setValidation({
           isValidating: false,
@@ -316,23 +306,10 @@ const ConfigTabComponent = ({
     setValidation({ isValidating: true, result: null, error: null })
 
     try {
-      const response = await fetch('/api/admin/config/validate', {
+      const result = (await fetchJSON('/api/admin/config/validate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config }),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        setValidation({
-          isValidating: false,
-          result: null,
-          error: `Validation failed: ${response.status} ${errorText}`,
-        })
-        return
-      }
-
-      const result = (await response.json()) as ConfigValidationResult
+      })) as ConfigValidationResult
       setValidation({ isValidating: false, result, error: null })
     } catch (err) {
       setValidation({
@@ -400,7 +377,7 @@ const ConfigTabComponent = ({
           error: null,
         })
         // Refresh the page to show updated config
-        window.location.reload()
+        onConfigUpdated?.()
       } else {
         setValidation({
           isValidating: false,
@@ -826,7 +803,7 @@ const ConfigTabComponent = ({
                       />
                     </div>
                     <div class="visual-form-group">
-                      <label>Anthropic Base URL</label>
+                      <label>{t('config.providers.anthropicBaseUrl')}</label>
                       <input
                         type="text"
                         value={activeProvider.anthropic_base_url}
@@ -843,18 +820,18 @@ const ConfigTabComponent = ({
                       />
                     </div>
                     <div class="visual-form-group">
-                      <label>Provider Class</label>
+                      <label>{t('config.providers.providerClass')}</label>
                       <select
                         value={activeProvider.provider_class}
                         onChange={(e) => handleProviderFieldChange(activeProvider.id, 'provider_class', (e.currentTarget as HTMLSelectElement).value)}
                       >
-                        <option value="">Default</option>
-                        <option value="free">Free</option>
-                        <option value="quota_limited">Quota Limited</option>
+                        <option value="">{t('config.providers.classDefault')}</option>
+                        <option value="free">{t('config.providers.classFree')}</option>
+                        <option value="quota_limited">{t('config.providers.classQuotaLimited')}</option>
                       </select>
                     </div>
                     <div class="visual-form-group">
-                      <label>Timeout (ms)</label>
+                      <label>{t('config.providers.timeoutMs')}</label>
                       <input
                         type="number"
                         min="1000"
@@ -864,7 +841,7 @@ const ConfigTabComponent = ({
                       />
                     </div>
                     <div class="visual-form-group">
-                      <label>Same Upstream Retries</label>
+                      <label>{t('config.providers.sameUpstreamRetries')}</label>
                       <input
                         type="number"
                         min="0"
@@ -920,9 +897,9 @@ const ConfigTabComponent = ({
 
               {/* Server Config */}
               <div class="visual-config-card">
-                <h4>Server</h4>
+                <h4>{t('config.server.title')}</h4>
                 <div class="visual-form-group">
-                  <label>Listen Address</label>
+                  <label>{t('config.server.listenAddress')}</label>
                   <input
                     type="text"
                     value={server.listen}
@@ -931,7 +908,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Read Timeout (ms)</label>
+                  <label>{t('config.server.readTimeoutMs')}</label>
                   <input
                     type="number"
                     min="1000"
@@ -940,7 +917,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Write Timeout (ms)</label>
+                  <label>{t('config.server.writeTimeoutMs')}</label>
                   <input
                     type="number"
                     min="0"
@@ -949,7 +926,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Idle Timeout (ms)</label>
+                  <label>{t('config.server.idleTimeoutMs')}</label>
                   <input
                     type="number"
                     min="1000"
@@ -958,7 +935,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Max Body Bytes</label>
+                  <label>{t('config.server.maxBodyBytes')}</label>
                   <input
                     type="number"
                     min="1024"
@@ -970,7 +947,7 @@ const ConfigTabComponent = ({
 
               {/* Admin Config */}
               <div class="visual-config-card">
-                <h4>Admin</h4>
+                <h4>{t('config.admin.title')}</h4>
                 <div class="visual-form-group visual-form-row">
                   <label class="visual-checkbox-label">
                     <input
@@ -978,11 +955,11 @@ const ConfigTabComponent = ({
                       checked={admin.enabled}
                       onChange={(e) => handleAdminChange('enabled', (e.currentTarget as HTMLInputElement).checked)}
                     />
-                    <span>Enabled</span>
+                    <span>{t('config.common.enabled')}</span>
                   </label>
                 </div>
                 <div class="visual-form-group">
-                  <label>Language</label>
+                  <label>{t('config.admin.language')}</label>
                   <select
                     value={admin.language}
                     onChange={(e) => handleAdminChange('language', (e.currentTarget as HTMLSelectElement).value)}
@@ -997,7 +974,7 @@ const ConfigTabComponent = ({
                   </select>
                 </div>
                 <div class="visual-form-group">
-                  <label>Publish History Limit</label>
+                  <label>{t('config.admin.publishHistoryLimit')}</label>
                   <input
                     type="number"
                     min="10"
@@ -1007,7 +984,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Rate Limit RPS</label>
+                  <label>{t('config.admin.rateLimitRps')}</label>
                   <input
                     type="number"
                     min="1"
@@ -1016,7 +993,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Rate Limit Burst</label>
+                  <label>{t('config.admin.rateLimitBurst')}</label>
                   <input
                     type="number"
                     min="1"
@@ -1028,7 +1005,7 @@ const ConfigTabComponent = ({
 
               {/* Bridge Config */}
               <div class="visual-config-card">
-                <h4>Bridge</h4>
+                <h4>{t('config.bridge.title')}</h4>
                 <div class="visual-form-group visual-form-row">
                   <label class="visual-checkbox-label">
                     <input
@@ -1036,12 +1013,12 @@ const ConfigTabComponent = ({
                       checked={bridge.enabled}
                       onChange={(e) => handleBridgeChange('enabled', (e.currentTarget as HTMLInputElement).checked)}
                     />
-                    <span>Enabled</span>
+                    <span>{t('config.common.enabled')}</span>
                   </label>
                 </div>
                 <div class="model-mappings">
                   <div class="model-mappings-header">
-                    <span>Bridge Rules</span>
+                    <span>{t('config.bridge.rules')}</span>
                     <button type="button" class="btn-small" onClick={handleAddBridgeRule}>
                       + Add Rule
                     </button>
@@ -1061,7 +1038,7 @@ const ConfigTabComponent = ({
                           <span class="model-arrow">→</span>
                           <input
                             type="text"
-                            placeholder="To model"
+                            placeholder="{t('config.bridge.toModel')}"
                             value={rule.to}
                             onChange={(e) => handleBridgeRuleChange(index, 'to', (e.currentTarget as HTMLInputElement).value)}
                           />
@@ -1082,7 +1059,7 @@ const ConfigTabComponent = ({
 
               {/* Fallback Config */}
               <div class="visual-config-card">
-                <h4>Fallback</h4>
+                <h4>{t('config.fallback.title')}</h4>
                 <div class="visual-form-group visual-form-row">
                   <label class="visual-checkbox-label">
                     <input
@@ -1090,7 +1067,7 @@ const ConfigTabComponent = ({
                       checked={fallback.enabled}
                       onChange={(e) => handleFallbackChange('enabled', (e.currentTarget as HTMLInputElement).checked)}
                     />
-                    <span>Enabled</span>
+                    <span>{t('config.common.enabled')}</span>
                   </label>
                   <label class="visual-checkbox-label">
                     <input
@@ -1098,12 +1075,12 @@ const ConfigTabComponent = ({
                       checked={fallback.detect_repetition}
                       onChange={(e) => handleFallbackChange('detect_repetition', (e.currentTarget as HTMLInputElement).checked)}
                     />
-                    <span>Detect Repetition</span>
+                    <span>{t('config.fallback.detectRepetition')}</span>
                   </label>
                 </div>
                 <div class="model-mappings">
                   <div class="model-mappings-header">
-                    <span>Fallback Models</span>
+                    <span>{t('config.fallback.models')}</span>
                   </div>
                   {Object.keys(fallback.models).length === 0 ? (
                     <div class="no-models">No fallback models configured</div>
@@ -1131,7 +1108,7 @@ const ConfigTabComponent = ({
 
               {/* Telemetry Config */}
               <div class="visual-config-card">
-                <h4>Telemetry</h4>
+                <h4>{t('config.telemetry.title')}</h4>
                 <div class="visual-form-group">
                   <label>SQLite Path</label>
                   <input
@@ -1141,7 +1118,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Retention Days</label>
+                  <label>{t('config.telemetry.retentionDays')}</label>
                   <input
                     type="number"
                     min="1"
@@ -1153,7 +1130,7 @@ const ConfigTabComponent = ({
 
               {/* Pricing Config */}
               <div class="visual-config-card">
-                <h4>Pricing</h4>
+                <h4>{t('config.pricing.title')}</h4>
                 <div class="visual-form-group">
                   <label>Cache Path</label>
                   <input
@@ -1163,7 +1140,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Refresh Interval (hours)</label>
+                  <label>{t('config.pricing.refreshIntervalHours')}</label>
                   <input
                     type="number"
                     min="1"
@@ -1172,7 +1149,7 @@ const ConfigTabComponent = ({
                   />
                 </div>
                 <div class="visual-form-group">
-                  <label>Request Timeout (ms)</label>
+                  <label>{t('config.pricing.requestTimeoutMs')}</label>
                   <input
                     type="number"
                     min="1000"
@@ -1184,10 +1161,10 @@ const ConfigTabComponent = ({
 
               {/* Intercept Rules */}
               <div class="visual-config-card">
-                <h4>Intercept Rules</h4>
+                <h4>{t('config.intercept.title')}</h4>
                 <div class="model-mappings">
                   <div class="model-mappings-header">
-                    <span>Rules</span>
+                    <span>{t('config.intercept.rules')}</span>
                     <button type="button" class="btn-small" onClick={handleAddInterceptRule}>
                       + Add Rule
                     </button>
@@ -1205,11 +1182,11 @@ const ConfigTabComponent = ({
                                 checked={rule.enabled}
                                 onChange={(e) => handleInterceptRuleChange(index, 'enabled', (e.currentTarget as HTMLInputElement).checked)}
                               />
-                              <span>Enabled</span>
+                              <span>{t('config.common.enabled')}</span>
                             </label>
                             <input
                               type="text"
-                              placeholder="Rule name"
+                              placeholder="{t('config.intercept.ruleName')}"
                               value={rule.name}
                               onChange={(e) => handleInterceptRuleChange(index, 'name', (e.currentTarget as HTMLInputElement).value)}
                               style={{ flex: 1 }}

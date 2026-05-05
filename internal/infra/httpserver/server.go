@@ -5,13 +5,13 @@ package httpserver
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"ai-model-gateway/internal/core"
+	"ai-model-gateway/internal/infra/logger"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -64,7 +64,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("[gateway] listening on %s", bindAddr)
+		logger.Info("listening", "bind_addr", bindAddr)
 		if err := s.srv.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
@@ -77,7 +77,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := s.srv.Shutdown(shutCtx); err != nil {
-			log.Printf("[gateway] shutdown error: %v", err)
+			logger.Error("shutdown error", "error", err)
 		}
 		return nil
 	}

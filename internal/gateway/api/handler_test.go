@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -29,6 +30,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestHandleChatCompletionStreamsSSEWithoutBuffering(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	const firstChunk = "data: first\n\n"
@@ -153,6 +155,7 @@ func TestHandleChatCompletionStreamsSSEWithoutBuffering(t *testing.T) {
 }
 
 func TestHandleChatCompletionReturnsJSONForNonStreamingRequest(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	const upstreamBody = `{"id":"cmpl-123","object":"chat.completion","model":"upstream-model","choices":[],"usage":{"prompt_tokens":11,"completion_tokens":7}}`
@@ -216,6 +219,7 @@ func TestHandleChatCompletionReturnsJSONForNonStreamingRequest(t *testing.T) {
 }
 
 func TestHandleChatCompletionAcceptsStructuredMessageContent(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	forwardBodyCh := make(chan []byte, 1)
@@ -261,6 +265,7 @@ func TestHandleChatCompletionAcceptsStructuredMessageContent(t *testing.T) {
 }
 
 func TestHandleChatCompletionRetriesAcrossProvidersOnRetryableStatus(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var upstreamHosts []string
@@ -357,7 +362,358 @@ func TestHandleChatCompletionRetriesAcrossProvidersOnRetryableStatus(t *testing.
 	}
 }
 
+func TestHandleChatCompletionInfiniteRetryOnRetryable429UntilSuccess(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	attempts := 0
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts < 3 {
+				return &http.Response{
+					StatusCode: http.StatusTooManyRequests,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body: io.NopCloser(strings.NewReader(`{"error":{"message":"concurrency limit exceeded"}}`)),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"id":"cmpl-ok","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3}}`)),
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.RoutingPolicy.MaxRetries = 0
+	snap.RoutingPolicy.Retry.InfiniteOnError = true
+	snap.RoutingPolicy.RetryBackoff = snapshot.RetryBackoff{InitialMs: 1, MaxMs: 1}
+
+	server := newGatewayTestServer(t, snap, nil)
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	if attempts != 3 {
+		t.Fatalf("expected 3 upstream attempts, got %d", attempts)
+	}
+}
+
+func TestHandleChatCompletionInfiniteRetryOnGatewayTimeoutUntilSuccess(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	attempts := 0
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts < 3 {
+				return nil, context.DeadlineExceeded
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"id":"cmpl-ok","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3}}`)),
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.RoutingPolicy.MaxRetries = 0
+	snap.RoutingPolicy.Retry.InfiniteOnError = true
+	snap.RoutingPolicy.RetryBackoff = snapshot.RetryBackoff{InitialMs: 1, MaxMs: 1}
+
+	server := newGatewayTestServer(t, snap, nil)
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	if attempts != 3 {
+		t.Fatalf("expected 3 upstream attempts, got %d", attempts)
+	}
+}
+
+func TestHandleChatCompletionInfiniteRetryAllErrorsRetriesNonRetryable4xxUntilSuccess(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	attempts := 0
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts < 3 {
+				return &http.Response{
+					StatusCode: http.StatusTeapot,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body: io.NopCloser(strings.NewReader(`{"error":{"message":"short and stout"}}`)),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"id":"cmpl-ok","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":3}}`)),
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.RoutingPolicy.MaxRetries = 0
+	snap.RoutingPolicy.Retry.InfiniteOnError = true
+	snap.RoutingPolicy.Retry.AllErrors = true
+	snap.RoutingPolicy.RetryBackoff = snapshot.RetryBackoff{InitialMs: 1, MaxMs: 1}
+
+	server := newGatewayTestServer(t, snap, nil)
+	defer server.Close()
+
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	if attempts != 3 {
+		t.Fatalf("expected 3 upstream attempts, got %d", attempts)
+	}
+}
+
+func TestHandleChatCompletionStreamInfiniteRetryStartsSSEBeforeUpstreamSuccess(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	previousInterval := streamRetryHeartbeatInterval
+	streamRetryHeartbeatInterval = 10 * time.Millisecond
+	t.Cleanup(func() {
+		streamRetryHeartbeatInterval = previousInterval
+	})
+
+	attempts := 0
+	allowSuccess := make(chan struct{})
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts < 3 {
+				time.Sleep(15 * time.Millisecond)
+				return &http.Response{
+					StatusCode: http.StatusTooManyRequests,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body: io.NopCloser(strings.NewReader(`{"error":{"message":"concurrency limit exceeded"}}`)),
+				}, nil
+			}
+
+			<-allowSuccess
+			pr, pw := io.Pipe()
+			go func() {
+				_, _ = io.WriteString(pw, "data: final\n\n")
+				_ = pw.Close()
+			}()
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+				},
+				Body: pr,
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.RoutingPolicy.MaxRetries = 0
+	snap.RoutingPolicy.Retry.InfiniteOnError = true
+	snap.RoutingPolicy.Retry.AllErrors = true
+	snap.RoutingPolicy.RetryBackoff = snapshot.RetryBackoff{InitialMs: 1, MaxMs: 1}
+
+	server := newGatewayTestServer(t, snap, nil)
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL+"/v1/chat/completions", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}],"stream":true}`))
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	respCh := make(chan *http.Response, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		respCh <- resp
+	}()
+
+	var resp *http.Response
+	select {
+	case err := <-errCh:
+		t.Fatalf("request failed: %v", err)
+	case resp = <-respCh:
+	case <-time.After(time.Second):
+		t.Fatal("expected streaming response headers before upstream success")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	firstLine, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read initial heartbeat line: %v", err)
+	}
+	if !strings.HasPrefix(firstLine, ":") {
+		t.Fatalf("expected initial SSE comment heartbeat, got %q", firstLine)
+	}
+
+	close(allowSuccess)
+
+	rest, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read remaining stream: %v", err)
+	}
+	if !strings.Contains(string(rest), "data: final") {
+		t.Fatalf("expected final streamed data, got %q", string(rest))
+	}
+}
+
+func TestHandleChatCompletionInfiniteRetryStopsOnContextCancel(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	attempts := 0
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts == 3 {
+				cancel()
+			}
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"message":"concurrency limit exceeded"}}`)),
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.RoutingPolicy.MaxRetries = 0
+	snap.RoutingPolicy.Retry.InfiniteOnError = true
+	snap.RoutingPolicy.RetryBackoff = snapshot.RetryBackoff{InitialMs: 1, MaxMs: 1}
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	rec := httptest.NewRecorder()
+
+	HandleChatCompletion(ctx, snap, NewRuntimeState(), nil, nil, rec, req.WithContext(ctx))
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	if attempts != 3 {
+		t.Fatalf("expected retries to stop after context cancellation, got %d attempts", attempts)
+	}
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected final status 429 after cancellation, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleChatCompletionRotatesAPIKeysAfter401(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	var authHeaders []string
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			auth := req.Header.Get("Authorization")
+			authHeaders = append(authHeaders, auth)
+			if !strings.Contains(auth, "good-key") {
+				return &http.Response{
+					StatusCode: http.StatusUnauthorized,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"},
+					},
+					Body: io.NopCloser(strings.NewReader(`{"error":{"message":"invalid"}}`)),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"id":"cmpl-789","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":2}}`)),
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.Providers[0].BaseURL = "http://203.0.113.10"
+	snap.Providers[0].Credentials = snapshot.Credentials{Kind: "bearer"}
+	snap.Providers[0].APIKeys = []snapshot.APIKey{
+		{Name: "a", Value: "bad-key"},
+		{Name: "b", Value: "good-key"},
+	}
+	snap.Providers[0].ExecutionPolicy.SameRetries = 3
+	snap.RoutingPolicy.MaxRetries = 6
+	snap.RoutingPolicy.Retry.StatusCodes = append(append([]int(nil), snap.RoutingPolicy.Retry.StatusCodes...), http.StatusUnauthorized)
+
+	state := NewRuntimeState()
+	state.ApplySnapshot(snap)
+	server := newGatewayTestServerWithState(t, snap, nil, state)
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	if len(authHeaders) < 2 {
+		t.Fatalf("expected multiple upstream attempts for key rotation, got %d: %v", len(authHeaders), authHeaders)
+	}
+	last := authHeaders[len(authHeaders)-1]
+	if !strings.Contains(last, "good-key") {
+		t.Fatalf("expected final attempt to use good key, got %q", last)
+	}
+}
+
 func TestHandleChatCompletionExtractsStreamingUsageForTelemetry(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	tel := &capturingTelemetryEmitter{events: make(chan telemetryingest.Event, 1)}
@@ -410,6 +766,7 @@ func TestHandleChatCompletionExtractsStreamingUsageForTelemetry(t *testing.T) {
 }
 
 func TestHandleChatCompletionKeepsStickySessionAffinity(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	var upstreamHosts []string
@@ -481,6 +838,7 @@ func TestHandleChatCompletionKeepsStickySessionAffinity(t *testing.T) {
 }
 
 func TestHandleChatCompletionAllowsPassthroughAfterConfiguredDelay(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	currentTime := time.Unix(1_712_345_678, 0).UTC()
@@ -622,6 +980,7 @@ func swapSharedHTTPClient(t *testing.T, client *http.Client) {
 }
 
 func TestHandleChatCompletionReturnsCachedResponseOnSecondRequest(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	upstreamCalls := 0
@@ -692,6 +1051,7 @@ func TestHandleChatCompletionReturnsCachedResponseOnSecondRequest(t *testing.T) 
 }
 
 func TestHandleChatCompletionPinnedProviderBypassesRuntimeGateForBenchmark(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	swapSharedHTTPClient(t, &http.Client{
@@ -741,6 +1101,7 @@ func TestHandleChatCompletionPinnedProviderBypassesRuntimeGateForBenchmark(t *te
 }
 
 func TestHandleChatCompletionDoesNotCacheStreamRequests(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)
 
 	upstreamCalls := 0

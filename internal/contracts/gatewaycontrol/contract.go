@@ -97,6 +97,11 @@ type GetStatusResponse struct {
 
 	// StartedAt is when gatewayd was started.
 	StartedAt time.Time
+
+	// LastAutoRemediationReason describes the most recent automatic recovery action on the data plane.
+	LastAutoRemediationReason string `json:"last_auto_remediation_reason,omitempty"`
+	// LastAutoRemediationAt is when LastAutoRemediationReason was recorded.
+	LastAutoRemediationAt time.Time `json:"last_auto_remediation_at,omitempty"`
 }
 
 // GetPricingStatusRequest requests the current pricing state.

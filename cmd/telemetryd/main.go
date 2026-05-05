@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,15 +17,14 @@ import (
 
 	"ai-model-gateway/internal/contracts"
 	"ai-model-gateway/internal/contracts/telemetryingest"
+	"ai-model-gateway/internal/infra/logger"
 	"ai-model-gateway/internal/telemetry/eventlog"
 	"ai-model-gateway/internal/telemetry/project"
 	"ai-model-gateway/internal/telemetry/query"
 	"ai-model-gateway/internal/version"
 )
 
-const (
-	Version = version.ProductVersion
-)
+var Version = version.ProductVersion
 
 // Config is the bootstrap configuration for telemetryd.
 type Config struct {
@@ -84,7 +82,8 @@ func main() {
 	// Create daemon
 	d, err := NewDaemon(cfg)
 	if err != nil {
-		log.Fatalf("[telemetryd] failed to create daemon: %v", err)
+		logger.Error("failed to create daemon", "error", err)
+		os.Exit(1)
 	}
 
 	// Setup signal handling
@@ -93,24 +92,25 @@ func main() {
 
 	// Start daemon
 	if err := d.Start(ctx); err != nil {
-		log.Fatalf("[telemetryd] failed to start: %v", err)
+		logger.Error("failed to start", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("[telemetryd] started")
+	logger.Info("started")
 
 	// Wait for shutdown
 	<-ctx.Done()
-	log.Printf("[telemetryd] shutting down...")
+	logger.Info("shutting down...")
 
 	// Graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := d.Shutdown(shutdownCtx); err != nil {
-		log.Printf("[telemetryd] shutdown error: %v", err)
+		logger.Error("shutdown error", "error", err)
 	}
 
-	log.Printf("[telemetryd] stopped")
+	logger.Info("stopped")
 }
 
 // loadConfig loads the bootstrap configuration.
@@ -125,9 +125,9 @@ func loadConfig(configPath, ingestSocket, querySocket, dataDir string) Config {
 	if configPath != "" {
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			log.Printf("[telemetryd] warning: could not read config file: %v", err)
+			logger.Warn("could not read config file", "error", err)
 		} else if err := json.Unmarshal(data, &cfg); err != nil {
-			log.Printf("[telemetryd] warning: could not parse config file: %v", err)
+			logger.Warn("could not parse config file", "error", err)
 		}
 	}
 
@@ -235,7 +235,7 @@ func (d *Daemon) startIngestRPC(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				default:
-					log.Printf("[telemetryd] ingest accept error: %v", err)
+					logger.Error("ingest accept error", "error", err)
 					continue
 				}
 			}
@@ -261,7 +261,7 @@ func (d *Daemon) startQueryRPC(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				default:
-					log.Printf("[telemetryd] query accept error: %v", err)
+					logger.Error("query accept error", "error", err)
 					continue
 				}
 			}
@@ -277,14 +277,14 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	// Close event log
 	if d.eventLog != nil {
 		if err := d.eventLog.Close(); err != nil {
-			log.Printf("[telemetryd] event log close error: %v", err)
+			logger.Error("event log close error", "error", err)
 		}
 	}
 
 	// Close query store
 	if d.queryStore != nil {
 		if err := d.queryStore.Close(); err != nil {
-			log.Printf("[telemetryd] query store close error: %v", err)
+			logger.Error("query store close error", "error", err)
 		}
 	}
 
@@ -313,7 +313,7 @@ func (d *Daemon) GetEventCount() int64 {
 
 	var count int64
 	if err := d.eventLog.GetDB().QueryRow(`SELECT COUNT(*) FROM events`).Scan(&count); err != nil {
-		log.Printf("[telemetryd] event count query error: %v", err)
+		logger.Error("event count query error", "error", err)
 		return 0
 	}
 	return count

@@ -3,13 +3,13 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/rpc"
 	"strings"
 	"time"
 
 	"ai-model-gateway/internal/contracts"
 	"ai-model-gateway/internal/contracts/telemetryquery"
+	"ai-model-gateway/internal/infra/logger"
 )
 
 // QueryRPCServer handles RPC calls from controld for telemetry queries.
@@ -40,7 +40,7 @@ type TelemetryQueryRPC struct {
 
 // GetOverview returns dashboard overview metrics.
 func (r *TelemetryQueryRPC) GetOverview(req telemetryquery.OverviewRequest, resp *telemetryquery.OverviewResponse) error {
-	log.Printf("[telemetryd] RPC: GetOverview")
+	logger.Debug("RPC: GetOverview")
 
 	if r.daemon.queryStore == nil {
 		return fmt.Errorf("query store not initialized")
@@ -65,7 +65,7 @@ func (r *TelemetryQueryRPC) GetOverview(req telemetryquery.OverviewRequest, resp
 
 // GetTelemetry returns recent telemetry events.
 func (r *TelemetryQueryRPC) GetTelemetry(req telemetryquery.TelemetryRequest, resp *telemetryquery.TelemetryResponse) error {
-	log.Printf("[telemetryd] RPC: GetTelemetry window=%dh limit=%d", req.WindowHours, req.Limit)
+	logger.Debug("RPC: GetTelemetry", "window_hours", req.WindowHours, "limit", req.Limit)
 
 	if r.daemon.queryStore == nil {
 		return fmt.Errorf("query store not initialized")
@@ -93,7 +93,7 @@ func (r *TelemetryQueryRPC) GetTelemetry(req telemetryquery.TelemetryRequest, re
 
 // GetTimeSeries returns time-bucketed metrics.
 func (r *TelemetryQueryRPC) GetTimeSeries(req telemetryquery.TimeSeriesRequest, resp *telemetryquery.TimeSeriesResponse) error {
-	log.Printf("[telemetryd] RPC: GetTimeSeries window=%dh bucket=%dm", req.WindowHours, req.BucketMinutes)
+	logger.Debug("RPC: GetTimeSeries", "window_hours", req.WindowHours, "bucket_minutes", req.BucketMinutes)
 
 	if r.daemon.queryStore == nil {
 		return fmt.Errorf("query store not initialized")
@@ -111,7 +111,7 @@ func (r *TelemetryQueryRPC) GetTimeSeries(req telemetryquery.TimeSeriesRequest, 
 
 // GetModelBenchmark returns model benchmark metrics.
 func (r *TelemetryQueryRPC) GetModelBenchmark(req telemetryquery.BenchmarkRequest, resp *telemetryquery.BenchmarkResponse) error {
-	log.Printf("[telemetryd] RPC: GetModelBenchmark window=%dh group=%s models=%v", req.WindowHours, req.Group, req.Models)
+	logger.Debug("RPC: GetModelBenchmark", "window_hours", req.WindowHours, "group", req.Group, "models", req.Models)
 
 	if r.daemon.queryStore == nil {
 		return fmt.Errorf("query store not initialized")

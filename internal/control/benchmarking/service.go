@@ -14,6 +14,7 @@ import (
 
 	"ai-model-gateway/internal/contracts/gatewaycontrol"
 	"ai-model-gateway/internal/core"
+	"ai-model-gateway/internal/infra/logger"
 
 	"github.com/google/uuid"
 )
@@ -228,7 +229,13 @@ func (s *Service) executeRun(ctx context.Context, run RunSummary, suite *benchma
 	if runError != "" {
 		runStatus = RunStatusFailed
 	}
-	_ = s.store.UpdateRunStatus(ctx, run.RunID, runStatus, runError, time.Now().UTC())
+	if err := s.store.UpdateRunStatus(ctx, run.RunID, runStatus, runError, time.Now().UTC()); err != nil {
+		logger.Error("failed to update benchmark run status",
+			"run_id", run.RunID,
+			"status", runStatus,
+			"error", err,
+		)
+	}
 }
 
 func (s *Service) executeTarget(ctx context.Context, cfg *core.Config, suite *benchmarkSuite, target RunTargetDetail, run RunSummary) RunTargetDetail {

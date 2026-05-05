@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -26,10 +27,22 @@ jobs:
             runner: ubuntu-latest
             archive: ai-model-gateway-linux-amd64.tar.gz
             ext: ""
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+            archive: ai-model-gateway-linux-arm64.tar.gz
+            ext: ""
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+            archive: ai-model-gateway-darwin-arm64.tar.gz
+            ext: ""
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -51,29 +64,41 @@ jobs:
           npm --prefix web/admin ci
           npm --prefix web/admin run build
 
+      - name: Set version variables
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(cat VERSION)
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "git_commit=${GIT_COMMIT}" >> "$GITHUB_OUTPUT"
+
       - name: Build runtime bundle
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           EXT: ${{ matrix.ext }}
+          VERSION: ${{ steps.version.outputs.version }}
+          GIT_COMMIT: ${{ steps.version.outputs.git_commit }}
         run: |
           set -euo pipefail
+          LDFLAGS="-s -w -X ai-model-gateway/internal/version.ProductVersion=${VERSION} -X ai-model-gateway/internal/version.BuildCommit=${GIT_COMMIT} -X ai-model-gateway/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           rm -rf bundle dist
           mkdir -p bundle/bin dist
           for bin in aigw gatewayd controld telemetryd gateway-cli; do
-            go build -trimpath -ldflags="-s -w" -o "bundle/bin/${bin}${EXT}" "./cmd/${bin}"
+            go build -trimpath -ldflags="$LDFLAGS" -o "bundle/bin/${bin}${EXT}" "./cmd/${bin}"
           done
           cp -R configs bundle/configs
           cp -R deploy bundle/deploy
           mkdir -p bundle/web/admin
           cp -R web/admin/dist bundle/web/admin/dist
-          cp README.md VERSION bundle/
+          cp README.md VERSION LICENSE bundle/
           "bundle/bin/aigw${EXT}" bundle build -root bundle -out bundle/aigw-manifest.json
           "bundle/bin/aigw${EXT}" bundle verify -root bundle -manifest bundle/aigw-manifest.json
 
       - name: Release smoke
-        if: matrix.goos == 'linux'
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         shell: bash
         env:
           ADMIN_BOOTSTRAP_TOKEN: 0123456789abcdef0123456789abcdef
@@ -115,6 +140,18 @@ jobs:
           done
           exit 1
 
+      - name: Verify version in binary
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_output=$(bundle/bin/gatewayd --version 2>&1)
+          echo "Binary version output: ${version_output}"
+          if ! echo "${version_output}" | grep -q "${{ steps.version.outputs.version }}"; then
+            echo "ERROR: Version mismatch - expected ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
       - name: Package zip
         if: matrix.goos == 'windows'
         shell: pwsh
@@ -144,3 +181,80 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/${{ matrix.archive }}
+
+  checksums:
+    name: Generate checksums
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download all release archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "ai-model-gateway-*-*.tar.gz"
+          merge-multiple: true
+          path: archives/
+      - name: Download Windows zip
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-model-gateway-windows-amd64.zip
+          path: archives/
+
+      - name: Generate SHA-256 checksums
+        working-directory: archives
+        run: |
+          set -euo pipefail
+          sha256sum ai-model-gateway-* > SHA256SUMS.txt
+          echo "--- SHA256SUMS ---"
+          cat SHA256SUMS.txt
+
+      - name: Publish checksums
+        uses: softprops/action-gh-release@v2
+        with:
+          files: archives/SHA256SUMS.txt
+
+  docker:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Set version
+        id: version
+        run: |
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          echo "git_commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            GIT_COMMIT=${{ steps.version.outputs.git_commit }}

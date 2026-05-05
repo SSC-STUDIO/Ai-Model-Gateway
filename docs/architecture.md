@@ -46,10 +46,17 @@ AI Model Gateway 当前采用单入口运维、三面内部架构：
 - 暴露：
   - `GET /-/health`
   - `GET /v1/models`
-  - `POST /v1/chat/completions`
-- 只执行来自 `controld` 的已编译 snapshot
+  - `POST /v1/chat/completions`（OpenAI Chat Completions 形态）
+  - `POST /v1/messages`（Anthropic Messages 形态）
+  - `POST /v1/responses`（OpenAI Responses 形态；对上游以 Chat Completions 桥接，见 `internal/gateway/api/compat.go`）
+- **未实现**的 OpenAI 系子 API（若客户端按「全量 OpenAI」集成会 404），例如：`/v1/embeddings`、图像/音频、Assistants、Batch 等；也不包含 Realtime WebSocket 代理（`cmd/gatewayd` 未挂载 `internal/gateway/websocket`）。
+- 仅执行来自 `controld` 的已编译 snapshot
 - 不直接读取 `config.yaml`
 - 向 `telemetryd` 异步写入事件
+
+#### RunBenchmarkCase 协议字符串（control ↔ gatewayd RPC）
+
+合成基准通过 RPC 走与 HTTP 相同的入口，支持的 `protocol` 值为：`openai_chat_completions`、`anthropic_messages`，以及 `openai_responses`（与常量 `BenchmarkProtocolOpenAIResponses` 对应，定义见 `internal/core/config.go`）。
 
 ### 控制面 `controld`
 

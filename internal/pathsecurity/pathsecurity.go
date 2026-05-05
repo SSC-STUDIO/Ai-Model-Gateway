@@ -1,4 +1,4 @@
-// Package pathsecurity 提供路径安全验证工具，防止路径遍历攻击
+// Package pathsecurity provides path security validation utilities to prevent path traversal attacks.
 package pathsecurity
 
 import (
@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-// IsSafePath 验证目标路径是否在基础路径范围内（防止路径遍历）
+// IsSafePath checks whether the target path stays within the base path boundary (prevents traversal).
 func IsSafePath(basePath, targetPath string) bool {
-	// 获取绝对路径
+	// Resolve to absolute paths
 	realBase, err := filepath.Abs(basePath)
 	if err != nil {
 		return false
@@ -23,60 +23,69 @@ func IsSafePath(basePath, targetPath string) bool {
 	}
 	realTarget = filepath.Clean(realTarget)
 
-	// 确保基础路径存在
+	// Ensure the base path exists
 	if _, err := os.Stat(realBase); os.IsNotExist(err) {
 		return false
 	}
 
-	// 目标路径必须在基础路径下
-	return strings.HasPrefix(realTarget, realBase+string(filepath.Separator)) || realTarget == realBase
+	// Use filepath.Rel for robust relative-path computation.
+	// If the target is outside the base, Rel returns a path starting with "..".
+	rel, err := filepath.Rel(realBase, realTarget)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// NormalizeAndValidatePath 安全地拼接路径并验证
+// NormalizeAndValidatePath joins path components and validates the result stays within the base path.
 func NormalizeAndValidatePath(basePath string, components ...string) (string, error) {
-	// 规范化基础路径
+	// Normalize the base path
 	realBase, err := filepath.Abs(basePath)
 	if err != nil {
 		return "", fmt.Errorf("invalid base path: %w", err)
 	}
 	realBase = filepath.Clean(realBase)
 
-	// 拼接路径组件
+	// Join path components
 	allParts := append([]string{realBase}, components...)
 	target := filepath.Join(allParts...)
 
-	// 解析符号链接后的最终路径
+	// Resolve symlinks to get the real target path
 	realTarget, err := filepath.EvalSymlinks(target)
 	if err != nil {
-		// 如果文件不存在，只使用 Clean
+		// If the file doesn't exist, fall back to Clean
 		realTarget = filepath.Clean(target)
 	}
 
-	// 验证路径安全
-	if !strings.HasPrefix(realTarget, realBase+string(filepath.Separator)) && realTarget != realBase {
+	// Verify the resolved path stays within the base using filepath.Rel
+	rel, err := filepath.Rel(realBase, realTarget)
+	if err != nil {
+		return "", fmt.Errorf("path traversal detected: %s", target)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("path traversal detected: %s", target)
 	}
 
 	return realTarget, nil
 }
 
-// ValidateFileName 验证文件名是否安全
+// ValidateFileName checks whether a filename is safe (no traversal, null bytes, or reserved names).
 func ValidateFileName(filename string) error {
 	if filename == "" {
 		return fmt.Errorf("empty filename")
 	}
 
-	// 检查 null 字节
+	// Reject null bytes
 	if strings.Contains(filename, "\x00") {
 		return fmt.Errorf("filename contains null bytes")
 	}
 
-	// 检查路径分隔符
+	// Reject path separators
 	if strings.ContainsAny(filename, `/\`) {
 		return fmt.Errorf("filename contains path separators")
 	}
 
-	// 检查路径遍历模式
+	// Reject path traversal patterns
 	dangerousPatterns := []string{
 		"..", "%2e%2e", "%252e%252e",
 	}
@@ -88,7 +97,7 @@ func ValidateFileName(filename string) error {
 		}
 	}
 
-	// 拒绝 Windows 保留名称
+	// Reject Windows reserved names
 	reservedNames := []string{
 		"CON", "PRN", "AUX", "NUL",
 		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
@@ -105,20 +114,20 @@ func ValidateFileName(filename string) error {
 	return nil
 }
 
-// ValidatePathComponent 验证路径组件是否安全
+// ValidatePathComponent validates that a single path component is safe.
 func ValidatePathComponent(component string) error {
 	return ValidateFileName(component)
 }
 
-// SanitizePath 清理路径，移除危险字符
+// SanitizePath cleans a path by removing dangerous characters and normalizing it.
 func SanitizePath(path string) string {
-	// 移除 null 字节
+	// Remove null bytes
 	path = strings.ReplaceAll(path, "\x00", "")
 
-	// 规范化路径
+	// Normalize the path
 	path = filepath.Clean(path)
 
-	// 如果路径以 .. 开头，视为不安全
+	// Reject paths that start with ..
 	if strings.HasPrefix(path, "..") {
 		return ""
 	}
@@ -126,7 +135,7 @@ func SanitizePath(path string) string {
 	return path
 }
 
-// JoinSafe 安全地拼接路径，验证结果
+// JoinSafe joins path components and validates the result is safe.
 func JoinSafe(basePath string, components ...string) (string, error) {
 	return NormalizeAndValidatePath(basePath, components...)
 }

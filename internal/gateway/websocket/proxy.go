@@ -3,13 +3,13 @@ package websocket
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"ai-model-gateway/internal/gateway/snapshot"
+	"ai-model-gateway/internal/infra/logger"
 	"ai-model-gateway/internal/proxy"
 
 	"github.com/gorilla/websocket"
@@ -22,14 +22,15 @@ type SSRFChecker interface {
 
 // Proxy handles WebSocket upgrade and proxying to upstream providers.
 type Proxy struct {
-	upgrader    websocket.Upgrader
-	dialer      websocket.Dialer
-	ssrfChecker SSRFChecker
+	upgrader      websocket.Upgrader
+	dialer        websocket.Dialer
+	ssrfChecker   SSRFChecker
+	allowedOrigin func(r *http.Request) bool
 }
 
 // NewProxy creates a new WebSocket proxy.
 func NewProxy() *Proxy {
-	return &Proxy{
+	p := &Proxy{
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
@@ -42,13 +43,50 @@ func NewProxy() *Proxy {
 		},
 		ssrfChecker: proxy.NewSSRFChecker(),
 	}
+
+	// Apply DNS-pinning dialer to prevent DNS rebinding attacks.
+	if s, ok := p.ssrfChecker.(*proxy.SSRFChecker); ok {
+		p.dialer = s.NewSafeDialer(p.dialer)
+	}
+
+	return p
 }
 
 // NewProxyWithSSRFChecker creates a new WebSocket proxy with a custom SSRF checker.
 func NewProxyWithSSRFChecker(checker SSRFChecker) *Proxy {
 	p := NewProxy()
 	p.ssrfChecker = checker
+
+	// Apply DNS-pinning dialer only if the checker is a real SSRFChecker.
+	// Custom/unit-test checkers may have different URL validation semantics.
+	if s, ok := checker.(*proxy.SSRFChecker); ok {
+		p.dialer = s.NewSafeDialer(p.dialer)
+	} else {
+		// Reset to non-pinned dialer for custom checkers (e.g. test mocks).
+		p.dialer = websocket.Dialer{
+			HandshakeTimeout: 10 * time.Second,
+		}
+	}
+
 	return p
+}
+
+// NewProxyWithOrigin creates a new WebSocket proxy with a custom SSRF checker
+// and an origin validation function. When fn is non-nil, it replaces the default
+// permissive CheckOrigin.
+func NewProxyWithOrigin(checker SSRFChecker, fn func(*http.Request) bool) *Proxy {
+	p := NewProxyWithSSRFChecker(checker)
+	if fn != nil {
+		p.SetAllowedOrigin(fn)
+	}
+	return p
+}
+
+// SetAllowedOrigin sets the origin validation function for the WebSocket upgrader.
+// When fn is nil, CheckOrigin falls back to allowing all origins.
+func (p *Proxy) SetAllowedOrigin(fn func(r *http.Request) bool) {
+	p.allowedOrigin = fn
+	p.upgrader.CheckOrigin = fn
 }
 
 // ServeHTTP handles WebSocket upgrade and proxying.
@@ -70,7 +108,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 	// Upgrade client connection
 	clientConn, err := p.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("[websocket] upgrade error: %v", err)
+		logger.Warn("upgrade error", "error", err)
 		return
 	}
 	defer clientConn.Close()
@@ -78,7 +116,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 	// Select provider
 	candidates := collectProviderCandidates(snap, model)
 	if len(candidates) == 0 {
-		log.Printf("[websocket] model not found: %s", model)
+		logger.Warn("model not found", "model", model)
 		clientConn.WriteMessage(websocket.TextMessage, []byte(`{"error":"model not found: `+model+`"}`))
 		return
 	}
@@ -93,7 +131,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 
 		// SSRF check
 		if err := p.ssrfChecker.ValidateURL(upstreamURL); err != nil {
-			log.Printf("[websocket] SSRF validation failed for %s: %v", candidate.provider.ProviderID, err)
+			logger.Warn("SSRF validation failed", "provider", candidate.provider.ProviderID, "error", err)
 			continue
 		}
 
@@ -104,7 +142,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 		// Connect to upstream
 		conn, _, err := p.dialer.Dial(upstreamURL, headers)
 		if err != nil {
-			log.Printf("[websocket] failed to connect to %s: %v", candidate.provider.ProviderID, err)
+			logger.Warn("failed to connect to upstream", "provider", candidate.provider.ProviderID, "error", err)
 			continue
 		}
 
@@ -115,14 +153,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 	}
 
 	if upstreamConn == nil {
-		log.Printf("[websocket] no provider available for model: %s", model)
+		logger.Warn("no provider available", "model", model)
 		clientConn.WriteMessage(websocket.TextMessage, []byte(`{"error":"no provider available"}`))
 		return
 	}
 	defer upstreamConn.Close()
 
-	log.Printf("[websocket] proxy established: model=%s provider=%s upstream_model=%s",
-		model, selectedProvider.ProviderID, upstreamModel)
+	logger.Info("proxy established", "model", model, "provider", selectedProvider.ProviderID, "upstream_model", upstreamModel)
 
 	// Bidirectional forwarding
 	_, cancel := context.WithCancel(context.Background())
@@ -155,13 +192,13 @@ func (p *Proxy) forwardMessages(src, dst *websocket.Conn, direction string) {
 		messageType, message, err := src.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("[websocket] %s read error: %v", direction, err)
+				logger.Warn("read error", "direction", direction, "error", err)
 			}
 			return
 		}
 
 		if err := dst.WriteMessage(messageType, message); err != nil {
-			log.Printf("[websocket] %s write error: %v", direction, err)
+			logger.Warn("write error", "direction", direction, "error", err)
 			return
 		}
 	}

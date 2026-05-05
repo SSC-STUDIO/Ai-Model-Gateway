@@ -248,6 +248,23 @@ func TestCopyBundlePayloadReplacesAdminDist(t *testing.T) {
 	}
 }
 
+func TestClientsPrint(t *testing.T) {
+	dir := t.TempDir()
+	gw := filepath.Join(dir, "gatewayd.json")
+	if err := os.WriteFile(gw, []byte(`{"listen":"127.0.0.1:18080"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"aigw", "clients", "print", "-config-dir", dir}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run(clients print) code = %d stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "OPENAI_BASE_URL") || !strings.Contains(out, "ANTHROPIC_BASE_URL") {
+		t.Fatalf("unexpected stdout:\n%s", out)
+	}
+}
+
 func argValue(args []string, name string) string {
 	for i := 0; i < len(args)-1; i++ {
 		if args[i] == name {

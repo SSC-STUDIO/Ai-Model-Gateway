@@ -57,6 +57,19 @@ jobs:
         shell: bash
         run: go test -timeout 10m -coverprofile=coverage.out -covermode=atomic ./...
 
+      - name: Enforce coverage threshold
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          threshold=50
+          pct=$(go tool cover -func=coverage.out | grep '^total:' | grep -oP '[0-9]+\.[0-9]+' | head -1)
+          echo "Total coverage: ${pct}% (threshold: ${threshold}%)"
+          if [ "$(printf '%s\n' "$threshold" "$pct" | sort -V | head -1)" != "$threshold" ]; then
+            echo "::error::Coverage ${pct}% is below the ${threshold}% threshold"
+            exit 1
+          fi
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
@@ -103,10 +116,13 @@ jobs:
           KIMI_OFFICIAL_API_KEY: dummy
         run: |
           set -euo pipefail
+          VERSION=$(cat VERSION)
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          LDFLAGS="-s -w -X ai-model-gateway/internal/version.ProductVersion=${VERSION} -X ai-model-gateway/internal/version.BuildCommit=${GIT_COMMIT} -X ai-model-gateway/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           rm -rf dist /tmp/aigw-ci-runtime
           mkdir -p dist/bin
           for bin in aigw gatewayd controld telemetryd gateway-cli; do
-            go build -trimpath -ldflags="-s -w" -o "dist/bin/${bin}" "./cmd/${bin}"
+            go build -trimpath -ldflags="$LDFLAGS" -o "dist/bin/${bin}" "./cmd/${bin}"
           done
           dist/bin/aigw bundle build -root dist -out dist/aigw-manifest.json
           dist/bin/aigw bundle verify -root dist -manifest dist/aigw-manifest.json
@@ -153,6 +169,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -162,9 +180,13 @@ jobs:
 
       - name: Build current Linux runtime bundle
         run: |
+          set -euo pipefail
+          VERSION=$(cat VERSION)
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          LDFLAGS="-s -w -X ai-model-gateway/internal/version.ProductVersion=${VERSION} -X ai-model-gateway/internal/version.BuildCommit=${GIT_COMMIT} -X ai-model-gateway/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           mkdir -p dist/bin
           for bin in aigw gatewayd controld telemetryd gateway-cli; do
-            go build -trimpath -ldflags="-s -w" -o "./dist/bin/${bin}" "./cmd/${bin}"
+            go build -trimpath -ldflags="$LDFLAGS" -o "./dist/bin/${bin}" "./cmd/${bin}"
           done
           dist/bin/aigw bundle build -root dist -out dist/aigw-manifest.json
           dist/bin/aigw bundle verify -root dist -manifest dist/aigw-manifest.json
@@ -184,6 +206,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -194,9 +218,13 @@ jobs:
       - name: Build current Windows runtime bundle
         shell: pwsh
         run: |
+          $VERSION = (Get-Content VERSION).Trim()
+          $GIT_COMMIT = (git rev-parse --short HEAD).Trim()
+          $BUILD_DATE = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ")
+          $LDFLAGS = "-s -w -X ai-model-gateway/internal/version.ProductVersion=$VERSION -X ai-model-gateway/internal/version.BuildCommit=$GIT_COMMIT -X ai-model-gateway/internal/version.BuildDate=$BUILD_DATE"
           New-Item -ItemType Directory -Force -Path dist\bin | Out-Null
           foreach ($bin in @("aigw", "gatewayd", "controld", "telemetryd", "gateway-cli")) {
-            go build -trimpath -ldflags="-s -w" -o ".\dist\bin\$bin.exe" ".\cmd\$bin"
+            go build -trimpath -ldflags="$LDFLAGS" -o ".\dist\bin\$bin.exe" ".\cmd\$bin"
           }
           .\dist\bin\aigw.exe bundle build -root dist -out dist\aigw-manifest.json
           .\dist\bin\aigw.exe bundle verify -root dist -manifest dist\aigw-manifest.json
@@ -219,3 +247,20 @@ jobs:
 
       - name: Build runtime image
         run: docker build --target runtime -t ai-model-gateway:ci .
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          IMAGE=ghcr.io/${{ github.repository }}
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          docker tag ai-model-gateway:ci "${IMAGE}:main"
+          docker push "${IMAGE}:main"

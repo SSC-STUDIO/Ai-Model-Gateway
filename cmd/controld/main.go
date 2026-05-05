@@ -7,19 +7,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 	"time"
 
+	"ai-model-gateway/internal/infra/logger"
 	"ai-model-gateway/internal/version"
 )
 
-const (
-	Version = version.ProductVersion
-)
+var Version = version.ProductVersion
 
 func main() {
 	configPath := flag.String("config", "", "Path to bootstrap config file")
@@ -40,27 +38,29 @@ func main() {
 
 	d, err := NewDaemon(cfg)
 	if err != nil {
-		log.Fatalf("[controld] failed to create daemon: %v", err)
+		logger.Error("failed to create daemon", "error", err)
+		os.Exit(1)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	if err := d.Start(ctx); err != nil {
-		log.Fatalf("[controld] failed to start: %v", err)
+		logger.Error("failed to start", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("[controld] started on %s", cfg.Listen)
+	logger.Info("started", "listen", cfg.Listen)
 
 	<-ctx.Done()
-	log.Printf("[controld] shutting down...")
+	logger.Info("shutting down")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := d.Shutdown(shutdownCtx); err != nil {
-		log.Printf("[controld] shutdown error: %v", err)
+		logger.Error("shutdown error", "error", err)
 	}
 
-	log.Printf("[controld] stopped")
+	logger.Info("stopped")
 }

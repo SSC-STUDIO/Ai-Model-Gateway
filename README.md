@@ -109,6 +109,33 @@ Windows 下推荐直接运行：
 
 这个脚本会验证默认三面 runtime。部署脚本 `deploy/start.sh` 默认构建并启动 `aigw supervise`。
 
+### 将本机 Codex / Claude Code / OpenClaw 指向网关
+
+在已写好 `configs/gatewayd.json`（或已启动 `gatewayd`）的前提下，可用 `aigw clients` 生成环境变量片段，或一键写入本机工具配置（会先备份已有文件）：
+
+```bash
+# 仅打印 Bash / PowerShell 与各工具将改动的路径（不写盘）
+./dist/aigw clients print -config-dir configs
+
+# 写入 ~/.codex/config.toml、~/.claude/settings.json、~/.openclaw/openclaw.json
+# 使用 -api-key 或环境变量 GATEWAY_CLIENT_API_KEY / GATEWAY_API_KEY / OPENAI_API_KEY
+./dist/aigw clients apply -config-dir configs -api-key "<与 gateway 配置一致的 API key>"
+
+# 仅改其中几个工具
+./dist/aigw clients apply -tools codex,claude-code -gateway-url http://127.0.0.1:18080
+
+# 预览 apply 行为
+./dist/aigw clients apply -dry-run
+```
+
+说明：
+
+- 数据面 OpenAI 兼容 Base URL 为 `http://<listen>/v1`（由 `gatewayd.json` 的 `listen` 或 `-gateway-url` 推导）。
+- Claude Code 使用 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` 指向同一网关（网关提供 Anthropic 兼容 `/v1/messages`）。
+- OpenClaw 会合并 `models.providers["ai-model-gateway"]`（`api: "openai-completions"`）；未提供 key 时 `apiKey` 为 `${AI_MODEL_GATEWAY_API_KEY}`，请在环境中配置该变量。写入 `openclaw.json` 时会先做 HuJSON 规范化，**原文件中的注释可能被去掉**，请先备份或使用 `-dry-run`。
+- `-openclaw-model` 默认 `gpt-4o`，需与网关中对外 `public_model` 一致；可用 `-openclaw-set-primary=false` 只增加 provider、不改默认主模型。
+- 在 **WSL** 与 **Windows** 各自 home 下分别执行 `apply` 时，只会更新当前环境的用户目录。
+
 ## 管理界面截图
 
 ### Overview

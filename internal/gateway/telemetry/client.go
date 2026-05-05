@@ -5,14 +5,15 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"ai-model-gateway/internal/contracts/telemetryingest"
+	"ai-model-gateway/internal/infra/logger"
 )
 
 // Client is the telemetry client for gatewayd.
@@ -35,6 +36,9 @@ type Client struct {
 
 	// Channel for signaling flush
 	flushCh chan chan struct{}
+
+	// Semaphore to limit concurrent flush goroutines spawned by Emit
+	flushSem chan struct{}
 
 	// Background context
 	ctx    context.Context
@@ -98,11 +102,12 @@ func DefaultClientConfig() ClientConfig {
 func NewClient(rpcClient RPCClient, config ClientConfig) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
-		config:  config,
-		buffer:  make([]telemetryingest.Event, 0, config.BatchSize),
-		flushCh: make(chan chan struct{}, 4),
-		ctx:     ctx,
-		cancel:  cancel,
+		config:   config,
+		buffer:   make([]telemetryingest.Event, 0, config.BatchSize),
+		flushCh:  make(chan chan struct{}, 4),
+		flushSem: make(chan struct{}, 2), // max 2 concurrent flush goroutines
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 	c.rpcClient.Store(&rpcClient)
 	c.wg.Add(1)
@@ -119,12 +124,13 @@ func NewClientWithDialer(dialer RPCDialer, config ClientConfig) (*Client, error)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
-		dialer:  dialer,
-		config:  config,
-		buffer:  make([]telemetryingest.Event, 0, config.BatchSize),
-		flushCh: make(chan chan struct{}, 4),
-		ctx:     ctx,
-		cancel:  cancel,
+		dialer:   dialer,
+		config:   config,
+		buffer:   make([]telemetryingest.Event, 0, config.BatchSize),
+		flushCh:  make(chan chan struct{}, 4),
+		flushSem: make(chan struct{}, 2), // max 2 concurrent flush goroutines
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 	c.rpcClient.Store(&rpcClient)
 	c.wg.Add(1)
@@ -149,12 +155,30 @@ func (c *Client) Emit(event telemetryingest.Event) error {
 		event.SourceInstance = c.config.SourceInstance
 	}
 
+	// Enforce queue size limit: drop oldest events when full
+	queueSize := c.config.QueueSize
+	if queueSize <= 0 {
+		queueSize = 1024
+	}
+	for len(c.buffer) >= queueSize {
+		c.buffer = c.buffer[1:]
+		c.droppedCount.Add(1)
+	}
+
 	// Add to buffer
 	c.buffer = append(c.buffer, event)
 
-	// Flush if buffer is full
+	// Flush if buffer is full — use semaphore to limit concurrent flush goroutines
 	if len(c.buffer) >= c.config.BatchSize {
-		go c.flush()
+		select {
+		case c.flushSem <- struct{}{}:
+			go func() {
+				defer func() { <-c.flushSem }()
+				c.flush()
+			}()
+		default:
+			// Semaphore full: flush already in flight, will pick up remaining events
+		}
 	}
 
 	return nil
@@ -247,7 +271,7 @@ func (c *Client) sendBatch(events []telemetryingest.Event) {
 		var resp telemetryingest.AppendBatchResponse
 		err := (*client).Call("TelemetryIngestRPC.AppendBatch", req, &resp)
 		if err != nil {
-			log.Printf("[telemetry] send batch error (attempt %d): %v", attempt+1, err)
+			logger.Warn("send batch error", "attempt", attempt+1, "error", err)
 
 			// Check if we should reconnect
 			if isConnectionError(err) {
@@ -275,7 +299,7 @@ func (c *Client) sendBatch(events []telemetryingest.Event) {
 		c.droppedCount.Add(int64(resp.Dropped))
 
 		if resp.Dropped > 0 {
-			log.Printf("[telemetry] batch %s: %d accepted, %d dropped", batchID, resp.Accepted, resp.Dropped)
+			logger.Info("batch sent", "batch_id", batchID, "accepted", resp.Accepted, "dropped", resp.Dropped)
 		}
 		return
 	}
@@ -298,12 +322,12 @@ func (c *Client) reconnect() bool {
 	// Dial new connection
 	newClient, err := c.dialer()
 	if err != nil {
-		log.Printf("[telemetry] reconnect failed: %v", err)
+		logger.Warn("reconnect failed", "error", err)
 		return false
 	}
 
 	c.rpcClient.Store(&newClient)
-	log.Printf("[telemetry] reconnected successfully")
+	logger.Info("reconnected successfully")
 	return true
 }
 
@@ -362,23 +386,11 @@ func isConnectionError(err error) bool {
 	// Fallback: check for common error message patterns
 	// This handles wrapped errors that don't expose their type
 	errStr := err.Error()
-	return containsSubstring(errStr, "broken pipe") ||
-		containsSubstring(errStr, "reset by peer") ||
-		containsSubstring(errStr, "connection refused") ||
-		containsSubstring(errStr, "connection reset") ||
-		containsSubstring(errStr, "use of closed")
-}
-
-func containsSubstring(s, substr string) bool {
-	if len(substr) == 0 || len(s) < len(substr) {
-		return false
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "reset by peer") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "use of closed")
 }
 
 // generateBatchID generates a unique batch ID.

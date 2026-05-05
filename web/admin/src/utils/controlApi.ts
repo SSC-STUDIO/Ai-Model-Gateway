@@ -61,23 +61,23 @@ type DistributionAccumulator = {
   latency: number
 }
 
-function asRecord(value: unknown): AnyRecord | null {
+export function asRecord(value: unknown): AnyRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : null
 }
 
-function asArray(value: unknown): unknown[] {
+export function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
 }
 
-function asString(value: unknown): string | undefined {
+export function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
 }
 
-function asBoolean(value: unknown): boolean | undefined {
+export function asBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
-function asNumber(value: unknown): number | undefined {
+export function asNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 

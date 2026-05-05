@@ -147,6 +147,12 @@ func buildStatusPayload(deps Deps) map[string]interface{} {
 			resp["provider_health_count"] = len(status.ProviderHealth)
 			resp["healthy_provider_count"] = countHealthyProviders(status.ProviderHealth)
 			resp["unhealthy_provider_count"] = len(status.ProviderHealth) - countHealthyProviders(status.ProviderHealth)
+			if status.LastAutoRemediationReason != "" {
+				resp["gateway_last_auto_remediation_reason"] = status.LastAutoRemediationReason
+				if !status.LastAutoRemediationAt.IsZero() {
+					resp["gateway_last_auto_remediation_at"] = status.LastAutoRemediationAt.UTC().Format(time.RFC3339Nano)
+				}
+			}
 			if pricingStatus, pricingErr := gateway.GetPricingStatus(); pricingErr == nil {
 				resp["pricing"] = pricingStatus
 			}

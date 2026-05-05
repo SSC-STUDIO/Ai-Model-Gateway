@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"ai-model-gateway/internal/contracts/gatewaycontrol"
+	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/snapshot"
 )
 
@@ -155,6 +157,25 @@ providers:
 	// This test mainly checks that we try YAML after JSON fails
 	_ = rpc.ApplySnapshot(req, &resp)
 	// Don't assert success since the YAML format may not be perfect
+}
+
+func TestGatewayControlRPCRunBenchmarkCaseOpenAIResponsesProtocol(t *testing.T) {
+	d, _ := NewDaemon(Config{Listen: "127.0.0.1:18080"})
+	rpc := &GatewayControlRPC{daemon: d}
+
+	req := gatewaycontrol.RunBenchmarkCaseRequest{
+		ProviderID:  "any",
+		PublicModel: "any",
+		Protocol:    core.BenchmarkProtocolOpenAIResponses,
+		RequestBody: []byte(`{"model":"gpt-4o","input":"x","stream":false}`),
+	}
+	var resp gatewaycontrol.RunBenchmarkCaseResponse
+	if err := rpc.RunBenchmarkCase(req, &resp); err != nil {
+		t.Fatalf("RunBenchmarkCase() error = %v", err)
+	}
+	if strings.Contains(resp.Error, "unsupported benchmark protocol") {
+		t.Fatalf("RunBenchmarkCase() should accept protocol %q: %s", req.Protocol, resp.Error)
+	}
 }
 
 func TestGatewayControlRPCGetStatus(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"ai-model-gateway/internal/version"
 )
 
-const Version = version.ProductVersion
+var Version = version.ProductVersion
 
 func main() {
 	os.Exit(run(os.Args, os.Stdout, os.Stderr))
@@ -42,6 +42,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = runUpdate(args[2:], stdout)
 	case "service":
 		err = runService(args[2:], stdout)
+	case "clients":
+		err = runClients(args[2:], stdout, stderr)
 	default:
 		err = fmt.Errorf("unknown command: %s", args[1])
 	}
@@ -64,5 +66,6 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  bundle build|verify    Build or verify a release manifest")
 	fmt.Fprintln(w, "  update apply|rollback  Apply a verified bundle or roll back last local payload backup")
 	fmt.Fprintln(w, "  service print          Print the default systemd unit")
+	fmt.Fprintln(w, "  clients print|apply    Point Codex, Claude Code, OpenClaw at this gateway")
 	fmt.Fprintln(w, "  version                Show version")
 }
