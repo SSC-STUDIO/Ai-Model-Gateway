@@ -188,13 +188,13 @@ jobs:
     needs: build
     steps:
       - name: Download all release archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: "ai-model-gateway-*-*.tar.gz"
           merge-multiple: true
           path: archives/
       - name: Download Windows zip
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ai-model-gateway-windows-amd64.zip
           path: archives/
