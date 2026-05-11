@@ -43,11 +43,11 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.11.3
-          args: --timeout=5m --new-from-rev=HEAD~
+          args: --timeout=5m --new-from-rev=HEAD~10
 
       - name: Run govulncheck
         shell: bash
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
       - name: Reject TODO and FIXME markers
         shell: pwsh
@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          threshold=50
+          threshold=60
           pct=$(go tool cover -func=coverage.out | grep '^total:' | grep -oP '[0-9]+\.[0-9]+' | head -1)
           echo "Total coverage: ${pct}% (threshold: ${threshold}%)"
           if [ "$(printf '%s\n' "$threshold" "$pct" | sort -V | head -1)" != "$threshold" ]; then

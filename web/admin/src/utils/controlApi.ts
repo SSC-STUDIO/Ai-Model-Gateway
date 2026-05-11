@@ -601,6 +601,7 @@ export function normalizeTelemetryResponse(payload: unknown): DataResponse | nul
 
   return {
     window_hours: asNumber(record.WindowHours ?? record.window_hours),
+    total: summaryRequests,
     summary: {
       requests: summarySource.length > 0 ? summaryRequests : events.length,
       successes: summarySource.length > 0 ? summarySuccesses : successes,

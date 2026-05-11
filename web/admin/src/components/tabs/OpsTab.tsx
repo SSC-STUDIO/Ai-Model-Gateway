@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/compat'
 import { fetchJSON } from '../../utils/fetch'
 import { useI18n } from '../../i18n'
 import { Icon, type IconName } from '../Icon'
+import { asRecord, asArray, asBoolean } from '../../utils/controlApi'
+import { formatAbsoluteTime } from '../../utils/formatting'
+import { copyText } from '../../utils/clipboard'
+import type { AnyRecord } from '../../types'
 
 type OpsMode = 'audit' | 'probe' | 'diagnostics'
-type AnyRecord = Record<string, unknown>
 
 interface OpsTabProps {
   mode: OpsMode
@@ -53,15 +56,6 @@ interface DiagnosticsPayload {
   audit_tail: AuditEvent[]
 }
 
-function asRecord(value: unknown): AnyRecord | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  return value as AnyRecord
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : []
-}
-
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : value == null ? '' : String(value)
 }
@@ -75,20 +69,12 @@ function asNumber(value: unknown): number | undefined {
   return undefined
 }
 
-function asBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined
-}
-
 function pretty(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
 }
 
 function formatDate(value: unknown): string {
-  const raw = asString(value)
-  if (!raw) return '-'
-  const date = new Date(raw)
-  if (Number.isNaN(date.getTime())) return raw
-  return date.toLocaleString()
+  return formatAbsoluteTime(asString(value) || null)
 }
 
 function normalizeAuditEvent(value: unknown): AuditEvent | null {
@@ -183,29 +169,99 @@ function subtitleForMode(mode: OpsMode, t: (key: string) => string): string {
 }
 
 const RUNTIME_FIELD_LABEL_KEY: Record<string, string> = {
-  provider_count: 'runtimeField.provider_count',
-  enabled_provider_count: 'runtimeField.enabled_provider_count',
-  router_strategy: 'runtimeField.router_strategy',
-  health_enabled: 'runtimeField.health_enabled',
-  sticky_sessions_enabled: 'runtimeField.sticky_sessions_enabled',
-  bridge_enabled: 'runtimeField.bridge_enabled',
-  version: 'runtimeField.version',
-  uptime: 'runtimeField.uptime',
-  gateway_status: 'runtimeField.gateway_status',
-  telemetry_status: 'runtimeField.telemetry_status',
-  gateway_readiness: 'runtimeField.gateway_readiness',
-  gateway_listener: 'runtimeField.gateway_listener',
-  active_snapshot_id: 'runtimeField.active_snapshot_id',
-  active_requests: 'runtimeField.active_requests',
-  provider_health_count: 'runtimeField.provider_health_count',
-  healthy_provider_count: 'runtimeField.healthy_provider_count',
-  unhealthy_provider_count: 'runtimeField.unhealthy_provider_count',
-  cooldown_provider_count: 'runtimeField.cooldown_provider_count',
+  provider_count: 'ops.runtimeField.provider_count',
+  enabled_provider_count: 'ops.runtimeField.enabled_provider_count',
+  router_strategy: 'ops.runtimeField.router_strategy',
+  health_enabled: 'ops.runtimeField.health_enabled',
+  sticky_sessions_enabled: 'ops.runtimeField.sticky_sessions_enabled',
+  bridge_enabled: 'ops.runtimeField.bridge_enabled',
+  version: 'ops.runtimeField.version',
+  product_version: 'ops.runtimeField.product_version',
+  uptime: 'ops.runtimeField.uptime',
+  gateway_status: 'ops.runtimeField.gateway_status',
+  telemetry_status: 'ops.runtimeField.telemetry_status',
+  gateway_readiness: 'ops.runtimeField.gateway_readiness',
+  gateway_listener: 'ops.runtimeField.gateway_listener',
+  gateway_last_auto_remediation_at: 'ops.runtimeField.gateway_last_auto_remediation_at',
+  gateway_last_auto_remediation_reason: 'ops.runtimeField.gateway_last_auto_remediation_reason',
+  active_snapshot_id: 'ops.runtimeField.active_snapshot_id',
+  active_requests: 'ops.runtimeField.active_requests',
+  provider_health_count: 'ops.runtimeField.provider_health_count',
+  healthy_provider_count: 'ops.runtimeField.healthy_provider_count',
+  unhealthy_provider_count: 'ops.runtimeField.unhealthy_provider_count',
+  cooldown_provider_count: 'ops.runtimeField.cooldown_provider_count',
+  telemetry_event_count: 'ops.runtimeField.telemetry_event_count',
+  telemetry_last_checked_at: 'ops.runtimeField.telemetry_last_checked_at',
+  telemetry_version: 'ops.runtimeField.telemetry_version',
+  rpc_contract_version: 'ops.runtimeField.rpc_contract_version',
+  startedAt: 'ops.runtimeField.started_at',
+  started_at: 'ops.runtimeField.started_at',
+  bundle_version: 'ops.runtimeField.bundle_version',
+  bundle_manifest: 'ops.runtimeField.bundle_manifest',
+  config_path: 'ops.runtimeField.config_path',
+  data_dir: 'ops.runtimeField.data_dir',
+  listen: 'ops.runtimeField.listen',
+  gateway_socket: 'ops.runtimeField.gateway_socket',
+  telemetry_socket: 'ops.runtimeField.telemetry_socket',
+}
+
+const RUNTIME_FIELD_ORDER = [
+  'provider_count',
+  'enabled_provider_count',
+  'router_strategy',
+  'health_enabled',
+  'sticky_sessions_enabled',
+  'bridge_enabled',
+  'version',
+  'product_version',
+  'uptime',
+  'gateway_status',
+  'telemetry_status',
+  'gateway_readiness',
+  'gateway_listener',
+  'active_snapshot_id',
+  'active_requests',
+  'provider_health_count',
+  'healthy_provider_count',
+  'unhealthy_provider_count',
+  'cooldown_provider_count',
+  'telemetry_event_count',
+  'telemetry_last_checked_at',
+  'telemetry_version',
+  'rpc_contract_version',
+  'startedAt',
+  'started_at',
+  'gateway_last_auto_remediation_at',
+  'gateway_last_auto_remediation_reason',
+] as const
+
+const RUNTIME_FIELD_VALUE_KEY: Record<string, string> = {
+  connected: 'ops.connected',
+  disconnected: 'ops.disconnected',
+  ready: 'ops.ready',
+  serving: 'ops.serving',
+  healthy: 'ops.healthy',
+  cooldown: 'ops.cooldown',
+  unhealthy: 'ops.unhealthy',
+  unknown: 'ops.unknown',
 }
 
 function runtimeFieldLabel(key: string, t: (key: string) => string): string {
   const labelKey = RUNTIME_FIELD_LABEL_KEY[key]
   return labelKey ? t(labelKey) : key.replace(/_/g, ' ')
+}
+
+function runtimeFieldValue(value: unknown, t: (key: string) => string): string {
+  if (typeof value === 'boolean') return value ? t('ops.yes') : t('ops.no')
+  const text = asString(value)
+  if (!text) return '-'
+  const valueKey = RUNTIME_FIELD_VALUE_KEY[text.toLowerCase()]
+  return valueKey ? t(valueKey) : text
+}
+
+function runtimeFieldOrder(key: string): number {
+  const index = RUNTIME_FIELD_ORDER.indexOf(key as (typeof RUNTIME_FIELD_ORDER)[number])
+  return index === -1 ? RUNTIME_FIELD_ORDER.length : index
 }
 
 /* ============ Shared Components ============ */
@@ -410,17 +466,22 @@ function RuntimeNode({ label, state, detail, icon }: { label: string; state: str
   )
 }
 
-function KeyValueGrid({ values, t }: { values: AnyRecord; t: (key: string) => string }) {
+function KeyValueGrid({ values, t, limit = 12 }: { values: AnyRecord; t: (key: string) => string; limit?: number }) {
   const entries = Object.entries(values)
     .filter(([, value]) => value != null && typeof value !== 'object')
-    .slice(0, 12)
+    .sort(([left], [right]) => {
+      const leftOrder = runtimeFieldOrder(left)
+      const rightOrder = runtimeFieldOrder(right)
+      return leftOrder === rightOrder ? left.localeCompare(right) : leftOrder - rightOrder
+    })
+    .slice(0, limit)
   if (entries.length === 0) return null
   return (
     <div class="ops-kv-grid">
       {entries.map(([key, value]) => (
         <div class="ops-kv" key={key}>
           <span>{runtimeFieldLabel(key, t)}</span>
-          <strong>{asString(value) || '-'}</strong>
+          <strong>{runtimeFieldValue(value, t)}</strong>
         </div>
       ))}
     </div>
@@ -440,7 +501,7 @@ function DiagnosticsView({ payload, raw, busy, t }: { payload: DiagnosticsPayloa
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(rawJson)
+      await copyText(rawJson)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -484,6 +545,14 @@ function DiagnosticsView({ payload, raw, busy, t }: { payload: DiagnosticsPayloa
       </section>
 
       <div class="ops-diagnostics-layout">
+        <section class="ops-card">
+          <div class="ops-card-header">
+            <h3>{t('runtimeStatus')}</h3>
+            <span>{t('details')}</span>
+          </div>
+          <KeyValueGrid values={status} t={t} limit={24} />
+        </section>
+
         <section class="ops-card">
           <div class="ops-card-header">
             <h3>{t('runtimePaths')}</h3>

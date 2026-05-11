@@ -2,6 +2,7 @@ import { fetchJSON } from '../../utils/fetch'
 import { memo, useCallback, useEffect, useMemo, useState } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import type { ControlConfigView, ProviderHealthView, ConfigHistoryResponse, ConfigVersionSummary, ConfigSubTab } from '../../types'
+import { formatAbsoluteTime } from '../../utils/formatting'
 import {
   buildVisualConfig,
   createDefaultVisualConfigState,
@@ -19,6 +20,8 @@ import {
   type TelemetryEditorConfig as TelemetryConfig,
 } from './configEditor'
 import { Icon, type IconName } from '../Icon'
+import { ConfigHistory } from './config/ConfigHistory'
+import { ConfigYamlEditor } from './config/ConfigYamlEditor'
 
 // API response types for validation and update
 interface ConfigValidationResult {
@@ -57,9 +60,7 @@ interface ConfigTabProps {
 }
 
 function formatDate(value: string | undefined): string {
-  if (!value) return '-'
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
+  return formatAbsoluteTime(value ?? null)
 }
 
 const SUB_TABS: { key: ConfigSubTab; icon: IconName }[] = [
@@ -164,12 +165,19 @@ const ConfigTabComponent = ({
     }))
   }, [providerHealth])
 
-  const handleVersionChange = useCallback(
-    (e: Event) => {
-      onVersionChange((e.currentTarget as HTMLSelectElement).value)
-    },
-    [onVersionChange]
-  )
+  // Health lookup by name for visual editor
+  const providerHealthMap = useMemo(() => {
+    const map = new Map<string, { healthy: boolean; status: string; latency: number }>()
+    for (const p of providerHealth ?? []) {
+      map.set(p.name, { healthy: p.healthy, status: p.status, latency: p.latency_ms ?? 0 })
+    }
+    return map
+  }, [providerHealth])
+
+  // Max weight across all providers for scale indicator
+  const maxWeight = useMemo(() => {
+    return providers.reduce((max, p) => Math.max(max, p.weight), 0)
+  }, [providers])
 
   const handleApplySelection = useCallback(() => {
     onApplySelection()
@@ -638,58 +646,15 @@ const ConfigTabComponent = ({
 
       case 'editor':
         return (
-          <div class="config-section">
-            <h3>{t('config.jsonEditor')}</h3>
-            <div class="config-editor-wrapper">
-              <textarea
-                class="config-json-editor"
-                value={jsonValue}
-                onChange={handleJsonChange}
-                placeholder={t('config.jsonPlaceholder')}
-                spellcheck={false}
-              />
-              <div class="config-editor-actions">
-                <button
-                  type="button"
-                  class="primary"
-                  disabled={busy || isUpdating || !jsonValue.trim()}
-                  onClick={handleApplyChanges}
-                >
-                  {isUpdating ? t('config.updating') || 'Updating...' : t('config.applyChanges')}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || validation.isValidating}
-                  onClick={handleValidate}
-                >
-                  {validation.isValidating ? t('config.validating') || 'Validating...' : t('config.validate')}
-                </button>
-              </div>
-              {/* Validation feedback */}
-              {validation.error && (
-                <div class="validation-error">
-                  <span class="error-icon">⚠️</span>
-                  <span>{validation.error}</span>
-                </div>
-              )}
-              {validation.result && (
-                <div class={`validation-result ${validation.result.valid ? 'success' : 'error'}`}>
-                  {validation.result.errors?.map((err, i) => (
-                    <div key={i} class="validation-error-item">
-                      <span class="error-icon">✗</span>
-                      <span>{err}</span>
-                    </div>
-                  ))}
-                  {validation.result.warnings?.map((warn, i) => (
-                    <div key={i} class="validation-warning-item">
-                      <span class="warning-icon">✓</span>
-                      <span>{warn}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <ConfigYamlEditor
+            jsonValue={jsonValue}
+            onJsonChange={handleJsonChange}
+            validation={validation}
+            busy={busy}
+            isUpdating={isUpdating}
+            onValidate={handleValidate}
+            onApplyChanges={handleApplyChanges}
+          />
         )
 
       case 'visual':
@@ -749,7 +714,11 @@ const ConfigTabComponent = ({
                 {providers.length > 0 && (
                   <div class="provider-slider-panel">
                     <div class="provider-slider-list">
-                      {providers.map((provider) => (
+                      {providers.map((provider) => {
+                          const health = providerHealthMap.get(provider.name)
+                          const healthTone = health ? (health.healthy ? 'success' : 'error') : 'neutral'
+                          const weightPct = maxWeight > 0 ? (provider.weight / maxWeight) * 100 : 0
+                          return (
                         <div
                           key={provider.id}
                           class={`provider-slider-row ${activeProviderId === provider.id ? 'active' : ''} ${!provider.enabled ? 'disabled' : ''}`}
@@ -760,9 +729,10 @@ const ConfigTabComponent = ({
                             onClick={() => setActiveProviderId(provider.id)}
                             title={provider.name}
                           >
-                            <span class="provider-slider-dot" />
+                            <span class={`provider-slider-dot ${healthTone}`} />
                             <span class="provider-slider-name">{provider.name}</span>
                             <span class="provider-slider-models">{provider.models.length} {t('config.providers.models')}</span>
+                            <span class="provider-slider-scale" style={{ width: `${Math.max(4, weightPct)}%` }} />
                           </button>
                           <div class="provider-slider-track">
                             <input
@@ -783,7 +753,7 @@ const ConfigTabComponent = ({
                             {provider.enabled ? '✓' : '○'}
                           </button>
                         </div>
-                      ))}
+                        )})}
                     </div>
                   </div>
                 )}
@@ -1038,7 +1008,7 @@ const ConfigTabComponent = ({
                           <span class="model-arrow">→</span>
                           <input
                             type="text"
-                            placeholder="{t('config.bridge.toModel')}"
+                            placeholder={t('config.bridge.toModel')}
                             value={rule.to}
                             onChange={(e) => handleBridgeRuleChange(index, 'to', (e.currentTarget as HTMLInputElement).value)}
                           />
@@ -1186,7 +1156,7 @@ const ConfigTabComponent = ({
                             </label>
                             <input
                               type="text"
-                              placeholder="{t('config.intercept.ruleName')}"
+                              placeholder={t('config.intercept.ruleName')}
                               value={rule.name}
                               onChange={(e) => handleInterceptRuleChange(index, 'name', (e.currentTarget as HTMLInputElement).value)}
                               style={{ flex: 1 }}
@@ -1280,71 +1250,17 @@ const ConfigTabComponent = ({
         )
 
       case 'history':
-        if (historyEntries.length === 0) {
-          return (
-            <div class="config-section">
-              <h3>{t('history.title')}</h3>
-              <div class="empty-state-box">
-                <div class="empty-state-icon"><Icon name="history" size={30} /></div>
-                <p class="empty-state-title">{t('empty.noHistory')}</p>
-              </div>
-            </div>
-          )
-        }
-
         return (
-          <div class="config-section">
-            <h3>{t('history.title')}</h3>
-
-            <div class="history-toolbar">
-              <label>
-                {t('history.versionLabel')}
-                <select value={selectedVersion} onChange={handleVersionChange}>
-                  <option value="">{t('history.selectVersion')}</option>
-                  {historyEntries.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button type="button" onClick={handleApplySelection} disabled={busy || actionDisabled}>
-                {actionLabel}
-              </button>
-            </div>
-
-            {selectedEntry && (
-              <div class="config-card">
-                <div class="config-row">
-                  <span class="config-label">{t('history.revisionId')}</span>
-                  <span class="config-value code">{selectedEntry.id}</span>
-                </div>
-                <div class="config-row">
-                  <span class="config-label">{t('history.createdAt')}</span>
-                  <span class="config-value">{formatDate(selectedEntry.created_at)}</span>
-                </div>
-                <div class="config-row">
-                  <span class="config-label">{t('history.createdBy')}</span>
-                  <span class="config-value">{selectedEntry.created_by || 'system'}</span>
-                </div>
-                {selectedEntry.description && (
-                  <div class="config-row">
-                    <span class="config-label">{t('history.description')}</span>
-                    <span class="config-value">{selectedEntry.description}</span>
-                  </div>
-                )}
-                <div class="config-row">
-                  <span class="config-label">{t('history.status')}</span>
-                  <span class="config-value">
-                    <span class={`status-badge ${selectedEntry.is_active ? 'success' : ''}`}>
-                      {selectedEntry.is_active ? t('history.activeBadge') : t('history.inactiveBadge')}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
+          <ConfigHistory
+            historyEntries={historyEntries}
+            selectedVersion={selectedVersion}
+            selectedEntry={selectedEntry}
+            actionLabel={actionLabel}
+            actionDisabled={actionDisabled}
+            busy={busy}
+            onVersionChange={onVersionChange}
+            onApplySelection={handleApplySelection}
+          />
         )
     }
   }

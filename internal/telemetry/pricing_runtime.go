@@ -13,18 +13,24 @@ import (
 
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/pathsecurity"
+	"ai-model-gateway/internal/proxy"
 )
 
 const pricingFXSourceURL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 
 // defaultPricingHTTPClient is a shared HTTP client with timeout for pricing fetches.
-var defaultPricingHTTPClient = &http.Client{
-	Timeout: 30 * time.Second,
-	Transport: &http.Transport{
+// Its transport is pinned through SSRFChecker to prevent DNS rebinding attacks when
+// fetching admin-configurable pricing source URLs.
+var defaultPricingHTTPClient = func() *http.Client {
+	base := &http.Transport{
 		MaxIdleConns:    10,
 		IdleConnTimeout: 30 * time.Second,
-	},
-}
+	}
+	return &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: proxy.NewSSRFChecker().NewSafeTransport(base),
+	}
+}()
 
 type ecbEnvelope struct {
 	Cube struct {

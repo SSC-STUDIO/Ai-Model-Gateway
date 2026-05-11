@@ -118,7 +118,7 @@ export function useBenchmarkVerification({ onUnauthorized }: UseBenchmarkVerific
   const [publicModelInput, setPublicModelInput] = useState('')
   const [protocolInput, setProtocolInput] = useState<'auto' | 'openai_chat_completions' | 'anthropic_messages'>('auto')
   const [suiteInput, setSuiteInput] = useState('general_protocol_v1')
-  const [allActive, setAllActive] = useState(false)
+  const [allActive, setAllActive] = useState(true)
   const [publicSnapshotID, setPublicSnapshotID] = useState('')
   const [vendorSnapshotID, setVendorSnapshotID] = useState('')
   const [baselineKind, setBaselineKind] = useState<'public_standard' | 'vendor_claim'>('public_standard')
@@ -359,6 +359,82 @@ export function useBenchmarkVerification({ onUnauthorized }: UseBenchmarkVerific
   const selectedRunCompletedTargets = selectedRun?.completed_targets ?? (selectedRun?.targets ?? []).filter((target) => statusTone(target.status) === 'success').length
   const verificationLoading = loadingLists || loadingRunDetail || startingRun || importingBaseline
 
+  // Auto-polling for run completion
+  const [pollingRunID, setPollingRunID] = useState<string | null>(null)
+  const pollingRunIDRef = useRef<string | null>(null)
+  pollingRunIDRef.current = pollingRunID
+
+  useEffect(() => {
+    const runID = pollingRunID
+    if (!runID) return
+
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const payload = await fetchJSON<VerificationRunDetail>(`/api/admin/benchmark/runs/${encodeURIComponent(runID)}`, { onUnauthorized })
+        if (cancelled) return
+        const tone = statusTone(payload.status)
+        if (tone === 'success' || tone === 'error') {
+          // Run completed or failed
+          setSelectedRun(payload)
+          setPollingRunID(null)
+          void loadVerification(runID)
+        } else {
+          // Still running/pending, update progress
+          selectedRunIDRef.current = payload.run_id
+          setSelectedRun(payload)
+          setSelectedTargetID(payload.targets?.[0]?.target_id ?? '')
+        }
+      } catch {
+        // On error, stop polling
+        if (!cancelled) setPollingRunID(null)
+      }
+    }
+
+    // Poll immediately, then every 10 seconds
+    void poll()
+    const interval = setInterval(() => {
+      if (!cancelled && pollingRunIDRef.current === runID) {
+        void poll()
+      }
+    }, 10000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [pollingRunID, onUnauthorized, loadVerification])
+
+  const stopPolling = useCallback(() => setPollingRunID(null), [])
+
+  const startQuickRun = useCallback(async () => {
+    setStartingRun(true)
+    setVerificationError('')
+    try {
+      const payload = await fetchJSON<VerificationRunDetail>('/api/admin/benchmark/runs', {
+        method: 'POST',
+        onUnauthorized,
+        body: JSON.stringify({
+          all_active: true,
+          suite: suiteInput.trim() || 'general_protocol_v1',
+        }),
+      })
+      selectedRunIDRef.current = payload.run_id
+      setSelectedRun(payload)
+      setSelectedTargetID(payload.targets?.[0]?.target_id ?? '')
+      await loadVerification(payload.run_id)
+      setPollingRunID(payload.run_id)
+      return payload
+    } catch (error) {
+      setVerificationError(error instanceof Error ? error.message : 'Failed to start quick benchmark run')
+      return null
+    } finally {
+      setStartingRun(false)
+    }
+  }, [loadVerification, onUnauthorized, suiteInput])
+
+  const isPolling = pollingRunID !== null
+
   return {
     allActive,
     baselineFile,
@@ -401,6 +477,9 @@ export function useBenchmarkVerification({ onUnauthorized }: UseBenchmarkVerific
     setSuiteInput,
     setVendorSnapshotID,
     startVerification,
+    startQuickRun,
+    stopPolling,
+    isPolling,
     suiteInput,
     telemetryLoading,
     vendorSnapshotID,

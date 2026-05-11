@@ -4,8 +4,12 @@ package queue
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
+
+	"ai-model-gateway/internal/infra/logger"
 )
 
 // Priority represents the priority level of a queued request.
@@ -233,6 +237,16 @@ func (q *Queue) schedule() {
 			defer func() {
 				<-q.sem
 				q.activeCount.Add(-1)
+				if rec := recover(); rec != nil {
+					// A panic inside Execute is a bug in the request handler, not in the
+					// queue itself. Log it with a full stack trace so the team can triage
+					// without crashing the gatewayd process (Go would otherwise terminate
+					// on an unrecovered panic).
+					logger.Error("queue worker panic recovered",
+						"panic", fmt.Sprintf("%v", rec),
+						"stack", string(debug.Stack()),
+					)
+				}
 			}()
 			_ = r.Execute()
 		}(req)

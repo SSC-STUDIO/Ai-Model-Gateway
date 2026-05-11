@@ -132,6 +132,8 @@ controld ──GetOverview/GetTelemetry/
 
 1. `controld` 是唯一配置 owner。
 2. `gatewayd` 只执行已编译 snapshot。
+3. 所有配置文件通过 `config.yaml` 管理，不暴露敏感信息。
+4. 遥测面专注于数据采集和分析，不处理配置变更。
 3. `telemetryd` 是唯一 telemetry owner。
 4. `aigw` 是默认生命周期、日志、bundle 和升级入口。
 5. 单独替换任意 daemon 不是正常升级路径，manifest 校验应拒绝混装运行。

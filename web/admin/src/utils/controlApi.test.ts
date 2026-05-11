@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   benchmarkURL,
+  logsURL,
   normalizeControlConfigResponse,
   telemetryURL,
   telemetryTimeseriesURL,
@@ -43,6 +44,12 @@ describe('controlApi', () => {
 
     it('resolves "all" to full window hours', () => {
       expect(telemetryURL('all')).toContain('hours=8760')
+    })
+  })
+
+  describe('logsURL', () => {
+    it('keeps the pagination offset explicit', () => {
+      expect(logsURL('168', 500, 500)).toBe('/api/admin/telemetry?hours=168&limit=500&offset=500')
     })
   })
 
@@ -306,6 +313,7 @@ describe('controlApi', () => {
       const result = normalizeTelemetryResponse(payload)
 
       expect(result?.summary?.requests).toBe(600)
+      expect(result?.total).toBe(600)
       expect(result?.summary?.successes).toBe(585)
       expect(result?.summary?.input_tokens).toBe(1300)
       expect(result?.summary?.output_tokens).toBe(2600)

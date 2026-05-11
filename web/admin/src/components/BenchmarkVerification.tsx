@@ -1,5 +1,5 @@
 import { useI18n } from '../i18n'
-import { formatUsd } from '../utils/formatting'
+import { formatStatusTime, formatUsd } from '../utils/formatting'
 import { Icon } from './Icon'
 import {
   caseStatus,
@@ -13,19 +13,6 @@ interface BenchmarkVerificationProps {
   canWrite: boolean
   onRunStarted?: () => void
   onUnauthorized?: () => void
-}
-
-function formatStatusTime(value: string | null | undefined): string {
-  if (!value) return '-'
-  const parsed = Date.parse(value)
-  if (!Number.isFinite(parsed)) return value
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(parsed)
 }
 
 export function BenchmarkVerification({ canWrite, onRunStarted, onUnauthorized }: BenchmarkVerificationProps) {
@@ -60,6 +47,15 @@ export function BenchmarkVerification({ canWrite, onRunStarted, onUnauthorized }
     }
   }
 
+  const handleQuickRun = async () => {
+    const started = await verification.startQuickRun()
+    if (started) {
+      onRunStarted?.()
+    }
+  }
+
+  const quickRunBusy = verification.startingRun || verification.isPolling
+
   return (
     <div class="panel-subsection benchmark-verification">
       <div class="benchmark-verification-header">
@@ -76,6 +72,43 @@ export function BenchmarkVerification({ canWrite, onRunStarted, onUnauthorized }
           {verification.selectedRun && <span class={statusBadgeClass(verification.selectedRun.status)}>{verification.selectedRun.status}</span>}
         </div>
       </div>
+
+      {/* Read-only notice */}
+      {!canWrite && (
+        <div class="verification-readonly-notice">
+          <span class="verification-readonly-icon">ⓘ</span>
+          <span>{t('benchmark.verification.readOnlyNotice')}</span>
+        </div>
+      )}
+
+      {/* Quick Run bar */}
+      <div class="verification-quick-run">
+          <div class="verification-quick-run-info">
+            <span class="verification-quick-run-label">{t('benchmark.verification.quickRun')}</span>
+            <span class="verification-quick-run-hint">{t('benchmark.verification.quickRunHint')}</span>
+          </div>
+          <div class="verification-quick-run-actions">
+            {verification.isPolling && (
+              <span class="verification-polling-indicator">
+                <span class="status-dot warning" />
+                {t('benchmark.verification.polling')}
+              </span>
+            )}
+            <button
+              class="primary verification-quick-run-btn"
+              type="button"
+              onClick={() => void handleQuickRun()}
+              disabled={quickRunBusy || !canWrite}
+              title={!canWrite ? t('benchmark.verification.runDisabledNoWrite') : undefined}
+            >
+              {verification.startingRun
+                ? t('benchmark.verification.running')
+                : verification.isPolling
+                  ? t('benchmark.verification.running')
+                  : t('benchmark.verification.quickRun')}
+            </button>
+          </div>
+        </div>
 
       <div class="verification-controls-grid">
         <section class="verification-surface verification-run-setup" aria-labelledby="verification-run-setup-title">

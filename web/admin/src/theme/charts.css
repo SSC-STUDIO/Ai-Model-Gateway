@@ -3,36 +3,23 @@
 /* === Charts === */
 
 .chart-container {
-  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
+  background: linear-gradient(180deg, var(--surface-card) 0%, var(--bg-glass) 100%);
   backdrop-filter: blur(16px) saturate(1.15);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  border: 1px solid var(--border-color-strong);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
   padding: 20px;
   min-width: 0;
-  box-shadow: var(--card-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: var(--card-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   transition: box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
   overflow: hidden;
+  max-width: 100%;
 }
 
 .chart-container.line-chart,
 .chart-container.history-chart {
-  background:
-    radial-gradient(circle at top right, rgba(43, 79, 124, 0.13) 0%, transparent 34%),
-    linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
-}
-
-.chart-container.line-chart::before,
-.chart-container.history-chart::before {
-  content: '';
-  position: absolute;
-  inset: auto -10% 34% 28%;
-  height: 180px;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 72%);
-  filter: blur(28px);
-  opacity: 0.55;
-  pointer-events: none;
+  background: linear-gradient(180deg, var(--surface-card) 0%, var(--bg-glass) 100%);
 }
 
 .chart-container::after {
@@ -53,14 +40,7 @@
 
 [data-theme="dark"] .chart-container.line-chart,
 [data-theme="dark"] .chart-container.history-chart {
-  background:
-    radial-gradient(circle at top right, rgba(108, 152, 208, 0.16) 0%, transparent 36%),
-    linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
-}
-
-[data-theme="dark"] .chart-container.line-chart::before,
-[data-theme="dark"] .chart-container.history-chart::before {
-  opacity: 0.72;
+  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
 }
 
 .chart-container:hover {
@@ -79,11 +59,11 @@
 
 .chart-header h3 {
   margin: 0;
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.86rem;
+  font-weight: 700;
   color: var(--config-title-color);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .chart-summary {
@@ -91,17 +71,17 @@
   align-items: baseline;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: var(--radius-pill);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-card) 82%, var(--bg-primary));
   border: 1px solid var(--border-color);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .chart-summary-label {
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -109,7 +89,7 @@
   color: var(--text-primary);
   font-size: 1rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   font-family: "Bahnschrift", "Aptos Display", "Segoe UI Variable Display", sans-serif;
 }
@@ -119,6 +99,10 @@
   width: 100%;
   height: 250px;
   border-radius: var(--radius-card);
+  min-width: 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-primary) 74%, var(--surface-card));
+  border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
 }
 
 .chart-body.scrollable-y {
@@ -167,7 +151,7 @@
   color: var(--text-primary);
   font-size: 0.94rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .chart-empty-hint {
@@ -180,6 +164,7 @@
   width: 100%;
   height: 100%;
   display: block;
+  min-width: 0;
 }
 
 .chart-svg text {
@@ -187,8 +172,8 @@
 }
 
 .chart-plot-backdrop {
-  fill: var(--chart-plot-bg);
-  stroke: var(--chart-plot-border);
+  fill: color-mix(in srgb, var(--chart-plot-bg) 90%, var(--bg-primary));
+  stroke: color-mix(in srgb, var(--chart-plot-border) 86%, transparent);
   stroke-width: 1;
 }
 
@@ -245,7 +230,7 @@
   paint-order: stroke;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .chart-point-label.is-active {
@@ -297,7 +282,7 @@
   font-weight: 700;
   color: var(--text-primary);
   font-feature-settings: 'tnum';
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .tooltip-time {
@@ -358,6 +343,7 @@
   margin-top: 12px;
   padding: 0 8px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .donut-legend.single-row {
@@ -395,6 +381,7 @@
   cursor: pointer;
   min-width: 0;
   max-width: 100%;
+  overflow: hidden;
 }
 
 .donut-legend.single-row .donut-legend-item {
@@ -407,7 +394,7 @@
 .donut-legend-item.active {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
   transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 10px -6px var(--accent-glow);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 10px -8px rgba(15, 23, 42, 0.28);
 }
 
 .donut-legend-swatch {
@@ -454,7 +441,7 @@
   fill: var(--text-primary);
   font-size: 22px;
   font-weight: 700;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .donut-center-meta {
@@ -465,9 +452,10 @@
 
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   margin-top: 20px;
+  min-width: 0;
 }
 
 .charts-grid-single {
@@ -502,10 +490,6 @@
 .donut-center-value {
   transition: filter 0.3s ease;
 }
-.donut-svg:hover .donut-center-value {
-  filter: drop-shadow(0 0 6px var(--accent-glow));
-}
-
 /* === Legend Item Hover === */
 .legend-item {
   transition: transform 0.15s ease;
@@ -514,18 +498,39 @@
   transform: translateX(2px);
 }
 
-/* === Bar Chart Bar Hover === */
+/* === Bar Chart Bar Hover & Polish === */
 .bar-rect {
-  transition: filter 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
   cursor: pointer;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.12));
+  transition: filter 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
+
 .bar-rect:hover {
-  filter: brightness(1.15) drop-shadow(0 0 6px var(--accent-glow));
+  filter: brightness(1.08) drop-shadow(0 3px 8px rgba(15, 23, 42, 0.16));
 }
+
 .bar-rect:active {
-  filter: brightness(1.08);
-  transform: scale(0.98);
-  transform-origin: center;
+  filter: brightness(1.05);
+  transform: scaleY(0.97);
+  transform-origin: bottom;
+}
+
+/* Gradient highlight overlay on bars */
+.chart-container .bar-rect {
+  stroke-linejoin: round;
+}
+
+/* Bar value labels polish */
+.bar-value-label {
+  fill: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* Bar label text */
+.chart-container text[text-anchor="middle"] {
+  transition: opacity 0.25s ease;
 }
 
 /* === Tooltip Enhanced === */
@@ -539,30 +544,11 @@
 
 /* === TimeSeries Chart === */
 .timeseries-chart {
-  background:
-    radial-gradient(circle at top right, rgba(43, 79, 124, 0.13) 0%, transparent 34%),
-    linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
-}
-
-.timeseries-chart::before {
-  content: '';
-  position: absolute;
-  inset: auto -10% 34% 28%;
-  height: 180px;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 72%);
-  filter: blur(28px);
-  opacity: 0.55;
-  pointer-events: none;
+  background: linear-gradient(180deg, var(--surface-card) 0%, var(--bg-glass) 100%);
 }
 
 [data-theme="dark"] .timeseries-chart {
-  background:
-    radial-gradient(circle at top right, rgba(108, 152, 208, 0.16) 0%, transparent 36%),
-    linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
-}
-
-[data-theme="dark"] .timeseries-chart::before {
-  opacity: 0.72;
+  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
 }
 
 /* Compact mode: same height as LineChart */

@@ -88,6 +88,38 @@ type streamRetrySession struct {
 	stopper sync.Once
 }
 
+func safeFlush(flusher http.Flusher) (ok bool) {
+	ok = true
+	if flusher == nil {
+		return true
+	}
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	flusher.Flush()
+	return true
+}
+
+func safeWrite(writer http.ResponseWriter, data []byte) (written int, ok bool) {
+	ok = true
+	if writer == nil {
+		return 0, false
+	}
+	defer func() {
+		if recover() != nil {
+			written = 0
+			ok = false
+		}
+	}()
+	n, err := writer.Write(data)
+	if err != nil {
+		return n, false
+	}
+	return n, true
+}
+
 func startStreamRetrySession(w http.ResponseWriter) *streamRetrySession {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -105,8 +137,12 @@ func startStreamRetrySession(w http.ResponseWriter) *streamRetrySession {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(": aigw waiting for upstream\n\n"))
-	flusher.Flush()
+	if _, ok := safeWrite(w, []byte(": aigw waiting for upstream\n\n")); !ok {
+		return nil
+	}
+	if !safeFlush(flusher) {
+		return nil
+	}
 
 	go session.heartbeatLoop()
 	return session
@@ -128,10 +164,12 @@ func (s *streamRetrySession) heartbeatLoop() {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			if _, err := s.writer.Write([]byte(": aigw keep-alive\n\n")); err != nil {
+			if _, ok := safeWrite(s.writer, []byte(": aigw keep-alive\n\n")); !ok {
 				return
 			}
-			s.flusher.Flush()
+			if !safeFlush(s.flusher) {
+				return
+			}
 		}
 	}
 }
@@ -207,10 +245,12 @@ func (s *nonStreamKeepAliveSession) heartbeatLoop() {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			if _, err := s.writer.Write([]byte(" ")); err != nil {
+			if _, ok := safeWrite(s.writer, []byte(" ")); !ok {
 				return
 			}
-			s.flusher.Flush()
+			if !safeFlush(s.flusher) {
+				return
+			}
 		}
 	}
 }

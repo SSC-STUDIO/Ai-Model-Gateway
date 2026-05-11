@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -46,11 +47,12 @@ const (
 )
 
 type compatPlan struct {
-	forwardPath         string
-	forwardBody         []byte
-	upstreamIsAnthropic bool
-	responseMode        responseCompatMode
-	clientModel         string
+	forwardPath              string
+	forwardBody              []byte
+	upstreamIsAnthropic      bool
+	responseMode             responseCompatMode
+	clientModel              string
+	responsesCustomToolNames map[string]struct{}
 }
 
 type anthropicUsage struct {
@@ -78,11 +80,17 @@ type openAIToolCall struct {
 	ID       string                 `json:"id,omitempty"`
 	Type     string                 `json:"type,omitempty"`
 	Function openAIToolCallFunction `json:"function,omitempty"`
+	Custom   openAICustomToolCall   `json:"custom,omitempty"`
 }
 
 type openAIToolCallFunction struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+}
+
+type openAICustomToolCall struct {
+	Name  string `json:"name,omitempty"`
+	Input string `json:"input,omitempty"`
 }
 
 type anthropicContentBlock struct {
@@ -205,9 +213,17 @@ func buildCompatPlan(
 	upstreamModel string,
 	body []byte,
 ) (compatPlan, error) {
+	sanitizedBody := body
+	switch clientFmt {
+	case formatAnthropic:
+		sanitizedBody = normalizeAnthropicRequestToolDescriptions(body)
+	case formatChatCompletions, formatResponses:
+		sanitizedBody = normalizeOpenAIRequestToolDescriptions(body)
+	}
+
 	plan := compatPlan{
 		forwardPath:         "/v1/chat/completions",
-		forwardBody:         body,
+		forwardBody:         sanitizedBody,
 		upstreamIsAnthropic: false,
 		responseMode:        responseCompatPassthrough,
 		clientModel:         requestedModel,
@@ -220,7 +236,8 @@ func buildCompatPlan(
 
 	// Responses API clients: convert to Chat Completions for upstream, then back.
 	if clientFmt == formatResponses {
-		converted, err := convertResponsesRequestToChat(body, upstreamModel)
+		customToolNames := extractResponsesCustomToolNames(sanitizedBody)
+		converted, err := convertResponsesRequestToChat(sanitizedBody, upstreamModel)
 		if err != nil {
 			return compatPlan{}, err
 		}
@@ -228,12 +245,13 @@ func buildCompatPlan(
 		plan.forwardBody = converted
 		plan.upstreamIsAnthropic = false
 		plan.responseMode = responseCompatChatToResponses
+		plan.responsesCustomToolNames = customToolNames
 		return plan, nil
 	}
 
 	if clientFmt == formatAnthropic {
 		if adapter != core.ProtocolAdapterAnthropicMessages {
-			converted, err := convertAnthropicRequestToOpenAIChat(body, upstreamModel)
+			converted, err := convertAnthropicRequestToOpenAIChat(sanitizedBody, upstreamModel)
 			if err != nil {
 				return compatPlan{}, err
 			}
@@ -246,13 +264,13 @@ func buildCompatPlan(
 		plan.forwardPath = "/v1/messages"
 		plan.upstreamIsAnthropic = true
 		if upstreamModel != "" && upstreamModel != requestedModel {
-			plan.forwardBody = rewriteModelInBody(body, requestedModel, upstreamModel)
+			plan.forwardBody = rewriteModelInBody(sanitizedBody, requestedModel, upstreamModel)
 		}
 		return plan, nil
 	}
 
 	if adapter == core.ProtocolAdapterAnthropicMessages {
-		converted, err := convertOpenAIChatRequestToAnthropic(body, upstreamModel)
+		converted, err := convertOpenAIChatRequestToAnthropic(sanitizedBody, upstreamModel)
 		if err != nil {
 			return compatPlan{}, err
 		}
@@ -264,9 +282,128 @@ func buildCompatPlan(
 	}
 
 	if upstreamModel != "" && upstreamModel != requestedModel {
-		plan.forwardBody = rewriteModelInBody(body, requestedModel, upstreamModel)
+		plan.forwardBody = rewriteModelInBody(sanitizedBody, requestedModel, upstreamModel)
 	}
 	return plan, nil
+}
+
+func normalizeOpenAIRequestToolDescriptions(body []byte) []byte {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	mutated := false
+
+	if tools, ok := payload["tools"].([]any); ok {
+		for _, toolValue := range tools {
+			tool, ok := toolValue.(map[string]any)
+			if !ok {
+				continue
+			}
+			if normalizeOpenAIToolDescription(tool) {
+				mutated = true
+			}
+		}
+	}
+
+	if functions, ok := payload["functions"].([]any); ok {
+		for _, functionValue := range functions {
+			function, ok := functionValue.(map[string]any)
+			if !ok {
+				continue
+			}
+			desc, exists := function["description"]
+			normalized := normalizeToolDescription(desc)
+			if !exists {
+				function["description"] = normalized
+				mutated = true
+				continue
+			}
+			if cur, ok := desc.(string); !ok || cur != normalized {
+				function["description"] = normalized
+				mutated = true
+			}
+		}
+	}
+
+	if !mutated {
+		return body
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return encoded
+}
+
+func normalizeOpenAIToolDescription(tool map[string]any) bool {
+	if fn, ok := tool["function"].(map[string]any); ok {
+		desc, exists := fn["description"]
+		normalized := normalizeToolDescription(desc)
+		if !exists {
+			fn["description"] = normalized
+			return true
+		}
+		if cur, ok := desc.(string); !ok || cur != normalized {
+			fn["description"] = normalized
+			return true
+		}
+		return false
+	}
+
+	if strings.TrimSpace(fmt.Sprint(tool["type"])) != "function" {
+		return false
+	}
+	desc := tool["description"]
+	normalized := normalizeToolDescription(desc)
+	tool["function"] = map[string]any{
+		"name":        tool["name"],
+		"description": normalized,
+		"parameters":  tool["parameters"],
+	}
+	delete(tool, "name")
+	delete(tool, "description")
+	delete(tool, "parameters")
+	return true
+}
+
+func normalizeAnthropicRequestToolDescriptions(body []byte) []byte {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	tools, ok := payload["tools"].([]any)
+	if !ok {
+		return body
+	}
+
+	mutated := false
+	for _, toolValue := range tools {
+		tool, ok := toolValue.(map[string]any)
+		if !ok {
+			continue
+		}
+		desc, exists := tool["description"]
+		normalized := normalizeToolDescription(desc)
+		if !exists {
+			tool["description"] = normalized
+			mutated = true
+			continue
+		}
+		if cur, ok := desc.(string); !ok || cur != normalized {
+			tool["description"] = normalized
+			mutated = true
+		}
+	}
+
+	if !mutated {
+		return body
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return encoded
 }
 
 func providerProtocolAdapter(provider *snapshot.ProviderSnapshot) string {
@@ -281,7 +418,7 @@ func adaptResponseBodyForClient(plan compatPlan, statusCode int, respBody []byte
 		if statusCode >= http.StatusBadRequest {
 			return respBody, "application/json", nil
 		}
-		converted, err := adaptChatResponseToResponses(respBody, plan.clientModel)
+		converted, err := adaptChatResponseToResponses(respBody, plan.clientModel, plan.responsesCustomToolNames)
 		if err != nil {
 			return nil, "", err
 		}
@@ -312,7 +449,7 @@ func adaptResponseBodyForClient(plan compatPlan, statusCode int, respBody []byte
 
 func writeCompatStreamResponse(w http.ResponseWriter, statusCode int, contentType string, respBody io.ReadCloser, plan compatPlan) (promptTokens, cachedPromptTokens, completionTokens int64) {
 	if plan.responseMode == responseCompatChatToResponses {
-		return bridgeChatStreamToResponses(w, statusCode, respBody, plan.clientModel)
+		return bridgeChatStreamToResponses(w, statusCode, respBody, plan.clientModel, plan.responsesCustomToolNames)
 	}
 	if plan.responseMode == responseCompatOpenAIToAnthropic {
 		return bridgeOpenAIStreamToAnthropic(w, statusCode, respBody, plan.clientModel)
@@ -325,7 +462,7 @@ func writeCompatStreamResponse(w http.ResponseWriter, statusCode int, contentTyp
 
 func writeCompatStreamResponseStarted(w http.ResponseWriter, flusher http.Flusher, respBody io.ReadCloser, plan compatPlan) (promptTokens, cachedPromptTokens, completionTokens int64) {
 	if plan.responseMode == responseCompatChatToResponses {
-		return bridgeChatStreamToResponsesStarted(w, flusher, respBody, plan.clientModel)
+		return bridgeChatStreamToResponsesStarted(w, flusher, respBody, plan.clientModel, plan.responsesCustomToolNames)
 	}
 	if plan.responseMode == responseCompatOpenAIToAnthropic {
 		return bridgeOpenAIStreamToAnthropicStarted(w, flusher, respBody, plan.clientModel)
@@ -425,9 +562,9 @@ func anthropicRawContentToText(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &blocks); err == nil {
 		parts := make([]string, 0, len(blocks))
 		for _, block := range blocks {
-			switch strings.TrimSpace(fmt.Sprint(block["type"])) {
+			switch normalizeTextLikeBlockType(fmt.Sprint(block["type"])) {
 			case "text":
-				if text := strings.TrimSpace(fmt.Sprint(block["text"])); text != "" {
+				if text, ok := extractTextFromContentBlock(block); ok && strings.TrimSpace(text) != "" {
 					parts = append(parts, text)
 				}
 			case "tool_result":
@@ -463,9 +600,9 @@ func convertAnthropicAssistantMessageToOpenAI(raw json.RawMessage) map[string]an
 	textParts := make([]string, 0, len(blocks))
 	toolCalls := make([]map[string]any, 0)
 	for i, block := range blocks {
-		switch strings.TrimSpace(fmt.Sprint(block["type"])) {
+		switch normalizeTextLikeBlockType(fmt.Sprint(block["type"])) {
 		case "text":
-			if text := strings.TrimSpace(fmt.Sprint(block["text"])); text != "" {
+			if text, ok := extractTextFromContentBlock(block); ok && strings.TrimSpace(text) != "" {
 				textParts = append(textParts, text)
 			}
 		case "tool_use":
@@ -502,25 +639,30 @@ func convertAnthropicUserMessageToOpenAI(raw json.RawMessage) []map[string]any {
 		return []map[string]any{{"role": "user", "content": anthropicRawContentToText(raw)}}
 	}
 	var messages []map[string]any
-	textParts := make([]string, 0, len(blocks))
-	flushText := func() {
-		if len(textParts) == 0 {
+	userParts := make([]map[string]any, 0, len(blocks))
+	flushUserParts := func() {
+		if len(userParts) == 0 {
 			return
 		}
-		messages = append(messages, map[string]any{
-			"role":    "user",
-			"content": strings.Join(textParts, "\n"),
-		})
-		textParts = textParts[:0]
+		content := openAIContentFromUserParts(userParts)
+		messages = append(messages, map[string]any{"role": "user", "content": content})
+		userParts = userParts[:0]
 	}
 	for _, block := range blocks {
-		switch strings.TrimSpace(fmt.Sprint(block["type"])) {
+		switch normalizeTextLikeBlockType(fmt.Sprint(block["type"])) {
 		case "text":
-			if text := strings.TrimSpace(fmt.Sprint(block["text"])); text != "" {
-				textParts = append(textParts, text)
+			if text, ok := extractTextFromContentBlock(block); ok && strings.TrimSpace(text) != "" {
+				userParts = append(userParts, map[string]any{
+					"type": "text",
+					"text": text,
+				})
+			}
+		case "image":
+			if imagePart, ok := convertAnthropicImageBlockToOpenAI(block); ok {
+				userParts = append(userParts, imagePart)
 			}
 		case "tool_result":
-			flushText()
+			flushUserParts()
 			toolCallID := strings.TrimSpace(fmt.Sprint(block["tool_use_id"]))
 			if toolCallID == "" {
 				toolCallID = strings.TrimSpace(fmt.Sprint(block["id"]))
@@ -532,7 +674,7 @@ func convertAnthropicUserMessageToOpenAI(raw json.RawMessage) []map[string]any {
 			})
 		}
 	}
-	flushText()
+	flushUserParts()
 	if len(messages) == 0 {
 		messages = append(messages, map[string]any{"role": "user", "content": ""})
 	}
@@ -550,7 +692,7 @@ func convertAnthropicToolsToOpenAI(raw json.RawMessage) ([]map[string]any, error
 			"type": "function",
 			"function": map[string]any{
 				"name":        tool["name"],
-				"description": tool["description"],
+				"description": normalizeToolDescription(tool["description"]),
 				"parameters":  tool["input_schema"],
 			},
 		})
@@ -1540,7 +1682,7 @@ func convertOpenAIChatRequestToAnthropic(body []byte, upstreamModel string) ([]b
 	anthropicMessages := make([]anthropicMessage, 0, len(messages))
 	for _, message := range messages {
 		switch strings.TrimSpace(message.Role) {
-		case "system":
+		case "system", "developer":
 			if text := extractOpenAISystemText(message.Content); text != "" {
 				systemParts = append(systemParts, text)
 			}
@@ -1656,11 +1798,23 @@ func convertOpenAIContentToAnthropic(raw json.RawMessage) (interface{}, error) {
 	if err := json.Unmarshal(trimmed, &blocks); err == nil {
 		converted := make([]map[string]any, 0, len(blocks))
 		for _, block := range blocks {
-			if text, ok := block["text"].(string); ok && block["type"] == "text" {
+			switch normalizeTextLikeBlockType(fmt.Sprint(block["type"])) {
+			case "text":
+				text, ok := extractTextFromContentBlock(block)
+				if !ok {
+					continue
+				}
 				converted = append(converted, map[string]any{
 					"type": "text",
 					"text": text,
 				})
+				continue
+			case "image_url":
+				imageBlock, err := convertOpenAIImageURLBlockToAnthropic(block)
+				if err != nil {
+					return nil, err
+				}
+				converted = append(converted, imageBlock)
 				continue
 			}
 			converted = append(converted, block)
@@ -1943,14 +2097,160 @@ func extractOpenAISystemText(raw json.RawMessage) string {
 	}
 	parts := make([]string, 0, len(blocks))
 	for _, block := range blocks {
-		if block["type"] != "text" {
+		if normalizeTextLikeBlockType(fmt.Sprint(block["type"])) != "text" {
 			continue
 		}
-		if text, ok := block["text"].(string); ok && strings.TrimSpace(text) != "" {
+		if text, ok := extractTextFromContentBlock(block); ok && strings.TrimSpace(text) != "" {
 			parts = append(parts, text)
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+func normalizeTextLikeBlockType(rawType string) string {
+	switch strings.ToLower(strings.TrimSpace(rawType)) {
+	case "input_text", "output_text":
+		return "text"
+	default:
+		return strings.ToLower(strings.TrimSpace(rawType))
+	}
+}
+
+func extractTextFromContentBlock(block map[string]any) (string, bool) {
+	for _, key := range []string{"text", "input_text", "output_text"} {
+		if text, ok := block[key].(string); ok {
+			return text, true
+		}
+	}
+	return "", false
+}
+
+func convertOpenAIImageURLBlockToAnthropic(block map[string]any) (map[string]any, error) {
+	imageURL, ok := extractOpenAIImageURL(block["image_url"])
+	if !ok {
+		return nil, fmt.Errorf("openai image_url content block missing image_url.url")
+	}
+	if mediaType, data, ok := parseDataURLImageSource(imageURL); ok {
+		return map[string]any{
+			"type": "image",
+			"source": map[string]any{
+				"type":       "base64",
+				"media_type": mediaType,
+				"data":       data,
+			},
+		}, nil
+	}
+	return map[string]any{
+		"type": "image",
+		"source": map[string]any{
+			"type": "url",
+			"url":  imageURL,
+		},
+	}, nil
+}
+
+func extractOpenAIImageURL(value any) (string, bool) {
+	switch typed := value.(type) {
+	case string:
+		url := strings.TrimSpace(typed)
+		return url, url != ""
+	case map[string]any:
+		url := strings.TrimSpace(fmt.Sprint(typed["url"]))
+		return url, url != ""
+	default:
+		return "", false
+	}
+}
+
+func parseDataURLImageSource(raw string) (mediaType, data string, ok bool) {
+	value := strings.TrimSpace(raw)
+	lower := strings.ToLower(value)
+	if !strings.HasPrefix(lower, "data:") {
+		return "", "", false
+	}
+	parts := strings.SplitN(value[len("data:"):], ",", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	meta := parts[0]
+	data = strings.TrimSpace(parts[1])
+	if data == "" {
+		return "", "", false
+	}
+	metaParts := strings.Split(meta, ";")
+	if len(metaParts) == 0 {
+		return "", "", false
+	}
+	mediaType = strings.TrimSpace(metaParts[0])
+	if mediaType == "" || !strings.HasPrefix(strings.ToLower(mediaType), "image/") {
+		return "", "", false
+	}
+	for _, token := range metaParts[1:] {
+		if strings.EqualFold(strings.TrimSpace(token), "base64") {
+			return mediaType, data, true
+		}
+	}
+	return "", "", false
+}
+
+func convertAnthropicImageBlockToOpenAI(block map[string]any) (map[string]any, bool) {
+	source, _ := block["source"].(map[string]any)
+	if len(source) == 0 {
+		return nil, false
+	}
+	sourceType := strings.ToLower(strings.TrimSpace(fmt.Sprint(source["type"])))
+	switch sourceType {
+	case "url":
+		url := strings.TrimSpace(fmt.Sprint(source["url"]))
+		if url == "" {
+			return nil, false
+		}
+		return map[string]any{
+			"type":      "image_url",
+			"image_url": map[string]any{"url": url},
+		}, true
+	case "base64":
+		mediaType := strings.TrimSpace(fmt.Sprint(source["media_type"]))
+		data := strings.TrimSpace(fmt.Sprint(source["data"]))
+		if mediaType == "" || data == "" {
+			return nil, false
+		}
+		return map[string]any{
+			"type": "image_url",
+			"image_url": map[string]any{
+				"url": fmt.Sprintf("data:%s;base64,%s", mediaType, data),
+			},
+		}, true
+	default:
+		return nil, false
+	}
+}
+
+func openAIContentFromUserParts(parts []map[string]any) any {
+	if len(parts) == 0 {
+		return ""
+	}
+	if len(parts) == 1 && strings.TrimSpace(fmt.Sprint(parts[0]["type"])) == "text" {
+		if text, ok := parts[0]["text"].(string); ok {
+			return text
+		}
+	}
+	out := make([]map[string]any, 0, len(parts))
+	for _, part := range parts {
+		out = append(out, cloneStringAnyMap(part))
+	}
+	return out
+}
+
+func normalizeToolDescription(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	default:
+		return fmt.Sprint(typed)
+	}
 }
 
 func convertOpenAIToolsToAnthropic(raw json.RawMessage) ([]map[string]any, error) {
@@ -1960,20 +2260,27 @@ func convertOpenAIToolsToAnthropic(raw json.RawMessage) ([]map[string]any, error
 	}
 	converted := make([]map[string]any, 0, len(tools))
 	for _, tool := range tools {
-		if strings.TrimSpace(fmt.Sprint(tool["type"])) != "function" {
-			continue
-		}
-		fn, _ := tool["function"].(map[string]any)
-		if len(fn) == 0 {
+		name, description, inputSchema, ok := extractFunctionFieldsFromOpenAITool(tool)
+		if !ok {
 			continue
 		}
 		converted = append(converted, map[string]any{
-			"name":         fn["name"],
-			"description":  fn["description"],
-			"input_schema": fn["parameters"],
+			"name":         name,
+			"description":  normalizeToolDescription(description),
+			"input_schema": inputSchema,
 		})
 	}
 	return converted, nil
+}
+
+func extractFunctionFieldsFromOpenAITool(tool map[string]any) (name any, description any, inputSchema any, ok bool) {
+	if strings.TrimSpace(fmt.Sprint(tool["type"])) != "function" {
+		return nil, nil, nil, false
+	}
+	if fn, hasNested := tool["function"].(map[string]any); hasNested && len(fn) > 0 {
+		return fn["name"], fn["description"], fn["parameters"], true
+	}
+	return tool["name"], tool["description"], tool["parameters"], true
 }
 
 func convertOpenAIFunctionsToAnthropic(raw json.RawMessage) ([]map[string]any, error) {
@@ -1985,7 +2292,7 @@ func convertOpenAIFunctionsToAnthropic(raw json.RawMessage) ([]map[string]any, e
 	for _, function := range functions {
 		converted = append(converted, map[string]any{
 			"name":         function["name"],
-			"description":  function["description"],
+			"description":  normalizeToolDescription(function["description"]),
 			"input_schema": function["parameters"],
 		})
 	}
@@ -2025,21 +2332,50 @@ func convertResponsesRequestToChat(body []byte, upstreamModel string) ([]byte, e
 	copyRawField("temperature", "temperature")
 	copyRawField("top_p", "top_p")
 	copyRawField("max_output_tokens", "max_tokens")
-	copyRawField("tool_choice", "tool_choice")
+	copyRawField("parallel_tool_calls", "parallel_tool_calls")
+	if toolChoiceRaw, ok := raw["tool_choice"]; ok {
+		if toolChoice := convertResponsesToolChoiceToChat(toolChoiceRaw); toolChoice != nil {
+			out["tool_choice"] = toolChoice
+		}
+	}
 
-	// Filter tools: Chat Completions only supports type="function".
-	// Responses API also allows "custom", "web_search", "file_search", etc.
+	// Bridge Responses tools into Chat Completions-compatible tools. Custom
+	// tools are represented as function tools upstream and restored on output
+	// using the request's custom tool names.
 	if toolsRaw, ok := raw["tools"]; ok {
 		var tools []map[string]any
 		if err := json.Unmarshal(toolsRaw, &tools); err == nil {
-			functionTools := make([]map[string]any, 0, len(tools))
+			chatTools := make([]map[string]any, 0, len(tools))
 			for _, tool := range tools {
-				if strings.TrimSpace(fmt.Sprint(tool["type"])) == "function" {
-					functionTools = append(functionTools, tool)
+				switch strings.TrimSpace(fmt.Sprint(tool["type"])) {
+				case "function":
+					name, description, parameters, ok := extractFunctionFieldsFromOpenAITool(tool)
+					if !ok {
+						continue
+					}
+					chatTools = append(chatTools, map[string]any{
+						"type": "function",
+						"function": map[string]any{
+							"name":        name,
+							"description": normalizeToolDescription(description),
+							"parameters":  parameters,
+						},
+					})
+				case "custom":
+					if functionTool, ok := convertResponsesCustomToolToChatFunction(tool); ok {
+						chatTools = append(chatTools, functionTool)
+					}
+				default:
+					// Responses API built-in tools (web_search, web_search_preview,
+					// local_shell, file_search, computer_use_preview, code_interpreter, ...)
+					// have no Chat Completions equivalent. Drop them silently so Codex and
+					// other Responses-native clients stay compatible; the upstream will run
+					// without the built-in tool instead of failing the whole request.
+					continue
 				}
 			}
-			if len(functionTools) > 0 {
-				out["tools"] = functionTools
+			if len(chatTools) > 0 {
+				out["tools"] = chatTools
 			}
 		}
 	}
@@ -2067,28 +2403,196 @@ func convertResponsesRequestToChat(body []byte, upstreamModel string) ([]byte, e
 		if err := json.Unmarshal(inputRaw, &messages); err != nil {
 			return nil, fmt.Errorf("decode responses input: %w", err)
 		}
-		normalized, err := sanitizeResponsesInputToChatMessages(messages)
+		normalized, err := convertResponsesInputToChatMessages(messages)
 		if err != nil {
 			return nil, err
 		}
 		out["messages"] = normalized
 	}
+	if instructions, ok := responsesInstructionsMessage(raw["instructions"]); ok {
+		messages, _ := out["messages"].([]map[string]any)
+		out["messages"] = append([]map[string]any{instructions}, messages...)
+	}
 
 	return json.Marshal(out)
 }
 
-// sanitizeResponsesInputToChatMessages normalizes OpenAI Responses-style "input"
+func responsesInstructionsMessage(raw json.RawMessage) (map[string]any, bool) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, false
+	}
+	text := responsesTextFromRaw(raw)
+	if strings.TrimSpace(text) == "" {
+		return nil, false
+	}
+	return map[string]any{
+		"role":    "system",
+		"content": text,
+	}, true
+}
+
+func responsesTextFromRaw(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return ""
+	}
+	if trimmed[0] == '"' {
+		var text string
+		if err := json.Unmarshal(trimmed, &text); err == nil {
+			return text
+		}
+		return ""
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(trimmed, &blocks); err == nil {
+		parts := make([]string, 0, len(blocks))
+		for _, block := range blocks {
+			if normalizeTextLikeBlockType(fmt.Sprint(block["type"])) != "text" {
+				continue
+			}
+			if text, ok := extractTextFromContentBlock(block); ok && strings.TrimSpace(text) != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n\n")
+	}
+	var value any
+	if err := json.Unmarshal(trimmed, &value); err == nil {
+		return stringifyContentValue(value)
+	}
+	return ""
+}
+
+func convertResponsesToolChoiceToChat(raw json.RawMessage) any {
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+
+	var choice map[string]any
+	if err := json.Unmarshal(raw, &choice); err != nil {
+		return nil
+	}
+	choiceType := strings.ToLower(strings.TrimSpace(fmt.Sprint(choice["type"])))
+	switch choiceType {
+	case "custom", "function":
+		name := strings.TrimSpace(fmt.Sprint(choice["name"]))
+		if name == "" {
+			if fn, ok := choice["function"].(map[string]any); ok {
+				name = strings.TrimSpace(fmt.Sprint(fn["name"]))
+			}
+		}
+		if name == "" {
+			return nil
+		}
+		return map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name": name,
+			},
+		}
+	case "auto", "required", "none":
+		return choiceType
+	default:
+		// Responses tool_choice that references a built-in tool type (e.g.
+		// {"type":"web_search"}) has no Chat Completions equivalent. Fall back
+		// to "auto" so the request stays valid; the dropped tool is already
+		// absent from the forwarded tools list.
+		return "auto"
+	}
+}
+
+func extractResponsesCustomToolNames(body []byte) map[string]struct{} {
+	var payload struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	names := make(map[string]struct{})
+	for _, tool := range payload.Tools {
+		if strings.TrimSpace(fmt.Sprint(tool["type"])) != "custom" {
+			continue
+		}
+		name := strings.TrimSpace(fmt.Sprint(tool["name"]))
+		if name != "" {
+			names[name] = struct{}{}
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return names
+}
+
+func convertResponsesCustomToolToChatFunction(tool map[string]any) (map[string]any, bool) {
+	name := strings.TrimSpace(fmt.Sprint(tool["name"]))
+	if name == "" {
+		return nil, false
+	}
+	description := normalizeToolDescription(tool["description"])
+	if strings.TrimSpace(description) == "" {
+		description = "Call custom tool " + name + "."
+	}
+	return map[string]any{
+		"type": "function",
+		"function": map[string]any{
+			"name":        name,
+			"description": description,
+			"parameters": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"input": map[string]any{
+						"type":        "string",
+						"description": "Raw custom tool input.",
+					},
+				},
+				"required": []string{"input"},
+			},
+		},
+	}, true
+}
+
+// convertResponsesInputToChatMessages normalizes OpenAI Responses-style "input"
 // arrays into Chat Completions "messages" shape. Codex and other clients may
 // send Responses item wrappers (type=message), input_text/input_image parts, or
-// JSON null content (e.g. assistant turns with only tool_calls). Upstream
-// chat bridges may map messages back to Responses and reject null content with
-// errors like Invalid type for 'input[0].content'.
-func sanitizeResponsesInputToChatMessages(messages []map[string]any) ([]map[string]any, error) {
-	if len(messages) == 0 {
+// JSON null content (e.g. assistant turns with only tool_calls). It also keeps
+// Responses custom tool call items in the Chat tool-call conversation shape.
+func convertResponsesInputToChatMessages(input []map[string]any) ([]map[string]any, error) {
+	if len(input) == 0 {
 		return nil, fmt.Errorf("responses input message list is empty")
 	}
-	out := make([]map[string]any, 0, len(messages))
-	for _, raw := range messages {
+	out := make([]map[string]any, 0, len(input))
+	for _, raw := range input {
+		itemType, _ := raw["type"].(string)
+		switch itemType {
+		case "custom_tool_call":
+			msg, ok := convertResponsesCustomToolCallItemToChat(raw)
+			if ok {
+				out = append(out, msg)
+			}
+			continue
+		case "custom_tool_call_output":
+			msg, ok := convertResponsesCustomToolCallOutputItemToChat(raw)
+			if ok {
+				out = append(out, msg)
+			}
+			continue
+		case "function_call":
+			msg, ok := convertResponsesFunctionCallItemToChat(raw)
+			if ok {
+				out = append(out, msg)
+			}
+			continue
+		case "function_call_output":
+			msg, ok := convertResponsesFunctionCallOutputItemToChat(raw)
+			if ok {
+				out = append(out, msg)
+			}
+			continue
+		}
+
 		msg := make(map[string]any, len(raw)+2)
 		for k, v := range raw {
 			msg[k] = v
@@ -2119,6 +2623,123 @@ func sanitizeResponsesInputToChatMessages(messages []map[string]any) ([]map[stri
 	return out, nil
 }
 
+func sanitizeResponsesInputToChatMessages(messages []map[string]any) ([]map[string]any, error) {
+	return convertResponsesInputToChatMessages(messages)
+}
+
+func convertResponsesCustomToolCallItemToChat(item map[string]any) (map[string]any, bool) {
+	name := strings.TrimSpace(fmt.Sprint(item["name"]))
+	if name == "" {
+		return nil, false
+	}
+	callID := responsesCallID(item)
+	if callID == "" {
+		callID = "call_" + uuid.NewString()
+	}
+	return map[string]any{
+		"role":    "assistant",
+		"content": "",
+		"tool_calls": []map[string]any{
+			{
+				"id":   callID,
+				"type": "function",
+				"function": map[string]any{
+					"name":      name,
+					"arguments": compactJSONValue(map[string]any{"input": stringifyResponsesToolInput(item["input"])}),
+				},
+			},
+		},
+	}, true
+}
+
+func convertResponsesFunctionCallItemToChat(item map[string]any) (map[string]any, bool) {
+	name := strings.TrimSpace(fmt.Sprint(item["name"]))
+	if name == "" {
+		return nil, false
+	}
+	callID := responsesCallID(item)
+	if callID == "" {
+		callID = "call_" + uuid.NewString()
+	}
+	return map[string]any{
+		"role":    "assistant",
+		"content": "",
+		"tool_calls": []map[string]any{
+			{
+				"id":   callID,
+				"type": "function",
+				"function": map[string]any{
+					"name":      name,
+					"arguments": stringifyResponsesToolInput(item["arguments"]),
+				},
+			},
+		},
+	}, true
+}
+
+func convertResponsesCustomToolCallOutputItemToChat(item map[string]any) (map[string]any, bool) {
+	callID := responsesCallID(item)
+	if callID == "" {
+		return nil, false
+	}
+	return map[string]any{
+		"role":         "tool",
+		"tool_call_id": callID,
+		"content":      stringifyResponsesToolOutput(item["output"]),
+	}, true
+}
+
+func convertResponsesFunctionCallOutputItemToChat(item map[string]any) (map[string]any, bool) {
+	callID := responsesCallID(item)
+	if callID == "" {
+		return nil, false
+	}
+	return map[string]any{
+		"role":         "tool",
+		"tool_call_id": callID,
+		"content":      stringifyResponsesToolOutput(item["output"]),
+	}, true
+}
+
+func responsesCallID(item map[string]any) string {
+	for _, key := range []string{"call_id", "id"} {
+		if value := strings.TrimSpace(fmt.Sprint(item[key])); value != "" && value != "<nil>" {
+			return value
+		}
+	}
+	return ""
+}
+
+func stringifyResponsesToolInput(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			return fmt.Sprint(typed)
+		}
+		return string(data)
+	}
+}
+
+func stringifyResponsesToolOutput(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	default:
+		data, err := json.Marshal(typed)
+		if err != nil {
+			return fmt.Sprint(typed)
+		}
+		return string(data)
+	}
+}
+
 func coerceJSONSlice(v any) ([]any, bool) {
 	switch t := v.(type) {
 	case []any:
@@ -2144,10 +2765,9 @@ func normalizeResponsesStyleContentToChatContent(parts []any) (any, error) {
 		if !ok {
 			continue
 		}
-		pt, _ := block["type"].(string)
-		switch pt {
-		case "input_text":
-			txt, _ := block["text"].(string)
+		switch normalizeTextLikeBlockType(fmt.Sprint(block["type"])) {
+		case "text":
+			txt, _ := extractTextFromContentBlock(block)
 			chatParts = append(chatParts, map[string]any{"type": "text", "text": txt})
 		case "input_image":
 			part := map[string]any{"type": "image_url"}
@@ -2160,7 +2780,7 @@ func normalizeResponsesStyleContentToChatContent(parts []any) (any, error) {
 				return nil, fmt.Errorf("responses input_image: image_url must be string or object")
 			}
 			chatParts = append(chatParts, part)
-		case "text", "image_url":
+		case "image_url":
 			chatParts = append(chatParts, cloneStringAnyMap(block))
 		default:
 			// Best-effort passthrough for uncommon part types.
@@ -2195,7 +2815,7 @@ func normalizeResponsesStyleContentToChatContent(parts []any) (any, error) {
 //	 "output":[{"type":"message","id":"msg_chatcmpl-123","status":"completed","role":"assistant",
 //	 "content":[{"type":"output_text","text":"Hi!"}]}],
 //	 "usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8},"status":"completed"}
-func adaptChatResponseToResponses(respBody []byte, clientModel string) ([]byte, error) {
+func adaptChatResponseToResponses(respBody []byte, clientModel string, customToolNames map[string]struct{}) ([]byte, error) {
 	var payload struct {
 		ID      string `json:"id"`
 		Object  string `json:"object"`
@@ -2205,9 +2825,10 @@ func adaptChatResponseToResponses(respBody []byte, clientModel string) ([]byte, 
 			Index        int    `json:"index"`
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
-				Role      string          `json:"role"`
-				Content   json.RawMessage `json:"content"`
-				ToolCalls []openAIToolCall `json:"tool_calls"`
+				Role         string                  `json:"role"`
+				Content      json.RawMessage         `json:"content"`
+				ToolCalls    []openAIToolCall        `json:"tool_calls"`
+				FunctionCall *openAIToolCallFunction `json:"function_call"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
@@ -2225,8 +2846,8 @@ func adaptChatResponseToResponses(respBody []byte, clientModel string) ([]byte, 
 		model = payload.Model
 	}
 
-	// Build output content from the first choice.
-	outputContent := make([]map[string]any, 0)
+	// Build output items from the first choice.
+	outputItems := make([]any, 0)
 	var msgID string
 	if len(payload.Choices) > 0 {
 		choice := payload.Choices[0]
@@ -2237,32 +2858,56 @@ func adaptChatResponseToResponses(respBody []byte, clientModel string) ([]byte, 
 			msgID = "msg_" + msgID
 		}
 
-		// Extract text content.
-		if len(choice.Message.Content) > 0 {
-			var text string
-			if err := json.Unmarshal(choice.Message.Content, &text); err == nil && strings.TrimSpace(text) != "" {
-				outputContent = append(outputContent, map[string]any{
-					"type": "output_text",
-					"text": text,
-				})
-			}
+		outputContent := make([]map[string]any, 0)
+
+		if text := chatMessageContentText(choice.Message.Content); strings.TrimSpace(text) != "" {
+			outputContent = append(outputContent, map[string]any{
+				"type": "output_text",
+				"text": text,
+			})
 		}
 
-		// Extract tool calls.
-		for _, tc := range choice.Message.ToolCalls {
-			outputContent = append(outputContent, map[string]any{
-				"type":      "tool_call",
-				"id":        tc.ID,
-				"name":      tc.Function.Name,
-				"arguments": tc.Function.Arguments,
+		if len(outputContent) > 0 {
+			outputItems = append(outputItems, map[string]any{
+				"type":    "message",
+				"id":      msgID,
+				"status":  "completed",
+				"role":    "assistant",
+				"content": outputContent,
 			})
+		}
+
+		toolCalls := append([]openAIToolCall(nil), choice.Message.ToolCalls...)
+		if len(toolCalls) == 0 && choice.Message.FunctionCall != nil && strings.TrimSpace(choice.Message.FunctionCall.Name) != "" {
+			toolCalls = append(toolCalls, openAIToolCall{
+				ID:       "call_" + uuid.NewString(),
+				Type:     "function",
+				Function: *choice.Message.FunctionCall,
+			})
+		}
+		for _, tc := range toolCalls {
+			tc = restoreResponsesCustomToolCall(tc, customToolNames)
+			if item, ok := chatToolCallToResponsesOutputItem(tc); ok {
+				outputItems = append(outputItems, item)
+			}
 		}
 	}
 
-	if len(outputContent) == 0 {
-		outputContent = append(outputContent, map[string]any{
-			"type": "output_text",
-			"text": "",
+	if len(outputItems) == 0 {
+		if strings.TrimSpace(msgID) == "" {
+			msgID = "msg_" + uuid.NewString()
+		}
+		outputItems = append(outputItems, map[string]any{
+			"type":   "message",
+			"id":     msgID,
+			"status": "completed",
+			"role":   "assistant",
+			"content": []map[string]any{
+				{
+					"type": "output_text",
+					"text": "",
+				},
+			},
 		})
 	}
 
@@ -2278,15 +2923,7 @@ func adaptChatResponseToResponses(respBody []byte, clientModel string) ([]byte, 
 		"object":     "response",
 		"created_at": payload.Created,
 		"model":      model,
-		"output": []map[string]any{
-			{
-				"type":    "message",
-				"id":      msgID,
-				"status":  "completed",
-				"role":    "assistant",
-				"content": outputContent,
-			},
-		},
+		"output":     outputItems,
 		"usage": map[string]any{
 			"input_tokens":  payload.Usage.PromptTokens,
 			"output_tokens": payload.Usage.CompletionTokens,
@@ -2298,19 +2935,138 @@ func adaptChatResponseToResponses(respBody []byte, clientModel string) ([]byte, 
 	return json.Marshal(resp)
 }
 
+func chatMessageContentText(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return ""
+	}
+	if trimmed[0] == '"' {
+		var text string
+		if err := json.Unmarshal(trimmed, &text); err == nil {
+			return text
+		}
+		return ""
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(trimmed, &blocks); err == nil {
+		parts := make([]string, 0, len(blocks))
+		for _, block := range blocks {
+			if normalizeTextLikeBlockType(fmt.Sprint(block["type"])) != "text" {
+				continue
+			}
+			if text, ok := extractTextFromContentBlock(block); ok && strings.TrimSpace(text) != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
+func restoreResponsesCustomToolCall(tc openAIToolCall, customToolNames map[string]struct{}) openAIToolCall {
+	if len(customToolNames) == 0 {
+		return tc
+	}
+	if normalizeChatToolCallKind(tc.Type) == "custom" {
+		return tc
+	}
+	name := strings.TrimSpace(tc.Function.Name)
+	if _, ok := customToolNames[name]; !ok {
+		return tc
+	}
+	tc.Type = "custom"
+	tc.Custom.Name = name
+	tc.Custom.Input = extractCustomToolInputFromFunctionArguments(tc.Function.Arguments)
+	tc.Function = openAIToolCallFunction{}
+	return tc
+}
+
+func extractCustomToolInputFromFunctionArguments(arguments string) string {
+	trimmed := strings.TrimSpace(arguments)
+	if trimmed == "" {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+		if input, ok := payload["input"]; ok {
+			return stringifyResponsesToolInput(input)
+		}
+	}
+	return arguments
+}
+
+func chatToolCallToResponsesOutputItem(tc openAIToolCall) (map[string]any, bool) {
+	kind := strings.ToLower(strings.TrimSpace(tc.Type))
+	if kind == "" {
+		if strings.TrimSpace(tc.Custom.Name) != "" {
+			kind = "custom"
+		} else {
+			kind = "function"
+		}
+	}
+	callID := strings.TrimSpace(tc.ID)
+	if callID == "" {
+		callID = "call_" + uuid.NewString()
+	}
+	switch kind {
+	case "custom":
+		name := strings.TrimSpace(tc.Custom.Name)
+		if name == "" {
+			return nil, false
+		}
+		return map[string]any{
+			"id":      responsesToolItemID("ctc", callID),
+			"type":    "custom_tool_call",
+			"status":  "completed",
+			"call_id": callID,
+			"name":    name,
+			"input":   tc.Custom.Input,
+		}, true
+	case "function":
+		name := strings.TrimSpace(tc.Function.Name)
+		if name == "" {
+			return nil, false
+		}
+		return map[string]any{
+			"id":        responsesToolItemID("fc", callID),
+			"type":      "function_call",
+			"status":    "completed",
+			"call_id":   callID,
+			"name":      name,
+			"arguments": tc.Function.Arguments,
+		}, true
+	default:
+		return nil, false
+	}
+}
+
+func responsesToolItemID(prefix, callID string) string {
+	suffix := strings.TrimSpace(callID)
+	if suffix == "" {
+		return prefix + "_" + uuid.NewString()
+	}
+	for _, knownPrefix := range []string{"call_", "fc_", "ctc_"} {
+		suffix = strings.TrimPrefix(suffix, knownPrefix)
+	}
+	if strings.TrimSpace(suffix) == "" {
+		suffix = uuid.NewString()
+	}
+	return prefix + "_" + suffix
+}
+
 // bridgeChatStreamToResponses converts a Chat Completions SSE stream into
 // Responses API SSE format.
-func bridgeChatStreamToResponses(w http.ResponseWriter, statusCode int, respBody io.ReadCloser, clientModel string) (promptTokens, cachedPromptTokens, completionTokens int64) {
+func bridgeChatStreamToResponses(w http.ResponseWriter, statusCode int, respBody io.ReadCloser, clientModel string, customToolNames map[string]struct{}) (promptTokens, cachedPromptTokens, completionTokens int64) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(statusCode)
 
 	flusher, _ := w.(http.Flusher)
-	return bridgeChatStreamToResponsesStarted(w, flusher, respBody, clientModel)
+	return bridgeChatStreamToResponsesStarted(w, flusher, respBody, clientModel, customToolNames)
 }
 
-func bridgeChatStreamToResponsesStarted(w http.ResponseWriter, flusher http.Flusher, respBody io.ReadCloser, clientModel string) (promptTokens, cachedPromptTokens, completionTokens int64) {
+func bridgeChatStreamToResponsesStarted(w http.ResponseWriter, flusher http.Flusher, respBody io.ReadCloser, clientModel string, customToolNames map[string]struct{}) (promptTokens, cachedPromptTokens, completionTokens int64) {
 	if respBody == nil {
 		return 0, 0, 0
 	}
@@ -2320,8 +3076,9 @@ func bridgeChatStreamToResponsesStarted(w http.ResponseWriter, flusher http.Flus
 	var eventData bytes.Buffer
 
 	state := responsesStreamState{
-		model:   strings.TrimSpace(clientModel),
-		created: time.Now().Unix(),
+		model:           strings.TrimSpace(clientModel),
+		created:         time.Now().Unix(),
+		customToolNames: customToolNames,
 	}
 
 	flush := func() {
@@ -2405,33 +3162,376 @@ func bridgeChatStreamToResponsesStarted(w http.ResponseWriter, flusher http.Flus
 }
 
 type responsesStreamState struct {
-	model             string
-	created           int64
-	promptTokens      int64
-	completionTokens  int64
-	cachedPromptTokens int64
-	textStarted       bool
-	textDone          bool
-	toolCallsStarted  map[int]bool
-	toolCallsDone     map[int]bool
-	responseID        string
-	finishReason      string
-	usageEmitted      bool
+	model                  string
+	created                int64
+	customToolNames        map[string]struct{}
+	promptTokens           int64
+	completionTokens       int64
+	cachedPromptTokens     int64
+	textStarted            bool
+	textDone               bool
+	text                   strings.Builder
+	messageID              string
+	messageOutputIndex     int
+	messageContentIndex    int
+	messageItemAdded       bool
+	messagePartAdded       bool
+	toolCalls              map[int]*responsesStreamToolCallState
+	toolOutputBase         int
+	responseID             string
+	finishReason           string
+	usageEmitted           bool
+	createdEventEmitted    bool
+	inProgressEventEmitted bool
+}
+
+type responsesStreamToolCallState struct {
+	index           int
+	outputIndex     int
+	itemID          string
+	callID          string
+	kind            string
+	name            string
+	arguments       strings.Builder
+	rawArguments    strings.Builder
+	bridgedFunction bool
+	added           bool
+	done            bool
+}
+
+func (s *responsesStreamState) ensureResponseID() string {
+	if strings.TrimSpace(s.responseID) != "" {
+		return s.responseID
+	}
+	s.responseID = "resp_" + uuid.NewString()
+	return s.responseID
+}
+
+func (s *responsesStreamState) ensureMessageID() string {
+	if strings.TrimSpace(s.messageID) != "" {
+		return s.messageID
+	}
+	respID := s.ensureResponseID()
+	if strings.HasPrefix(respID, "resp_") && len(respID) > len("resp_") {
+		s.messageID = "msg_" + strings.TrimPrefix(respID, "resp_")
+	} else {
+		s.messageID = "msg_" + uuid.NewString()
+	}
+	return s.messageID
+}
+
+func (s *responsesStreamState) buildInProgressResponse() map[string]any {
+	return map[string]any{
+		"id":         s.ensureResponseID(),
+		"object":     "response",
+		"created_at": s.created,
+		"status":     "in_progress",
+		"model":      s.model,
+		"output":     []any{},
+		"usage":      nil,
+	}
+}
+
+func (s *responsesStreamState) buildCompletedMessageItem() map[string]any {
+	return map[string]any{
+		"id":     s.ensureMessageID(),
+		"type":   "message",
+		"status": "completed",
+		"role":   "assistant",
+		"content": []map[string]any{
+			{
+				"type":        "output_text",
+				"text":        s.text.String(),
+				"annotations": []any{},
+			},
+		},
+	}
 }
 
 func (s *responsesStreamState) buildFinalResponse() map[string]any {
+	outputItems := make([]any, 0, 1+len(s.toolCalls))
+	if s.textStarted || strings.TrimSpace(s.text.String()) != "" {
+		outputItems = append(outputItems, s.buildCompletedMessageItem())
+	}
+	for _, tc := range s.orderedToolCalls() {
+		tc.finalizeBridgedCustomInput()
+		outputItems = append(outputItems, tc.completedResponsesItem())
+	}
+
 	return map[string]any{
-		"id":         s.responseID,
+		"id":         s.ensureResponseID(),
 		"object":     "response",
 		"created_at": s.created,
 		"model":      s.model,
 		"status":     "completed",
+		"output":     outputItems,
 		"usage": map[string]any{
 			"input_tokens":  s.promptTokens,
 			"output_tokens": s.completionTokens,
 			"total_tokens":  s.promptTokens + s.completionTokens,
 		},
 	}
+}
+
+func mustJSON(payload map[string]any) []byte {
+	data, _ := json.Marshal(payload)
+	return data
+}
+
+func (s *responsesStreamState) ensureMessageStartedEvents() [][]byte {
+	if s.messageItemAdded {
+		return nil
+	}
+	s.messageItemAdded = true
+	s.textStarted = true
+	itemID := s.ensureMessageID()
+	outputIndex := s.messageOutputIndex
+	contentIndex := s.messageContentIndex
+
+	return [][]byte{
+		mustJSON(map[string]any{
+			"type":         "response.output_item.added",
+			"output_index": outputIndex,
+			"item": map[string]any{
+				"id":      itemID,
+				"type":    "message",
+				"status":  "in_progress",
+				"role":    "assistant",
+				"content": []any{},
+			},
+		}),
+		mustJSON(map[string]any{
+			"type":          "response.content_part.added",
+			"item_id":       itemID,
+			"output_index":  outputIndex,
+			"content_index": contentIndex,
+			"part": map[string]any{
+				"type":        "output_text",
+				"text":        "",
+				"annotations": []any{},
+			},
+		}),
+	}
+}
+
+func (s *responsesStreamState) finalizeTextEvents() [][]byte {
+	if !s.textStarted || s.textDone {
+		return nil
+	}
+	s.textDone = true
+	s.messagePartAdded = true
+	itemID := s.ensureMessageID()
+	outputIndex := s.messageOutputIndex
+	contentIndex := s.messageContentIndex
+	text := s.text.String()
+	item := s.buildCompletedMessageItem()
+
+	return [][]byte{
+		mustJSON(map[string]any{
+			"type":          "response.output_text.done",
+			"item_id":       itemID,
+			"output_index":  outputIndex,
+			"content_index": contentIndex,
+			"text":          text,
+		}),
+		mustJSON(map[string]any{
+			"type":          "response.content_part.done",
+			"item_id":       itemID,
+			"output_index":  outputIndex,
+			"content_index": contentIndex,
+			"part": map[string]any{
+				"type":        "output_text",
+				"text":        text,
+				"annotations": []any{},
+			},
+		}),
+		mustJSON(map[string]any{
+			"type":         "response.output_item.done",
+			"output_index": outputIndex,
+			"item":         item,
+		}),
+	}
+}
+
+func (s *responsesStreamState) ensureToolCall(index int, tcID, kind, name string) *responsesStreamToolCallState {
+	if s.toolCalls == nil {
+		s.toolCalls = make(map[int]*responsesStreamToolCallState)
+	}
+	if call, ok := s.toolCalls[index]; ok {
+		if strings.TrimSpace(name) != "" {
+			call.name = strings.TrimSpace(name)
+		}
+		if strings.TrimSpace(tcID) != "" {
+			call.callID = strings.TrimSpace(tcID)
+		}
+		if normalizedKind := normalizeChatToolCallKind(kind); normalizedKind != "" {
+			if call.kind == "custom" && normalizedKind == "function" && strings.TrimSpace(name) == "" {
+				return call
+			}
+			call.kind = normalizedKind
+			call.itemID = responsesToolItemID(responsesToolItemIDPrefix(normalizedKind), call.callID)
+		}
+		return call
+	}
+
+	callID := strings.TrimSpace(tcID)
+	if callID == "" {
+		callID = "call_" + uuid.NewString()
+	}
+	normalizedKind := normalizeChatToolCallKind(kind)
+	if normalizedKind == "" {
+		normalizedKind = "function"
+	}
+	itemID := responsesToolItemID(responsesToolItemIDPrefix(normalizedKind), callID)
+	base := s.toolOutputBase
+	if s.messageItemAdded {
+		base = 1
+	}
+	call := &responsesStreamToolCallState{
+		index:       index,
+		outputIndex: base + index,
+		itemID:      itemID,
+		callID:      callID,
+		kind:        normalizedKind,
+		name:        strings.TrimSpace(name),
+	}
+	s.toolCalls[index] = call
+	return call
+}
+
+func (s *responsesStreamState) orderedToolCalls() []*responsesStreamToolCallState {
+	if len(s.toolCalls) == 0 {
+		return nil
+	}
+	keys := make([]int, 0, len(s.toolCalls))
+	for idx := range s.toolCalls {
+		keys = append(keys, idx)
+	}
+	sort.Ints(keys)
+	out := make([]*responsesStreamToolCallState, 0, len(keys))
+	for _, idx := range keys {
+		out = append(out, s.toolCalls[idx])
+	}
+	return out
+}
+
+func (s *responsesStreamState) finalizeToolCallEvents() [][]byte {
+	calls := s.orderedToolCalls()
+	if len(calls) == 0 {
+		return nil
+	}
+	payloads := make([][]byte, 0, len(calls)*2)
+	for _, call := range calls {
+		if call.done {
+			continue
+		}
+		call.done = true
+		if delta := call.finalizeBridgedCustomInput(); delta != "" {
+			payloads = append(payloads, mustJSON(map[string]any{
+				"type":         call.inputDeltaEventType(),
+				"item_id":      call.itemID,
+				"output_index": call.outputIndex,
+				"call_id":      call.callID,
+				"delta":        delta,
+			}))
+		}
+		args := call.arguments.String()
+		payloads = append(payloads, mustJSON(map[string]any{
+			"type":                call.inputDoneEventType(),
+			"item_id":             call.itemID,
+			"output_index":        call.outputIndex,
+			"call_id":             call.callID,
+			call.inputFieldName(): args,
+		}))
+		payloads = append(payloads, mustJSON(map[string]any{
+			"type":         "response.output_item.done",
+			"output_index": call.outputIndex,
+			"item":         call.completedResponsesItem(),
+		}))
+	}
+	return payloads
+}
+
+func normalizeChatToolCallKind(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "custom":
+		return "custom"
+	case "function", "":
+		return "function"
+	default:
+		return ""
+	}
+}
+
+func responsesToolItemIDPrefix(kind string) string {
+	if kind == "custom" {
+		return "ctc"
+	}
+	return "fc"
+}
+
+func (c *responsesStreamToolCallState) responsesItemType() string {
+	if c.kind == "custom" {
+		return "custom_tool_call"
+	}
+	return "function_call"
+}
+
+func (c *responsesStreamToolCallState) inputFieldName() string {
+	if c.kind == "custom" {
+		return "input"
+	}
+	return "arguments"
+}
+
+func (c *responsesStreamToolCallState) inputDeltaEventType() string {
+	if c.kind == "custom" {
+		return "response.custom_tool_call_input.delta"
+	}
+	return "response.function_call_arguments.delta"
+}
+
+func (c *responsesStreamToolCallState) inputDoneEventType() string {
+	if c.kind == "custom" {
+		return "response.custom_tool_call_input.done"
+	}
+	return "response.function_call_arguments.done"
+}
+
+func (c *responsesStreamToolCallState) inProgressResponsesItem() map[string]any {
+	return map[string]any{
+		"id":               c.itemID,
+		"type":             c.responsesItemType(),
+		"status":           "in_progress",
+		"call_id":          c.callID,
+		"name":             c.name,
+		c.inputFieldName(): "",
+	}
+}
+
+func (c *responsesStreamToolCallState) completedResponsesItem() map[string]any {
+	c.finalizeBridgedCustomInput()
+	return map[string]any{
+		"id":               c.itemID,
+		"type":             c.responsesItemType(),
+		"status":           "completed",
+		"call_id":          c.callID,
+		"name":             c.name,
+		c.inputFieldName(): c.arguments.String(),
+	}
+}
+
+func (c *responsesStreamToolCallState) finalizeBridgedCustomInput() string {
+	if !c.bridgedFunction {
+		return ""
+	}
+	input := extractCustomToolInputFromFunctionArguments(c.rawArguments.String())
+	if input == c.arguments.String() {
+		return ""
+	}
+	c.arguments.Reset()
+	c.arguments.WriteString(input)
+	return input
 }
 
 func translateChatStreamEventToResponses(data []byte, state *responsesStreamState) ([][]byte, bool) {
@@ -2449,12 +3549,17 @@ func translateChatStreamEventToResponses(data []byte, state *responsesStreamStat
 		Created int64  `json:"created"`
 		Choices []struct {
 			Delta struct {
-				Role      string `json:"role"`
-				Content   string `json:"content"`
-				ToolCalls []struct {
-					Index    int    `json:"index"`
-					ID       string `json:"id"`
-					Type     string `json:"type"`
+				Role         string                 `json:"role"`
+				Content      string                 `json:"content"`
+				FunctionCall openAIToolCallFunction `json:"function_call"`
+				ToolCalls    []struct {
+					Index  int    `json:"index"`
+					ID     string `json:"id"`
+					Type   string `json:"type"`
+					Custom struct {
+						Name  string `json:"name"`
+						Input string `json:"input"`
+					} `json:"custom"`
 					Function struct {
 						Name      string `json:"name"`
 						Arguments string `json:"arguments"`
@@ -2490,62 +3595,104 @@ func translateChatStreamEventToResponses(data []byte, state *responsesStreamStat
 	}
 
 	payloads := make([][]byte, 0)
+	if !state.createdEventEmitted {
+		state.createdEventEmitted = true
+		payloads = append(payloads, mustJSON(map[string]any{
+			"type":     "response.created",
+			"response": state.buildInProgressResponse(),
+		}))
+	}
+	if !state.inProgressEventEmitted {
+		state.inProgressEventEmitted = true
+		payloads = append(payloads, mustJSON(map[string]any{
+			"type":     "response.in_progress",
+			"response": state.buildInProgressResponse(),
+		}))
+	}
 
 	for _, choice := range chunk.Choices {
-		// Text delta → response.output_text.delta
 		if choice.Delta.Content != "" {
-			if !state.textStarted {
-				state.textStarted = true
-				// Emit response.output_text.started
-				startPayload, _ := json.Marshal(map[string]any{
-					"type":   "response.output_text.delta",
-					"delta":  choice.Delta.Content,
-					"offset": 0,
-				})
-				payloads = append(payloads, startPayload)
-			} else {
-				deltaPayload, _ := json.Marshal(map[string]any{
-					"type":   "response.output_text.delta",
-					"delta":  choice.Delta.Content,
-					"offset": 0,
-				})
-				payloads = append(payloads, deltaPayload)
-			}
+			payloads = append(payloads, state.ensureMessageStartedEvents()...)
+			state.text.WriteString(choice.Delta.Content)
+			payloads = append(payloads, mustJSON(map[string]any{
+				"type":          "response.output_text.delta",
+				"item_id":       state.ensureMessageID(),
+				"output_index":  state.messageOutputIndex,
+				"content_index": state.messageContentIndex,
+				"delta":         choice.Delta.Content,
+			}))
 		}
 
-		// Tool call deltas
-		for _, tc := range choice.Delta.ToolCalls {
-			if state.toolCallsStarted == nil {
-				state.toolCallsStarted = make(map[int]bool)
+		toolCalls := choice.Delta.ToolCalls
+		if strings.TrimSpace(choice.Delta.FunctionCall.Name) != "" || strings.TrimSpace(choice.Delta.FunctionCall.Arguments) != "" {
+			toolCalls = append(toolCalls, struct {
+				Index  int    `json:"index"`
+				ID     string `json:"id"`
+				Type   string `json:"type"`
+				Custom struct {
+					Name  string `json:"name"`
+					Input string `json:"input"`
+				} `json:"custom"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			}{
+				Index: 0,
+				Type:  "function",
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{
+					Name:      choice.Delta.FunctionCall.Name,
+					Arguments: choice.Delta.FunctionCall.Arguments,
+				},
+			})
+		}
+
+		for _, tc := range toolCalls {
+			kind := normalizeChatToolCallKind(tc.Type)
+			name := tc.Function.Name
+			inputDelta := tc.Function.Arguments
+			bridgedCustom := false
+			if strings.TrimSpace(tc.Custom.Name) != "" || kind == "custom" {
+				kind = "custom"
+				name = tc.Custom.Name
+				inputDelta = tc.Custom.Input
+			} else if _, ok := state.customToolNames[strings.TrimSpace(name)]; ok {
+				kind = "custom"
+				bridgedCustom = true
 			}
-			if !state.toolCallsStarted[tc.Index] {
-				state.toolCallsStarted[tc.Index] = true
-				startPayload, _ := json.Marshal(map[string]any{
-					"type": "response.function_call_arguments.delta",
-					"index": tc.Index,
-					"name":  tc.Function.Name,
-					"delta": tc.Function.Arguments,
-				})
-				payloads = append(payloads, startPayload)
-			} else if tc.Function.Arguments != "" {
-				deltaPayload, _ := json.Marshal(map[string]any{
-					"type":  "response.function_call_arguments.delta",
-					"index": tc.Index,
-					"delta": tc.Function.Arguments,
-				})
-				payloads = append(payloads, deltaPayload)
+			call := state.ensureToolCall(tc.Index, tc.ID, kind, name)
+			call.bridgedFunction = call.bridgedFunction || bridgedCustom
+			if !call.added {
+				call.added = true
+				payloads = append(payloads, mustJSON(map[string]any{
+					"type":         "response.output_item.added",
+					"output_index": call.outputIndex,
+					"item":         call.inProgressResponsesItem(),
+				}))
+			}
+			if inputDelta != "" {
+				if call.bridgedFunction {
+					call.rawArguments.WriteString(inputDelta)
+					continue
+				}
+				call.arguments.WriteString(inputDelta)
+				payloads = append(payloads, mustJSON(map[string]any{
+					"type":         call.inputDeltaEventType(),
+					"item_id":      call.itemID,
+					"output_index": call.outputIndex,
+					"call_id":      call.callID,
+					"delta":        inputDelta,
+				}))
 			}
 		}
 
 		if choice.FinishReason != "" {
 			state.finishReason = choice.FinishReason
-			if state.textStarted && !state.textDone {
-				state.textDone = true
-				donePayload, _ := json.Marshal(map[string]any{
-					"type": "response.output_text.done",
-				})
-				payloads = append(payloads, donePayload)
-			}
+			payloads = append(payloads, state.finalizeTextEvents()...)
+			payloads = append(payloads, state.finalizeToolCallEvents()...)
 		}
 	}
 

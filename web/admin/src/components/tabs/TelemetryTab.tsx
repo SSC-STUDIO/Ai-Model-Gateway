@@ -181,7 +181,7 @@ const TelemetryTabComponent = ({
         <div class="empty-state-box">
           <div class="empty-state-icon"><Icon name="chart" size={30} /></div>
           <p class="empty-state-title">{t('empty.noTelemetry')}</p>
-          <p class="empty-state-hint">{t('empty.noTelemetry')}</p>
+          <p class="empty-state-hint">{t('empty.noTelemetryHint')}</p>
         </div>
       </section>
     )

@@ -51,13 +51,13 @@ export function getInitialLocale(): LocaleKey {
   return getStoredLocale() || getBrowserLocale()
 }
 
-type I18nContextValue = {
+export type I18nContextValue = {
   locale: LocaleKey
   t: (key: string) => string
   setLocale: (locale: LocaleKey) => void
 }
 
-const I18nContext = createContext<I18nContextValue | undefined>(undefined)
+export const I18nContext = createContext<I18nContextValue | undefined>(undefined)
 
 function getString(obj: unknown, path: string): string {
   const parts = path.split('.')

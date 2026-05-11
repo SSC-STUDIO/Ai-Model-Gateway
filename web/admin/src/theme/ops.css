@@ -11,6 +11,8 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* === Command Center === */
@@ -38,6 +40,7 @@
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .ops-command-metric {
@@ -120,6 +123,8 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--surface-raised) 84%, transparent);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ops-workspace-switch-btn {
@@ -166,16 +171,24 @@
   font-size: 0.86rem;
   font-weight: 700;
   overflow: hidden;
+  display: -webkit-box;
+  overflow-wrap: anywhere;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .ops-workspace-switch-btn small {
   font-size: 0.72rem;
   color: var(--text-muted);
   overflow: hidden;
+  display: -webkit-box;
+  overflow-wrap: anywhere;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .ops-workspace-panel {
@@ -190,6 +203,7 @@
     "preflight recent";
   align-items: start;
   gap: 14px;
+  min-width: 0;
 }
 
 .ops-command-main,
@@ -646,6 +660,7 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .ops-toolbar h2 {
@@ -667,6 +682,8 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* === Metric === */
@@ -674,6 +691,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .ops-metric {
@@ -769,6 +787,8 @@
   background: var(--surface-card);
   box-shadow: var(--card-shadow);
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ops-card:hover {
@@ -781,6 +801,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .ops-card-header h3 {
@@ -790,19 +811,23 @@
   color: var(--config-title-color);
   text-transform: none;
   letter-spacing: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .ops-card-header span {
   font-size: 0.75rem;
   color: var(--text-muted);
   font-weight: 500;
+  flex: 0 0 auto;
 }
 
 /* === Audit Layout === */
 .ops-audit-layout {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
 }
 
 @media (max-width: 1024px) {
@@ -835,6 +860,10 @@
   font-size: 0.78rem;
   color: var(--text-secondary);
   font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ops-action-bar-label strong {
@@ -872,6 +901,7 @@
   gap: 14px;
   padding: 14px 0;
   border-bottom: 1px solid var(--border-color);
+  min-width: 0;
 }
 
 .ops-event:last-child {
@@ -936,6 +966,7 @@
   font-size: 0.72rem;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .ops-event-title {
@@ -957,6 +988,9 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .ops-event-error {
@@ -1102,8 +1136,9 @@
 /* === Diagnostics Layout === */
 .ops-diagnostics-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
 }
 
 @media (max-width: 1024px) {
@@ -1236,8 +1271,9 @@
 /* === Probe === */
 .ops-probe-layout {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
 }
 
 @media (max-width: 1024px) {
@@ -1540,6 +1576,26 @@
     grid-template-columns: 1fr;
   }
 
+  .ops-metric-grid,
+  .ops-provider-counts {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-workspace-switch {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .ops-workspace-switch::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ops-workspace-switch-btn {
+    flex: 0 0 220px;
+  }
+
   .ops-command-layout {
     grid-template-areas:
       "topology"
@@ -1578,6 +1634,10 @@
     white-space: normal;
   }
 
+  .ops-event-topline {
+    align-items: flex-start;
+  }
+
   .ops-skeleton-grid {
     grid-template-columns: 1fr;
   }
@@ -1592,6 +1652,8 @@
   flex-wrap: wrap;
   gap: 10px;
   align-items: flex-end;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ops-filter-bar .ops-field {
@@ -1607,6 +1669,7 @@
 .ops-filter-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .ops-filter-actions button {
@@ -1620,6 +1683,8 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .ops-copy-actions button {

@@ -144,6 +144,7 @@ func Mount(mux *http.ServeMux, deps Deps, frontendBundle *AdminFrontendBundle) {
 	mux.Handle("/api/admin/probe/provider", wrap(http.HandlerFunc(probeProviderHandler(deps))))
 	mux.Handle("/api/admin/probe/model", wrap(http.HandlerFunc(probeModelHandler(deps))))
 	mux.Handle("/api/admin/diagnostics", wrap(http.HandlerFunc(diagnosticsHandler(deps))))
+	mux.Handle("/api/admin/client-error", wrap(http.HandlerFunc(clientErrorHandler(deps))))
 	mux.Handle("/api/admin/secrets/status", wrap(http.HandlerFunc(secretsStatusHandler(deps))))
 	if deps.Replay != nil {
 		mux.Handle("/api/admin/replay", wrap(deps.Replay))

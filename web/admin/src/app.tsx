@@ -399,7 +399,7 @@ export function App() {
   )
   const hideActiveError = inlineTelemetryState && isTelemetryConnectionError(activeError)
 
-  const refreshControls = (
+  const refreshControls = useMemo(() => (
     <div class="auto-refresh-controls">
       <span class="auto-refresh-label">{t('autoRefresh.interval')}:</span>
       {([0, 10000, 30000, 60000] as const).map((ms) => (
@@ -416,9 +416,9 @@ export function App() {
         <span class="auto-refresh-indicator">{t('autoRefresh.active')}</span>
       )}
     </div>
-  )
+  ), [t, refreshInterval])
 
-  const tabContent = useMemo(() => {
+  const tabContent = (() => {
     switch (tab) {
       case 'overview':
         return (
@@ -471,6 +471,7 @@ export function App() {
           <>
             {refreshControls}
             <LogsTab
+              // telemetry prop holds logs data (consistent with DataResponse type naming)
               telemetry={logs}
               hours={logsHours}
               onHoursChange={setLogsHours}
@@ -543,37 +544,7 @@ export function App() {
       case 'diagnostics':
         return <OpsTab mode="diagnostics" canWrite={canWrite} onUnauthorized={handleUnauthorized} />
     }
-  }, [
-    actionBusy,
-    applySelectedRevision,
-    canWrite,
-    controlConfig,
-    currentHistoryEntry,
-    handleBenchmarkRefresh,
-    handleUnauthorized,
-    historyAction,
-    historyActionLabel,
-    historyPayload,
-    benchmark,
-    benchmarkModels,
-    benchmarkLoading,
-    overview,
-    refreshPricingStatus,
-    refreshControls,
-    selectedRevision,
-    setTelemetryHours,
-    setTelemetryBucket,
-    setLogsHours,
-    status,
-    t,
-    logs,
-    logsHours,
-    tab,
-    telemetry,
-    telemetryHours,
-    telemetryTimeseries,
-    telemetryBucket,
-  ])
+  })()
 
   if (sessionLoading) {
     return <main class="app-shell login-shell" />

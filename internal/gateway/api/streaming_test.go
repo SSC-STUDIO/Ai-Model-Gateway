@@ -12,6 +12,27 @@ import (
 	"ai-model-gateway/internal/gateway/snapshot"
 )
 
+type panicWriter struct {
+	header http.Header
+}
+
+func (w *panicWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *panicWriter) Write([]byte) (int, error) {
+	panic("write panic")
+}
+
+func (w *panicWriter) WriteHeader(statusCode int) {}
+
+func (w *panicWriter) Flush() {
+	panic("flush panic")
+}
+
 func TestIsSSE(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -310,6 +331,20 @@ func TestStartNonStreamKeepAlive(t *testing.T) {
 func TestNonStreamKeepAlive_StopNil(t *testing.T) {
 	var s *nonStreamKeepAliveSession
 	s.Stop()
+}
+
+func TestSafeWrite_RecoversFromPanic(t *testing.T) {
+	writer := &panicWriter{}
+	if n, ok := safeWrite(writer, []byte("x")); ok || n != 0 {
+		t.Fatalf("expected safeWrite to fail cleanly, got n=%d ok=%v", n, ok)
+	}
+}
+
+func TestSafeFlush_RecoversFromPanic(t *testing.T) {
+	writer := &panicWriter{}
+	if ok := safeFlush(writer); ok {
+		t.Fatal("expected safeFlush to fail cleanly")
+	}
 }
 
 func TestCancelOnClose(t *testing.T) {

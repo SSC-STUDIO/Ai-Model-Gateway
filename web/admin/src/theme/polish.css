@@ -302,5 +302,4 @@ button:active:not(:disabled) {
   height: 4px;
   background: linear-gradient(90deg, var(--metric-accent-amber) 0%, var(--accent-color) 46%, var(--metric-accent-green) 100%);
   opacity: 0.78;
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
 }

@@ -1,7 +1,10 @@
-import { Fragment, memo, useCallback, useMemo, useState } from 'preact/compat'
+import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import type { DataResponse, ErrorEntry, RequestEntry } from '../../types'
-import { formatInteger } from '../../utils/formatting'
+import { formatAbsoluteTime, formatInteger, formatRelativeTime } from '../../utils/formatting'
+import { copyText } from '../../utils/clipboard'
+import { downloadCsv } from '../../utils/csv'
+import { generatePageNumbers } from '../../utils/pagination'
 import { Icon } from '../Icon'
 import { ServiceStatePanel } from '../ServiceStatePanel'
 
@@ -17,8 +20,9 @@ interface LogsTabProps {
 
 type LogType = 'all' | 'requests' | 'errors'
 
+const PAGE_SIZES = [10, 25, 50, 100] as const
+
 const LOGS_WINDOW_OPTIONS = [
-  { value: '1', label: '1h' },
   { value: '6', label: '6h' },
   { value: '24', label: '24h' },
   { value: '168', label: '7d' },
@@ -26,36 +30,7 @@ const LOGS_WINDOW_OPTIONS = [
   { value: 'all', label: 'All' },
 ]
 
-const DEFAULT_PAGE_SIZE = 50
-
 type StatusTone = 'success' | 'warning' | 'error' | 'neutral'
-
-function formatRelativeTime(value: string | null | undefined): string {
-  if (!value) return '-'
-  const parsed = new Date(value)
-  const ts = parsed.getTime()
-  if (Number.isNaN(ts)) return value
-
-  const now = Date.now()
-  const diffMs = now - ts
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHour / 24)
-
-  if (diffSec < 10) return 'just now'
-  if (diffSec < 60) return `${diffSec}s ago`
-  if (diffMin < 60) return `${diffMin}m ago`
-  if (diffHour < 24) return `${diffHour}h ago`
-  if (diffDay < 7) return `${diffDay}d ago`
-  return parsed.toLocaleDateString()
-}
-
-function formatAbsoluteTime(value: string | null | undefined): string {
-  if (!value) return '-'
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
-}
 
 function formatLatency(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(1)}ms` : '-'
@@ -70,6 +45,11 @@ function statusTone(status: number | null | undefined): StatusTone {
 
 function statusText(status: number | null | undefined): string {
   return typeof status === 'number' && Number.isFinite(status) && status > 0 ? String(status) : '-'
+}
+
+function statusLabel(status: number | null | undefined): string {
+  const text = statusText(status)
+  return text === '-' ? text : `HTTP ${text}`
 }
 
 interface UnifiedLogEntry {
@@ -175,6 +155,37 @@ function joinSecondary(parts: Array<string | null | undefined>): string | undefi
   return filtered.length > 0 ? filtered.join(' · ') : undefined
 }
 
+function buildLogCsvRows(entries: UnifiedLogEntry[]) {
+  return [
+    [
+      'time',
+      'path',
+      'model',
+      'upstream',
+      'status',
+      'latency_ms',
+      'input_tokens',
+      'output_tokens',
+      'cached_prompt_tokens',
+      'attempts',
+      'error',
+    ],
+    ...entries.map((entry) => [
+      entry.timestamp,
+      entry.path,
+      entry.model,
+      entry.upstream,
+      statusLabel(entry.statusCode),
+      Number.isFinite(entry.latencyMs) ? entry.latencyMs.toFixed(1) : '',
+      entry.inputTokens,
+      entry.outputTokens,
+      entry.cachedPromptTokens,
+      entry.attempts ?? 1,
+      entry.errorMessage,
+    ]),
+  ]
+}
+
 const LogsTabComponent = ({
   telemetry,
   hours,
@@ -188,7 +199,20 @@ const LogsTabComponent = ({
   const [logType, setLogType] = useState<LogType>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [copiedRow, setCopiedRow] = useState<number | null>(null)
+  const [copyErrorRow, setCopyErrorRow] = useState<number | null>(null)
+
+  // UI page navigation
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(50)
+
+  // Reset page-local state when telemetry prop changes (hours change / new data)
+  useEffect(() => {
+    setCurrentPage(1)
+    setExpandedRow(null)
+    setCopiedRow(null)
+    setCopyErrorRow(null)
+  }, [telemetry?.requests, telemetry?.errors, telemetry?.total])
 
   const allEntries = useMemo(() => {
     return unifyEntries(telemetry?.requests, telemetry?.errors)
@@ -215,11 +239,31 @@ const LogsTabComponent = ({
     )
   }, [allEntries, logType, searchQuery])
 
-  const visibleEntries = useMemo(() => {
-    return filteredEntries.slice(0, pageSize)
-  }, [filteredEntries, pageSize])
+  // Page-based navigation
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filteredEntries.length / pageSize)), [filteredEntries, pageSize])
+  const safePage = Math.max(1, Math.min(currentPage, totalPages))
+  const startIndex = (safePage - 1) * pageSize
+  const endIndex = Math.min(startIndex + pageSize, filteredEntries.length)
 
-  const hasMore = visibleEntries.length < filteredEntries.length
+  const visibleEntries = useMemo(() => {
+    return filteredEntries.slice(startIndex, endIndex)
+  }, [filteredEntries, startIndex, endIndex])
+
+  const buildLogDetailText = useCallback((entry: UnifiedLogEntry) => {
+    return [
+      `${t('logs.detailTime')}: ${entry.timestamp || '-'}`,
+      `${t('logs.detailPath')}: ${entry.path || '-'}`,
+      `${t('logs.detailModel')}: ${entry.model || '-'}`,
+      `${t('logs.detailUpstream')}: ${entry.upstream || '-'}`,
+      `${t('logs.detailStatus')}: ${statusLabel(entry.statusCode)}`,
+      `${t('logs.detailLatency')}: ${formatLatency(entry.latencyMs)}`,
+      `${t('logs.detailInputTokens')}: ${formatInteger(entry.inputTokens)}`,
+      `${t('logs.detailOutputTokens')}: ${formatInteger(entry.outputTokens)}`,
+      `${t('logs.detailCachedTokens')}: ${formatInteger(entry.cachedPromptTokens)}`,
+      `${t('logs.detailAttempts')}: ${entry.attempts ?? 1}`,
+      ...(entry.errorMessage ? [`${t('logs.detailError')}: ${entry.errorMessage}`] : []),
+    ].join('\n')
+  }, [t])
 
   const handleRowClick = useCallback(
     (id: number) => {
@@ -232,12 +276,46 @@ const LogsTabComponent = ({
     setSearchQuery('')
   }, [])
 
-  const handleLoadMore = useCallback(() => {
-    setPageSize((prev) => prev + DEFAULT_PAGE_SIZE)
+  const handleExportCsv = useCallback(() => {
+    if (filteredEntries.length === 0) return
+    const scope = logType === 'all' ? 'all' : logType
+    const windowLabel = hours === 'all' ? 'all' : `${hours}h`
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+    downloadCsv(`ai-gateway-logs-${scope}-${windowLabel}-${stamp}.csv`, buildLogCsvRows(filteredEntries))
+  }, [filteredEntries, hours, logType])
+
+  const handleCopyDetails = useCallback(async (entry: UnifiedLogEntry) => {
+    try {
+      await copyText(buildLogDetailText(entry))
+      setCopiedRow(entry.id)
+      setCopyErrorRow(null)
+      window.setTimeout(() => {
+        setCopiedRow((current) => (current === entry.id ? null : current))
+      }, 2000)
+    } catch (err) {
+      console.error('Failed to copy log details:', err)
+      setCopyErrorRow(entry.id)
+      setCopiedRow(null)
+      window.setTimeout(() => {
+        setCopyErrorRow((current) => (current === entry.id ? null : current))
+      }, 3000)
+    }
+  }, [buildLogDetailText])
+
+  const handlePageChange = useCallback((page: number) => {
+    const targetPage = Math.max(1, Math.min(page, totalPages))
+    setCurrentPage(targetPage)
+    setExpandedRow(null)
+  }, [totalPages])
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
   }, [])
 
   const handleHoursChange = useCallback((val: string) => {
-    setPageSize(DEFAULT_PAGE_SIZE)
+    setCurrentPage(1)
+    setExpandedRow(null)
     onHoursChange(val)
   }, [onHoursChange])
 
@@ -340,18 +418,41 @@ const LogsTabComponent = ({
               type="button"
               class="logs-search-clear"
               onClick={handleClearSearch}
-              aria-label="Clear search"
+              aria-label={t('logs.clearSearch')}
             >
               ×
             </button>
           )}
         </div>
+        <div class="logs-toolbar-actions">
+          <button
+            type="button"
+            class="secondary logs-export-btn"
+            onClick={handleExportCsv}
+            disabled={filteredEntries.length === 0}
+            title={filteredEntries.length === 0 ? t('logs.exportDisabled') : t('logs.exportCsv')}
+          >
+            <Icon name="download" />
+            {t('logs.exportCsv')}
+          </button>
+        </div>
       </div>
 
       <div class="logs-stats">
         <span class="logs-stat">
-          {t('logs.showing')}: <strong>{formatInteger(visibleEntries.length)}</strong> /{' '}
-          {formatInteger(filteredEntries.length)} {t('logs.entries')}
+          {totalPages > 1 ? (
+            <>{t('logs.showing')}: <strong>{formatInteger(startIndex + 1)}</strong>-<strong>{formatInteger(endIndex)}</strong> / {formatInteger(filteredEntries.length)} {t('logs.entries')}</>
+          ) : (
+            <>{t('logs.showing')}: <strong>{formatInteger(filteredEntries.length)}</strong> {t('logs.entries')}</>
+          )}
+        </span>
+        <span class="logs-paginator-size">
+          <span>{t('logs.perPage') || 'Per page'}:</span>
+          <select value={pageSize} onChange={(e) => handlePageSizeChange(Number((e.currentTarget as HTMLSelectElement).value))}>
+            {PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
         </span>
       </div>
 
@@ -381,6 +482,7 @@ const LogsTabComponent = ({
                   <th>{t('logs.colLatency')}</th>
                   <th>{t('logs.colTokens')}</th>
                   <th>{t('logs.colError')}</th>
+                  <th class="logs-action-col">{t('logs.colDetails')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -400,10 +502,7 @@ const LogsTabComponent = ({
 
                   return (
                     <Fragment key={entry.id}>
-                      <tr
-                        class={`data-row logs-row${hasError ? ' error-row' : ''}${hasWarning ? ' warning-row' : ''}${isExpanded ? ' expanded' : ''}`}
-                        onClick={() => handleRowClick(entry.id)}
-                      >
+                      <tr class={`data-row logs-row${hasError ? ' error-row' : ''}${hasWarning ? ' warning-row' : ''}${isExpanded ? ' expanded' : ''}`}>
                         <td class="logs-time" title={formatAbsoluteTime(entry.timestamp)}>
                           {formatRelativeTime(entry.timestamp)}
                         </td>
@@ -416,9 +515,9 @@ const LogsTabComponent = ({
                         <td>{entry.model}</td>
                         <td>{entry.upstream}</td>
                         <td>
-                          <span class={`status-dot ${tone}`} />
-                          <span class={`status-badge ${tone}`}>
-                            {statusText(entry.statusCode)}
+                          <span class={`status-dot ${tone}`} title={statusLabel(entry.statusCode)} aria-hidden="true" />
+                          <span class={`status-badge ${tone} ${tone === 'error' ? 'status-badge-strong' : ''}`}>
+                            {statusLabel(entry.statusCode)}
                           </span>
                         </td>
                         <td class="mono">
@@ -433,20 +532,55 @@ const LogsTabComponent = ({
                         </td>
                         <td class="logs-error-cell">
                           {entry.errorMessage ? (
-                            <span class="logs-error-text" title={entry.errorMessage}>
+                            <button
+                              type="button"
+                              class="logs-error-preview"
+                              title={entry.errorMessage}
+                              onClick={() => handleRowClick(entry.id)}
+                              aria-label={isExpanded ? t('logs.collapseDetails') : t('logs.expandDetails')}
+                              aria-expanded={isExpanded}
+                            >
                               {entry.errorMessage.length > 40
                                 ? `${entry.errorMessage.slice(0, 40)}…`
                                 : entry.errorMessage}
-                            </span>
+                            </button>
                           ) : (
                             '-'
                           )}
                         </td>
+                        <td class="logs-action-cell">
+                          <button
+                            type="button"
+                            class={`icon-btn logs-detail-toggle${isExpanded ? ' active' : ''}`}
+                            onClick={() => handleRowClick(entry.id)}
+                            aria-label={isExpanded ? t('logs.collapseDetails') : t('logs.expandDetails')}
+                            aria-expanded={isExpanded}
+                            title={isExpanded ? t('logs.collapseDetails') : t('logs.expandDetails')}
+                          >
+                            <span aria-hidden="true">{isExpanded ? '⌃' : '⌄'}</span>
+                          </button>
+                        </td>
                       </tr>
                       {isExpanded && (
                         <tr class="logs-detail-row">
-                          <td colSpan={8}>
+                          <td colSpan={9}>
                             <div class="logs-detail">
+                              <div class="logs-detail-header">
+                                <span class="logs-detail-title">{t('logs.detailTitle')}</span>
+                                <div class="logs-detail-actions">
+                                  {copyErrorRow === entry.id && (
+                                    <span class="logs-copy-feedback error">{t('logs.copyFailed')}</span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    class={`secondary logs-copy-btn${copiedRow === entry.id ? ' copied' : ''}`}
+                                    onClick={() => { void handleCopyDetails(entry) }}
+                                  >
+                                    <Icon name={copiedRow === entry.id ? 'check' : 'copy'} size={16} />
+                                    {copiedRow === entry.id ? t('logs.copiedDetails') : t('logs.copyDetails')}
+                                  </button>
+                                </div>
+                              </div>
                               <div class="logs-detail-grid">
                                 <div class="logs-detail-item">
                                   <span class="logs-detail-label">{t('logs.detailTime')}</span>
@@ -466,7 +600,7 @@ const LogsTabComponent = ({
                                 </div>
                                 <div class="logs-detail-item">
                                   <span class="logs-detail-label">{t('logs.detailStatus')}</span>
-                                  <span class="logs-detail-value">{entry.statusCode}</span>
+                                  <span class="logs-detail-value">{statusLabel(entry.statusCode)}</span>
                                 </div>
                                 <div class="logs-detail-item">
                                   <span class="logs-detail-label">{t('logs.detailLatency')}</span>
@@ -505,13 +639,44 @@ const LogsTabComponent = ({
               </tbody>
             </table>
           </div>
-          {hasMore && (
-            <div class="logs-load-more">
-              <button type="button" class="logs-load-more-btn" onClick={handleLoadMore}>
-                {t('logs.loadMore')}
+          <div class="logs-paginator">
+            <div class="logs-paginator-info">
+              <span>{t('logs.showing')}: <strong>{formatInteger(startIndex + 1)}</strong>-<strong>{formatInteger(endIndex)}</strong>, {t('logs.total')} <strong>{formatInteger(filteredEntries.length)}</strong></span>
+              {totalPages > 1 && <span class="logs-paginator-sep">{t('logs.totalPages')}: <strong>{formatInteger(totalPages)}</strong></span>}
+            </div>
+            {totalPages > 1 && (
+            <div class="logs-paginator-nav">
+              <button type="button" class="logs-page-btn" onClick={() => handlePageChange(safePage - 1)} disabled={safePage <= 1} aria-label={t('logs.prevPage') || 'Previous'}>
+                ‹
+              </button>
+              {generatePageNumbers(safePage, totalPages).map((page, idx) =>
+                page === '...' ? (
+                  <span key={`ellipsis-${idx}`} class="logs-page-ellipsis">…</span>
+                ) : (
+                  <button
+                    key={page}
+                    type="button"
+                    class={`logs-page-btn${safePage === page ? ' active' : ''}`}
+                    onClick={() => handlePageChange(page as number)}
+                  >
+                    {page}
+                  </button>
+                )
+              )}
+              <button type="button" class="logs-page-btn" onClick={() => handlePageChange(safePage + 1)} disabled={safePage >= totalPages} aria-label={t('logs.nextPage') || 'Next'}>
+                ›
               </button>
             </div>
-          )}
+            )}
+            <div class="logs-paginator-size">
+              <span>{t('logs.perPage') || 'Per page'}:</span>
+              <select value={pageSize} onChange={(e) => handlePageSizeChange(Number((e.currentTarget as HTMLSelectElement).value))}>
+                {PAGE_SIZES.map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </>
       )}
     </section>

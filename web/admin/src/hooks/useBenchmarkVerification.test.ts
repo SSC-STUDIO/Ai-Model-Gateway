@@ -223,8 +223,33 @@ describe('useBenchmarkVerification', () => {
     expect(result.current.publicSnapshotID).toBe('')
   })
 
+  it('defaults verification runs to every enabled upstream model', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url === '/api/admin/benchmark/baselines') {
+        return jsonResponse({ snapshots: [] })
+      }
+
+      if (url === '/api/admin/benchmark/runs?limit=20') {
+        return jsonResponse({ runs: [] })
+      }
+
+      throw new Error(`unexpected fetch ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useBenchmarkVerification({}))
+
+    await waitFor(() => expect(result.current.loadingLists).toBe(false))
+
+    expect(result.current.allActive).toBe(true)
+  })
+
   it('keeps a newly started run selected after refreshing verification lists', async () => {
     let created = false
+    let postedBody: unknown = null
     const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
 
@@ -259,6 +284,7 @@ describe('useBenchmarkVerification', () => {
 
       if (url === '/api/admin/benchmark/runs' && init?.method === 'POST') {
         created = true
+        postedBody = JSON.parse(String(init.body))
         return jsonResponse({
           run_id: 'run-new',
           status: 'completed',
@@ -303,6 +329,89 @@ describe('useBenchmarkVerification', () => {
     })
 
     await waitFor(() => expect(result.current.selectedRun?.run_id).toBe('run-new'))
+    expect(postedBody).toMatchObject({
+      all_active: true,
+      provider_id: '',
+      public_model: '',
+      suite: 'general_protocol_v1',
+    })
+  })
+
+  it('quick run posts an all-active suite request without requiring provider fields', async () => {
+    let postedBody: unknown = null
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url === '/api/admin/benchmark/baselines') {
+        return jsonResponse({ snapshots: [] })
+      }
+
+      if (url === '/api/admin/benchmark/runs?limit=20') {
+        return jsonResponse({
+          runs: [
+            {
+              run_id: 'run-quick',
+              status: 'completed',
+              suite_version: 'general_protocol_v1',
+              protocol: 'auto',
+              started_at: '2026-04-25T00:00:00Z',
+              target_count: 28,
+              completed_targets: 28,
+            },
+          ],
+        })
+      }
+
+      if (url === '/api/admin/benchmark/runs' && init?.method === 'POST') {
+        postedBody = JSON.parse(String(init.body))
+        return jsonResponse({
+          run_id: 'run-quick',
+          status: 'completed',
+          suite_version: 'general_protocol_v1',
+          protocol: 'auto',
+          started_at: '2026-04-25T00:00:00Z',
+          target_count: 28,
+          completed_targets: 28,
+          targets: [],
+        })
+      }
+
+      if (url === '/api/admin/benchmark/runs/run-quick') {
+        return jsonResponse({
+          run_id: 'run-quick',
+          status: 'completed',
+          suite_version: 'general_protocol_v1',
+          protocol: 'auto',
+          started_at: '2026-04-25T00:00:00Z',
+          target_count: 28,
+          completed_targets: 28,
+          targets: [],
+        })
+      }
+
+      if (url.includes('/api/admin/benchmark/runs/run-quick/telemetry?')) {
+        return jsonResponse({ events: [] })
+      }
+
+      throw new Error(`unexpected fetch ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useBenchmarkVerification({}))
+
+    await waitFor(() => expect(result.current.loadingLists).toBe(false))
+
+    await act(async () => {
+      result.current.setProviderInput('')
+      result.current.setPublicModelInput('')
+      await result.current.startQuickRun()
+    })
+
+    expect(postedBody).toEqual({
+      all_active: true,
+      suite: 'general_protocol_v1',
+    })
   })
 
   it('clears the selected baseline file and bumps the input key after import', async () => {

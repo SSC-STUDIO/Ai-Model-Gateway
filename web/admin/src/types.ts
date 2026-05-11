@@ -360,6 +360,7 @@ export interface DataResponse {
   }>
   requests?: RequestEntry[]
   errors?: ErrorEntry[]
+  total?: number
   pricing_economics?: PricingSnapshot
 }
 

@@ -5,11 +5,26 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
+
+	"ai-model-gateway/internal/infra/logger"
 )
+
+// maxReplayResponseBytes caps how many bytes we read from the replayed upstream
+// response. Without a cap a hostile or buggy upstream could exhaust admin memory.
+const maxReplayResponseBytes = 10 * 1024 * 1024
+
+// replayHTTPClient is a dedicated client for re-executing failed requests. It uses
+// a short header timeout and is constrained per-request by context deadlines.
+var replayHTTPClient = &http.Client{
+	Timeout: 120 * time.Second,
+}
 
 // FailedRequest represents a failed request for replay.
 type FailedRequest struct {
@@ -195,8 +210,17 @@ func (h *ReplayHandler) Replay(ctx context.Context, requestID string) (*ReplayRe
 		}, nil
 	}
 
-	// Reconstruct the request URL
-	targetURL := h.gatewayURL + req.Path
+	// Build the replay URL via net/url so a tampered stored path such as
+	// "//evil.example/x", "/../foo", or one containing newline/query injection
+	// cannot redirect the request away from the configured gateway.
+	targetURL, err := buildReplayURL(h.gatewayURL, req.Path)
+	if err != nil {
+		return &ReplayResult{
+			RequestID:  requestID,
+			ReplayedAt: time.Now().UTC(),
+			Error:      "replay target path rejected",
+		}, nil
+	}
 
 	// Create the replay request
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(req.RequestBody))
@@ -205,27 +229,31 @@ func (h *ReplayHandler) Replay(ctx context.Context, requestID string) (*ReplayRe
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// Execute the request
-	client := &http.Client{
-		Timeout: 120 * time.Second,
-	}
-	resp, err := client.Do(httpReq)
+	resp, err := replayHTTPClient.Do(httpReq)
 	if err != nil {
+		logger.Error("replay request failed",
+			"request_id", requestID,
+			"target", targetURL,
+			"error", err.Error(),
+		)
 		return &ReplayResult{
 			RequestID:  requestID,
 			ReplayedAt: time.Now().UTC(),
-			Error:      fmt.Sprintf("replay request failed: %v", err),
+			Error:      "replay request failed",
 		}, nil
 	}
 	defer resp.Body.Close()
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReplayResponseBytes))
 	if err != nil {
+		logger.Error("read replay response failed",
+			"request_id", requestID,
+			"error", err.Error(),
+		)
 		return &ReplayResult{
 			RequestID:  requestID,
 			ReplayedAt: time.Now().UTC(),
-			Error:      fmt.Sprintf("read replay response: %v", err),
+			Error:      "read replay response failed",
 		}, nil
 	}
 
@@ -237,9 +265,54 @@ func (h *ReplayHandler) Replay(ctx context.Context, requestID string) (*ReplayRe
 	}, nil
 }
 
+// buildReplayURL resolves the stored request path against the configured gateway
+// base URL in a way that blocks protocol-relative, scheme-injected, and upward
+// traversal paths. The returned URL is always anchored to gatewayURL's host.
+func buildReplayURL(gatewayURL, storedPath string) (string, error) {
+	base, err := url.Parse(strings.TrimSpace(gatewayURL))
+	if err != nil || base.Scheme == "" || base.Host == "" {
+		return "", errors.New("invalid gateway URL")
+	}
+
+	p := strings.TrimSpace(storedPath)
+	if p == "" || !strings.HasPrefix(p, "/") {
+		return "", errors.New("stored path must be absolute")
+	}
+	// Reject protocol-relative ("//host") and any attempt to smuggle a new host.
+	if strings.HasPrefix(p, "//") {
+		return "", errors.New("stored path must not be protocol-relative")
+	}
+	// Reject control characters and stray whitespace that could smuggle headers.
+	for _, r := range p {
+		if r < 0x20 || r == 0x7f {
+			return "", errors.New("stored path contains control characters")
+		}
+	}
+
+	ref, err := url.Parse(p)
+	if err != nil {
+		return "", err
+	}
+	if ref.Scheme != "" || ref.Host != "" {
+		return "", errors.New("stored path must not include scheme or host")
+	}
+
+	resolved := base.ResolveReference(ref)
+	// Guard against ResolveReference producing a host change (belt-and-braces).
+	if resolved.Host != base.Host || resolved.Scheme != base.Scheme {
+		return "", errors.New("resolved URL escaped gateway origin")
+	}
+	return resolved.String(), nil
+}
+
 // ServeHTTP handles /api/admin/replay endpoints.
-// GET /api/admin/replay?start=...&end=... - list failed requests
-// POST /api/admin/replay - replay a request by request_id
+//
+// Routes are method-based for a clean REST-like surface:
+//
+//	GET    /api/admin/replay?start=...&end=...  → list failed requests
+//	POST   /api/admin/replay                     → replay by request_id
+//
+// Forwards all other methods to the standard 405 handler.
 func (h *ReplayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -247,6 +320,7 @@ func (h *ReplayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		h.handleReplay(w, r)
 	default:
+		w.Header().Set("Allow", "GET, POST")
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }

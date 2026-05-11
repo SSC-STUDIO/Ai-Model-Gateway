@@ -164,23 +164,55 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
     return all.filter((m) => matchesProvider(m, activeProvider))
   }, [pricingEconomics?.models, activeProvider])
 
+  // Merge same model entries (group by display_model)
+  const mergedModels = useMemo(() => {
+    type Merged = PricingModelSummary & { _providers?: Set<string> }
+    const groups = new Map<string, Merged>()
+    for (const m of filteredModels) {
+      const modelKey = m?.display_model ?? 'unknown'
+      const currency = costCurrency(m?.cost, m?.pricing?.currency)
+      const key = `${modelKey}\x00${currency}`
+      const existing = groups.get(key)
+      if (existing) {
+        // Accumulate usage
+        const pt = (existing.usage?.prompt_tokens ?? 0) + (m?.usage?.prompt_tokens ?? 0)
+        const ct = (existing.usage?.cached_prompt_tokens ?? 0) + (m?.usage?.cached_prompt_tokens ?? 0)
+        const cpt = (existing.usage?.completion_tokens ?? 0) + (m?.usage?.completion_tokens ?? 0)
+        existing.usage = { prompt_tokens: pt, cached_prompt_tokens: ct, completion_tokens: cpt, total_tokens: pt + cpt }
+        // Accumulate cost (same currency guaranteed by key)
+        const existingCost = costTotal(existing.cost)
+        const newCost = costTotal(m?.cost)
+        if (existing.cost) existing.cost.total = existingCost + newCost
+        if (m?.provider) existing._providers?.add(m.provider)
+        if (m?.upstream) existing._providers?.add(m.upstream)
+      } else {
+        groups.set(key, {
+          ...m,
+          _providers: new Set([m?.provider ?? '', m?.upstream ?? ''].filter(Boolean)),
+        })
+      }
+    }
+    return Array.from(groups.values())
+      .sort((a, b) => costTotal(b?.cost) - costTotal(a?.cost))
+  }, [filteredModels])
+
   const pricingModels = useMemo(
-    () => filteredModels.slice(0, 20),
-    [filteredModels]
+    () => mergedModels.slice(0, 20),
+    [mergedModels]
   )
   const pricingTotals = useMemo(
     () => primaryPricingTotals(pricingEconomics?.summary),
     [pricingEconomics?.summary]
   )
   const pricingCharts = useMemo(() => {
-    if (!filteredModels.length || pricingTotals.length === 0) return []
+    if (!mergedModels.length || pricingTotals.length === 0) return []
     return pricingTotals
       .map((total) => ({
         currency: total.currency,
-        data: pricingToDonut(filteredModels, total.currency),
+        data: pricingToDonut(mergedModels, total.currency),
       }))
       .filter((group) => group.data.length > 0)
-  }, [pricingTotals, filteredModels])
+  }, [pricingTotals, mergedModels])
   const pricingSourceSummary = useMemo(() => {
     const sources = pricingStatus?.sources ?? []
     return sources.reduce(
@@ -385,7 +417,7 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
                 <span>{pricingStatus.sources.length} {t('charts.donutItems')}</span>
               </summary>
               <div class="table-wrap">
-                <table>
+                <table class="pricing-source-table">
                   <thead>
                     <tr>
                       <th>{t('pricing.source')}</th>
@@ -407,7 +439,9 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
                         <td>{source.enabled ? (source.status ?? 'ready') : 'disabled'}</td>
                         <td>{formatInteger(source.model_count ?? 0)}</td>
                         <td>{formatPricingTimestamp(source.updated_at)}</td>
-                        <td>{source.last_error ?? '-'}</td>
+                        <td class="source-error-cell" title={source.last_error || undefined}>
+                          {source.last_error ?? '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -454,9 +488,11 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
                       <div class="table-cell-stack" title={m?.display_model ?? 'unknown'}>
                         <span class="table-cell-primary">{m?.display_model ?? 'unknown'}</span>
                         <span class="table-cell-secondary">
-                          {[m?.effective_model, m?.upstream ?? m?.provider, m?.pricing_model]
-                            .filter(Boolean)
-                            .join(' · ')}
+                          {m?._providers?.size
+                            ? [...m._providers].filter(Boolean).join(' · ')
+                            : [m?.effective_model, m?.upstream ?? m?.provider, m?.pricing_model]
+                              .filter(Boolean)
+                              .join(' · ')}
                         </span>
                       </div>
                     </td>

@@ -7,6 +7,7 @@ import { BarChart, DonutChart } from '../Charts'
 import { Icon } from '../Icon'
 import { ServiceStatePanel } from '../ServiceStatePanel'
 import { BenchmarkVerification } from '../BenchmarkVerification'
+import { WorkspaceBand } from '../WorkspaceBand'
 
 interface BenchmarkTabProps {
   benchmark: BenchmarkResponse | null
@@ -24,7 +25,7 @@ interface BenchmarkTabProps {
 const BENCHMARK_WINDOW_OPTIONS = [
   { value: '24', key: 'benchmark.last24h' },
   { value: '168', key: 'benchmark.last7d' },
-  { value: '720', label: '30d' },
+  { value: '720', key: 'benchmark.last30d' },
   { value: 'all', key: 'pricing.allHistory' },
 ]
 
@@ -167,6 +168,7 @@ const BenchmarkTabComponent = ({
   const [capabilityRun, setCapabilityRun] = useState<VerificationRunDetail | null>(null)
   const [capabilityLoading, setCapabilityLoading] = useState(false)
   const [capabilityError, setCapabilityError] = useState('')
+  const [mode, setMode] = useState<'upstream' | 'capability'>('upstream')
 
   const loadCapabilityRun = useCallback(async () => {
     setCapabilityLoading(true)
@@ -200,6 +202,11 @@ const BenchmarkTabComponent = ({
     onRefresh()
     void loadCapabilityRun()
   }, [loadCapabilityRun, onRefresh])
+
+  const handleRetry = useCallback(() => {
+    onRetry?.()
+    handleRefresh()
+  }, [handleRefresh, onRetry])
 
   const rows = useMemo(() => {
     const source = benchmark?.benchmarks ?? []
@@ -272,7 +279,7 @@ const BenchmarkTabComponent = ({
           hint={t('services.telemetryUnavailableHint')}
           detail={status?.telemetry_error}
           actionLabel={t('common.retry')}
-          onAction={onRetry ?? handleRefresh}
+          onAction={handleRetry}
           items={[
             {
               label: t('header.telemetry'),
@@ -289,7 +296,7 @@ const BenchmarkTabComponent = ({
   }
 
   return (
-    <section class="panel benchmark-reset-page">
+    <section class="panel workspace-page benchmark-reset-page">
       <div class="workspace-hero benchmark-reset-hero">
         <div class="workspace-hero-copy">
           <span class="workspace-kicker">{t('benchmark.title')}</span>
@@ -304,236 +311,288 @@ const BenchmarkTabComponent = ({
         </div>
       </div>
 
-      <div class="timeseries-header">
-        <h3>{t('benchmark.title')}</h3>
-        <div class="timeseries-controls">
-          <div class="timeseries-selector">
-            <span>{t('benchmark.timeRange')}:</span>
-            {BENCHMARK_WINDOW_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                class={`ts-btn${hours === option.value ? ' active' : ''}`}
-                onClick={() => onHoursChange(option.value)}
-              >
-                {option.label ?? t(option.key!)}
-              </button>
-            ))}
-          </div>
-          <button type="button" class="secondary" onClick={handleRefresh}>
-            <Icon name="refresh" />
-            {t('benchmark.refresh')}
-          </button>
-        </div>
+      <div class="workspace-nav workspace-nav-segmented" role="tablist" aria-label={t('tabs.benchmark')}>
+        <button
+          type="button"
+          class={`workspace-nav-btn${mode === 'upstream' ? ' active' : ''}`}
+          role="tab"
+          aria-selected={mode === 'upstream'}
+          onClick={() => setMode('upstream')}
+        >
+          <Icon name="telemetry" class="tab-icon" />
+          <span>{t('benchmark.modeUpstream')}</span>
+        </button>
+        <button
+          type="button"
+          class={`workspace-nav-btn${mode === 'capability' ? ' active' : ''}`}
+          role="tab"
+          aria-selected={mode === 'capability'}
+          onClick={() => setMode('capability')}
+        >
+          <Icon name="benchmark" class="tab-icon" />
+          <span>{t('benchmark.modeCapability')}</span>
+        </button>
       </div>
 
-      <BenchmarkVerification canWrite={canWrite} onRunStarted={loadCapabilityRun} onUnauthorized={onUnauthorized} />
-
-      <section class="panel-subsection benchmark-table-section benchmark-capability-section">
-        <div class="panel-header">
-          <div>
-            <h3>{t('benchmark.capability.title')}</h3>
-            <p>{capabilityRun ? `${t('benchmark.capability.run')}: ${capabilityRun.run_id}` : t('benchmark.capability.subtitle')}</p>
-          </div>
-          <div class="benchmark-capability-meta">
-            {capabilityRun ? <span class="status-badge neutral">{t('benchmark.capability.status')}: {capabilityRun.status}</span> : null}
-            {capabilityRun?.completed_at ? <span class="status-badge neutral">{formatStatusTime(capabilityRun.completed_at)}</span> : null}
-          </div>
-        </div>
-        {capabilityLoading && !capabilityRun ? (
-          <div class="benchmark-inline-state">{t('benchmark.capability.loading')}</div>
-        ) : capabilityError ? (
-          <div class="empty-state-box">
-            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
-            <p class="empty-state-title">{t('benchmark.capability.error')}</p>
-            <p class="empty-state-hint">{capabilityError}</p>
-          </div>
-        ) : capabilityRuns.length === 0 ? (
-          <div class="empty-state-box">
-            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
-            <p class="empty-state-title">{t('benchmark.capability.noRuns')}</p>
-            <p class="empty-state-hint">{t('benchmark.capability.noRunsHint')}</p>
-          </div>
-        ) : !capabilityRun ? (
-          <div class="empty-state-box">
-            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
-            <p class="empty-state-title">{t('benchmark.capability.noTerminalRun')}</p>
-            <p class="empty-state-hint">{t('benchmark.capability.noTerminalRunHint')}</p>
-          </div>
-        ) : capabilityRows.length === 0 ? (
-          <div class="empty-state-box">
-            <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
-            <p class="empty-state-title">{t('benchmark.capability.noTargets')}</p>
-            <p class="empty-state-hint">{t('benchmark.capability.noTargetsHint')}</p>
-          </div>
-        ) : (
-          <div class="table-wrap benchmark-table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t('benchmark.capability.rank')}</th>
-                  <th>{t('benchmark.upstream')}</th>
-                  <th>{t('benchmark.model')}</th>
-                  <th>{t('benchmark.capability.score')}</th>
-                  <th>{t('benchmark.capability.completion')}</th>
-                  <th>{t('benchmark.capability.verdict')}</th>
-                  <th>{t('benchmark.capability.publicGap')}</th>
-                  <th>{t('benchmark.capability.vendorGap')}</th>
-                  <th>{t('benchmark.capability.dimensions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {capabilityRows.map((row) => (
-                  <tr key={row.key}>
-                    <td>#{row.rank}</td>
-                    <td>{row.target.provider_id || '-'}</td>
-                    <td>{row.target.public_model || '-'}</td>
-                    <td><span class="benchmark-score-pill">{formatScore(row.score)}</span></td>
-                    <td>{formatPercent(row.target.completion_rate ?? 0)}</td>
-                    <td><span class={`status-badge ${row.target.verdict === 'normal' ? 'success' : row.target.verdict === 'highly_suspect' ? 'error' : 'warning'}`}>{row.target.verdict || '-'}</span></td>
-                    <td>{formatGap(row.target.public_gap, hasBaselineGap(row.target, 'public'))}</td>
-                    <td>{formatGap(row.target.vendor_gap, hasBaselineGap(row.target, 'vendor'))}</td>
-                    <td>
-                      <div class="benchmark-dimension-list">
-                        {row.dimensions.slice(0, 5).map(([dimension, score]) => (
-                          <span key={dimension}>{dimensionLabel(dimension)} {formatScore(score)}</span>
-                        ))}
-                        {row.dimensions.length === 0 ? <span>-</span> : null}
-                      </div>
-                    </td>
-                  </tr>
+      {mode === 'upstream' ? (
+        <WorkspaceBand
+          id="benchmark-upstream"
+          icon="telemetry"
+          kicker={t('benchmark.title')}
+          title={t('benchmark.modeUpstream')}
+          detail={[t('benchmark.upstreamSuccessRateComparison'), t('benchmark.upstreamLatencyComparison'), t('benchmark.upstreamCostComparison')].join(' · ')}
+        >
+          <div class="timeseries-header benchmark-workspace-toolbar">
+            <h3>{t('benchmark.title')}</h3>
+            <div class="timeseries-controls">
+              <div class="timeseries-selector">
+                <span>{t('benchmark.timeRange')}:</span>
+                {BENCHMARK_WINDOW_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    class={`ts-btn${hours === option.value ? ' active' : ''}`}
+                    onClick={() => onHoursChange(option.value)}
+                  >
+                    {t(option.key)}
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      {loading && !benchmark ? (
-        <div class="skeleton-grid">
-          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
-          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
-          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
-          <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
-        </div>
-      ) : null}
-
-      {!loading && rows.length === 0 ? (
-        <div class="empty-state-box">
-          <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
-          <p class="empty-state-title">{t('benchmark.upstreamNoData')}</p>
-          <p class="empty-state-hint">{t('benchmark.upstreamPerformanceHint')}</p>
-        </div>
-      ) : null}
-
-      {rows.length > 0 ? (
-        <>
-          <div class="benchmark-summary-grid">
-            <article class="benchmark-summary-card">
-              <span>{t('benchmark.observedUpstreams')}</span>
-              <strong>{formatInteger(summary.upstreamCount)}</strong>
-            </article>
-            <article class="benchmark-summary-card">
-              <span>{t('benchmark.requests')}</span>
-              <strong>{formatInteger(summary.requests)}</strong>
-            </article>
-            <article class="benchmark-summary-card">
-              <span>{t('benchmark.successRate')}</span>
-              <strong>{formatPercent(summary.successRate)}</strong>
-            </article>
-            <article class="benchmark-summary-card">
-              <span>{t('benchmark.avgLatency')}</span>
-              <strong>{formatLatency(summary.avgLatency)}</strong>
-            </article>
-            <article class="benchmark-summary-card">
-              <span>{t('benchmark.tokens')}</span>
-              <strong>{formatInteger(summary.tokens)}</strong>
-            </article>
-            <article class="benchmark-summary-card">
-              <span>{t('benchmark.estimatedCost')}</span>
-              <strong>{formatUsd(summary.estimatedCost)}</strong>
-            </article>
-          </div>
-
-          <div class="benchmark-charts-grid">
-            <div class="benchmark-chart benchmark-chart-half">
-              <BarChart data={successRateBars} title={t('benchmark.upstreamSuccessRateComparison')} unit="%" horizontal />
-            </div>
-            <div class="benchmark-chart benchmark-chart-half">
-              <BarChart data={latencyBars} title={t('benchmark.upstreamLatencyComparison')} unit=" ms" horizontal />
-            </div>
-            <div class="benchmark-chart benchmark-chart-half">
-              <DonutChart data={requestDonut} title={t('benchmark.requests')} singleRowLegend={requestDonut.length > 4} />
-            </div>
-            <div class="benchmark-chart benchmark-chart-half">
-              <BarChart data={costBars} title={t('benchmark.upstreamCostComparison')} unit=" $" horizontal />
+              </div>
+              <button type="button" class="secondary" onClick={handleRefresh}>
+                <Icon name="refresh" />
+                {t('benchmark.refresh')}
+              </button>
             </div>
           </div>
 
-          <section class="panel-subsection benchmark-table-section">
+          {loading && !benchmark ? (
+            <div class="skeleton-grid">
+              <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+              <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+              <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+              <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
+            </div>
+          ) : null}
+
+          {!loading && rows.length === 0 ? (
+            <div class="empty-state-box">
+              <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+              <p class="empty-state-title">{t('benchmark.upstreamNoData')}</p>
+              <p class="empty-state-hint">{t('benchmark.upstreamPerformanceHint')}</p>
+            </div>
+          ) : null}
+
+          {rows.length > 0 ? (
+            <>
+              <div class="benchmark-summary-grid">
+                <article class="benchmark-summary-card">
+                  <span>{t('benchmark.observedUpstreams')}</span>
+                  <strong>{formatInteger(summary.upstreamCount)}</strong>
+                </article>
+                <article class="benchmark-summary-card">
+                  <span>{t('benchmark.requests')}</span>
+                  <strong>{formatInteger(summary.requests)}</strong>
+                </article>
+                <article class="benchmark-summary-card">
+                  <span>{t('benchmark.successRate')}</span>
+                  <strong>{formatPercent(summary.successRate)}</strong>
+                </article>
+                <article class="benchmark-summary-card">
+                  <span>{t('benchmark.avgLatency')}</span>
+                  <strong>{formatLatency(summary.avgLatency)}</strong>
+                </article>
+                <article class="benchmark-summary-card">
+                  <span>{t('benchmark.tokens')}</span>
+                  <strong>{formatInteger(summary.tokens)}</strong>
+                </article>
+                <article class="benchmark-summary-card">
+                  <span>{t('benchmark.estimatedCost')}</span>
+                  <strong>{formatUsd(summary.estimatedCost)}</strong>
+                </article>
+              </div>
+
+              <div class="benchmark-charts-grid">
+                <div class="benchmark-chart benchmark-chart-half">
+                  <BarChart data={successRateBars} title={t('benchmark.upstreamSuccessRateComparison')} unit="%" horizontal />
+                </div>
+                <div class="benchmark-chart benchmark-chart-half">
+                  <BarChart data={latencyBars} title={t('benchmark.upstreamLatencyComparison')} unit=" ms" horizontal />
+                </div>
+                <div class="benchmark-chart benchmark-chart-half">
+                  <DonutChart data={requestDonut} title={t('benchmark.requests')} singleRowLegend={requestDonut.length > 4} />
+                </div>
+                <div class="benchmark-chart benchmark-chart-half">
+                  <BarChart data={costBars} title={t('benchmark.upstreamCostComparison')} unit=" $" horizontal />
+                </div>
+              </div>
+
+              <section class="panel-subsection benchmark-table-section">
+                <div class="panel-header">
+                  <h3>{t('benchmark.upstreamRanking')}</h3>
+                </div>
+                <div class="table-wrap benchmark-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{t('benchmark.upstream')}</th>
+                        <th>{t('benchmark.requests')}</th>
+                        <th>{t('benchmark.successRate')}</th>
+                        <th>{t('benchmark.avgLatency')}</th>
+                        <th>{t('benchmark.p95Latency')}</th>
+                        <th>{t('benchmark.tokens')}</th>
+                        <th>{t('benchmark.estimatedCost')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((item) => (
+                        <tr key={benchmarkLabel(item)}>
+                          <td>{benchmarkLabel(item)}</td>
+                          <td>{formatInteger(item.requests)}</td>
+                          <td>{formatPercent(item.success_rate)}</td>
+                          <td>{formatLatency(item.avg_latency_ms)}</td>
+                          <td>{formatLatency(item.p95_latency_ms)}</td>
+                          <td>{formatInteger(modelTokens(item))}</td>
+                          <td>{formatUsd(item.estimated_cost_usd)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="panel-subsection benchmark-table-section">
+                <div class="panel-header">
+                  <h3>{t('benchmark.modelDetails')}</h3>
+                </div>
+                {modelRows.length === 0 ? (
+                  <div class="benchmark-inline-state">{t('benchmark.noModelDetails')}</div>
+                ) : (
+                  <div class="table-wrap benchmark-table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>{t('benchmark.model')}</th>
+                          <th>{t('benchmark.requests')}</th>
+                          <th>{t('benchmark.successRate')}</th>
+                          <th>{t('benchmark.avgLatency')}</th>
+                          <th>{t('benchmark.p95Latency')}</th>
+                          <th>{t('benchmark.tokens')}</th>
+                          <th>{t('benchmark.estimatedCost')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {modelRows.map((item) => (
+                          <tr key={item.model}>
+                            <td>{item.model}</td>
+                            <td>{formatInteger(item.requests)}</td>
+                            <td>{formatPercent(item.success_rate)}</td>
+                            <td>{formatLatency(item.avg_latency_ms)}</td>
+                            <td>{formatLatency(item.p95_latency_ms)}</td>
+                            <td>{formatInteger(modelTokens(item))}</td>
+                            <td>{formatUsd(item.estimated_cost_usd)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </>
+          ) : null}
+        </WorkspaceBand>
+      ) : (
+        <WorkspaceBand
+          id="benchmark-capability"
+          icon="benchmark"
+          kicker={t('benchmark.title')}
+          title={t('benchmark.modeCapability')}
+          detail={[t('benchmark.officialComparison'), t('benchmark.scoreMatrix'), t('benchmark.verification.title')].join(' · ')}
+        >
+          <div class="timeseries-header benchmark-workspace-toolbar">
+            <div>
+              <h3>{t('benchmark.capability.title')}</h3>
+              <p class="benchmark-toolbar-copy">{t('benchmark.capability.subtitle')}</p>
+            </div>
+            <button type="button" class="secondary" onClick={handleRefresh}>
+              <Icon name="refresh" />
+              {t('benchmark.refresh')}
+            </button>
+          </div>
+
+          <BenchmarkVerification canWrite={canWrite} onRunStarted={loadCapabilityRun} onUnauthorized={onUnauthorized} />
+
+          <section class="panel-subsection benchmark-table-section benchmark-capability-section">
             <div class="panel-header">
-              <h3>{t('benchmark.upstreamRanking')}</h3>
+              <div>
+                <h3>{t('benchmark.capability.title')}</h3>
+                <p>{capabilityRun ? `${t('benchmark.capability.run')}: ${capabilityRun.run_id}` : t('benchmark.capability.subtitle')}</p>
+              </div>
+              <div class="benchmark-capability-meta">
+                {capabilityRun ? <span class="status-badge neutral">{t('benchmark.capability.status')}: {capabilityRun.status}</span> : null}
+                {capabilityRun?.completed_at ? <span class="status-badge neutral">{formatStatusTime(capabilityRun.completed_at)}</span> : null}
+              </div>
             </div>
-            <div class="table-wrap benchmark-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{t('benchmark.upstream')}</th>
-                    <th>{t('benchmark.requests')}</th>
-                    <th>{t('benchmark.successRate')}</th>
-                    <th>{t('benchmark.avgLatency')}</th>
-                    <th>{t('benchmark.p95Latency')}</th>
-                    <th>{t('benchmark.tokens')}</th>
-                    <th>{t('benchmark.estimatedCost')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((item) => (
-                    <tr key={benchmarkLabel(item)}>
-                      <td>{benchmarkLabel(item)}</td>
-                      <td>{formatInteger(item.requests)}</td>
-                      <td>{formatPercent(item.success_rate)}</td>
-                      <td>{formatLatency(item.avg_latency_ms)}</td>
-                      <td>{formatLatency(item.p95_latency_ms)}</td>
-                      <td>{formatInteger(modelTokens(item))}</td>
-                      <td>{formatUsd(item.estimated_cost_usd)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section class="panel-subsection benchmark-table-section">
-            <div class="panel-header">
-              <h3>{t('benchmark.modelDetails')}</h3>
-            </div>
-            {modelRows.length === 0 ? (
-              <div class="benchmark-inline-state">{t('benchmark.noModelDetails')}</div>
+            {capabilityLoading && !capabilityRun ? (
+              <div class="benchmark-inline-state">{t('benchmark.capability.loading')}</div>
+            ) : capabilityError ? (
+              <div class="empty-state-box">
+                <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+                <p class="empty-state-title">{t('benchmark.capability.error')}</p>
+                <p class="empty-state-hint">{capabilityError}</p>
+              </div>
+            ) : capabilityRuns.length === 0 ? (
+              <div class="empty-state-box">
+                <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+                <p class="empty-state-title">{t('benchmark.capability.noRuns')}</p>
+                <p class="empty-state-hint">{t('benchmark.capability.noRunsHint')}</p>
+              </div>
+            ) : !capabilityRun ? (
+              <div class="empty-state-box">
+                <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+                <p class="empty-state-title">{t('benchmark.capability.noTerminalRun')}</p>
+                <p class="empty-state-hint">{t('benchmark.capability.noTerminalRunHint')}</p>
+              </div>
+            ) : capabilityRows.length === 0 ? (
+              <div class="empty-state-box">
+                <div class="empty-state-icon"><Icon name="benchmark" size={30} /></div>
+                <p class="empty-state-title">{t('benchmark.capability.noTargets')}</p>
+                <p class="empty-state-hint">{t('benchmark.capability.noTargetsHint')}</p>
+              </div>
             ) : (
               <div class="table-wrap benchmark-table-wrap">
                 <table>
                   <thead>
                     <tr>
+                      <th>{t('benchmark.capability.rank')}</th>
+                      <th>{t('benchmark.upstream')}</th>
                       <th>{t('benchmark.model')}</th>
-                      <th>{t('benchmark.requests')}</th>
-                      <th>{t('benchmark.successRate')}</th>
-                      <th>{t('benchmark.avgLatency')}</th>
-                      <th>{t('benchmark.p95Latency')}</th>
-                      <th>{t('benchmark.tokens')}</th>
-                      <th>{t('benchmark.estimatedCost')}</th>
+                      <th>{t('benchmark.capability.score')}</th>
+                      <th>{t('benchmark.capability.completion')}</th>
+                      <th>{t('benchmark.capability.verdict')}</th>
+                      <th>{t('benchmark.capability.publicGap')}</th>
+                      <th>{t('benchmark.capability.vendorGap')}</th>
+                      <th>{t('benchmark.capability.dimensions')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {modelRows.map((item) => (
-                      <tr key={item.model}>
-                        <td>{item.model}</td>
-                        <td>{formatInteger(item.requests)}</td>
-                        <td>{formatPercent(item.success_rate)}</td>
-                        <td>{formatLatency(item.avg_latency_ms)}</td>
-                        <td>{formatLatency(item.p95_latency_ms)}</td>
-                        <td>{formatInteger(modelTokens(item))}</td>
-                        <td>{formatUsd(item.estimated_cost_usd)}</td>
+                    {capabilityRows.map((row) => (
+                      <tr key={row.key}>
+                        <td>#{row.rank}</td>
+                        <td>{row.target.provider_id || '-'}</td>
+                        <td>{row.target.public_model || '-'}</td>
+                        <td><span class="benchmark-score-pill">{formatScore(row.score)}</span></td>
+                        <td>{formatPercent(row.target.completion_rate ?? 0)}</td>
+                        <td><span class={`status-badge ${row.target.verdict === 'normal' ? 'success' : row.target.verdict === 'highly_suspect' ? 'error' : 'warning'}`}>{row.target.verdict || '-'}</span></td>
+                        <td>{formatGap(row.target.public_gap, hasBaselineGap(row.target, 'public'))}</td>
+                        <td>{formatGap(row.target.vendor_gap, hasBaselineGap(row.target, 'vendor'))}</td>
+                        <td>
+                          <div class="benchmark-dimension-list">
+                            {row.dimensions.slice(0, 5).map(([dimension, score]) => (
+                              <span key={dimension}>{dimensionLabel(dimension)} {formatScore(score)}</span>
+                            ))}
+                            {row.dimensions.length === 0 ? <span>-</span> : null}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -541,8 +600,8 @@ const BenchmarkTabComponent = ({
               </div>
             )}
           </section>
-        </>
-      ) : null}
+        </WorkspaceBand>
+      )}
 
     </section>
   )

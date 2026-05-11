@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -271,6 +272,183 @@ func TestConvertOpenAIChatRequestToAnthropicPreservesToolConversation(t *testing
 	}
 }
 
+func TestConvertOpenAIChatRequestToAnthropicAcceptsInputTextBlocks(t *testing.T) {
+	body, err := convertOpenAIChatRequestToAnthropic([]byte(`{
+		"model":"public-model",
+		"messages":[
+			{"role":"developer","content":[{"type":"input_text","text":"You are terse."}]},
+			{"role":"user","content":[{"type":"input_text","text":"hello"}]}
+		]
+	}`), "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("convertOpenAIChatRequestToAnthropic() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v", err)
+	}
+	if payload["model"] != "claude-sonnet-4-6" {
+		t.Fatalf("model = %#v, want claude-sonnet-4-6", payload["model"])
+	}
+	if payload["system"] != "You are terse." {
+		t.Fatalf("system = %#v, want developer block promoted to system text", payload["system"])
+	}
+	messages, _ := payload["messages"].([]any)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v, want 1 user message", payload["messages"])
+	}
+	userMsg, _ := messages[0].(map[string]any)
+	if userMsg["role"] != "user" {
+		t.Fatalf("user role = %#v, want user", userMsg["role"])
+	}
+	content, _ := userMsg["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("user content = %#v, want one text block", userMsg["content"])
+	}
+	block, _ := content[0].(map[string]any)
+	if block["type"] != "text" || block["text"] != "hello" {
+		t.Fatalf("user block = %#v, want {type:text,text:hello}", block)
+	}
+}
+
+func TestConvertOpenAIChatRequestToAnthropicConvertsImageURLBlocks(t *testing.T) {
+	body, err := convertOpenAIChatRequestToAnthropic([]byte(`{
+		"model":"public-model",
+		"messages":[
+			{"role":"user","content":[
+				{"type":"text","text":"look at this"},
+				{"type":"image_url","image_url":{"url":"https://example.com/cat.png"}}
+			]}
+		]
+	}`), "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("convertOpenAIChatRequestToAnthropic() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v", err)
+	}
+	messages, _ := payload["messages"].([]any)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v, want 1 user message", payload["messages"])
+	}
+	userMsg := messages[0].(map[string]any)
+	content := userMsg["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content = %#v, want 2 blocks", userMsg["content"])
+	}
+	img := content[1].(map[string]any)
+	if img["type"] != "image" {
+		t.Fatalf("image block type = %#v, want image", img["type"])
+	}
+	source, _ := img["source"].(map[string]any)
+	if source["type"] != "url" || source["url"] != "https://example.com/cat.png" {
+		t.Fatalf("image source = %#v, want url source", source)
+	}
+}
+
+func TestConvertOpenAIChatRequestToAnthropicConvertsDataURLImageBlocksCaseInsensitive(t *testing.T) {
+	body, err := convertOpenAIChatRequestToAnthropic([]byte(`{
+		"model":"public-model",
+		"messages":[
+			{"role":"user","content":[
+				{"type":"image_url","image_url":{"url":"DATA:image/png;base64,AAAA"}}
+			]}
+		]
+	}`), "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("convertOpenAIChatRequestToAnthropic() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v", err)
+	}
+	messages, _ := payload["messages"].([]any)
+	userMsg := messages[0].(map[string]any)
+	content := userMsg["content"].([]any)
+	img := content[0].(map[string]any)
+	source, _ := img["source"].(map[string]any)
+	if source["type"] != "base64" || source["media_type"] != "image/png" || source["data"] != "AAAA" {
+		t.Fatalf("image source = %#v, want base64 image source", source)
+	}
+}
+
+func TestConvertOpenAIChatRequestToAnthropicNormalizesNullToolDescription(t *testing.T) {
+	body, err := convertOpenAIChatRequestToAnthropic([]byte(`{
+		"model":"public-model",
+		"tools":[
+			{"type":"function","function":{"name":"bash","description":null,"parameters":{"type":"object"}}}
+		],
+		"messages":[{"role":"user","content":"hi"}]
+	}`), "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("convertOpenAIChatRequestToAnthropic() error = %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v", err)
+	}
+	tools, _ := payload["tools"].([]any)
+	tool := tools[0].(map[string]any)
+	if tool["description"] != "" {
+		t.Fatalf("description = %#v, want empty string", tool["description"])
+	}
+}
+
+func TestConvertOpenAIChatRequestToAnthropicNormalizesMissingToolDescription(t *testing.T) {
+	body, err := convertOpenAIChatRequestToAnthropic([]byte(`{
+		"model":"public-model",
+		"tools":[
+			{"type":"function","function":{"name":"bash","parameters":{"type":"object"}}}
+		],
+		"messages":[{"role":"user","content":"hi"}]
+	}`), "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("convertOpenAIChatRequestToAnthropic() error = %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v", err)
+	}
+	tools, _ := payload["tools"].([]any)
+	tool := tools[0].(map[string]any)
+	if tool["description"] != "" {
+		t.Fatalf("description = %#v, want empty string", tool["description"])
+	}
+}
+
+func TestConvertOpenAIChatRequestToAnthropicAcceptsResponsesStyleFunctionTool(t *testing.T) {
+	body, err := convertOpenAIChatRequestToAnthropic([]byte(`{
+		"model":"public-model",
+		"tools":[
+			{"type":"function","name":"bash","description":null,"parameters":{"type":"object"}}
+		],
+		"messages":[{"role":"user","content":"hi"}]
+	}`), "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("convertOpenAIChatRequestToAnthropic() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode anthropic body: %v", err)
+	}
+	tools, _ := payload["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("tools = %#v, want 1 tool", payload["tools"])
+	}
+	tool := tools[0].(map[string]any)
+	if tool["name"] != "bash" {
+		t.Fatalf("tool.name = %#v, want bash", tool["name"])
+	}
+	if tool["description"] != "" {
+		t.Fatalf("description = %#v, want empty string", tool["description"])
+	}
+}
+
 func TestHandleChatCompletionBridgesAnthropicToolUseJSONResponse(t *testing.T) {
 	restore := SetSSRFCheckerForTesting(nil)
 	defer restore()
@@ -329,6 +507,100 @@ func TestHandleChatCompletionBridgesAnthropicToolUseJSONResponse(t *testing.T) {
 	}
 	if function["arguments"] != `{"city":"Shanghai"}` {
 		t.Fatalf("function arguments = %#v, want compact JSON args", function["arguments"])
+	}
+}
+
+func TestConvertAnthropicRequestToOpenAIChatConvertsImageBlocks(t *testing.T) {
+	body, err := convertAnthropicRequestToOpenAIChat([]byte(`{
+		"model":"claude-sonnet-4-6",
+		"messages":[
+			{"role":"user","content":[
+				{"type":"text","text":"look"},
+				{"type":"image","source":{"type":"url","url":"https://example.com/dog.png"}}
+			]}
+		]
+	}`), "gpt-5.4")
+	if err != nil {
+		t.Fatalf("convertAnthropicRequestToOpenAIChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode openai body: %v", err)
+	}
+	messages, _ := payload["messages"].([]any)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v, want 1 message", payload["messages"])
+	}
+	msg := messages[0].(map[string]any)
+	parts, ok := msg["content"].([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("content = %#v, want 2 parts", msg["content"])
+	}
+	img := parts[1].(map[string]any)
+	if img["type"] != "image_url" {
+		t.Fatalf("image part type = %#v, want image_url", img["type"])
+	}
+	imageURL, _ := img["image_url"].(map[string]any)
+	if imageURL["url"] != "https://example.com/dog.png" {
+		t.Fatalf("image_url = %#v, want https://example.com/dog.png", img["image_url"])
+	}
+}
+
+func TestConvertAnthropicRequestToOpenAIChatConvertsBase64ImageBlocks(t *testing.T) {
+	body, err := convertAnthropicRequestToOpenAIChat([]byte(`{
+		"model":"claude-sonnet-4-6",
+		"messages":[
+			{"role":"user","content":[
+				{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}
+			]}
+		]
+	}`), "gpt-5.4")
+	if err != nil {
+		t.Fatalf("convertAnthropicRequestToOpenAIChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode openai body: %v", err)
+	}
+	messages, _ := payload["messages"].([]any)
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v, want 1 message", payload["messages"])
+	}
+	msg := messages[0].(map[string]any)
+	parts, ok := msg["content"].([]any)
+	if !ok || len(parts) != 1 {
+		t.Fatalf("content = %#v, want 1 part", msg["content"])
+	}
+	img := parts[0].(map[string]any)
+	imageURL, _ := img["image_url"].(map[string]any)
+	if imageURL["url"] != "data:image/png;base64,AAAA" {
+		t.Fatalf("image_url.url = %#v, want data:image/png;base64,AAAA", imageURL["url"])
+	}
+}
+
+func TestConvertAnthropicRequestToOpenAIChatNormalizesNullToolDescription(t *testing.T) {
+	body, err := convertAnthropicRequestToOpenAIChat([]byte(`{
+		"model":"claude-sonnet-4-6",
+		"tools":[
+			{"name":"lookup_weather","description":null,"input_schema":{"type":"object"}}
+		],
+		"messages":[{"role":"user","content":"hi"}]
+	}`), "gpt-5.4")
+	if err != nil {
+		t.Fatalf("convertAnthropicRequestToOpenAIChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode openai body: %v", err)
+	}
+	tools, _ := payload["tools"].([]any)
+	tool := tools[0].(map[string]any)
+	function := tool["function"].(map[string]any)
+	if function["description"] != "" {
+		t.Fatalf("description = %#v, want empty string", function["description"])
 	}
 }
 
@@ -921,6 +1193,116 @@ func TestHandleMessagesAppliesModelBridgeBeforeProviderSelection(t *testing.T) {
 	}
 }
 
+func TestHandleMessagesNormalizesNullToolDescriptionBeforeForward(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
+	routingSequence.Store(0)
+	allowLocalAnthropicTestUpstreams(t)
+
+	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
+		if req.Path != "/v1/chat/completions" {
+			t.Fatalf("upstream path = %q, want /v1/chat/completions", req.Path)
+		}
+		var forwarded map[string]any
+		if err := json.Unmarshal(req.Body, &forwarded); err != nil {
+			t.Fatalf("decode forwarded body: %v", err)
+		}
+		tools, ok := forwarded["tools"].([]any)
+		if !ok || len(tools) != 1 {
+			t.Fatalf("forwarded tools = %#v, want 1 function tool", forwarded["tools"])
+		}
+		tool := tools[0].(map[string]any)
+		function := tool["function"].(map[string]any)
+		if function["description"] != "" {
+			t.Fatalf("forwarded function.description = %#v, want empty string", function["description"])
+		}
+		return fakeupstream.Response{
+			StatusCode: http.StatusOK,
+			Body:       []byte(`{"id":"chatcmpl_ok","object":"chat.completion","model":"upstream-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`),
+		}
+	})
+	defer upstream.Close()
+
+	snap := testGatewaySnapshot()
+	snap.Providers[0].BaseURL = upstream.URL()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleMessages(context.Background(), snap, NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{
+		"model":"public-model",
+		"messages":[{"role":"user","content":"hello"}],
+		"tools":[
+			{"type":"function","function":{"name":"bash","description":null,"parameters":{"type":"object"}}}
+		]
+	}`
+	resp, err := server.Client().Post(server.URL+"/v1/messages", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+}
+
+func TestHandleChatCompletionNormalizesResponsesStyleNullToolDescriptionBeforeForward(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(nil)
+	defer restore()
+	routingSequence.Store(0)
+	allowLocalAnthropicTestUpstreams(t)
+
+	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
+		if req.Path != "/v1/chat/completions" {
+			t.Fatalf("upstream path = %q, want /v1/chat/completions", req.Path)
+		}
+		var forwarded map[string]any
+		if err := json.Unmarshal(req.Body, &forwarded); err != nil {
+			t.Fatalf("decode forwarded body: %v", err)
+		}
+		tools, ok := forwarded["tools"].([]any)
+		if !ok || len(tools) != 1 {
+			t.Fatalf("forwarded tools = %#v, want 1 function tool", forwarded["tools"])
+		}
+		tool := tools[0].(map[string]any)
+		function := tool["function"].(map[string]any)
+		if function["description"] != "" {
+			t.Fatalf("forwarded function.description = %#v, want empty string", function["description"])
+		}
+		return fakeupstream.Response{
+			StatusCode: http.StatusOK,
+			Body:       []byte(`{"id":"chatcmpl_ok","object":"chat.completion","model":"upstream-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}`),
+		}
+	})
+	defer upstream.Close()
+
+	snap := testGatewaySnapshot()
+	snap.Providers[0].BaseURL = upstream.URL()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleChatCompletion(context.Background(), snap, NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{
+		"model":"public-model",
+		"messages":[{"role":"user","content":"hello"}],
+		"tools":[
+			{"type":"function","name":"bash","description":null,"parameters":{"type":"object"}}
+		]
+	}`
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+}
+
 func TestConvertResponsesRequestToChatWithStringInput(t *testing.T) {
 	body, err := convertResponsesRequestToChat([]byte(`{"model":"gpt-4o","input":"hello","stream":false}`), "gpt-4o-turbo")
 	if err != nil {
@@ -944,6 +1326,34 @@ func TestConvertResponsesRequestToChatWithStringInput(t *testing.T) {
 	}
 	if payload["stream"] != false {
 		t.Fatalf("stream = %#v, want false", payload["stream"])
+	}
+}
+
+func TestConvertResponsesRequestToChatPrependsInstructions(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-4o",
+		"instructions":"You are a careful coding agent.",
+		"input":"edit the file"
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages = %#v, want system plus user message", payload["messages"])
+	}
+	systemMsg := messages[0].(map[string]any)
+	if systemMsg["role"] != "system" || systemMsg["content"] != "You are a careful coding agent." {
+		t.Fatalf("system message = %#v, want instructions preserved", systemMsg)
+	}
+	userMsg := messages[1].(map[string]any)
+	if userMsg["role"] != "user" || userMsg["content"] != "edit the file" {
+		t.Fatalf("user message = %#v, want original input", userMsg)
 	}
 }
 
@@ -980,6 +1390,25 @@ func TestConvertResponsesRequestToChatWithArrayInput(t *testing.T) {
 	}
 }
 
+func TestConvertResponsesRequestToChatCopiesParallelToolCalls(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-4o",
+		"input":"use one tool at a time",
+		"parallel_tool_calls":false
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	if payload["parallel_tool_calls"] != false {
+		t.Fatalf("parallel_tool_calls = %#v, want false", payload["parallel_tool_calls"])
+	}
+}
+
 func TestConvertResponsesRequestToChatMissingInput(t *testing.T) {
 	_, err := convertResponsesRequestToChat([]byte(`{"model":"gpt-4o"}`), "")
 	if err == nil {
@@ -1007,6 +1436,210 @@ func TestConvertResponsesRequestToChatWithTools(t *testing.T) {
 	}
 }
 
+func TestConvertResponsesRequestToChatWithResponsesStyleFunctionTools(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-4o",
+		"input":"what's the weather?",
+		"tools":[{"type":"function","name":"get_weather","description":null,"parameters":{"type":"object","properties":{"city":{"type":"string"}}}}]
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools = %#v, want 1 tool", payload["tools"])
+	}
+	tool := tools[0].(map[string]any)
+	function := tool["function"].(map[string]any)
+	if function["name"] != "get_weather" {
+		t.Fatalf("function.name = %#v, want get_weather", function["name"])
+	}
+	if function["description"] != "" {
+		t.Fatalf("function.description = %#v, want empty string", function["description"])
+	}
+}
+
+func TestConvertResponsesRequestToChatDropsUnsupportedBuiltInTool(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-4o",
+		"input":"search the web",
+		"tools":[{"type":"web_search_preview"}]
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v, want nil", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode forwarded body: %v", err)
+	}
+	if _, ok := decoded["tools"]; ok {
+		t.Fatalf("expected no tools in forwarded body; got %#v", decoded["tools"])
+	}
+}
+
+func TestConvertResponsesRequestToChatDropsUnsupportedToolChoice(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-4o",
+		"input":"search",
+		"tools":[{"type":"web_search"}],
+		"tool_choice":{"type":"web_search"}
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v, want nil", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		t.Fatalf("decode forwarded body: %v", err)
+	}
+	if got := decoded["tool_choice"]; got != "auto" {
+		t.Fatalf("tool_choice = %v, want \"auto\"", got)
+	}
+}
+
+func TestConvertResponsesRequestToChatBridgesCustomToolAsFunction(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-5.5",
+		"input":"edit the file",
+		"tools":[{"type":"custom","name":"apply_patch","description":"Apply a patch"}],
+		"tool_choice":"auto"
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools = %#v, want 1 tool", payload["tools"])
+	}
+	tool := tools[0].(map[string]any)
+	if tool["type"] != "function" {
+		t.Fatalf("tool.type = %#v, want function", tool["type"])
+	}
+	function := tool["function"].(map[string]any)
+	if function["name"] != "apply_patch" {
+		t.Fatalf("function.name = %#v, want apply_patch", function["name"])
+	}
+	parameters := function["parameters"].(map[string]any)
+	properties := parameters["properties"].(map[string]any)
+	if _, ok := properties["input"]; !ok {
+		t.Fatalf("parameters = %#v, want input property", parameters)
+	}
+}
+
+func TestConvertResponsesRequestToChatBridgesCustomToolChoice(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-5.5",
+		"input":"edit the file",
+		"tools":[{"type":"custom","name":"apply_patch","description":"Apply a patch"}],
+		"tool_choice":{"type":"custom","name":"apply_patch"}
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	toolChoice, ok := payload["tool_choice"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool_choice = %#v, want object", payload["tool_choice"])
+	}
+	if toolChoice["type"] != "function" {
+		t.Fatalf("tool_choice.type = %#v, want function", toolChoice["type"])
+	}
+	function, ok := toolChoice["function"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool_choice.function = %#v, want object", toolChoice["function"])
+	}
+	if function["name"] != "apply_patch" {
+		t.Fatalf("tool_choice.function.name = %#v, want apply_patch", function["name"])
+	}
+	if _, exists := toolChoice["name"]; exists {
+		t.Fatalf("tool_choice unexpectedly kept Responses custom name field: %#v", toolChoice)
+	}
+}
+
+func TestConvertResponsesRequestToChatNormalizesObjectToolChoiceModes(t *testing.T) {
+	for _, mode := range []string{"auto", "required", "none"} {
+		t.Run(mode, func(t *testing.T) {
+			body, err := convertResponsesRequestToChat([]byte(`{
+				"model":"gpt-5.5",
+				"input":"edit the file",
+				"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+				"tool_choice":{"type":`+strconv.Quote(mode)+`}
+			}`), "")
+			if err != nil {
+				t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+			}
+
+			var payload map[string]any
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("decode chat body: %v", err)
+			}
+			if payload["tool_choice"] != mode {
+				t.Fatalf("tool_choice = %#v, want %q", payload["tool_choice"], mode)
+			}
+		})
+	}
+}
+
+func TestConvertResponsesRequestToChatPreservesCustomToolConversation(t *testing.T) {
+	body, err := convertResponsesRequestToChat([]byte(`{
+		"model":"gpt-5.5",
+		"input":[
+			{"role":"user","content":"edit the file"},
+			{"type":"custom_tool_call","call_id":"call_patch_1","name":"apply_patch","input":"*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n"},
+			{"type":"custom_tool_call_output","call_id":"call_patch_1","output":"{\"output\":\"Success\"}"}
+		]
+	}`), "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode chat body: %v", err)
+	}
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) != 3 {
+		t.Fatalf("messages = %#v, want 3 messages", payload["messages"])
+	}
+	assistant := messages[1].(map[string]any)
+	toolCalls, ok := assistant["tool_calls"].([]any)
+	if !ok || len(toolCalls) != 1 {
+		t.Fatalf("assistant tool_calls = %#v, want 1 custom tool call", assistant["tool_calls"])
+	}
+	call := toolCalls[0].(map[string]any)
+	if call["id"] != "call_patch_1" || call["type"] != "function" {
+		t.Fatalf("tool call = %#v, want bridged function call_patch_1", call)
+	}
+	function := call["function"].(map[string]any)
+	if function["name"] != "apply_patch" {
+		t.Fatalf("function.name = %#v, want apply_patch", function["name"])
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(function["arguments"].(string)), &args); err != nil {
+		t.Fatalf("decode function arguments: %v", err)
+	}
+	if !strings.Contains(args["input"].(string), "probe.txt") {
+		t.Fatalf("arguments = %#v, want patch input", args)
+	}
+	toolResult := messages[2].(map[string]any)
+	if toolResult["role"] != "tool" || toolResult["tool_call_id"] != "call_patch_1" {
+		t.Fatalf("tool result = %#v, want tool response for call_patch_1", toolResult)
+	}
+}
+
 func TestAdaptChatResponseToResponses(t *testing.T) {
 	chatResp := `{
 		"id":"chatcmpl-123",
@@ -1020,7 +1653,7 @@ func TestAdaptChatResponseToResponses(t *testing.T) {
 		}],
 		"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}
 	}`
-	body, err := adaptChatResponseToResponses([]byte(chatResp), "")
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "", nil)
 	if err != nil {
 		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
 	}
@@ -1078,9 +1711,43 @@ func TestAdaptChatResponseToResponses(t *testing.T) {
 	}
 }
 
+func TestAdaptChatResponseToResponsesConvertsArrayContentText(t *testing.T) {
+	chatResp := `{
+		"id":"chatcmpl-array",
+		"object":"chat.completion",
+		"created":1700000000,
+		"model":"gpt-4o",
+		"choices":[{
+			"index":0,
+			"message":{"role":"assistant","content":[{"type":"text","text":"part one"},{"type":"output_text","text":"part two"}]},
+			"finish_reason":"stop"
+		}],
+		"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}
+	}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "", nil)
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode responses body: %v", err)
+	}
+	output := payload["output"].([]any)
+	msg := output[0].(map[string]any)
+	content := msg["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("content = %#v, want one output_text block", content)
+	}
+	textBlock := content[0].(map[string]any)
+	if textBlock["type"] != "output_text" || textBlock["text"] != "part one\npart two" {
+		t.Fatalf("content[0] = %#v, want combined output_text", textBlock)
+	}
+}
+
 func TestAdaptChatResponseToResponsesPreservesClientModel(t *testing.T) {
 	chatResp := `{"id":"chatcmpl-456","model":"gpt-4o","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{}}`
-	body, err := adaptChatResponseToResponses([]byte(chatResp), "my-custom-model")
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "my-custom-model", nil)
 	if err != nil {
 		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
 	}
@@ -1089,6 +1756,156 @@ func TestAdaptChatResponseToResponsesPreservesClientModel(t *testing.T) {
 	json.Unmarshal(body, &payload)
 	if payload["model"] != "my-custom-model" {
 		t.Fatalf("model = %#v, want my-custom-model", payload["model"])
+	}
+}
+
+func TestAdaptChatResponseToResponsesConvertsCustomToolCall(t *testing.T) {
+	patch := "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n"
+	chatResp := `{
+		"id":"chatcmpl-custom-1",
+		"object":"chat.completion",
+		"created":1700000000,
+		"model":"gpt-5.5",
+		"choices":[{
+			"index":0,
+			"message":{
+				"role":"assistant",
+				"content":null,
+				"tool_calls":[{"id":"call_patch_1","type":"custom","custom":{"name":"apply_patch","input":` + strconv.Quote(patch) + `}}]
+			},
+			"finish_reason":"tool_calls"
+		}],
+		"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}
+	}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "public-model", nil)
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode responses body: %v", err)
+	}
+	output, ok := payload["output"].([]any)
+	if !ok || len(output) != 1 {
+		t.Fatalf("output = %#v, want one custom tool item", payload["output"])
+	}
+	item := output[0].(map[string]any)
+	if item["type"] != "custom_tool_call" || item["call_id"] != "call_patch_1" || item["name"] != "apply_patch" {
+		t.Fatalf("item = %#v, want custom_tool_call apply_patch", item)
+	}
+	if item["input"] != patch {
+		t.Fatalf("input = %#v, want patch text", item["input"])
+	}
+}
+
+func TestAdaptChatResponseToResponsesRestoresBridgedCustomToolCall(t *testing.T) {
+	patch := "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n"
+	chatResp := `{
+		"id":"chatcmpl-custom-2",
+		"object":"chat.completion",
+		"created":1700000000,
+		"model":"gpt-5.5",
+		"choices":[{
+			"index":0,
+			"message":{
+				"role":"assistant",
+				"content":null,
+				"tool_calls":[{"id":"call_patch_2","type":"function","function":{"name":"apply_patch","arguments":` + strconv.Quote(`{"input":`+strconv.Quote(patch)+`}`) + `}}]
+			},
+			"finish_reason":"tool_calls"
+		}],
+		"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}
+	}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "public-model", map[string]struct{}{"apply_patch": {}})
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode responses body: %v", err)
+	}
+	output := payload["output"].([]any)
+	item := output[0].(map[string]any)
+	if item["type"] != "custom_tool_call" || item["call_id"] != "call_patch_2" || item["name"] != "apply_patch" {
+		t.Fatalf("item = %#v, want restored custom_tool_call", item)
+	}
+	if item["input"] != patch {
+		t.Fatalf("input = %#v, want patch text", item["input"])
+	}
+}
+
+func TestAdaptChatResponseToResponsesConvertsLegacyFunctionCall(t *testing.T) {
+	chatResp := `{
+		"id":"chatcmpl-function-legacy",
+		"object":"chat.completion",
+		"created":1700000000,
+		"model":"gpt-4o",
+		"choices":[{
+			"index":0,
+			"message":{
+				"role":"assistant",
+				"content":null,
+				"function_call":{"name":"lookup_weather","arguments":"{\"city\":\"Shanghai\"}"}
+			},
+			"finish_reason":"function_call"
+		}],
+		"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}
+	}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "public-model", nil)
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode responses body: %v", err)
+	}
+	output := payload["output"].([]any)
+	item := output[0].(map[string]any)
+	if item["type"] != "function_call" || item["name"] != "lookup_weather" {
+		t.Fatalf("item = %#v, want legacy function_call converted", item)
+	}
+	if item["arguments"] != `{"city":"Shanghai"}` {
+		t.Fatalf("arguments = %#v, want city JSON", item["arguments"])
+	}
+}
+
+func TestAdaptChatResponseToResponsesRestoresLegacyFunctionCallAsCustom(t *testing.T) {
+	patch := "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n"
+	chatResp := `{
+		"id":"chatcmpl-function-custom",
+		"object":"chat.completion",
+		"created":1700000000,
+		"model":"gpt-5.5",
+		"choices":[{
+			"index":0,
+			"message":{
+				"role":"assistant",
+				"content":null,
+				"function_call":{"name":"apply_patch","arguments":` + strconv.Quote(`{"input":`+strconv.Quote(patch)+`}`) + `}
+			},
+			"finish_reason":"function_call"
+		}],
+		"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}
+	}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "public-model", map[string]struct{}{"apply_patch": {}})
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode responses body: %v", err)
+	}
+	output := payload["output"].([]any)
+	item := output[0].(map[string]any)
+	if item["type"] != "custom_tool_call" || item["name"] != "apply_patch" {
+		t.Fatalf("item = %#v, want legacy function_call restored as custom", item)
+	}
+	if item["input"] != patch {
+		t.Fatalf("input = %#v, want patch text", item["input"])
 	}
 }
 
@@ -1224,6 +2041,26 @@ func TestConvertResponsesRequestToChatUnwrapsMessageItems(t *testing.T) {
 	}
 }
 
+func TestConvertResponsesRequestToChatNormalizesOutputTextHistory(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello from prior response"}]},{"role":"user","content":"continue"}]}`)
+	out, err := convertResponsesRequestToChat(body, "")
+	if err != nil {
+		t.Fatalf("convertResponsesRequestToChat: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(out, &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	msgs, _ := payload["messages"].([]any)
+	if len(msgs) != 2 {
+		t.Fatalf("len(messages) = %d, want 2", len(msgs))
+	}
+	a0 := msgs[0].(map[string]any)
+	if a0["role"] != "assistant" || a0["content"] != "hello from prior response" {
+		t.Fatalf("assistant message = %#v, want normalized output_text history", a0)
+	}
+}
+
 func TestHandleResponsesReturnsResponsesFormatOnError(t *testing.T) {
 	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
 	defer restore()
@@ -1348,6 +2185,396 @@ func TestHandleResponsesStreamingEmitsCompletedAndDoneMarker(t *testing.T) {
 	}
 	if foundDoneLegacy {
 		t.Fatalf("unexpected legacy response.done event; payloads=%v", payloads)
+	}
+}
+
+func TestHandleResponsesStreamingEmitsOutputLifecycleBeforeTextDelta(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
+	routingSequence.Store(0)
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			stream := strings.Join([]string{
+				`data: {"id":"chatcmpl-stream-2","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"你"},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-2","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"好"},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-2","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+				"",
+				`data: [DONE]`,
+				"",
+			}, "\n")
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+				},
+				Body: io.NopCloser(strings.NewReader(stream)),
+			}, nil
+		}),
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleResponses(r.Context(), testGatewaySnapshot(), NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","input":"hello","stream":true}`
+	resp, err := server.Client().Post(server.URL+"/v1/responses", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
+	var payloads []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			payloads = append(payloads, strings.TrimPrefix(line, "data: "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream: %v", err)
+	}
+
+	idxItemAdded := -1
+	idxPartAdded := -1
+	idxTextDelta := -1
+	for i, p := range payloads {
+		if p == "[DONE]" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(p), &event); err != nil {
+			t.Fatalf("decode event %q: %v", p, err)
+		}
+		switch event["type"] {
+		case "response.output_item.added":
+			if idxItemAdded == -1 {
+				idxItemAdded = i
+			}
+		case "response.content_part.added":
+			if idxPartAdded == -1 {
+				idxPartAdded = i
+			}
+		case "response.output_text.delta":
+			if idxTextDelta == -1 {
+				idxTextDelta = i
+			}
+		}
+	}
+
+	if idxItemAdded == -1 {
+		t.Fatalf("missing response.output_item.added; payloads=%v", payloads)
+	}
+	if idxPartAdded == -1 {
+		t.Fatalf("missing response.content_part.added; payloads=%v", payloads)
+	}
+	if idxTextDelta == -1 {
+		t.Fatalf("missing response.output_text.delta; payloads=%v", payloads)
+	}
+	if !(idxItemAdded < idxTextDelta && idxPartAdded < idxTextDelta) {
+		t.Fatalf("expected output item/content part before text delta, got item=%d part=%d delta=%d payloads=%v", idxItemAdded, idxPartAdded, idxTextDelta, payloads)
+	}
+}
+
+func TestHandleResponsesStreamingConvertsCustomToolCall(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
+	routingSequence.Store(0)
+
+	patchA := "*** Begin Patch\n"
+	patchB := "*** Add File: probe.txt\n+ok\n*** End Patch\n"
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			stream := strings.Join([]string{
+				`data: {"id":"chatcmpl-stream-custom","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_patch_1","type":"custom","custom":{"name":"apply_patch","input":` + strconv.Quote(patchA) + `}}]},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-custom","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"type":"custom","custom":{"input":` + strconv.Quote(patchB) + `}}]},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-custom","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":22,"completion_tokens":5,"total_tokens":27}}`,
+				"",
+				`data: [DONE]`,
+				"",
+			}, "\n")
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+				},
+				Body: io.NopCloser(strings.NewReader(stream)),
+			}, nil
+		}),
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleResponses(r.Context(), testGatewaySnapshot(), NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","input":"edit the file","stream":true,"tools":[{"type":"custom","name":"apply_patch"}]}`
+	resp, err := server.Client().Post(server.URL+"/v1/responses", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
+	var payloads []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			payloads = append(payloads, strings.TrimPrefix(line, "data: "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream: %v", err)
+	}
+
+	foundAdded := false
+	var deltaText string
+	foundDone := false
+	foundCompletedItem := false
+	for _, p := range payloads {
+		if p == "[DONE]" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(p), &event); err != nil {
+			t.Fatalf("decode event %q: %v", p, err)
+		}
+		switch event["type"] {
+		case "response.output_item.added":
+			item, _ := event["item"].(map[string]any)
+			if item["type"] == "custom_tool_call" && item["name"] == "apply_patch" {
+				foundAdded = true
+			}
+		case "response.custom_tool_call_input.delta":
+			deltaText += event["delta"].(string)
+		case "response.custom_tool_call_input.done":
+			if event["input"] == patchA+patchB {
+				foundDone = true
+			}
+		case "response.output_item.done":
+			item, _ := event["item"].(map[string]any)
+			if item["type"] == "custom_tool_call" && item["input"] == patchA+patchB {
+				foundCompletedItem = true
+			}
+		}
+	}
+
+	if !foundAdded {
+		t.Fatalf("missing custom_tool_call added event; payloads=%v", payloads)
+	}
+	if deltaText != patchA+patchB {
+		t.Fatalf("delta text = %#v, want full patch", deltaText)
+	}
+	if !foundDone {
+		t.Fatalf("missing custom_tool_call_input.done event; payloads=%v", payloads)
+	}
+	if !foundCompletedItem {
+		t.Fatalf("missing completed custom_tool_call item; payloads=%v", payloads)
+	}
+}
+
+func TestHandleResponsesStreamingRestoresBridgedCustomToolCall(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
+	routingSequence.Store(0)
+
+	patch := "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n"
+	args := `{"input":` + strconv.Quote(patch) + `}`
+	argsA := args[:18]
+	argsB := args[18:]
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				return nil, err
+			}
+			var forwarded map[string]any
+			if err := json.Unmarshal(body, &forwarded); err != nil {
+				return nil, err
+			}
+			tools, _ := forwarded["tools"].([]any)
+			if len(tools) != 1 {
+				t.Fatalf("forwarded tools = %#v, want 1 bridged function tool", forwarded["tools"])
+			}
+			tool := tools[0].(map[string]any)
+			if tool["type"] != "function" {
+				t.Fatalf("forwarded tool = %#v, want function", tool)
+			}
+
+			stream := strings.Join([]string{
+				`data: {"id":"chatcmpl-stream-custom-bridge","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_patch_1","type":"function","function":{"name":"apply_patch","arguments":` + strconv.Quote(argsA) + `}}]},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-custom-bridge","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"type":"function","function":{"arguments":` + strconv.Quote(argsB) + `}}]},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-custom-bridge","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":22,"completion_tokens":5,"total_tokens":27}}`,
+				"",
+				`data: [DONE]`,
+				"",
+			}, "\n")
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+				},
+				Body: io.NopCloser(strings.NewReader(stream)),
+			}, nil
+		}),
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleResponses(r.Context(), testGatewaySnapshot(), NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","input":"edit the file","stream":true,"tools":[{"type":"custom","name":"apply_patch"}]}`
+	resp, err := server.Client().Post(server.URL+"/v1/responses", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
+	var payloads []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			payloads = append(payloads, strings.TrimPrefix(line, "data: "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream: %v", err)
+	}
+
+	foundPatchDelta := false
+	foundDone := false
+	for _, p := range payloads {
+		if p == "[DONE]" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(p), &event); err != nil {
+			t.Fatalf("decode event %q: %v", p, err)
+		}
+		switch event["type"] {
+		case "response.custom_tool_call_input.delta":
+			if event["delta"] == patch {
+				foundPatchDelta = true
+			}
+		case "response.custom_tool_call_input.done":
+			if event["input"] == patch {
+				foundDone = true
+			}
+		case "response.function_call_arguments.delta":
+			t.Fatalf("unexpected function argument delta for bridged custom tool: %v", event)
+		}
+	}
+	if !foundPatchDelta {
+		t.Fatalf("missing restored patch delta; payloads=%v", payloads)
+	}
+	if !foundDone {
+		t.Fatalf("missing restored patch done event; payloads=%v", payloads)
+	}
+}
+
+func TestHandleResponsesStreamingConvertsLegacyFunctionCallDelta(t *testing.T) {
+	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
+	defer restore()
+	routingSequence.Store(0)
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			stream := strings.Join([]string{
+				`data: {"id":"chatcmpl-stream-function-legacy","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"function_call":{"name":"lookup_weather","arguments":"{\"city\""}},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-function-legacy","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"function_call":{"arguments":":\"Shanghai\"}"}},"finish_reason":""}]}`,
+				"",
+				`data: {"id":"chatcmpl-stream-function-legacy","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"function_call"}],"usage":{"prompt_tokens":22,"completion_tokens":5,"total_tokens":27}}`,
+				"",
+				`data: [DONE]`,
+				"",
+			}, "\n")
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(stream)),
+			}, nil
+		}),
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		HandleResponses(r.Context(), testGatewaySnapshot(), NewRuntimeState(), nil, nil, w, r)
+	}))
+	defer server.Close()
+
+	reqBody := `{"model":"public-model","input":"look up weather","stream":true,"tools":[{"type":"function","name":"lookup_weather","parameters":{"type":"object"}}]}`
+	resp, err := server.Client().Post(server.URL+"/v1/responses", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
+	var payloads []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			payloads = append(payloads, strings.TrimPrefix(line, "data: "))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan stream: %v", err)
+	}
+
+	foundDone := false
+	for _, p := range payloads {
+		if p == "[DONE]" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(p), &event); err != nil {
+			t.Fatalf("decode event %q: %v", p, err)
+		}
+		if event["type"] == "response.function_call_arguments.done" && event["arguments"] == `{"city":"Shanghai"}` {
+			foundDone = true
+		}
+	}
+	if !foundDone {
+		t.Fatalf("missing legacy function_call done event; payloads=%v", payloads)
 	}
 }
 

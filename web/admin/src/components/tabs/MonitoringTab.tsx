@@ -1,8 +1,9 @@
 import type { ComponentChildren } from 'preact'
-import { useState } from 'preact/compat'
+import { useCallback, useState } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import type { ControlStatusView, DataResponse, TimeSeriesResponse } from '../../types'
-import { Icon, type IconName } from '../Icon'
+import { Icon } from '../Icon'
+import { WorkspaceBand } from '../WorkspaceBand'
 import { PricingTab } from './PricingTab'
 import { TelemetryTab } from './TelemetryTab'
 
@@ -17,33 +18,6 @@ interface MonitoringTabProps {
   onRefreshPricing?: () => Promise<void> | void
   onRetry?: () => Promise<void> | void
   refreshControls?: ComponentChildren
-}
-
-interface WorkspaceBandProps {
-  id: string
-  icon: IconName
-  kicker: string
-  title: string
-  detail: string
-  children: ComponentChildren
-}
-
-function WorkspaceBand({ id, icon, kicker, title, detail, children }: WorkspaceBandProps) {
-  return (
-    <section id={id} class="workspace-band">
-      <div class="workspace-band-header">
-        <div class="workspace-band-copy">
-          <span class="workspace-kicker">
-            <Icon name={icon} class="workspace-kicker-icon" />
-            {kicker}
-          </span>
-          <h3 class="workspace-band-title">{title}</h3>
-          <p class="workspace-band-detail">{detail}</p>
-        </div>
-      </div>
-      {children}
-    </section>
-  )
 }
 
 function gatewayTone(status?: ControlStatusView | null): 'success' | 'warning' | 'error' | 'neutral' {
@@ -72,6 +46,9 @@ export function MonitoringTab({
 }: MonitoringTabProps) {
   const { t } = useI18n()
   const [mode, setMode] = useState<'traffic' | 'cost'>('traffic')
+  const handleRetry = useCallback(() => {
+    if (onRetry) void onRetry()
+  }, [onRetry])
 
   return (
     <section class="panel workspace-page">
@@ -142,7 +119,7 @@ export function MonitoringTab({
             telemetryStatus={status?.telemetry_status}
             telemetryError={status?.telemetry_error}
             telemetryLastCheckedAt={status?.telemetry_last_checked_at}
-            onRetry={onRetry ? () => { void onRetry() } : undefined}
+            onRetry={onRetry ? handleRetry : undefined}
           />
         </WorkspaceBand>
       ) : (
@@ -159,7 +136,7 @@ export function MonitoringTab({
             hours={telemetryHours}
             onHoursChange={onTelemetryHoursChange}
             onRefreshPricing={onRefreshPricing}
-            onRetry={onRetry ? () => { void onRetry() } : undefined}
+            onRetry={onRetry ? handleRetry : undefined}
           />
         </WorkspaceBand>
       )}

@@ -24,8 +24,14 @@ import (
 )
 
 // sharedHTTPClient is a reusable HTTP client for upstream requests.
-var sharedHTTPClient = &http.Client{
-	Transport: &http.Transport{
+// Its Transport pins DNS resolution at dial time via proxy.SSRFChecker.NewSafeTransport,
+// which eliminates the DNS-rebinding TOCTOU window between URL validation and the
+// actual TCP connection. All upstream requests routed through this client are
+// protected from SSRF via DNS rebinding.
+var sharedHTTPClient = newSharedHTTPClient()
+
+func newSharedHTTPClient() *http.Client {
+	base := &http.Transport{
 		MaxIdleConns:          500,
 		MaxIdleConnsPerHost:   100,
 		MaxConnsPerHost:       200,
@@ -41,8 +47,14 @@ var sharedHTTPClient = &http.Client{
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		},
-	},
-	Timeout: 0, // per-request timeout set via context
+	}
+	safe := proxy.NewSSRFChecker().NewSafeTransport(base)
+	// Preserve the tuned settings from `base` on the wrapped transport because
+	// NewSafeTransport only overrides DialContext.
+	return &http.Client{
+		Transport: safe,
+		Timeout:   0, // per-request timeout set via context
+	}
 }
 
 type urlValidator interface {
@@ -190,6 +202,7 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 	if opts != nil && opts.DisableRetries {
 		maxAttempts = 1
 	}
+	var streamRetry *streamRetrySession
 
 	var (
 		attempts            int
@@ -226,11 +239,10 @@ attemptLoop:
 		if opts != nil && opts.DisableRetries {
 			sameProviderAttempts = 1
 		}
-		// When maxAttempts == 0 (infinite retry, non-streaming), also allow infinite same-provider attempts.
-		// Streaming requests keep the original sameProviderAttempts limit since async streaming
-		// retry is not yet supported.
+		// When maxAttempts == 0 (infinite retry), also allow infinite same-provider attempts.
+		// Streaming requests can keep the client connection alive through streamRetry.
 		innerLimit := sameProviderAttempts
-		if maxAttempts == 0 && !reqMeta.Stream {
+		if maxAttempts == 0 {
 			innerLimit = 0
 		}
 		for providerAttempt := 0; (innerLimit == 0 || providerAttempt < innerLimit) && (maxAttempts == 0 || attempts < maxAttempts); providerAttempt++ {
@@ -272,6 +284,10 @@ attemptLoop:
 				break attemptLoop
 			}
 
+			if reqMeta.Stream && maxAttempts == 0 && streamRetry == nil {
+				streamRetry = startStreamRetrySession(w)
+			}
+
 			if finalStreamBody != nil {
 				_ = finalStreamBody.Close()
 				finalStreamBody = nil
@@ -292,7 +308,7 @@ attemptLoop:
 		log.Printf("[gatewayd] request_id=%s upstream error: status=%d err=%v", requestID, finalStatusCode, finalForwardErr)
 
 		// Attempt fallback models before returning the error to the client.
-		if (opts == nil || !opts.DisableFallback) && tryFallbackModels(ctx, snap, runtimeState, telClient, pricingResolver, w, r, clientFmt, reqMeta, body, requestID, start, opts) {
+		if streamRetry == nil && (opts == nil || !opts.DisableFallback) && tryFallbackModels(ctx, snap, runtimeState, telClient, pricingResolver, w, r, clientFmt, reqMeta, body, requestID, start, opts) {
 			return
 		}
 
@@ -302,7 +318,7 @@ attemptLoop:
 				errorBody = adapted
 				if contentType != "" {
 					finalContentType = contentType
-			}
+				}
 			}
 		}
 
@@ -311,6 +327,12 @@ attemptLoop:
 			attemptRouteMode, finalStatusCode, finalLatency, attempts, 0, 0, 0, reqMeta.Stream, finalErrorMessage,
 			resolveFixedPricing(pricingResolver, requestedModel, finalEffectiveModel, finalProvider.ProviderID, 0, 0, 0, false, finalStatusCode), opts)
 		captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, 0, 0, 0, finalProvider.ProviderID, finalEffectiveModel, attemptRouteMode, 0, finalErrorMessage)
+
+		if streamRetry != nil {
+			streamRetry.Stop()
+			writeStreamErrorEvent(w, finalStatusCode, finalErrorMessage)
+			return
+		}
 
 		if len(errorBody) > 0 {
 			if strings.TrimSpace(finalContentType) == "" {
@@ -329,7 +351,12 @@ attemptLoop:
 
 	// Handle streaming response
 	if reqMeta.Stream && finalStreamBody != nil {
-		promptTokens, cachedPromptTokens, completionTokens = writeCompatStreamResponse(w, finalStatusCode, finalContentType, finalStreamBody, finalCompatPlan)
+		if streamRetry != nil {
+			streamRetry.Stop()
+			promptTokens, cachedPromptTokens, completionTokens = writeCompatStreamResponseStarted(w, streamRetry.flusher, finalStreamBody, finalCompatPlan)
+		} else {
+			promptTokens, cachedPromptTokens, completionTokens = writeCompatStreamResponse(w, finalStatusCode, finalContentType, finalStreamBody, finalCompatPlan)
+		}
 	} else {
 		clientRespBody, clientContentType, adaptErr := adaptResponseBodyForClient(finalCompatPlan, finalStatusCode, finalRespBody)
 		if adaptErr != nil {
@@ -369,7 +396,6 @@ attemptLoop:
 	captureExecutionResult(opts, finalStatusCode, finalContentType, finalLatency, promptTokens, cachedPromptTokens, completionTokens, finalProvider.ProviderID, finalEffectiveModel, attemptRouteMode, fixedPricing.TotalCostUSD, "")
 }
 
-	
 // emitTelemetry emits a telemetry event for a completed request.
 func emitTelemetry(telClient TelemetryEmitter, requestID string, start time.Time, path, requestedModel, effectiveModel, providerID, routeMode string,
 	statusCode int, latency time.Duration, attempts int, promptTokens, cachedPromptTokens, completionTokens int64, stream bool, errMsg string, fixedPricing FixedPricing, opts *ExecutionOptions) {
@@ -529,14 +555,13 @@ func collectProviderCandidates(snap *snapshot.Snapshot, model string) []provider
 					provider:      p,
 					upstreamModel: m.UpstreamModel,
 					weight:        normalizeWeight(p.ExecutionPolicy.Weight),
-			})
+				})
 				break
 			}
 		}
 	}
 	return candidates
 }
-
 
 func maxInt(a, b int) int {
 	if a > b {
@@ -550,4 +575,26 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func writeStreamErrorEvent(w http.ResponseWriter, status int, message string) {
+	if strings.TrimSpace(message) == "" {
+		message = "upstream request failed"
+	}
+	payload, err := json.Marshal(map[string]any{
+		"error": map[string]any{
+			"message": message,
+			"status":  status,
+		},
+	})
+	if err != nil {
+		payload = []byte(`{"error":{"message":"upstream request failed"}}`)
+	}
+	_, _ = w.Write([]byte("event: error\n"))
+	_, _ = w.Write([]byte("data: "))
+	_, _ = w.Write(payload)
+	_, _ = w.Write([]byte("\n\n"))
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }

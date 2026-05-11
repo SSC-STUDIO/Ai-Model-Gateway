@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"ai-model-gateway/internal/infra/logger"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -1003,11 +1005,17 @@ func (s *Store) persistBatch(batch []telemetryWrite) {
 		return
 	}
 
+	batchSize := len(batch)
+
 	s.dbWriteMu.Lock()
 	defer s.dbWriteMu.Unlock()
 
 	tx, err := s.db.Begin()
 	if err != nil {
+		logger.Error("persistBatch: begin tx failed, data lost",
+			"error", err.Error(),
+			"batch_size", batchSize,
+		)
 		return
 	}
 
@@ -1020,23 +1028,39 @@ func (s *Store) persistBatch(batch []telemetryWrite) {
 		if commit {
 			return
 		}
-		_ = tx.Rollback()
+		if rbErr := tx.Rollback(); rbErr != nil {
+			logger.Warn("persistBatch: rollback failed", "error", rbErr.Error())
+		}
 	}()
 
-	for _, item := range batch {
+	for idx, item := range batch {
 		switch {
 		case item.request != nil:
 			if err := execRequestWrite(requestStmt, *item.request); err != nil {
+				logger.Error("persistBatch: exec request write failed, batch rolled back",
+					"error", err.Error(),
+					"batch_size", batchSize,
+					"failed_at_index", idx,
+				)
 				return
 			}
 		case item.errRec != nil:
 			if err := execErrorWrite(errorStmt, *item.errRec); err != nil {
+				logger.Error("persistBatch: exec error write failed, batch rolled back",
+					"error", err.Error(),
+					"batch_size", batchSize,
+					"failed_at_index", idx,
+				)
 				return
 			}
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
+		logger.Error("persistBatch: commit failed, data lost",
+			"error", err.Error(),
+			"batch_size", batchSize,
+		)
 		return
 	}
 	commit = true

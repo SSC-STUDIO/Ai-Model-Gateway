@@ -14,6 +14,7 @@ import (
 	"ai-model-gateway/internal/control/publish"
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/gateway/snapshot"
+	"ai-model-gateway/internal/infra/logger"
 	"ai-model-gateway/internal/version"
 )
 
@@ -404,6 +405,36 @@ func secretsStatusHandler(deps Deps) http.HandlerFunc {
 			"redacted":      true,
 		}
 		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// clientErrorHandler accepts frontend error reports via POST.
+// Payload: {"message": "...", "stack": "...", "source": "..."}
+// Errors are logged server-side; no persistent storage (audit log is ephemeral).
+func clientErrorHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		var payload struct {
+			Message string `json:"message"`
+			Stack   string `json:"stack"`
+			Source  string `json:"source"`
+			URL     string `json:"url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		logger.Error("admin client error reported",
+			"message", payload.Message,
+			"source", payload.Source,
+			"url", payload.URL,
+			"stack", payload.Stack,
+		)
+		recordAudit(deps, r, "client.error", "client", true, payload.Message, nil)
+		writeJSON(w, http.StatusNoContent, nil)
 	}
 }
 
