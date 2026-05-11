@@ -2,6 +2,35 @@
 
 ## 2026-05-12
 
+### Benchmarking Test Coverage Improvement
+
+- Expanded `internal/control/benchmarking/suite_test.go` from 2 test functions to 37 test functions.
+- Added `TestBuildRequestOpenAIProtocol` and `TestBuildRequestUnsupportedProtocol` covering OpenAI (default) and unsupported protocol error paths.
+- Added `TestBuildToolRequestOpenAIProtocol` and `TestBuildToolRequestUnsupportedProtocol` covering OpenAI tool request and unsupported protocol paths.
+- Added 5 `extractAssistantText` tests: OpenAI choices, Anthropic multi-content with join, Anthropic non-text skip fallback, OpenAI empty choices fallback, invalid JSON fallback.
+- Added 6 `extractToolCall` tests: OpenAI match/mismatch/no tool_calls, Anthropic match/mismatch, plus invalid JSON for both protocols.
+- Added `TestClampScore` covering all boundary values (-10, 0, 50, 100, 110).
+- Added `TestExcerpt` covering short, long (truncation to 320), and whitespace trimming.
+- Added `TestSuiteByName` covering empty (defaults to general_protocol_v1), valid, and unknown suite error.
+- Added 3 `exactTextScorer` tests: match (score 100), mismatch (score 0), incomplete response.
+- Added 4 `judgeScorer` tests: nil judge, empty response, judge error, successful scoring.
+- Added 3 `jsonScorer` tests: valid full match, partial match (animal correct, count wrong), invalid JSON.
+- Added 2 `toolCallScorer` tests: match and mismatch.
+- Added 3 `streamScorer` tests: full score (data + done + tokens), Anthropic message_stop, no data.
+- Added 4 `baseCaseResult` tests: nil response, explicit error, HTTP 429 status-only error, field copying verification.
+- Expanded `internal/control/benchmarking/store_test.go` from 1 test function to 22 test functions.
+- Added `TestListRunsEmpty` and `TestListRunsAfterStartRun` covering empty and populated ListRuns.
+- Added `TestServiceListRunsNilService` and `TestServiceGetRunNilService` covering nil Service guards.
+- Added 4 StartRun error path tests: nil service, no gateway runner, no config source, disabled benchmarking.
+- Added 4 resolveJudgeProvider tests: nil config, preferred provider not found, model mismatch, fallback not found.
+- Added `TestNormalizeProtocol` covering empty, auto, known protocols, and unknown passthrough.
+- Added `TestUniqueStrings` covering deduplication and nil input.
+- Added `TestWeightedAverage` and `TestWeightedAverageZeroWeight` covering normal and zero-total-weight.
+- Added `TestMaxFloat` and `TestAbsFloat` for utility function coverage.
+- Added 4 expandTargets tests: nil config, missing provider_id/public_model, provider not found, model not advertised.
+- Added `TestValidateBaselineSelectionEmpty` and `TestParseBaselineRowsEmpty` for validation edge cases.
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42 packages green. Coverage: 72.2% → 83.4%.
+
 ### i18n And Compiler Test Coverage Improvement
 
 - Expanded `internal/i18n/bundle_test.go` from 6 test functions to 10 test functions.

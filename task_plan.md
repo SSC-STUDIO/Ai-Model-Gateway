@@ -1,5 +1,57 @@
 # Task Plan
 
+## Current Task - Benchmarking Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/control/benchmarking` (72.2% → 83.4%) by covering all scorer functions (exactTextScorer, judgeScorer, jsonScorer, toolCallScorer, streamScorer), extractAssistantText/extractToolCall edge cases, baseCaseResult paths, clampScore, excerpt, suiteByName, buildRequest/buildToolRequest protocol variants, ListRuns, Service nil-guard error paths, resolveJudgeProvider branches, expandTargets validation, and normalizeProtocol.
+
+### Current Phase
+
+Complete - benchmarking coverage 72.2% → 83.4%; all 42 Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | Identified gaps in scorers, extractAssistantText/extractToolCall, baseCaseResult, ListRuns, Service nil guards, resolveJudgeProvider, expandTargets, normalizeProtocol, clampScore, excerpt. |
+| Complete | 2. Write suite scorer tests | Added 35 test functions: extractAssistantText (OpenAI, Anthropic, skips non-text, empty choices, invalid JSON), extractToolCall (OpenAI match/mismatch/no calls, Anthropic match/mismatch/invalid JSON, OpenAI invalid JSON), clampScore, excerpt, suiteByName, all 5 scorers with match/mismatch/incomplete/nil-judge/empty-response/judge-error paths, baseCaseResult (nil, error, HTTP error status, field copying), buildRequest/buildToolRequest (OpenAI, Anthropic, unsupported protocol). |
+| Complete | 3. Write store and service tests | Added 20 test functions: ListRuns empty/after-run, Service nil-guard (ListRuns, GetRun, StartRun), StartRun error paths (no gateway, no config, disabled), resolveJudgeProvider (nil config, preferred not found, model mismatch, fallback not found), normalizeProtocol, uniqueStrings, weightedAverage/zero-weight, maxFloat, absFloat, expandTargets (nil config, missing fields, provider not found, model not advertised), validateBaselineSelection empty, parseBaselineRows empty. |
+| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 72.2% → 83.4%. |
+
+### Constraints
+
+- Worktree is already dirty with prior staged changes; do not revert them.
+- Use WSL ext4 for all commands.
+
+---
+
+## Current Task - Release And Audit Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/release` (72.6% → 87.8%) and `internal/control/audit` (65.3% → 92.1%) by covering SaveManifest, LoadManifest, BuildManifest edge cases, HashFile/HashDir error paths, verifyBinary paths, and full audit store CRUD/redaction coverage.
+
+### Current Phase
+
+Complete - release coverage 72.6% → 87.8%; audit coverage 65.3% → 92.1%; all 42 Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | release: SaveManifest (0%), LoadManifest (0%), BuildManifest defaults/edge cases, HashFile error (0%), HashDir error (0%), verifyBinary path error. audit: Path (0%), NewStore empty path, Record nil store/cancelled ctx/auto ID, List nil store/empty file/action filter/since filter/limit. |
+| Complete | 2. Write release tests | Added 14 test functions: SaveAndLoadManifestRoundTrip, SaveManifestEmptyPath, LoadManifestInvalidJSON, LoadManifestNonExistent, BuildManifestDefaultsAndEdgeCases (4 sub-tests), HashFileError, HashDirWithSubdirectories, HashDirError, VerifyManifestPlatformMismatch, VerifyManifestMissingDaemon, VerifyManifestBinaryHashMismatch, VerifyManifestEmptySchemaVersion, VerifyManifestEmptyProductVersion, VerifyManifestAdminDistHashMismatch. |
+| Complete | 3. Write audit tests | Expanded from 1 test to 15 test functions: NewStoreEmptyPath, NewStoreCreatesParentDir, PathNilStore, RecordNilStore, RecordCancelledContext, RecordGeneratesIDAndTime, RecordTrimsFields, ListNilStore, ListCancelledContext, ListNonExistentFile, ListActionFilter, ListSinceFilter, ListLimitEnforcement, ListDefaultLimit, ListMaxLimit, ListReverseChronological, RedactMapNilAndEmpty, RedactMapSensitiveKeys, RedactMapStringMap, RedactMapSliceValues. |
+| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). release: 72.6% → 87.8%; audit: 65.3% → 92.1%. |
+
+### Constraints
+
+- Worktree is already dirty with prior staged changes; do not revert them.
+- Use WSL ext4 for all commands.
+
+---
+
 ## Current Task - i18n And Compiler Test Coverage Improvement
 
 ### Goal
