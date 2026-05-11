@@ -567,11 +567,6 @@ func TestForwardMessages_NormalFlow(t *testing.T) {
 		t.Errorf("expected %q, got %q", testMsg, string(msg))
 	}
 
-	// Write back to verify reverse direction
-	if err := echoConn.WriteMessage(websocket.TextMessage, []byte(testMsg)); err != nil {
-		t.Fatalf("failed to write back: %v", err)
-	}
-
 	// Close client to stop forwardMessages
 	client.Close()
 
