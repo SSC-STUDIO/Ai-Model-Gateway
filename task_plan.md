@@ -1,5 +1,28 @@
 # Task Plan
 
+## Current Task - Pricing Catalog Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for the `internal/infra/pricing` package (64.5% → 100%) by covering RefreshNow nil guard and normal paths, fromLegacySnapshot with full data (sources, sourceCatalogs, FX rates), cloneRates empty/nil/non-empty paths, and struct field verification.
+
+### Current Phase
+
+Complete - coverage improved from 64.5% to 100.0%; all 42 Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | Identified gaps in RefreshNow, fromLegacySnapshot with full data, cloneRates non-empty path, SourceState/FXSnapshot field coverage. |
+| Complete | 2. Write pricing tests | Added 7 new test functions covering RefreshNow nil guard, RefreshNow normal invocation, fromLegacySnapshot with complete sources/FX/sourceCatalogs data, fromLegacySnapshot with empty data, cloneRates non-empty/nil/empty, SourceState fields, FXSnapshot fields. |
+| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 64.5% → 100.0%. |
+
+### Constraints
+
+- Worktree is already dirty with prior staged changes; do not revert them.
+- Use WSL ext4 for all commands.
+
 ## Current Task - Cache And WebSocket Test Coverage Improvement
 
 ### Goal

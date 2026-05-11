@@ -2,6 +2,17 @@
 
 ## 2026-05-12
 
+### Pricing Catalog Test Coverage Improvement
+
+- Expanded `internal/infra/pricing/catalog_test.go` from 10 test functions to 17 test functions.
+- Added tests for `RefreshNow` nil guard (returns nil for nil catalog) and normal invocation (returns without panic, snapshot remains valid).
+- Added `TestFromLegacySnapshotWithFullData` covering complete snapshot mapping with Sources (enabled/disabled, all fields), SourceCatalogs (multi-source with model prices), and FX rates (multi-currency with mutation independence).
+- Added `TestFromLegacySnapshotEmptyData` covering empty input producing non-nil empty catalog, zero-length sources, non-nil sourceCatalogs, and nil FX rates.
+- Added `TestCloneRatesNonEmpty` covering correct value cloning and mutation independence between source and clone.
+- Added `TestCloneRatesNil` and `TestCloneRatesEmpty` covering nil/empty map inputs returning nil.
+- Added `TestSourceStateFields` and `TestFXSnapshotFields` for struct field coverage.
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42 packages green. Coverage: 64.5% → 100.0%.
+
 ### Cache And WebSocket Test Coverage Improvement
 
 - Expanded `internal/gateway/cache/cache_test.go` from 17 test functions to 33 test functions.
