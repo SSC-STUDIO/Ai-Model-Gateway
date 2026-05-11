@@ -32,6 +32,7 @@ func TestHandleChatCompletionBridgesAnthropicJSONResponseAndTelemetry(t *testing
 	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
 	defer restore()
 	routingSequence.Store(0)
+	swapSharedHTTPClient(t, &http.Client{})
 
 	tel := &capturingTelemetryEmitter{events: make(chan telemetryingest.Event, 1)}
 	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
@@ -450,10 +451,9 @@ func TestConvertOpenAIChatRequestToAnthropicAcceptsResponsesStyleFunctionTool(t 
 }
 
 func TestHandleChatCompletionBridgesAnthropicToolUseJSONResponse(t *testing.T) {
-	restore := SetSSRFCheckerForTesting(nil)
-	defer restore()
-	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+	swapSharedHTTPClient(t, &http.Client{})
 
 	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
 		return fakeupstream.Response{
@@ -605,10 +605,9 @@ func TestConvertAnthropicRequestToOpenAIChatNormalizesNullToolDescription(t *tes
 }
 
 func TestHandleChatCompletionBridgesAnthropicStreamAndUsage(t *testing.T) {
-	restore := SetSSRFCheckerForTesting(nil)
-	defer restore()
-	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+	swapSharedHTTPClient(t, &http.Client{})
 
 	tel := &capturingTelemetryEmitter{events: make(chan telemetryingest.Event, 1)}
 	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
@@ -670,10 +669,9 @@ func TestHandleChatCompletionBridgesAnthropicStreamAndUsage(t *testing.T) {
 }
 
 func TestHandleChatCompletionBridgesAnthropicToolUseStream(t *testing.T) {
-	restore := SetSSRFCheckerForTesting(nil)
-	defer restore()
-	routingSequence.Store(0)
 	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+	swapSharedHTTPClient(t, &http.Client{})
 
 	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
 		return fakeupstream.Response{
@@ -2582,6 +2580,7 @@ func allowLocalAnthropicTestUpstreams(t *testing.T) {
 	t.Helper()
 	restore := SetSSRFCheckerForTesting(&mockSSRFChecker{})
 	t.Cleanup(restore)
+	swapSharedHTTPClient(t, &http.Client{})
 }
 
 type mockSSRFChecker struct{}

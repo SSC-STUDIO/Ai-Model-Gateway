@@ -63,6 +63,15 @@ type urlValidator interface {
 
 var ssrfChecker urlValidator = proxy.NewSSRFChecker()
 
+// SetSharedHTTPClientForTesting swaps the shared HTTP client for tests and returns a restore function.
+func SetSharedHTTPClientForTesting(client *http.Client) func() {
+	original := sharedHTTPClient
+	sharedHTTPClient = client
+	return func() {
+		sharedHTTPClient = original
+	}
+}
+
 // SetSSRFCheckerForTesting swaps the SSRF checker for tests and returns a restore function.
 func SetSSRFCheckerForTesting(checker urlValidator) func() {
 	original := ssrfChecker

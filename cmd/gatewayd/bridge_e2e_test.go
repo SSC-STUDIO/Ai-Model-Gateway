@@ -32,6 +32,8 @@ func TestGatewaydBridgeAnthropicE2EWithLocalUpstreams(t *testing.T) {
 		AllowPrivateIP: true,
 	}))
 	t.Cleanup(restoreSSRF)
+	restoreClient := gatewayapi.SetSharedHTTPClientForTesting(&http.Client{})
+	t.Cleanup(restoreClient)
 
 	primary := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
 		return fakeupstream.Response{
@@ -102,6 +104,8 @@ func TestGatewaydResponseCacheE2E(t *testing.T) {
 		AllowPrivateIP: true,
 	}))
 	t.Cleanup(restoreSSRF)
+	restoreClient := gatewayapi.SetSharedHTTPClientForTesting(&http.Client{})
+	t.Cleanup(restoreClient)
 
 	upstream := fakeupstream.New(func(req fakeupstream.CapturedRequest) fakeupstream.Response {
 		return fakeupstream.Response{
