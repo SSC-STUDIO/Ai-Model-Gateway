@@ -559,3 +559,449 @@ func TestCompileProvider_AnthropicProtocolAdapterCapabilities(t *testing.T) {
 		t.Fatalf("error_classifier = %q, want %q", provider.CapabilityTable.ErrorClassifier, errorClassifierAnthropic)
 	}
 }
+
+func TestCloneStringMap(t *testing.T) {
+	t.Run("non-empty map", func(t *testing.T) {
+		src := map[string]string{"a": "1", "b": "2"}
+		dst := cloneStringMap(src)
+		if !reflect.DeepEqual(dst, src) {
+			t.Fatalf("cloneStringMap result = %v, want %v", dst, src)
+		}
+		// Verify mutation independence
+		dst["a"] = "changed"
+		if src["a"] != "1" {
+			t.Fatalf("mutation of clone affected source")
+		}
+	})
+
+	t.Run("empty map", func(t *testing.T) {
+		dst := cloneStringMap(map[string]string{})
+		if dst == nil {
+			t.Fatal("expected non-nil empty map")
+		}
+		if len(dst) != 0 {
+			t.Fatalf("expected empty map, got %d entries", len(dst))
+		}
+	})
+
+	t.Run("nil map", func(t *testing.T) {
+		dst := cloneStringMap(nil)
+		if dst == nil {
+			t.Fatal("expected non-nil map from nil input")
+		}
+		if len(dst) != 0 {
+			t.Fatalf("expected empty map, got %d entries", len(dst))
+		}
+	})
+}
+
+func TestCompileCompatPolicy(t *testing.T) {
+	t.Run("with bridge rules and excluded user agents", func(t *testing.T) {
+		cfg := core.CompatConfig{
+			Bridge: core.BridgeConfig{
+				Enabled:           true,
+				ExcludeUserAgents: []string{"Bot/1.0", "Crawler"},
+				Rules: []core.BridgeRule{
+					{From: "gpt-4", To: "gpt-4o"},
+					{From: "   ", To: "gpt-4o"}, // empty From, skipped
+					{From: "claude-3", To: "   "}, // empty To, skipped
+					{From: "llama", To: "llama-3"},
+				},
+			},
+		}
+
+		policy := compileCompatPolicy(cfg)
+		if !policy.Bridge.Enabled {
+			t.Fatal("expected bridge enabled")
+		}
+		if len(policy.Bridge.Rules) != 2 {
+			t.Fatalf("expected 2 valid rules (empty from/to skipped), got %d", len(policy.Bridge.Rules))
+		}
+		if policy.Bridge.Rules[0].From != "gpt-4" || policy.Bridge.Rules[0].To != "gpt-4o" {
+			t.Fatalf("rule[0] = {from: %q, to: %q}", policy.Bridge.Rules[0].From, policy.Bridge.Rules[0].To)
+		}
+		if policy.Bridge.Rules[1].From != "llama" || policy.Bridge.Rules[1].To != "llama-3" {
+			t.Fatalf("rule[1] = {from: %q, to: %q}", policy.Bridge.Rules[1].From, policy.Bridge.Rules[1].To)
+		}
+		if !reflect.DeepEqual(policy.Bridge.ExcludeUserAgents, []string{"Bot/1.0", "Crawler"}) {
+			t.Fatalf("exclude user agents = %v", policy.Bridge.ExcludeUserAgents)
+		}
+	})
+
+	t.Run("empty bridge", func(t *testing.T) {
+		policy := compileCompatPolicy(core.CompatConfig{})
+		if policy.Bridge.Enabled {
+			t.Fatal("expected bridge disabled")
+		}
+		if len(policy.Bridge.Rules) != 0 {
+			t.Fatalf("expected 0 rules, got %d", len(policy.Bridge.Rules))
+		}
+		if len(policy.Bridge.ExcludeUserAgents) != 0 {
+			t.Fatalf("expected empty ExcludeUserAgents slice, got %v", policy.Bridge.ExcludeUserAgents)
+		}
+	})
+}
+
+func TestValidate_MissingProviderFields(t *testing.T) {
+	comp := NewCompiler()
+
+	t.Run("missing provider_id", func(t *testing.T) {
+		snap := validSnapshot()
+		snap.Providers[0].ProviderID = ""
+		err := comp.Validate(snap)
+		if err == nil || !strings.Contains(err.Error(), "provider_id is required") {
+			t.Fatalf("expected provider_id error, got %v", err)
+		}
+	})
+
+	t.Run("missing base_url", func(t *testing.T) {
+		snap := validSnapshot()
+		snap.Providers[0].BaseURL = ""
+		err := comp.Validate(snap)
+		if err == nil || !strings.Contains(err.Error(), "base_url is required") {
+			t.Fatalf("expected base_url error, got %v", err)
+		}
+	})
+
+	t.Run("missing model_table", func(t *testing.T) {
+		snap := validSnapshot()
+		snap.Providers[0].ModelTable = nil
+		err := comp.Validate(snap)
+		if err == nil || !strings.Contains(err.Error(), "model_table is required") {
+			t.Fatalf("expected model_table error, got %v", err)
+		}
+	})
+
+	t.Run("missing snapshot_id", func(t *testing.T) {
+		snap := validSnapshot()
+		snap.Meta.SnapshotID = ""
+		err := comp.Validate(snap)
+		if err == nil || !strings.Contains(err.Error(), "snapshot_id is required") {
+			t.Fatalf("expected snapshot_id error, got %v", err)
+		}
+	})
+
+	t.Run("wrong schema version", func(t *testing.T) {
+		snap := validSnapshot()
+		snap.Meta.SchemaVersion = 999
+		err := comp.Validate(snap)
+		if err == nil || !strings.Contains(err.Error(), "unsupported schema version") {
+			t.Fatalf("expected schema version error, got %v", err)
+		}
+	})
+
+	t.Run("missing ingress listen", func(t *testing.T) {
+		snap := validSnapshot()
+		snap.Ingress.Listen = ""
+		err := comp.Validate(snap)
+		if err == nil || !strings.Contains(err.Error(), "ingress.listen is required") {
+			t.Fatalf("expected ingress.listen error, got %v", err)
+		}
+	})
+
+	t.Run("empty providers", func(t *testing.T) {
+		snap := validSnapshot()
+		snap.Providers = nil
+		err := comp.Validate(snap)
+		if err == nil || !strings.Contains(err.Error(), "at least one provider") {
+			t.Fatalf("expected empty providers error, got %v", err)
+		}
+	})
+
+	t.Run("valid snapshot passes", func(t *testing.T) {
+		err := comp.Validate(validSnapshot())
+		if err != nil {
+			t.Fatalf("expected nil error for valid snapshot, got %v", err)
+		}
+	})
+}
+
+func TestResolveQuotaRecoveryIntervalMin(t *testing.T) {
+	t.Run("disable cooldown returns 0", func(t *testing.T) {
+		got := resolveQuotaRecoveryIntervalMin(core.FailurePolicyConfig{DisableCooldown: true, QuotaRecoveryIntervalMin: 100})
+		if got != 0 {
+			t.Fatalf("got %d, want 0", got)
+		}
+	})
+
+	t.Run("zero config returns default", func(t *testing.T) {
+		got := resolveQuotaRecoveryIntervalMin(core.FailurePolicyConfig{})
+		if got != defaultQuotaRecoveryIntervalMin {
+			t.Fatalf("got %d, want %d", got, defaultQuotaRecoveryIntervalMin)
+		}
+	})
+
+	t.Run("negative config returns default", func(t *testing.T) {
+		got := resolveQuotaRecoveryIntervalMin(core.FailurePolicyConfig{QuotaRecoveryIntervalMin: -5})
+		if got != defaultQuotaRecoveryIntervalMin {
+			t.Fatalf("got %d, want %d", got, defaultQuotaRecoveryIntervalMin)
+		}
+	})
+
+	t.Run("below minimum returns minimum", func(t *testing.T) {
+		got := resolveQuotaRecoveryIntervalMin(core.FailurePolicyConfig{QuotaRecoveryIntervalMin: 3})
+		if got != minimumQuotaRecoveryIntervalMin {
+			t.Fatalf("got %d, want %d", got, minimumQuotaRecoveryIntervalMin)
+		}
+	})
+
+	t.Run("valid configured value returned as-is", func(t *testing.T) {
+		got := resolveQuotaRecoveryIntervalMin(core.FailurePolicyConfig{QuotaRecoveryIntervalMin: 30})
+		if got != 30 {
+			t.Fatalf("got %d, want 30", got)
+		}
+	})
+
+	t.Run("exact minimum returns minimum", func(t *testing.T) {
+		got := resolveQuotaRecoveryIntervalMin(core.FailurePolicyConfig{QuotaRecoveryIntervalMin: minimumQuotaRecoveryIntervalMin})
+		if got != minimumQuotaRecoveryIntervalMin {
+			t.Fatalf("got %d, want %d", got, minimumQuotaRecoveryIntervalMin)
+		}
+	})
+}
+
+func TestCompile_EmptyRevisionID(t *testing.T) {
+	comp := NewCompiler()
+	comp.SetRevisionConfigSource(&stubRevisionConfigSource{})
+
+	_, err := comp.Compile("")
+	if err == nil {
+		t.Fatal("expected error for empty revision ID")
+	}
+	if !strings.Contains(err.Error(), "revision_id is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = comp.Compile("   ")
+	if err == nil {
+		t.Fatal("expected error for whitespace-only revision ID")
+	}
+}
+
+func TestCompile_NilConfigFromSource(t *testing.T) {
+	comp := NewCompiler()
+	comp.SetRevisionConfigSource(&stubRevisionConfigSource{
+		configs: map[string]*core.Config{
+			"rev_nil": nil,
+		},
+	})
+
+	_, err := comp.Compile("rev_nil")
+	if err == nil {
+		t.Fatal("expected error for nil config from source")
+	}
+	if !strings.Contains(err.Error(), "revision not found") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompileFromConfig_WithPricingSources(t *testing.T) {
+	cfg := core.Config{
+		Pricing: core.PricingConfig{
+			CachePath:              "/tmp/pricing.json",
+			RefreshIntervalMinutes: 60,
+			RequestTimeoutMs:       5000,
+			Sources: []core.PricingSourceConfig{
+				{
+					ID:                     "openai-official",
+					Vendor:                 "openai",
+					URL:                    "https://api.openai.com/pricing",
+					Enabled:                boolPtr(true),
+					TimeoutMs:              3000,
+					RefreshIntervalMinutes: 120,
+				},
+			},
+			ManualPrices: []core.PricingManualPrice{
+				{
+					Provider:    "custom",
+					Model:       "custom-model",
+					Currency:    "USD",
+					InputPer1M:  10.0,
+					OutputPer1M: 20.0,
+					Enabled:     boolPtr(true),
+					Source:      "manual",
+				},
+			},
+			FX: core.PricingFXConfig{
+				CachePath:              "/tmp/fx.json",
+				RefreshIntervalMinutes: 1440,
+			},
+		},
+		Providers: []core.Provider{
+			{
+				Name:    "primary",
+				BaseURL: "https://api.example.com/v1",
+				Models:  []string{"gpt-4o"},
+			},
+		},
+	}
+
+	snap, err := NewCompiler().CompileFromConfig(&cfg)
+	if err != nil {
+		t.Fatalf("CompileFromConfig() error = %v", err)
+	}
+
+	if snap.Pricing.CachePath != "/tmp/pricing.json" {
+		t.Fatalf("pricing cache_path = %q", snap.Pricing.CachePath)
+	}
+	if len(snap.Pricing.Sources) != 1 {
+		t.Fatalf("expected 1 pricing source, got %d", len(snap.Pricing.Sources))
+	}
+	if snap.Pricing.Sources[0].ID != "openai-official" {
+		t.Fatalf("source ID = %q", snap.Pricing.Sources[0].ID)
+	}
+	if !snap.Pricing.Sources[0].Enabled {
+		t.Fatal("expected source enabled")
+	}
+	if len(snap.Pricing.ManualPrices) != 1 {
+		t.Fatalf("expected 1 manual price, got %d", len(snap.Pricing.ManualPrices))
+	}
+	if snap.Pricing.ManualPrices[0].Provider != "custom" {
+		t.Fatalf("manual price provider = %q", snap.Pricing.ManualPrices[0].Provider)
+	}
+	if snap.Pricing.FX.CachePath != "/tmp/fx.json" {
+		t.Fatalf("fx cache_path = %q", snap.Pricing.FX.CachePath)
+	}
+}
+
+func TestCompileFromConfig_ClonePreservesOriginalPricingSources(t *testing.T) {
+	sources := []core.PricingSourceConfig{{ID: "src1", Vendor: "openai"}}
+	cfg := core.Config{
+		Pricing: core.PricingConfig{Sources: sources},
+		Providers: []core.Provider{
+			{Name: "p1", BaseURL: "https://example.com", Models: []string{"m1"}},
+		},
+	}
+
+	_, err := NewCompiler().CompileFromConfig(&cfg)
+	if err != nil {
+		t.Fatalf("CompileFromConfig() error = %v", err)
+	}
+
+	// Original config pricing sources should remain intact
+	if len(cfg.Pricing.Sources) != 1 {
+		t.Fatalf("original pricing sources changed")
+	}
+}
+
+func TestCompileFromConfig_ClonePreservesOriginalFallbackModels(t *testing.T) {
+	models := map[string]string{"old": "new"}
+	cfg := core.Config{
+		Compat: core.CompatConfig{
+			Fallback: core.FallbackConfig{Models: models},
+		},
+		Providers: []core.Provider{
+			{Name: "p1", BaseURL: "https://example.com", Models: []string{"m1"}},
+		},
+	}
+
+	_, err := NewCompiler().CompileFromConfig(&cfg)
+	if err != nil {
+		t.Fatalf("CompileFromConfig() error = %v", err)
+	}
+
+	// Original should be unchanged
+	if cfg.Compat.Fallback.Models["old"] != "new" {
+		t.Fatal("original fallback models mutated")
+	}
+}
+
+func TestCompileFromConfig_HeadersAllEmpty(t *testing.T) {
+	cfg := core.Config{
+		Providers: []core.Provider{
+			{
+				Name:    "p1",
+				BaseURL: "https://example.com",
+				Models:  []string{"m1"},
+				Headers: map[string]string{"   ": "val", "  ": "val2"},
+			},
+		},
+	}
+
+	snap, err := NewCompiler().CompileFromConfig(&cfg)
+	if err != nil {
+		t.Fatalf("CompileFromConfig() error = %v", err)
+	}
+
+	if snap.Providers[0].Headers != nil {
+		t.Fatalf("expected nil headers when all keys are empty, got %v", snap.Providers[0].Headers)
+	}
+}
+
+func TestCompileFromConfig_EmptyCredentials(t *testing.T) {
+	cfg := core.Config{
+		Providers: []core.Provider{
+			{
+				Name:    "p1",
+				BaseURL: "https://example.com",
+				Models:  []string{"m1"},
+				APIKey:  "",
+			},
+		},
+	}
+
+	snap, err := NewCompiler().CompileFromConfig(&cfg)
+	if err != nil {
+		t.Fatalf("CompileFromConfig() error = %v", err)
+	}
+
+	if snap.Providers[0].Credentials.Kind != "" {
+		t.Fatalf("expected empty credentials kind, got %q", snap.Providers[0].Credentials.Kind)
+	}
+}
+
+func TestCompileProvider_InvalidAnthropicBaseURL_Scheme(t *testing.T) {
+	_, err := compileProvider(core.Provider{
+		Name:             "test",
+		BaseURL:          "https://api.example.com",
+		AnthropicBaseURL: "not-a-url",
+		Models:           []string{"m1"},
+	}, 0)
+	if err == nil || (!strings.Contains(err.Error(), "invalid") && !strings.Contains(err.Error(), "absolute URL")) {
+		t.Fatalf("expected URL error, got %v", err)
+	}
+}
+
+func TestCompileProvider_EmptyName(t *testing.T) {
+	_, err := compileProvider(core.Provider{
+		Name:    "   ",
+		BaseURL: "https://api.example.com",
+		Models:  []string{"m1"},
+	}, 0)
+	if err == nil || !strings.Contains(err.Error(), "name must not be empty") {
+		t.Fatalf("expected empty name error, got %v", err)
+	}
+}
+
+func TestCompileProvider_EmptyBaseURL(t *testing.T) {
+	_, err := compileProvider(core.Provider{
+		Name:    "test",
+		BaseURL: "   ",
+		Models:  []string{"m1"},
+	}, 0)
+	if err == nil || !strings.Contains(err.Error(), "base_url must not be empty") {
+		t.Fatalf("expected empty base_url error, got %v", err)
+	}
+}
+
+func validSnapshot() *snapshot.Snapshot {
+	return &snapshot.Snapshot{
+		Meta: snapshot.SnapshotMeta{
+			SnapshotID:      "snap_test",
+			SchemaVersion:   snapshot.CurrentSchemaVersion,
+			CompilerVersion: compilerVersion,
+		},
+		Ingress: snapshot.IngressConfig{Listen: ":18080"},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "primary",
+				BaseURL:    "https://example.com",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "gpt-4o", UpstreamModel: "gpt-4o"},
+				},
+			},
+		},
+	}
+}
+
+func boolPtr(v bool) *bool { return &v }

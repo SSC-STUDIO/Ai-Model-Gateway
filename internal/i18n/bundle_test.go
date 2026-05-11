@@ -97,3 +97,64 @@ func TestBundle_T_Chinese(t *testing.T) {
 		t.Errorf("Chinese translation failed: got %q", result)
 	}
 }
+
+func TestSetLanguage(t *testing.T) {
+	b := New("zh")
+	if b.lang.String() != "zh" {
+		t.Fatalf("initial language = %q, want zh", b.lang.String())
+	}
+
+	b.SetLanguage("en")
+	if b.lang.String() != "en" {
+		t.Errorf("after SetLanguage(en): lang = %q, want en", b.lang.String())
+	}
+
+	b.SetLanguage("ja")
+	if b.lang.String() != "ja" {
+		t.Errorf("after SetLanguage(ja): lang = %q, want ja", b.lang.String())
+	}
+
+	// Verify T still works after language change
+	b.catalog["test.key"] = "translated"
+	if got := b.T("test.key"); got != "translated" {
+		t.Errorf("T after SetLanguage = %q, want translated", got)
+	}
+}
+
+func TestMustLoadCatalog_Success(t *testing.T) {
+	langs := []string{"zh", "en", "ja", "ko", "es", "fr", "de"}
+	for _, lang := range langs {
+		t.Run(lang, func(t *testing.T) {
+			catalog := MustLoadCatalog(lang)
+			if len(catalog) == 0 {
+				t.Errorf("MustLoadCatalog(%q) returned empty catalog", lang)
+			}
+		})
+	}
+}
+
+func TestMustLoadCatalog_FallbackLang(t *testing.T) {
+	// unknown language normalizes to "zh", so MustLoadCatalog succeeds
+	catalog := MustLoadCatalog("xx-unknown")
+	if len(catalog) == 0 {
+		t.Error("MustLoadCatalog(normalized to zh) returned empty catalog")
+	}
+}
+
+func TestLoadCatalog_InvalidLang(t *testing.T) {
+	// normalizeLang maps everything to one of the known languages,
+	// so we cannot trigger a genuine ReadFile error via normal API.
+	// But we can verify all supported languages load without error.
+	langs := []string{"zh", "zh-CN", "zh-TW", "en", "en-US", "en-GB", "ja", "ko", "es", "fr", "de"}
+	for _, lang := range langs {
+		t.Run(lang, func(t *testing.T) {
+			catalog, err := LoadCatalog(lang)
+			if err != nil {
+				t.Errorf("LoadCatalog(%q) error: %v", lang, err)
+			}
+			if len(catalog) == 0 {
+				t.Errorf("LoadCatalog(%q) returned empty catalog", lang)
+			}
+		})
+	}
+}

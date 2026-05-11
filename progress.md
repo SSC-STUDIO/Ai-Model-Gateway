@@ -2,6 +2,27 @@
 
 ## 2026-05-12
 
+### i18n And Compiler Test Coverage Improvement
+
+- Expanded `internal/i18n/bundle_test.go` from 6 test functions to 10 test functions.
+- Added `TestSetLanguage` covering language change and T-key resolution after change.
+- Added `TestMustLoadCatalog_Success` covering all 7 supported languages (zh, en, ja, ko, es, fr, de).
+- Added `TestMustLoadCatalog_FallbackLang` covering unknown language normalization to zh.
+- Added `TestLoadCatalog_InvalidLang` covering all normalizeLang variants (zh, zh-CN, zh-TW, en, en-US, en-GB, ja, ko, es, fr, de).
+- i18n coverage: 79.5% → 92.3%.
+- Expanded `internal/control/compiler/compiler_test.go` from 13 test functions to 25 test functions.
+- Added `TestCloneStringMap` covering non-empty, empty, and nil map cloning with mutation independence.
+- Added `TestCompileCompatPolicy` covering bridge rules with empty from/to skipping and empty bridge.
+- Added `TestValidate_MissingProviderFields` covering 8 validation sub-cases (missing provider_id, base_url, model_table, snapshot_id, wrong schema version, missing ingress listen, empty providers, valid snapshot).
+- Added `TestResolveQuotaRecoveryIntervalMin` covering 6 sub-cases (disable cooldown, zero/negative/default config, below minimum, exact minimum, valid value).
+- Added `TestCompile_EmptyRevisionID` and `TestCompile_NilConfigFromSource` covering edge cases.
+- Added `TestCompileFromConfig_WithPricingSources` covering pricing sources, manual prices, and FX config compilation.
+- Added `TestCompileFromConfig_ClonePreservesOriginal*` covering clone mutation independence for pricing sources and fallback models.
+- Added `TestCompileFromConfig_HeadersAllEmpty` and `TestCompileFromConfig_EmptyCredentials` covering edge cases.
+- Added `TestCompileProvider_*` covering invalid URL scheme, empty name, and empty base_url errors.
+- Compiler coverage: 79.1% → 97.1%.
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42 packages green.
+
 ### Pricing Catalog Test Coverage Improvement
 
 - Expanded `internal/infra/pricing/catalog_test.go` from 10 test functions to 17 test functions.

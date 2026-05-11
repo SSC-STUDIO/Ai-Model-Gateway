@@ -1,5 +1,29 @@
 # Task Plan
 
+## Current Task - i18n And Compiler Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/i18n` (79.5% → 92.3%) and `internal/control/compiler` (79.1% → 97.1%) packages.
+
+### Current Phase
+
+Complete - i18n coverage 79.5% → 92.3%; compiler coverage 79.1% → 97.1%; all 42 Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | i18n: SetLanguage (0%), MustLoadCatalog (0%), LoadCatalog error path (20% uncovered). compiler: cloneStringMap (0%), compileCompatPolicy (37.5%), Validate (62.5%), resolveQuotaRecoveryIntervalMin (62.5%). |
+| Complete | 2. Write i18n tests | Added 4 test functions: SetLanguage, MustLoadCatalog success/fallback, LoadCatalog all langs. |
+| Complete | 3. Write compiler tests | Added 12 test functions: cloneStringMap, compileCompatPolicy, Validate (8 sub-cases), resolveQuotaRecoveryIntervalMin (6 sub-cases), empty revision ID, nil config, pricing sources, clone mutation, headers all empty, empty credentials, provider errors. |
+| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). i18n: 79.5% → 92.3%; compiler: 79.1% → 97.1%. |
+
+### Constraints
+
+- Worktree is already dirty with prior staged changes; do not revert them.
+- Use WSL ext4 for all commands.
+
 ## Current Task - Pricing Catalog Test Coverage Improvement
 
 ### Goal
