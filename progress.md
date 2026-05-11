@@ -2,6 +2,15 @@
 
 ## 2026-05-12
 
+### Rate Limiter Test Coverage Improvement
+
+- Expanded `internal/gateway/ratelimit/limiter_test.go` from 10 test functions to 14 test functions.
+- Added `TestAllow_CleanupStaleBuckets` covering periodic stale-bucket sweep: creates a stale bucket (10min old) and a fresh bucket, triggers the 256-call cleanup interval, and verifies the stale bucket is removed while the fresh one survives.
+- Added `TestAllow_MaxBuckets_RejectsNewKeys` covering maxBuckets enforcement: sets `maxBuckets=2`, fills capacity, and verifies a third key is rejected while existing keys still work.
+- Added `TestAllow_MaxBuckets_CleanupAllowsNewKeys` covering maxBuckets with stale cleanup: sets `maxBuckets=2` with one stale and one fresh bucket, verifies a new key is allowed after cleanup frees the stale entry.
+- Added `TestAllow_TokenRefillCap` covering burst cap on token refill: uses one token, waits 1.1s (100 rps * 1.1s = 110 tokens >> burst of 5), and verifies tokens are capped to the burst value.
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42 packages green. Coverage: 81.0% → 100.0%.
+
 ### Benchmarking Test Coverage Improvement
 
 - Expanded `internal/control/benchmarking/suite_test.go` from 2 test functions to 37 test functions.

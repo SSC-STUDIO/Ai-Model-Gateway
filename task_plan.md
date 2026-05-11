@@ -401,3 +401,27 @@ Complete - coverage improved from 51.3% to 97.4%; all 42 Go packages pass.
 
 - Worktree is already dirty with prior staged changes; do not revert them.
 - Use WSL ext4 for all commands.
+
+---
+
+## Current Task - Rate Limiter Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for the `internal/gateway/ratelimit` package (81.0% → 100%) by covering cleanupStaleBucketsLocked periodic sweep, maxBuckets enforcement (reject new keys when at capacity, allow after stale cleanup), and token refill cap (burst ceiling).
+
+### Current Phase
+
+Complete - coverage improved from 81.0% to 100.0%; all 42 Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | Identified gaps in cleanupStaleBucketsLocked (0% coverage), maxBuckets new-key rejection and cleanup recovery, and token refill burst cap. |
+| Complete | 2. Write ratelimit tests | Added 4 test functions: TestAllow_CleanupStaleBuckets (periodic sweep removes stale bucket after 256 calls), TestAllow_MaxBuckets_RejectsNewKeys (third key rejected at capacity), TestAllow_MaxBuckets_CleanupAllowsNewKeys (stale bucket cleanup frees slot for new key), TestAllow_TokenRefillCap (elapsed-time refill capped to burst). |
+| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 81.0% → 100.0%. |
+
+### Constraints
+
+- Use WSL ext4 for all commands.
