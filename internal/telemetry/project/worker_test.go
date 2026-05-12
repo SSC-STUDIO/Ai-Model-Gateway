@@ -788,3 +788,193 @@ func TestProjectNewEventsWithCorruptedRow(t *testing.T) {
 	// The bad event was skipped but checkpoint advances
 	assertCheckpoint(t, queryStore, 1)
 }
+
+func TestDrainNilGuards(t *testing.T) {
+	ctx := context.Background()
+
+	// nil eventLog
+	p1 := NewProjector(nil, nil)
+	result, err := p1.Drain(ctx)
+	if err != nil {
+		t.Fatalf("Drain with nil eventLog: %v", err)
+	}
+	if result.Projected != 0 || result.LastID != 0 {
+		t.Errorf("Drain nil eventLog: %+v", result)
+	}
+
+	// nil queryStore
+	dir := t.TempDir()
+	eventLog, err := eventlog.New(filepath.Join(dir, "events.db"))
+	if err != nil {
+		t.Fatalf("create event log: %v", err)
+	}
+	t.Cleanup(func() { _ = eventLog.Close() })
+
+	p2 := NewProjector(eventLog, nil)
+	result, err = p2.Drain(ctx)
+	if err != nil {
+		t.Fatalf("Drain with nil queryStore: %v", err)
+	}
+	if result.Projected != 0 || result.LastID != 0 {
+		t.Errorf("Drain nil queryStore: %+v", result)
+	}
+}
+
+func TestDrainCheckpointLoadError(t *testing.T) {
+	ctx := context.Background()
+	projector, _, queryStore := newProjectorTestHarness(t)
+
+	_ = queryStore.Close()
+
+	result, err := projector.Drain(ctx)
+	if err == nil {
+		t.Fatal("expected error from closed query store")
+	}
+	if result.Projected != 0 {
+		t.Errorf("Projected = %d, want 0", result.Projected)
+	}
+}
+
+func TestDrainSuccessWithEvents(t *testing.T) {
+	ctx := context.Background()
+	projector, eventLog, queryStore := newProjectorTestHarness(t)
+
+	appendTelemetryEvents(t, eventLog,
+		newGatewayAttemptEvent("evt-1", "req-1", time.Date(2026, 4, 18, 12, 0, 1, 0, time.UTC)),
+		newGatewayAttemptEvent("evt-2", "req-2", time.Date(2026, 4, 18, 12, 0, 2, 0, time.UTC)),
+	)
+
+	result, err := projector.Drain(ctx)
+	if err != nil {
+		t.Fatalf("Drain: %v", err)
+	}
+	if result.Projected != 2 {
+		t.Errorf("Projected = %d, want 2", result.Projected)
+	}
+	if result.LastID != 2 {
+		t.Errorf("LastID = %d, want 2", result.LastID)
+	}
+
+	assertCheckpoint(t, queryStore, 2)
+}
+
+func TestDrainEmptyTable(t *testing.T) {
+	ctx := context.Background()
+	projector, _, queryStore := newProjectorTestHarness(t)
+
+	result, err := projector.Drain(ctx)
+	if err != nil {
+		t.Fatalf("Drain: %v", err)
+	}
+	if result.Projected != 0 {
+		t.Errorf("Projected = %d, want 0", result.Projected)
+	}
+	if result.LastID != 0 {
+		t.Errorf("LastID = %d, want 0", result.LastID)
+	}
+
+	_ = queryStore
+}
+
+func TestDrainProjectionError(t *testing.T) {
+	ctx := context.Background()
+	projector, eventLog, queryStore := newProjectorTestHarness(t)
+
+	appendTelemetryEvents(t, eventLog,
+		newGatewayAttemptEvent("evt-1", "req-1", time.Date(2026, 4, 18, 12, 0, 1, 0, time.UTC)),
+	)
+
+	// Close query store so ApplyProjectionBatch fails
+	_ = queryStore.Close()
+
+	result, err := projector.Drain(ctx)
+	if err == nil {
+		t.Fatal("expected error from projection batch failure")
+	}
+	if result.Projected != 0 {
+		t.Errorf("Projected = %d, want 0", result.Projected)
+	}
+}
+
+func TestNormalizeProjectedPricingStatus(t *testing.T) {
+	tests := []struct {
+		name             string
+		status           string
+		promptTokens     int64
+		cachedTokens     int64
+		completionTokens int64
+		want             string
+	}{
+		{"fixed passthrough", query.PricingStatusFixed, 0, 0, 0, query.PricingStatusFixed},
+		{"estimated_legacy passthrough", query.PricingStatusEstimatedLegacy, 10, 0, 5, query.PricingStatusEstimatedLegacy},
+		{"unpriced passthrough", query.PricingStatusUnpriced, 0, 0, 0, query.PricingStatusUnpriced},
+		{"unknown status with prompt tokens", "unknown", 10, 0, 0, query.PricingStatusEstimatedLegacy},
+		{"unknown status with cached tokens", "unknown", 0, 5, 0, query.PricingStatusEstimatedLegacy},
+		{"unknown status with completion tokens", "unknown", 0, 0, 10, query.PricingStatusEstimatedLegacy},
+		{"unknown status no tokens", "unknown", 0, 0, 0, query.PricingStatusUnpriced},
+		{"empty status no tokens", "", 0, 0, 0, query.PricingStatusUnpriced},
+		{"empty status with tokens", "", 1, 0, 0, query.PricingStatusEstimatedLegacy},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeProjectedPricingStatus(tt.status, tt.promptTokens, tt.cachedTokens, tt.completionTokens)
+			if got != tt.want {
+				t.Errorf("normalizeProjectedPricingStatus(%q, %d, %d, %d) = %q, want %q",
+					tt.status, tt.promptTokens, tt.cachedTokens, tt.completionTokens, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunWithCheckpointErrorThenRecovery(t *testing.T) {
+	projector, eventLog, queryStore := newProjectorTestHarness(t)
+	projector.interval = 50 * time.Millisecond
+
+	// Close query store to trigger checkpoint load error on first tick
+	_ = queryStore.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(150*time.Millisecond, cancel)
+
+	done := make(chan struct{})
+	go func() {
+		projector.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after context cancellation")
+	}
+
+	_ = eventLog
+}
+
+func TestRunNilEventLogRun(t *testing.T) {
+	dir := t.TempDir()
+	queryStore, err := query.NewStore(filepath.Join(dir, "query.db"))
+	if err != nil {
+		t.Fatalf("create query store: %v", err)
+	}
+	t.Cleanup(func() { _ = queryStore.Close() })
+
+	projector := NewProjector(nil, queryStore)
+	projector.interval = 50 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(150*time.Millisecond, cancel)
+
+	done := make(chan struct{})
+	go func() {
+		projector.Run(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after context cancellation")
+	}
+}

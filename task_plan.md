@@ -1,5 +1,29 @@
 # Task Plan
 
+## Current Task - Telemetry Projector Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/telemetry/project` (71.8% → 93.6%) by covering Drain (nil guards, checkpoint load error, success loop, projection error), normalizeProjectedPricingStatus (all status/tokens combos), and Run error paths (checkpoint load warning, nil eventLog).
+
+### Current Phase
+
+Complete - coverage improved from 71.8% to 93.6%; all 42+ Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | Identified gaps in Drain (0%), normalizeProjectedPricingStatus (60%), Run checkpoint load error path. |
+| Complete | 2. Write projector tests | Added 8 test functions: TestDrainNilGuards (nil eventLog/queryStore), TestDrainCheckpointLoadError, TestDrainSuccessWithEvents, TestDrainEmptyTable, TestDrainProjectionError, TestNormalizeProjectedPricingStatus (9 sub-cases), TestRunWithCheckpointErrorThenRecovery, TestRunNilEventLogRun. |
+| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42+ packages). Coverage: 71.8% → 93.6%. |
+
+### Constraints
+
+- Use WSL ext4 for all commands.
+
+---
+
 ## Current Task - Eventlog Test Coverage Improvement
 
 ### Goal

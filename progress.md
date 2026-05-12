@@ -2,6 +2,19 @@
 
 ## 2026-05-12
 
+### Telemetry Projector Test Coverage Improvement
+
+- Expanded `internal/telemetry/project/worker_test.go` from 18 test functions to 26 test functions.
+- Added `TestDrainNilGuards` covering Drain with nil eventLog and nil queryStore (both return zero result).
+- Added `TestDrainCheckpointLoadError` covering Drain error path when query store is closed during checkpoint load.
+- Added `TestDrainSuccessWithEvents` covering full Drain loop projecting 2 events and verifying checkpoint and result.
+- Added `TestDrainEmptyTable` covering Drain on empty event table returns zero result.
+- Added `TestDrainProjectionError` covering Drain error path when query store is closed during ApplyProjectionBatch.
+- Added `TestNormalizeProjectedPricingStatus` with 9 sub-cases: fixed/estimated_legacy/unpriced passthrough, unknown status with prompt/cached/completion tokens (→ estimated_legacy), unknown/empty status without tokens (→ unpriced).
+- Added `TestRunWithCheckpointErrorThenRecovery` covering Run's LoadProjectionCheckpoint warn path when query store is closed.
+- Added `TestRunNilEventLogRun` covering Run with nil eventLog (checkpoint load skipped, ticker idle until cancel).
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42+ packages green. Coverage: 71.8% → 93.6%.
+
 ### Eventlog Test Coverage Improvement
 
 - Fixed build failure in `internal/control/api/handlers_test.go` caused by unused `audit` import.
