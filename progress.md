@@ -2,6 +2,17 @@
 
 ## 2026-05-12
 
+### Telemetry Test Coverage Improvement
+
+- Expanded `internal/telemetry/pricing_test.go` with 25 new test functions targeting uncovered code paths.
+- Added pricing runtime tests: `TestShouldRefresh` (5 sub-cases for zero/recent/old/zero-interval/defaults), `TestCloneSourceCatalogs` (nil/empty/non-empty mutation independence), `TestMergeSourceCatalogs` (normal/nil-base), `TestClonePricingSourceStates` (nil/empty/non-empty mutation independence), `TestClonePricingFXSnapshot` (empty/non-empty mutation independence), `TestLoadPricingFXCache` (empty-path error, valid round-trip, invalid JSON), `TestSavePricingFXCacheInvalidPath` (empty path no-op), `TestApplyFXToPrice` (USD/CNY/disabled/noRates), `TestApplyFXToCatalog` (empty/non-empty), `TestAnnotateSourceCatalog` (field verification), `TestHydrateSourceStates` (enabled/disabled sources, empty config), `TestClonePricingCatalogSnapshot` (deep mutation independence across Catalog/Sources/FX).
+- Added pricing source/parser tests: `TestInferCurrency` (8 sub-cases for $, US$, ￥, ¥, CNY, 元, unknown with USD/CNY fallback), `TestExtractMoneyValues` (6 sub-cases for single/multiple/none/US$/￥), `TestParseModelAliasesFromCell` (single/empty/multi), `TestExtractPriceFromCells` (6 sub-cases: input+output, cache+output, empty, no money, unordered, three values), `TestParseGenericPricingTables` (simple table, empty body, no valid rows), `TestFetchPricingSourceCatalogUnsupportedVendor` (error path), `TestFetchSinglePageCatalogEmptyURL` (error path).
+- Added mock-server tests: `TestFetchSinglePageCatalogWithMockServer` (httptest success path with parseGenericPricingTables, empty pricing rows error, 500 status error).
+- Added FX XML parsing tests: `TestFetchPricingFXFromBytesSuccess` (valid ECB XML with USD/JPY/GBP/CNY rates, verifies BaseCurrency=EUR and correct USD conversion), `TestFetchPricingFXFromBytes` (invalid XML, missing USD rate).
+- Added pricing page parser tests: `TestParseAPIPricingPage` (valid OpenAI pricing card, empty body, no price values), `TestParseGPT52PricingPage` (valid table with 2 models, empty body, no matching table).
+- Refactored `fetchPricingFX` in `pricing_runtime.go` to extract `fetchPricingFXFromBytes` for testable FX XML parsing without HTTP/SSRF dependency.
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42 packages green. Coverage: 64.6% → 79.9%.
+
 ### Rate Limiter Test Coverage Improvement
 
 - Expanded `internal/gateway/ratelimit/limiter_test.go` from 10 test functions to 14 test functions.

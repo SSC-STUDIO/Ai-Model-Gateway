@@ -1,5 +1,31 @@
 # Task Plan
 
+## Current Task - Telemetry Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/telemetry` (64.6% → 79.9%) by covering pricing runtime helpers (shouldRefresh, cloneSourceCatalogs, mergeSourceCatalogs, clonePricingSourceStates, clonePricingFXSnapshot, annotateSourceCatalog, applyFXToPrice, applyFXToCatalog, hydrateSourceStates, loadPricingFXCache, savePricingFXCache), pricing source parsers (parseGenericPricingTables, extractPriceFromCells, inferCurrency, extractMoneyValues, parseModelAliasesFromCell, fetchSinglePageCatalog mock), pricing page parsers (parseAPIPricingPage, parseGPT52PricingPage), and FX XML parsing (fetchPricingFXFromBytes success/error paths).
+
+### Current Phase
+
+Complete - coverage improved from 64.6% to 79.9%; all 42 Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | Identified gaps in pricing_runtime (shouldRefresh, clone*, FX cache, applyFX*), pricing_sources (inferCurrency, extractMoneyValues, parseModelAliases, parseGenericPricingTables, fetchSinglePageCatalog), pricing_catalog (parseAPIPricingPage, parseGPT52PricingPage), and FX XML parsing. |
+| Complete | 2. Write pricing runtime tests | Added 14 test functions: shouldRefresh, cloneSourceCatalogs, mergeSourceCatalogs, clonePricingSourceStates, clonePricingFXSnapshot, loadPricingFXCache (round-trip + error), savePricingFXCache, applyFXToPrice (USD/CNY/disabled/noRates), applyFXToCatalog, annotateSourceCatalog, hydrateSourceStates, clonePricingCatalogSnapshot. |
+| Complete | 3. Write pricing source/parser tests | Added 11 test functions: inferCurrency, extractMoneyValues, parseModelAliasesFromCell, extractPriceFromCells, parseGenericPricingTables, fetchPricingSourceCatalogUnsupportedVendor, fetchSinglePageCatalog (emptyURL + mock server success/empty/error), fetchPricingFXFromBytes (success + invalid XML + missing USD), fetchPricingFXFromBytesSuccess, parseAPIPricingPage, parseGPT52PricingPage. |
+| Complete | 4. Refactor fetchPricingFX | Extracted fetchPricingFXFromBytes from fetchPricingFX for testable FX XML parsing without HTTP dependency. |
+| Complete | 5. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 64.6% → 79.9%. |
+
+### Constraints
+
+- Use WSL ext4 for all commands.
+
+---
+
 ## Current Task - Benchmarking Test Coverage Improvement
 
 ### Goal

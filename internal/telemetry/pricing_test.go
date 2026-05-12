@@ -1,6 +1,11 @@
 package telemetry
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -325,6 +330,599 @@ func TestPricingCatalogUpdateConfigClearsPreviousManualOverrides(t *testing.T) {
 		t.Fatalf("expected bootstrap pricing after clearing manual override, got %+v want %+v", got, bootstrap)
 	}
 }
+
+func TestShouldRefresh(t *testing.T) {
+	tests := []struct {
+		name     string
+		last     time.Time
+		interval int
+		want     bool
+	}{
+		{"zero time", time.Time{}, 15, true},
+		{"recent attempt", time.Now(), 15, false},
+		{"old attempt", time.Now().Add(-30 * time.Minute), 15, true},
+		{"zero interval defaults to 15", time.Now().Add(-20 * time.Minute), 0, true},
+		{"zero interval recent", time.Now(), 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldRefresh(tt.last, tt.interval)
+			if got != tt.want {
+				t.Fatalf("shouldRefresh(%v, %d) = %v, want %v", tt.last, tt.interval, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCloneSourceCatalogs(t *testing.T) {
+	// nil/empty
+	if result := cloneSourceCatalogs(nil); result != nil {
+		t.Fatalf("expected nil for nil input, got %v", result)
+	}
+	if result := cloneSourceCatalogs(map[string]map[string]Pricing{}); result != nil {
+		t.Fatalf("expected nil for empty input, got %v", result)
+	}
+
+	// non-empty with mutation independence
+	input := map[string]map[string]Pricing{
+		"openai": {"gpt-4o": {InputPer1M: 10}},
+	}
+	cloned := cloneSourceCatalogs(input)
+	input["openai"]["gpt-4o"] = Pricing{InputPer1M: 999}
+	if cloned["openai"]["gpt-4o"].InputPer1M == 999 {
+		t.Fatal("clone should be independent")
+	}
+}
+
+func TestMergeSourceCatalogs(t *testing.T) {
+	base := map[string]map[string]Pricing{
+		"openai": {"gpt-4o": {InputPer1M: 10}},
+	}
+	overlay := map[string]map[string]Pricing{
+		"anthropic": {"claude-3": {InputPer1M: 15}},
+	}
+	merged := mergeSourceCatalogs(base, overlay)
+	if len(merged) != 2 {
+		t.Fatalf("len(merged) = %d, want 2", len(merged))
+	}
+	// nil base
+	merged2 := mergeSourceCatalogs(nil, overlay)
+	if len(merged2) != 1 {
+		t.Fatalf("len(merged2) = %d, want 1", len(merged2))
+	}
+}
+
+func TestClonePricingSourceStates(t *testing.T) {
+	if result := clonePricingSourceStates(nil); result != nil {
+		t.Fatalf("expected nil for nil input")
+	}
+	if result := clonePricingSourceStates([]PricingSourceState{}); result != nil {
+		t.Fatalf("expected nil for empty input")
+	}
+	states := []PricingSourceState{{ID: "s1", Vendor: "openai"}}
+	cloned := clonePricingSourceStates(states)
+	states[0].ID = "modified"
+	if cloned[0].ID != "s1" {
+		t.Fatal("clone should be independent")
+	}
+}
+
+func TestClonePricingFXSnapshot(t *testing.T) {
+	// empty
+	snap := clonePricingFXSnapshot(PricingFXSnapshot{})
+	if snap.RatesToUSD != nil {
+		t.Fatal("expected nil rates for empty snapshot")
+	}
+	// non-empty with mutation independence
+	snap = clonePricingFXSnapshot(PricingFXSnapshot{RatesToUSD: map[string]float64{"USD": 1, "EUR": 0.9}})
+	snap.RatesToUSD["USD"] = 999
+	original := PricingFXSnapshot{RatesToUSD: map[string]float64{"USD": 1, "EUR": 0.9}}
+	clone := clonePricingFXSnapshot(original)
+	if clone.RatesToUSD["USD"] != 1 {
+		t.Fatal("clone should be independent")
+	}
+}
+
+func TestLoadPricingFXCache(t *testing.T) {
+	// empty path
+	_, err := loadPricingFXCache("")
+	if err == nil {
+		t.Fatal("expected error for empty path")
+	}
+
+	// valid round-trip
+	tmpDir, err := os.MkdirTemp("", "fx-cache-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	path := filepath.Join(tmpDir, "fx-cache.json")
+	original := PricingFXSnapshot{
+		Enabled:      true,
+		SourceURL:    "https://example.com",
+		BaseCurrency: "EUR",
+		RatesToUSD:   map[string]float64{"USD": 1, "EUR": 0.9, "JPY": 0.0067},
+	}
+	if err := savePricingFXCache(path, original); err != nil {
+		t.Fatalf("savePricingFXCache: %v", err)
+	}
+	loaded, err := loadPricingFXCache(path)
+	if err != nil {
+		t.Fatalf("loadPricingFXCache: %v", err)
+	}
+	if loaded.BaseCurrency != "EUR" {
+		t.Fatalf("BaseCurrency = %q, want EUR", loaded.BaseCurrency)
+	}
+	if len(loaded.RatesToUSD) != 3 {
+		t.Fatalf("RatesToUSD len = %d, want 3", len(loaded.RatesToUSD))
+	}
+
+	// save with empty path should be no-op
+	if err := savePricingFXCache("", original); err != nil {
+		t.Fatalf("savePricingFXCache empty path should be nil, got %v", err)
+	}
+
+	// invalid JSON file
+	invalidPath := filepath.Join(tmpDir, "invalid.json")
+	os.WriteFile(invalidPath, []byte("{bad json"), 0o600)
+	_, err = loadPricingFXCache(invalidPath)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestApplyFXToPrice(t *testing.T) {
+	fx := PricingFXSnapshot{
+		Enabled:    true,
+		RatesToUSD: map[string]float64{"USD": 1, "CNY": 0.14},
+	}
+
+	// USD price
+	usdPrice := applyFXToPrice(Pricing{Currency: "USD", InputPer1M: 10, OutputPer1M: 30}, fx)
+	if usdPrice.FXRateToUSD != 1 {
+		t.Fatalf("USD FXRateToUSD = %f, want 1", usdPrice.FXRateToUSD)
+	}
+
+	// CNY price
+	cnyPrice := applyFXToPrice(Pricing{Currency: "CNY", InputPer1M: 10, OutputPer1M: 30}, fx)
+	if cnyPrice.FXRateToUSD != 0.14 {
+		t.Fatalf("CNY FXRateToUSD = %f, want 0.14", cnyPrice.FXRateToUSD)
+	}
+	if cnyPrice.InputPer1MUsd < 1.39 || cnyPrice.InputPer1MUsd > 1.41 {
+		t.Fatalf("CNY InputPer1MUsd = %f, want ~1.4", cnyPrice.InputPer1MUsd)
+	}
+
+	// FX disabled
+	fxDisabled := PricingFXSnapshot{Enabled: false}
+	disabledPrice := applyFXToPrice(Pricing{Currency: "CNY", InputPer1M: 10}, fxDisabled)
+	if disabledPrice.FXRateToUSD != 0 {
+		t.Fatalf("disabled FX should not set rate, got %f", disabledPrice.FXRateToUSD)
+	}
+
+	// CNY with no rates map
+	noRates := applyFXToPrice(Pricing{Currency: "CNY", InputPer1M: 10}, PricingFXSnapshot{Enabled: true})
+	if noRates.FXRateToUSD != 0 {
+		t.Fatalf("no rates map should not set rate, got %f", noRates.FXRateToUSD)
+	}
+}
+
+func TestApplyFXToCatalog(t *testing.T) {
+	fx := PricingFXSnapshot{Enabled: true, RatesToUSD: map[string]float64{"USD": 1}}
+
+	// empty
+	if result := applyFXToCatalog(nil, fx); result != nil {
+		t.Fatal("expected nil for empty catalog")
+	}
+
+	// non-empty
+	catalog := map[string]Pricing{"gpt-4o": {Currency: "USD", InputPer1M: 10}}
+	result := applyFXToCatalog(catalog, fx)
+	if len(result) != 1 {
+		t.Fatalf("len = %d, want 1", len(result))
+	}
+}
+
+func TestAnnotateSourceCatalog(t *testing.T) {
+	catalog := map[string]Pricing{
+		"gpt-4o": {Currency: "USD", InputPer1M: 10, OutputPer1M: 30},
+	}
+	source := core.PricingSourceConfig{ID: "openai-src", Vendor: "OpenAI"}
+	annotateSourceCatalog(catalog, source)
+	if catalog["gpt-4o"].Source != "OpenAI" {
+		t.Fatalf("Source = %q, want OpenAI", catalog["gpt-4o"].Source)
+	}
+	if catalog["gpt-4o"].SourceID != "openai-src" {
+		t.Fatalf("SourceID = %q, want openai-src", catalog["gpt-4o"].SourceID)
+	}
+}
+
+func TestFetchSinglePageCatalogWithMockServer(t *testing.T) {
+	html := `<table><tr><th>Model</th><th>Input</th><th>Output</th></tr>
+<tr><td>claude-sonnet-4</td><td>Input $3.00</td><td>Output $15.00</td></tr>
+</table>`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(html))
+	}))
+	defer srv.Close()
+
+	fetcher := fetchSinglePageCatalog("USD", parseGenericPricingTables)
+	catalog, err := fetcher(context.Background(), srv.Client(), core.PricingSourceConfig{
+		ID:  "anthropic",
+		URL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(catalog) == 0 {
+		t.Fatal("expected at least one parsed model")
+	}
+
+	// Test with server returning no pricing rows
+	srvEmpty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<table><tr><td>no price</td></tr></table>"))
+	}))
+	defer srvEmpty.Close()
+
+	_, err = fetcher(context.Background(), srvEmpty.Client(), core.PricingSourceConfig{
+		ID:  "test",
+		URL: srvEmpty.URL,
+	})
+	if err == nil {
+		t.Fatal("expected error for no pricing rows")
+	}
+
+	// Test with server returning error status
+	srvErr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+	}))
+	defer srvErr.Close()
+
+	_, err = fetcher(context.Background(), srvErr.Client(), core.PricingSourceConfig{
+		ID:  "test",
+		URL: srvErr.URL,
+	})
+	if err == nil {
+		t.Fatal("expected error for 500 status")
+	}
+}
+
+func TestInferCurrency(t *testing.T) {
+	tests := []struct {
+		input    string
+		fallback string
+		want     string
+	}{
+		{"$10.00", "USD", "USD"},
+		{"US$5.00", "USD", "USD"},
+		{"￥3.00", "USD", "CNY"},
+		{"¥3.00", "USD", "CNY"},
+		{"10 CNY", "USD", "CNY"},
+		{"10 元", "USD", "CNY"},
+		{"unknown", "USD", "USD"},
+		{"unknown", "cny", "CNY"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input+"_"+tt.fallback, func(t *testing.T) {
+			got := inferCurrency(tt.input, tt.fallback)
+			if got != tt.want {
+				t.Fatalf("inferCurrency(%q, %q) = %q, want %q", tt.input, tt.fallback, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractMoneyValues(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"$10.50", 1},
+		{"$10.50 and $20.00", 2},
+		{"no money here", 0},
+		{"", 0},
+		{"US$3.14", 1},
+		{"￥1.50", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := extractMoneyValues(tt.input)
+			if len(got) != tt.want {
+				t.Fatalf("extractMoneyValues(%q) len = %d, want %d", tt.input, len(got), tt.want)
+			}
+		})
+	}
+}
+
+func TestParseModelAliasesFromCell(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"gpt-4o", 1},
+		{"", 0},
+		{"GPT-4o / GPT-4o-mini", 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := parseModelAliasesFromCell(tt.input)
+			if len(got) != tt.want {
+				t.Fatalf("parseModelAliasesFromCell(%q) len = %d, want %d", tt.input, len(got), tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractPriceFromCells(t *testing.T) {
+	tests := []struct {
+		name   string
+		cells  []string
+		defCur string
+		wantOk bool
+	}{
+		{"input+output", []string{"Input $10.00", "Output $30.00"}, "USD", true},
+		{"cache+output", []string{"Cached input $5.00", "Output $30.00"}, "USD", true},
+		{"empty cells", []string{}, "USD", false},
+		{"no money", []string{"free", "n/a"}, "USD", false},
+		{"unordered defaults", []string{"$10.00", "$30.00"}, "USD", true},
+		{"three values", []string{"$10.00", "$5.00", "$30.00"}, "USD", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ok := extractPriceFromCells(tt.cells, tt.defCur)
+			if ok != tt.wantOk {
+				t.Fatalf("extractPriceFromCells ok = %v, want %v", ok, tt.wantOk)
+			}
+		})
+	}
+}
+
+func TestParseGenericPricingTables(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		currency string
+		wantKeys int
+	}{
+		{
+			name:     "simple table with input and output",
+			body:     `<table><tr><th>Model</th><th>Price</th></tr><tr><td>gpt-4o</td><td>Input $10.00 / 1M tokens</td><td>Output $30.00 / 1M tokens</td></tr></table>`,
+			currency: "USD",
+			wantKeys: 1,
+		},
+		{
+			name:     "empty body",
+			body:     "",
+			currency: "USD",
+			wantKeys: 0,
+		},
+		{
+			name:     "no valid rows",
+			body:     `<table><tr><td>no model name</td></tr></table>`,
+			currency: "USD",
+			wantKeys: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseGenericPricingTables(tt.body, tt.currency)
+			if len(result) != tt.wantKeys {
+				t.Fatalf("len = %d, want %d", len(result), tt.wantKeys)
+			}
+		})
+	}
+}
+
+func TestFetchPricingSourceCatalogUnsupportedVendor(t *testing.T) {
+	_, err := fetchPricingSourceCatalog(context.Background(), core.PricingSourceConfig{
+		ID:     "test",
+		Vendor: "unsupported_vendor",
+		URL:    "https://example.com",
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported vendor")
+	}
+}
+
+func TestFetchSinglePageCatalogEmptyURL(t *testing.T) {
+	fetcher := fetchSinglePageCatalog("USD", parseGenericPricingTables)
+	_, err := fetcher(context.Background(), defaultPricingHTTPClient, core.PricingSourceConfig{
+		ID:  "test",
+		URL: "",
+	})
+	if err == nil {
+		t.Fatal("expected error for empty URL")
+	}
+}
+
+func TestHydrateSourceStates(t *testing.T) {
+	cfg := core.PricingConfig{
+		Sources: []core.PricingSourceConfig{
+			{ID: "openai", Vendor: "openai", URL: "https://example.com", Enabled: boolPtr(true)},
+			{ID: "disabled-src", Vendor: "test", URL: "https://example.com", Enabled: boolPtr(false)},
+		},
+	}
+	existing := []PricingSourceState{
+		{ID: "openai", Status: "ready"},
+	}
+	sourceCatalogs := map[string]map[string]Pricing{
+		"openai": {"gpt-4o": {InputPer1M: 10}},
+	}
+
+	states := hydrateSourceStates(cfg, existing, sourceCatalogs)
+	if len(states) != 2 {
+		t.Fatalf("len(states) = %d, want 2", len(states))
+	}
+
+	// Check that the disabled source gets status "disabled"
+	for _, s := range states {
+		if s.ID == "disabled-src" && s.Status != "disabled" {
+			t.Fatalf("disabled source status = %q, want disabled", s.Status)
+		}
+		if s.ID == "openai" && s.ModelCount != 1 {
+			t.Fatalf("openai ModelCount = %d, want 1", s.ModelCount)
+		}
+	}
+
+	// Empty config
+	states2 := hydrateSourceStates(core.PricingConfig{}, nil, nil)
+	if states2 != nil {
+		t.Fatalf("expected nil for empty config, got len=%d", len(states2))
+	}
+}
+
+func TestClonePricingCatalogSnapshot(t *testing.T) {
+	snapshot := PricingCatalogSnapshot{
+		SourceURL: "https://example.com",
+		Catalog:   map[string]Pricing{"gpt-4o": {InputPer1M: 10}},
+		SourceCatalogs: map[string]map[string]Pricing{
+			"openai": {"gpt-4o": {InputPer1M: 10}},
+		},
+		Sources: []PricingSourceState{{ID: "openai", Status: "ready"}},
+		FX:      PricingFXSnapshot{Enabled: true, RatesToUSD: map[string]float64{"USD": 1}},
+	}
+
+	cloned := clonePricingCatalogSnapshot(snapshot)
+
+	// Mutation independence check
+	snapshot.Catalog["gpt-4o"] = Pricing{InputPer1M: 999}
+	if cloned.Catalog["gpt-4o"].InputPer1M == 999 {
+		t.Fatal("catalog clone should be independent")
+	}
+	snapshot.Sources[0].ID = "modified"
+	if cloned.Sources[0].ID != "openai" {
+		t.Fatal("sources clone should be independent")
+	}
+	snapshot.FX.RatesToUSD["USD"] = 999
+	if cloned.FX.RatesToUSD["USD"] == 999 {
+		t.Fatal("FX clone should be independent")
+	}
+}
+
+func TestFetchPricingFXMockServer(t *testing.T) {
+	// Test with invalid XML body
+	_, err := fetchPricingFXFromBytes([]byte("not xml"))
+	if err == nil {
+		t.Fatal("expected error for invalid XML")
+	}
+
+	// Test with missing USD rate
+	xmlBody := `<?xml version="1.0"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+<Cube><Cube time="2026-01-01"><Cube currency="EUR" rate="1"/></Cube></Cube>
+</gesmes:Envelope>`
+	_, err = fetchPricingFXFromBytes([]byte(xmlBody))
+	if err == nil {
+		t.Fatal("expected error for missing USD rate")
+	}
+}
+
+func TestSavePricingFXCacheInvalidPath(t *testing.T) {
+	// Empty path returns nil (no-op)
+	if err := savePricingFXCache("", PricingFXSnapshot{}); err != nil {
+		t.Fatalf("expected nil for empty path, got %v", err)
+	}
+}
+
+func TestFetchPricingFXFromBytesSuccess(t *testing.T) {
+	xmlBody := `<?xml version="1.0"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+<Cube><Cube time="2026-05-12">
+  <Cube currency="USD" rate="1.08"/>
+  <Cube currency="JPY" rate="161.5"/>
+  <Cube currency="GBP" rate="0.86"/>
+  <Cube currency="CNY" rate="7.8"/>
+</Cube></Cube>
+</gesmes:Envelope>`
+
+	snap, err := fetchPricingFXFromBytes([]byte(xmlBody))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if snap.BaseCurrency != "EUR" {
+		t.Fatalf("BaseCurrency = %q, want EUR", snap.BaseCurrency)
+	}
+	if snap.RatesToUSD["USD"] != 1 {
+		t.Fatalf("USD = %f, want 1", snap.RatesToUSD["USD"])
+	}
+	if snap.RatesToUSD["EUR"] != 1.08 {
+		t.Fatalf("EUR = %f, want 1.08", snap.RatesToUSD["EUR"])
+	}
+	if snap.SourceURL != pricingFXSourceURL {
+		t.Fatalf("SourceURL = %q, want %q", snap.SourceURL, pricingFXSourceURL)
+	}
+}
+
+func TestParseAPIPricingPage(t *testing.T) {
+	body := `<h2 class="text-h4">GPT-4o</h2><h3>Price</h3><div><div><div>
+  Input:<br/>$2.50 / 1M tokens
+  Cached input:<br/>$1.25 / 1M tokens
+  Output:<br/>$10.00 / 1M tokens
+</div></div></div>`
+
+	result := parseAPIPricingPage(body)
+	if len(result) == 0 {
+		t.Fatal("expected at least one parsed model")
+	}
+	if price, ok := result["gpt-4o"]; ok {
+		if price.InputPer1M != 2.50 {
+			t.Fatalf("InputPer1M = %f, want 2.50", price.InputPer1M)
+		}
+		if price.OutputPer1M != 10.00 {
+			t.Fatalf("OutputPer1M = %f, want 10.00", price.OutputPer1M)
+		}
+		if price.CachedInputPer1M != 1.25 {
+			t.Fatalf("CachedInputPer1M = %f, want 1.25", price.CachedInputPer1M)
+		}
+	}
+
+	// Empty body
+	result2 := parseAPIPricingPage("")
+	if len(result2) != 0 {
+		t.Fatalf("expected empty result for empty body, got %d", len(result2))
+	}
+
+	// No price values
+	body3 := `<h2 class="text-h4">Unknown Model</h2><h3>Price</h3><div><div><div>No pricing info</div></div></div>`
+	result3 := parseAPIPricingPage(body3)
+	if len(result3) != 0 {
+		t.Fatalf("expected empty result for no prices, got %d", len(result3))
+	}
+}
+
+func TestParseGPT52PricingPage(t *testing.T) {
+	body := `Price per million tokens
+<table><tbody>
+<tr><td><p><b>GPT-5.2</b></p></td><td><p>$2.00</p></td><td><p>$0.50</p></td><td><p>$8.00</p></td></tr>
+<tr><td><p><b>GPT-5.2 mini</b></p></td><td><p>$0.40</p></td><td><p>$0.10</p></td><td><p>$1.60</p></td></tr>
+</tbody></table>`
+
+	result := parseGPT52PricingPage(body)
+	if len(result) < 2 {
+		t.Fatalf("expected at least 2 models, got %d", len(result))
+	}
+	if price, ok := result["gpt-5.2"]; ok {
+		if price.InputPer1M != 2.00 {
+			t.Fatalf("InputPer1M = %f, want 2.00", price.InputPer1M)
+		}
+	} else {
+		t.Fatal("expected gpt-5.2 in result")
+	}
+
+	// Empty body
+	result2 := parseGPT52PricingPage("")
+	if len(result2) != 0 {
+		t.Fatalf("expected empty result for empty body, got %d", len(result2))
+	}
+
+	// No matching table
+	result3 := parseGPT52PricingPage("<p>no table here</p>")
+	if len(result3) != 0 {
+		t.Fatalf("expected empty result for no table, got %d", len(result3))
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
 
 func TestCanonicalModelNamesNormalizesOpenAITitles(t *testing.T) {
 	tests := []struct {

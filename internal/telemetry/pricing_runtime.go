@@ -320,8 +320,12 @@ func fetchPricingFX(ctx context.Context) (PricingFXSnapshot, error) {
 	if err != nil {
 		return PricingFXSnapshot{}, err
 	}
+	return fetchPricingFXFromBytes([]byte(body))
+}
+
+func fetchPricingFXFromBytes(data []byte) (PricingFXSnapshot, error) {
 	var envelope ecbEnvelope
-	if err := xml.Unmarshal([]byte(body), &envelope); err != nil {
+	if err := xml.Unmarshal(data, &envelope); err != nil {
 		return PricingFXSnapshot{}, err
 	}
 
