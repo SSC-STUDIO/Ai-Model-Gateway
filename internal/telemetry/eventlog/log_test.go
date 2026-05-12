@@ -1,8 +1,10 @@
 package eventlog
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -318,6 +320,329 @@ func TestSerializePayload(t *testing.T) {
 		if !contains(result, tc.needle) {
 			t.Errorf("missing or incorrect %s in serialized payload", tc.name)
 		}
+	}
+}
+
+func TestSerializePayloadPricingFields(t *testing.T) {
+	now := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	payload := telemetryingest.EventPayload{
+		RequestID:              "req-pricing",
+		Timestamp:              now,
+		Path:                   "/v1/chat/completions",
+		StatusCode:             200,
+		Latency:                100 * time.Millisecond,
+		PricingStatus:          "priced",
+		PricingSourceID:        "openai-default",
+		PricingCurrency:        "USD",
+		PricingFXRateToUSD:     1.0,
+		PricingInputPer1M:      2.5,
+		PricingCachedInputPer1M: 1.25,
+		PricingOutputPer1M:     10.0,
+		PricingPromptCost:      0.00025,
+		PricingCompletionCost:  0.001,
+		PricingTotalCost:       0.00125,
+		PricingPromptCostUSD:   0.00025,
+		PricingCompletionCostUSD: 0.001,
+		PricingTotalCostUSD:    0.00125,
+	}
+
+	result, err := serializePayload(payload)
+	if err != nil {
+		t.Fatalf("serializePayload() failed: %v", err)
+	}
+
+	pricingChecks := []string{
+		`"pricing_status":"priced"`,
+		`"pricing_source_id":"openai-default"`,
+		`"pricing_currency":"USD"`,
+		`"pricing_fx_rate_to_usd":1`,
+		`"pricing_input_per_1m":2.5`,
+		`"pricing_cached_input_per_1m":1.25`,
+		`"pricing_output_per_1m":10`,
+		`"pricing_prompt_cost":0.00025`,
+		`"pricing_completion_cost":0.001`,
+		`"pricing_total_cost":0.00125`,
+		`"pricing_prompt_cost_usd":0.00025`,
+		`"pricing_completion_cost_usd":0.001`,
+		`"pricing_total_cost_usd":0.00125`,
+	}
+	for _, needle := range pricingChecks {
+		if !contains(result, needle) {
+			t.Errorf("missing %s in serialized payload", needle)
+		}
+	}
+}
+
+func TestSerializePayloadBenchmarkFields(t *testing.T) {
+	now := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+	payload := telemetryingest.EventPayload{
+		RequestID:         "req-bench",
+		Timestamp:         now,
+		Path:              "/v1/chat/completions",
+		StatusCode:        200,
+		Latency:           50 * time.Millisecond,
+		SyntheticKind:     "benchmark",
+		BenchmarkRunID:    "run-001",
+		BenchmarkTargetID: "target-001",
+		BenchmarkCaseID:   "case-001",
+	}
+
+	result, err := serializePayload(payload)
+	if err != nil {
+		t.Fatalf("serializePayload() failed: %v", err)
+	}
+
+	benchChecks := []string{
+		`"synthetic_kind":"benchmark"`,
+		`"benchmark_run_id":"run-001"`,
+		`"benchmark_target_id":"target-001"`,
+		`"benchmark_case_id":"case-001"`,
+	}
+	for _, needle := range benchChecks {
+		if !contains(result, needle) {
+			t.Errorf("missing %s in serialized payload", needle)
+		}
+	}
+}
+
+func TestNewMkdirAllError(t *testing.T) {
+	tmpDir := t.TempDir()
+	blocked := filepath.Join(tmpDir, "blocked.db")
+	// Create a file where the directory should be, so MkdirAll fails
+	if err := os.WriteFile(blocked, []byte("x"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	dbPath := filepath.Join(blocked, "sub", "test.db")
+
+	_, err := New(dbPath)
+	if err == nil {
+		t.Fatal("expected New() to fail when directory path is blocked by a file")
+	}
+}
+
+func TestAppendClosedDB(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	el, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	el.Close()
+
+	events := []telemetryingest.Event{
+		{
+			EventID:       "evt-closed",
+			EventType:     "gateway.attempt.completed",
+			SchemaVersion: 1,
+			SourceService: "gw",
+			EmittedAt:     time.Now().UTC(),
+			Payload: telemetryingest.EventPayload{
+				RequestID: "req-closed",
+				Timestamp: time.Now().UTC(),
+				Path:      "/v1/test",
+			},
+		},
+	}
+
+	_, _, err = el.Append(events)
+	if err == nil {
+		t.Error("expected Append on closed DB to fail")
+	}
+}
+
+func TestAppendDuplicateAndAccept(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	el, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer el.Close()
+
+	now := time.Now().UTC()
+	event := telemetryingest.Event{
+		EventID:       "evt-mix",
+		EventType:     "gateway.attempt.completed",
+		SchemaVersion: 1,
+		SourceService: "gw",
+		SourceInstance: "i1",
+		EmittedAt:     now,
+		Payload: telemetryingest.EventPayload{
+			RequestID: "req-mix",
+			Timestamp: now,
+			Path:      "/v1/test",
+			StatusCode: 200,
+			Latency:   100 * time.Millisecond,
+		},
+	}
+
+	// First append: accepted
+	accepted, dropped, err := el.Append([]telemetryingest.Event{event})
+	if err != nil {
+		t.Fatalf("first Append() failed: %v", err)
+	}
+	if accepted != 1 || dropped != 0 {
+		t.Errorf("first: expected 1/0, got %d/%d", accepted, dropped)
+	}
+
+	// Mix of duplicate (dropped) and new (accepted)
+	newEvent := event
+	newEvent.EventID = "evt-mix-2"
+	newEvent.Payload.RequestID = "req-mix-2"
+
+	accepted, dropped, err = el.Append([]telemetryingest.Event{event, newEvent})
+	if err != nil {
+		t.Fatalf("second Append() failed: %v", err)
+	}
+	if accepted != 1 {
+		t.Errorf("expected 1 accepted, got %d", accepted)
+	}
+	if dropped != 1 {
+		t.Errorf("expected 1 dropped, got %d", dropped)
+	}
+}
+
+func TestAppendWithAllFields(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	el, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer el.Close()
+
+	now := time.Now().UTC()
+	events := []telemetryingest.Event{
+		{
+			EventID:        "evt-full",
+			EventType:      "gateway.attempt.completed",
+			SchemaVersion:  1,
+			SourceService:  "gatewayd",
+			SourceInstance: "inst-1",
+			EmittedAt:      now,
+			Imported:       false,
+			Payload: telemetryingest.EventPayload{
+				RequestID:              "req-full",
+				Timestamp:              now,
+				Path:                   "/v1/chat/completions",
+				RequestedModel:         "gpt-4",
+				EffectiveModel:         "gpt-4-turbo",
+				ProviderID:             "openai",
+				RouteMode:              "direct",
+				StatusCode:             200,
+				Latency:                500 * time.Millisecond,
+				Attempts:               1,
+				PromptTokens:           100,
+				CachedPromptTokens:     50,
+				CompletionTokens:       200,
+				PricingStatus:          "priced",
+				PricingSourceID:        "openai-default",
+				PricingCurrency:        "USD",
+				PricingFXRateToUSD:     1.0,
+				PricingInputPer1M:      2.5,
+				PricingCachedInputPer1M: 1.25,
+				PricingOutputPer1M:     10.0,
+				PricingPromptCost:      0.00025,
+				PricingCompletionCost:  0.002,
+				PricingTotalCost:       0.00225,
+				PricingPromptCostUSD:   0.00025,
+				PricingCompletionCostUSD: 0.002,
+				PricingTotalCostUSD:    0.00225,
+				SyntheticKind:          "benchmark",
+				BenchmarkRunID:         "run-1",
+				BenchmarkTargetID:      "target-1",
+				BenchmarkCaseID:        "case-1",
+				Stream:                 true,
+			},
+		},
+	}
+
+	accepted, dropped, err := el.Append(events)
+	if err != nil {
+		t.Fatalf("Append() failed: %v", err)
+	}
+	if accepted != 1 {
+		t.Errorf("expected 1 accepted, got %d", accepted)
+	}
+	if dropped != 0 {
+		t.Errorf("expected 0 dropped, got %d", dropped)
+	}
+
+	var payload string
+	err = el.GetDB().QueryRow("SELECT payload FROM events WHERE event_id = ?", "evt-full").Scan(&payload)
+	if err != nil {
+		t.Fatalf("failed to query payload: %v", err)
+	}
+	// Verify pricing and benchmark fields are persisted
+	for _, needle := range []string{
+		`"pricing_status":"priced"`,
+		`"pricing_total_cost_usd":0.00225`,
+		`"synthetic_kind":"benchmark"`,
+		`"benchmark_run_id":"run-1"`,
+	} {
+		if !contains(payload, needle) {
+			t.Errorf("missing %s in persisted payload", needle)
+		}
+	}
+}
+
+func TestAppendConcurrent(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	el, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	defer el.Close()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			now := time.Now().UTC()
+			events := []telemetryingest.Event{
+				{
+					EventID:        fmt.Sprintf("evt-conc-%d", idx),
+					EventType:      "gateway.attempt.completed",
+					SchemaVersion:  1,
+					SourceService:  "gatewayd",
+					SourceInstance: "inst-1",
+					EmittedAt:      now,
+					Payload: telemetryingest.EventPayload{
+						RequestID:  fmt.Sprintf("req-conc-%d", idx),
+						Timestamp:  now,
+						Path:       "/v1/chat/completions",
+						StatusCode: 200,
+						Latency:    100 * time.Millisecond,
+					},
+				},
+			}
+			accepted, dropped, err := el.Append(events)
+			if err != nil {
+				t.Errorf("concurrent Append() failed: %v", err)
+			}
+			if accepted != 1 {
+				t.Errorf("expected 1 accepted, got %d", accepted)
+			}
+			if dropped != 0 {
+				t.Errorf("expected 0 dropped, got %d", dropped)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	var count int
+	err = el.GetDB().QueryRow("SELECT COUNT(*) FROM events").Scan(&count)
+	if err != nil {
+		t.Fatalf("query count failed: %v", err)
+	}
+	if count != 5 {
+		t.Errorf("expected 5 events, got %d", count)
 	}
 }
 

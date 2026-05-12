@@ -1,5 +1,29 @@
 # Task Plan
 
+## Current Task - Eventlog Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/telemetry/eventlog` (74.0% → 78.0%) by covering serializePayload with pricing/benchmark fields, closed-DB Append error path, directory creation error, concurrent Append, and duplicate+accept mixed batches.
+
+### Current Phase
+
+Complete - coverage improved from 74.0% to 78.0%; all 42+ Go packages pass.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | Identified gaps in New (MkdirAll error), Append (closed DB error), serializePayload (pricing/benchmark fields). |
+| Complete | 2. Write eventlog tests | Added 6 test functions: TestSerializePayloadPricingFields, TestSerializePayloadBenchmarkFields, TestNewMkdirAllError, TestAppendClosedDB, TestAppendDuplicateAndAccept, TestAppendWithAllFields, TestAppendConcurrent. |
+| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42+ packages). Coverage: 74.0% → 78.0%. |
+
+### Constraints
+
+- Use WSL ext4 for all commands.
+
+---
+
 ## Current Task - Telemetry Test Coverage Improvement
 
 ### Goal

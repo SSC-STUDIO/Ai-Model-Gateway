@@ -2,6 +2,19 @@
 
 ## 2026-05-12
 
+### Eventlog Test Coverage Improvement
+
+- Fixed build failure in `internal/control/api/handlers_test.go` caused by unused `audit` import.
+- Expanded `internal/telemetry/eventlog/log_test.go` from 8 test functions to 15 test functions.
+- Added `TestSerializePayloadPricingFields` covering all 13 pricing fields in serialized payload (pricing_status, pricing_source_id, pricing_currency, pricing_fx_rate_to_usd, pricing_input_per_1m, pricing_cached_input_per_1m, pricing_output_per_1m, pricing_prompt_cost, pricing_completion_cost, pricing_total_cost, pricing_prompt_cost_usd, pricing_completion_cost_usd, pricing_total_cost_usd).
+- Added `TestSerializePayloadBenchmarkFields` covering synthetic_kind, benchmark_run_id, benchmark_target_id, and benchmark_case_id serialization.
+- Added `TestNewMkdirAllError` covering directory creation failure when a file blocks the path.
+- Added `TestAppendClosedDB` covering Append error path when database is already closed.
+- Added `TestAppendDuplicateAndAccept` covering mixed batch with both duplicate (dropped) and new (accepted) events.
+- Added `TestAppendWithAllFields` covering end-to-end Append with full pricing and benchmark payload fields, verifying persisted JSON content.
+- Added `TestAppendConcurrent` covering concurrent Append from 5 goroutines with mutex serialization.
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42+ packages green. Coverage: 74.0% → 78.0%.
+
 ### Telemetry Test Coverage Improvement
 
 - Expanded `internal/telemetry/pricing_test.go` with 25 new test functions targeting uncovered code paths.

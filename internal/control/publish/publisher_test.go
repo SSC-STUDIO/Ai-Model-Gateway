@@ -2,6 +2,7 @@ package publish
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -708,6 +709,447 @@ func TestPublisherUsesActiveRevisionConfiguredPublishHistoryLimit(t *testing.T) 
 
 	if len(publisher.publishes) != 3 {
 		t.Fatalf("len(publishes) = %d, want 3", len(publisher.publishes))
+	}
+}
+
+func TestRollbackPublishesRevisionWithKindRollback(t *testing.T) {
+	gateway := &stubGateway{}
+	publisher := NewPublisher(gateway, nil)
+	publisher.SetRevisionCompiler(func(revision Revision) (*snapshot.Snapshot, error) {
+		return testSnapshot(revision.RevisionID, revision.Config.Server.Listen), nil
+	})
+
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_rb", Config: testConfig("127.0.0.1:18080")},
+	}, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	result, err := publisher.Rollback("rev_rb")
+	if err != nil {
+		t.Fatalf("Rollback() error = %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("Rollback() result = %#v, want success", result)
+	}
+	if publisher.publishes[0].Kind != "rollback" {
+		t.Fatalf("publish kind = %q, want %q", publisher.publishes[0].Kind, "rollback")
+	}
+}
+
+func TestRollbackRejectsUnknownRevision(t *testing.T) {
+	publisher := NewPublisher(&stubGateway{}, nil)
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_x", Config: testConfig("127.0.0.1:18080")},
+	}, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	result, err := publisher.Rollback("rev_nonexistent")
+	if err == nil {
+		t.Fatal("expected error for nonexistent revision")
+	}
+	if result != nil {
+		t.Fatalf("expected nil result, got %#v", result)
+	}
+}
+
+func TestLoadRevisionConfigReturnsClonedConfig(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	cfg := testConfig("127.0.0.1:18080")
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_lrc", Config: cfg},
+	}, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	loaded, err := publisher.LoadRevisionConfig("rev_lrc")
+	if err != nil {
+		t.Fatalf("LoadRevisionConfig() error = %v", err)
+	}
+	if loaded == nil || loaded.Server.Listen != "127.0.0.1:18080" {
+		t.Fatalf("LoadRevisionConfig() = %#v, want listen 127.0.0.1:18080", loaded)
+	}
+
+	loaded.Server.Listen = "mutated"
+	cfg2, _ := publisher.LoadRevisionConfig("rev_lrc")
+	if cfg2.Server.Listen != "127.0.0.1:18080" {
+		t.Fatalf("mutation leaked: listen = %q", cfg2.Server.Listen)
+	}
+}
+
+func TestLoadRevisionConfigReturnsNilForMissing(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	loaded, err := publisher.LoadRevisionConfig("nonexistent")
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if loaded != nil {
+		t.Fatalf("expected nil, got %#v", loaded)
+	}
+}
+
+func TestLoadRevisionConfigErrorForNilConfig(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_no_cfg"},
+	}, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	_, err := publisher.LoadRevisionConfig("rev_no_cfg")
+	if err == nil {
+		t.Fatal("expected error for revision without config")
+	}
+}
+
+func TestSetPublishRetentionResetsToDefault(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	publisher.SetPublishRetention(-1)
+	policy, _ := publisher.GetPolicy()
+	if policy.PublishHistoryLimit != core.DefaultAdminPublishHistoryLimit {
+		t.Fatalf("PublishHistoryLimit = %d, want default %d", policy.PublishHistoryLimit, core.DefaultAdminPublishHistoryLimit)
+	}
+}
+
+func TestSetPublishRetentionAppliesLimit(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	publisher.SetPublishRetention(7)
+	policy, _ := publisher.GetPolicy()
+	if policy.PublishHistoryLimit != 7 {
+		t.Fatalf("PublishHistoryLimit = %d, want 7", policy.PublishHistoryLimit)
+	}
+}
+
+func TestSetPolicyNormalizesZeroLimit(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	publisher.SetPolicy(PublisherPolicy{})
+	policy, _ := publisher.GetPolicy()
+	if policy.PublishHistoryLimit <= 0 {
+		t.Fatalf("expected positive PublishHistoryLimit, got %d", policy.PublishHistoryLimit)
+	}
+}
+
+func TestPublishFailsWhenGatewayNil(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	publisher.SetRevisionCompiler(func(revision Revision) (*snapshot.Snapshot, error) {
+		return testSnapshot(revision.RevisionID, "127.0.0.1:18080"), nil
+	})
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_nil_gw", Config: testConfig("127.0.0.1:18080")},
+	}, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	result, err := publisher.Publish("rev_nil_gw")
+	if err == nil {
+		t.Fatal("expected error for nil gateway")
+	}
+	if result != nil {
+		t.Fatalf("expected nil result, got %#v", result)
+	}
+	if publisher.publishes[0].Status != "failed" {
+		t.Fatalf("status = %q, want %q", publisher.publishes[0].Status, "failed")
+	}
+	if publisher.publishes[0].Error != "gateway not configured" {
+		t.Fatalf("error = %q, want %q", publisher.publishes[0].Error, "gateway not configured")
+	}
+}
+
+func TestPublishHandlesNotAppliedResponse(t *testing.T) {
+	gateway := &stubGateway{
+		applyResp: &gatewaycontrol.ApplySnapshotResponse{
+			Applied: false,
+			Error:   "invalid schema",
+		},
+	}
+	publisher := NewPublisher(gateway, nil)
+	publisher.SetRevisionCompiler(func(revision Revision) (*snapshot.Snapshot, error) {
+		return testSnapshot(revision.RevisionID, "127.0.0.1:18080"), nil
+	})
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_not_applied", Config: testConfig("127.0.0.1:18080")},
+	}, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	result, err := publisher.Publish("rev_not_applied")
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if result.Success {
+		t.Fatal("expected failed result for not-applied")
+	}
+	if result.ErrorMessage != "invalid schema" {
+		t.Fatalf("ErrorMessage = %q, want %q", result.ErrorMessage, "invalid schema")
+	}
+	if publisher.publishes[0].Status != "failed" {
+		t.Fatalf("status = %q, want %q", publisher.publishes[0].Status, "failed")
+	}
+}
+
+func TestReplaceRevisionsRejectsEmptyRevisionID(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "  ", Config: testConfig("127.0.0.1:18080")},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "revision_id is required") {
+		t.Fatalf("expected revision_id error, got: %v", err)
+	}
+}
+
+func TestReplaceRevisionsRejectsDuplicateRevisionID(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_dup", Config: testConfig("127.0.0.1:18080")},
+		{RevisionID: "rev_dup", Config: testConfig("127.0.0.1:19090")},
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("expected duplicate error, got: %v", err)
+	}
+}
+
+func TestReplaceRevisionsRejectsMissingActiveRevision(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_1", Config: testConfig("127.0.0.1:18080")},
+	}, "rev_nonexistent")
+	if err == nil || !strings.Contains(err.Error(), "active revision not found") {
+		t.Fatalf("expected active-not-found error, got: %v", err)
+	}
+}
+
+func TestUpsertRevisionRejectsEmptyID(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	err := publisher.UpsertRevision(Revision{RevisionID: "  "}, false)
+	if err == nil || !strings.Contains(err.Error(), "revision_id is required") {
+		t.Fatalf("expected revision_id error, got: %v", err)
+	}
+}
+
+func TestUpsertRevisionReplacesExisting(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	if err := publisher.ReplaceRevisions([]Revision{
+		{RevisionID: "rev_up", Description: "original", Config: testConfig("127.0.0.1:18080")},
+	}, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	if err := publisher.UpsertRevision(Revision{
+		RevisionID:  "rev_up",
+		Description: "updated",
+		Config:      testConfig("127.0.0.1:29090"),
+	}, true); err != nil {
+		t.Fatalf("UpsertRevision() error = %v", err)
+	}
+
+	rev, err := publisher.LoadRevisionConfig("rev_up")
+	if err != nil {
+		t.Fatalf("LoadRevisionConfig() error = %v", err)
+	}
+	if rev.Server.Listen != "127.0.0.1:29090" {
+		t.Fatalf("listen = %q, want updated", rev.Server.Listen)
+	}
+}
+
+func TestLoadStateReturnsFalseWhenNoStore(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	loaded, err := publisher.LoadState()
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if loaded {
+		t.Fatal("expected false when no state store")
+	}
+}
+
+func TestGetCurrentConfigReturnsNilWhenNoActiveRevision(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	cfg, err := publisher.GetCurrentConfig()
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if cfg != nil {
+		t.Fatalf("expected nil, got %#v", cfg)
+	}
+}
+
+func TestGetCurrentRevisionReturnsNilWhenNoActiveRevision(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	rev, err := publisher.GetCurrentRevision()
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if rev != nil {
+		t.Fatalf("expected nil, got %#v", rev)
+	}
+}
+
+func TestGetHistoryDefaultLimit(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	createdAt := time.Date(2026, time.April, 17, 10, 0, 0, 0, time.UTC)
+	var revisions []Revision
+	for i := 0; i < 60; i++ {
+		revisions = append(revisions, Revision{
+			RevisionID: fmt.Sprintf("rev_%d", i),
+			CreatedAt:  createdAt.Add(time.Duration(i) * time.Minute),
+			Config:     testConfig("127.0.0.1:18080"),
+		})
+	}
+	if err := publisher.ReplaceRevisions(revisions, ""); err != nil {
+		t.Fatalf("ReplaceRevisions() error = %v", err)
+	}
+
+	history, err := publisher.GetHistory(0)
+	if err != nil {
+		t.Fatalf("GetHistory() error = %v", err)
+	}
+	if len(history) != 50 {
+		t.Fatalf("len(history) = %d, want default 50", len(history))
+	}
+}
+
+func TestValidateConfigRejectsNilCompiler(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	_, err := publisher.ValidateConfig(testConfig("127.0.0.1:18080"))
+	if err == nil || !strings.Contains(err.Error(), "compiler not configured") {
+		t.Fatalf("expected compiler error, got: %v", err)
+	}
+}
+
+func TestValidateConfigRejectsUnsupportedType(t *testing.T) {
+	publisher := NewPublisher(nil, compiler.NewCompiler())
+	result, err := publisher.ValidateConfig(42)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if result.Valid {
+		t.Fatal("expected invalid for unsupported type")
+	}
+}
+
+func TestValidateConfigRejectsNilPointerConfig(t *testing.T) {
+	publisher := NewPublisher(nil, compiler.NewCompiler())
+	result, err := publisher.ValidateConfig((*core.Config)(nil))
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if result.Valid {
+		t.Fatal("expected invalid for nil config")
+	}
+}
+
+func TestUpdateConfigRejectsNilCompiler(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	_, err := publisher.UpdateConfig(testConfig("127.0.0.1:18080"), "test")
+	if err == nil || !strings.Contains(err.Error(), "compiler not configured") {
+		t.Fatalf("expected compiler error, got: %v", err)
+	}
+}
+
+func TestUpdateConfigRejectsUnsupportedType(t *testing.T) {
+	publisher := NewPublisher(nil, compiler.NewCompiler())
+	_, err := publisher.UpdateConfig(42, "test")
+	if err == nil || !strings.Contains(err.Error(), "unsupported config type") {
+		t.Fatalf("expected type error, got: %v", err)
+	}
+}
+
+func TestAsCoreConfigAcceptsValue(t *testing.T) {
+	cfg := core.Config{Server: core.ServerConfig{Listen: "127.0.0.1:18080"}}
+	result, err := asCoreConfig(cfg)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if result.Server.Listen != "127.0.0.1:18080" {
+		t.Fatalf("listen = %q", result.Server.Listen)
+	}
+}
+
+func TestAsCoreConfigAcceptsPointer(t *testing.T) {
+	cfg := &core.Config{Server: core.ServerConfig{Listen: "127.0.0.1:19090"}}
+	result, err := asCoreConfig(cfg)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if result.Server.Listen != "127.0.0.1:19090" {
+		t.Fatalf("listen = %q", result.Server.Listen)
+	}
+}
+
+func TestAsCoreConfigRejectsNilPointer(t *testing.T) {
+	_, err := asCoreConfig((*core.Config)(nil))
+	if err == nil {
+		t.Fatal("expected error for nil pointer")
+	}
+}
+
+func TestAsCoreConfigRejectsUnsupportedType(t *testing.T) {
+	_, err := asCoreConfig(42)
+	if err == nil || !strings.Contains(err.Error(), "unsupported config type") {
+		t.Fatalf("expected type error, got: %v", err)
+	}
+}
+
+func TestCompileSnapshotLockedRejectsNilCompiler(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	rev := &Revision{RevisionID: "rev_nc", Config: testConfig("127.0.0.1:18080")}
+	_, err := publisher.compileSnapshotLocked(rev)
+	if err == nil || !strings.Contains(err.Error(), "compiler not configured") {
+		t.Fatalf("expected compiler error, got: %v", err)
+	}
+}
+
+func TestCompileSnapshotLockedRejectsNilConfig(t *testing.T) {
+	publisher := NewPublisher(nil, compiler.NewCompiler())
+	rev := &Revision{RevisionID: "rev_nil_cfg"}
+	_, err := publisher.compileSnapshotLocked(rev)
+	if err == nil || !strings.Contains(err.Error(), "has no config payload") {
+		t.Fatalf("expected config error, got: %v", err)
+	}
+}
+
+func TestCompileSnapshotLockedUsesPreExistingSnapshot(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	snap := testSnapshot("rev_pre", "127.0.0.1:18080")
+	rev := &Revision{RevisionID: "rev_pre", Snapshot: snap}
+	got, err := publisher.compileSnapshotLocked(rev)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if got.Meta.RevisionID != "rev_pre" {
+		t.Fatalf("revisionID = %q", got.Meta.RevisionID)
+	}
+}
+
+func TestPublisherPolicyFromConfigNilCfg(t *testing.T) {
+	policy := PublisherPolicyFromConfig(nil)
+	if policy.PublishHistoryLimit <= 0 {
+		t.Fatalf("expected default limit, got %d", policy.PublishHistoryLimit)
+	}
+}
+
+func TestPublisherPolicyFromConfigWithPublishLimit(t *testing.T) {
+	cfg := testConfig("127.0.0.1:18080")
+	cfg.Normalize()
+	cfg.Admin.PublishHistoryLimit = 99
+	policy := PublisherPolicyFromConfig(cfg)
+	if policy.PublishHistoryLimit != 99 {
+		t.Fatalf("limit = %d, want 99", policy.PublishHistoryLimit)
+	}
+}
+
+func TestNormalizePublisherPolicyDefault(t *testing.T) {
+	policy := NormalizePublisherPolicy(PublisherPolicy{})
+	if policy.PublishHistoryLimit != core.DefaultAdminPublishHistoryLimit {
+		t.Fatalf("default limit = %d", policy.PublishHistoryLimit)
+	}
+}
+
+func TestNormalizePublisherPolicyPreservesExplicit(t *testing.T) {
+	policy := NormalizePublisherPolicy(PublisherPolicy{PublishHistoryLimit: 25})
+	if policy.PublishHistoryLimit != 25 {
+		t.Fatalf("limit = %d, want 25", policy.PublishHistoryLimit)
 	}
 }
 
