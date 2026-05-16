@@ -700,6 +700,20 @@
       "telemetry_socket": "Telemetry socket"
     }
   },
+  "auditAction": {
+    "auth_login": "Login",
+    "config_publish": "Publish Config",
+    "config_reload": "Reload Config",
+    "config_rollback": "Rollback Config",
+    "config_validate": "Validate Config",
+    "config_update": "Update Config",
+    "config_preview": "Preview Config",
+    "config_diff": "Config Diff",
+    "pricing_refresh": "Refresh Pricing",
+    "runtime_preflight": "Runtime Preflight",
+    "diagnostics_generate": "Generate Diagnostics",
+    "client_error": "Client Error"
+  },
   "empty": {
     "noRequests": "No request data yet. The gateway is waiting for traffic.",
     "noTelemetry": "No telemetry data available yet.",

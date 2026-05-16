@@ -555,3 +555,105 @@ In Progress - writing tests for ops.go uncovered functions.
 - Worktree is already dirty with prior changes; do not revert them.
 - Existing ops_test.go stubs should be reused, not duplicated.
 
+---
+
+## Current Task - CLI Client Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/cli` package (71.2% → ~90%) by covering all uncovered HTTP client methods: BaseURL, GetRuntimeStatus, RuntimePreflight, ListAudit, ConfigPreview, ConfigDiff, ProbeProvider, ProbeModel, Replay (GET/POST), Diagnostics, SecretsStatus, ListVerificationBaselines, ImportVerificationBaseline (nil guard + success), ListVerificationRuns (default/custom limit), StartVerificationRun (nil guard + success), and GetVerificationRun (run ID path).
+
+### Current Phase
+
+In Progress - writing tests for uncovered client methods.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Analyze uncovered code paths | Identified 16 uncovered functions in client.go: BaseURL (0%), GetRuntimeStatus (0%), RuntimePreflight (0%), ListAudit (0%), ConfigPreview (0%), ConfigDiff (0%), ProbeProvider (0%), ProbeModel (0%), Replay (0%), Diagnostics (0%), SecretsStatus (0%), ListVerificationBaselines (0%), ImportVerificationBaseline (0%), ListVerificationRuns (0%), StartVerificationRun (0%), GetVerificationRun (0%). |
+| Not Started | 2. Write CLI client tests | Add ~20 test functions using httptest mock server, following existing pattern. |
+| Not Started | 3. Validate | `go build ./...` and `go test ./... -count=1` pass. Coverage: 71.2% → ~90%. |
+| Not Started | 4. Commit | Git add + commit with message. |
+
+### Constraints
+
+- Use WSL ext4 for all commands.
+- Worktree is already dirty; do not revert unrelated changes.
+- Follow existing httptest.NewServer pattern from client_test.go.
+
+---
+
+## Current Task - Admin UI Audit Action Type Translations
+
+### Goal
+
+Fix missing i18n translations for audit action types in the admin UI. Raw action keys like `auth.login`, `config.publish`, `config.validate`, `config.rollback`, `config.update`, `diagnostics.generate` were displayed directly to operators in the audit timeline and action mix chart.
+
+### Current Phase
+
+Complete - all 12 audit action types now display human-readable translations; deployed and verified live.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Run Playwright UI audit | Identified 12 missing-i18n instances across ops/audit/diagnostics views. |
+| Complete | 2. Add i18n keys | Added `auditAction` section to en.json and zh.json with all 12 action types. |
+| Complete | 3. Update AuditTimeline component | Changed raw `event.action` display to `formatAuditAction(event.action, t)` lookup. |
+| Complete | 4. Update action mix chart | Changed raw action label in ops-action-bar to translated `formatAuditAction(action, t)`. |
+| Complete | 5. Validate | Frontend build + 37 tests passed; Playwright screenshot verified 0 raw keys visible; translations for Login/Publish Config/Validate Config/Rollback Config confirmed. |
+| Complete | 6. Deploy live | New bundle deployed to /home/chenrunsen/ai-gateway; service healthy. |
+
+### Key Detail
+
+The i18n `t()` function uses dot-separated path traversal (`getString` splits by `.`). Action keys like `auth.login` contain dots, so adding them directly under `auditAction` object would fail. The fix normalizes action keys by replacing `.` with `_` via `formatAuditAction()` before looking up: `auditAction.auth_login` instead of `auditAction.auth.login`.
+
+### Constraints
+
+- Use WSL ext4 for all commands.
+- Changes are frontend-only (no Go backend changes needed).
+- Live deployment via `scripts/sync-bundle-to-home-ai-gateway.sh`.
+
+---
+
+## Current Task - 全面验证 + 清理待提交变更
+
+### Goal
+
+完成对所有待处理变更的实际验证，确保 Ops API 测试和审计操作翻译变更没有任何回归，运行 Playwright 视觉审计，提交干净 git 状态。
+
+### Rationale
+
+上一轮完成了 Ops API 测试覆盖率提升（47.8% → 68.6%）和审计操作类型翻译，工作已部署到线上服务并验证通过，但尚未提交 git commit。本轮进行全面的实际验证，确保所有变更质量，恢复正常干净的 git 状态。
+
+### Current Phase
+
+执行中 - 运行测试套件、Playwright 视觉审计、提交变更。
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. 运行完整 Go 测试套件 | `go test ./... -count=1` 全部通过，42+ 包 |
+| Complete | 2. 运行前端测试 + 构建 | `npm test` 109 通过，`npm run build` 通过 |
+| Complete | 3. Playwright 视觉审计 | 44 视图，0 console errors，0 page errors |
+| Complete | 4. Codex GPT-5.4-mini 视觉检查 | Audit 页面通过，确认翻译正确 |
+| Complete | 5. 修复发现的问题 | 未发现需要修复的问题 |
+| Complete | 6. 部署修复 | 无需部署（已验证线上正常运行） |
+| Complete | 7. 提交所有变更到 git | `git add -A && git commit` |
+| Complete | 8. 更新 progress.md / findings.md / issues.md | 已全部更新 |
+
+### Verification Plan
+
+- Go 测试: `go build ./...` + `go test ./... -count=1` → 全部通过
+- 前端测试: `npm test` → 109 tests 通过
+- Playwright: 审计无控制台/页面错误，无原始 i18n key
+- Codex 视觉: GPT-5.4-mini 检查 Playwright 截图
+- 线上服务: health 检查 OK
+
+### Constraints
+
+- 工作树已 dirty，不要还原无关变更
+- 使用 WSL ext4 执行命令
+- 线上部署用 `scripts/sync-bundle-to-home-ai-gateway.sh`

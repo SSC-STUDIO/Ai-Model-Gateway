@@ -1,5 +1,52 @@
 # Progress
 
+## 2026-05-16
+
+### Admin UI Audit Action Type Translations
+
+- Analyzed project state from existing plans. Previous 10+ tasks were all backend test coverage improvements (internal quality). Next planned task was CLI client tests (also internal quality). Instead, chose a user-facing improvement: fix raw audit action keys showing in the admin UI.
+- Ran Playwright UI audit against live service: 44 views, 0 console errors, 0 page errors. Found 12 `missing-i18n` instances with raw action keys like `auth.login`, `config.publish` etc.
+- Added `auditAction` i18n section with 12 action type translations in en.json and zh.json.
+- Added `formatAuditAction()` helper in OpsTab.tsx that normalizes action keys (`.` → `_`) for dot-path-safe i18n lookup.
+- Fixed two display locations: `AuditTimeline` component and action mix bar chart.
+- Discovered that `t()` function uses dot-separated path traversal, so keys containing dots cannot be stored directly.
+- Frontend build passed; 12+ test files / 37+ tests passed.
+- Deployed live via sync-bundle-to-home-ai-gateway.sh (3 deployments during fix iteration).
+- Playwright verification: `rawKeysFound: []` (0 raw keys), translations for "Login", "Publish Config", "Validate Config", "Rollback Config" confirmed visible.
+- Visual verification via Playwright screenshot confirmed human-readable action names in both audit timeline and action mix chart.
+
+## 2026-05-16 (第十轮)
+
+### Current State Assessment
+
+- Go build passed; `go test ./... -count=1` all 42+ packages passed.
+- Frontend build passed; `npm test` 13 files / 109 tests passed.
+- Live `ai-gateway.service` healthy (revision `rev_20260516_021628_0aaajs`, version 1.3.0).
+- Audit i18n verification PASS: 0 raw keys, 4 translations visible.
+- Pending uncommitted changes: OpsTab auditAction helper, en/zh i18n keys, embedded assets, progress.md/task_plan.md updates.
+
+### Next Task: 全面验证 + 清理待提交变更
+
+- 目标：验证所有待处理变更、运行 Playwright 视觉审计、修复发现问题、提交干净 git 状态。
+- 验证：Go 测试、前端测试、线上服务检查、Playwright 截图审计、Codex GPT-5.4-mini 视觉检查。
+
+### 验证结果
+
+- **Go 构建**: `go build ./...` 通过
+- **Go 测试**: `go test ./... -count=1` 全部通过，覆盖 42+ 包
+- **前端构建**: `npm run build` 通过（Vite 构建成功）
+- **前端测试**: `npm test` 13 文件 / 109 测试全部通过
+- **线上服务**: `ai-gateway.service` healthy，revision `rev_20260516_021628_0aaajs`，version 1.3.0
+- **Playwright i18n 验证**: PASS — 0 raw keys found，Login/Publish Config/Validate Config/Rollback Config 翻译可见
+- **Playwright 全视图审计**: 44 views，0 console errors，0 page errors。剩余 8 missing-i18n 为已知 ops/runtime 字段（非原始 key，是 runtime field label 显示），14 tiny-control 为 config 视图复选框，4 visible-error 为实际业务错误日志，5 element-overflow-right 为移动端表格超出
+- **Codex GPT-5.4-mini 视觉检查**: Audit 页面操作类型显示可读英文（Login, Update Config, Generate Diagnostics 等），无原始 key。布局正常，无遮挡/错位/空白问题
+- **Codex 局限性**: 通过本地网关路由时 `gpt-5.4-mini` 模型不可用，改用 `claude-sonnet-4-6` 成功完成视觉检查
+- **无回归，无修复需要**：所有验证通过，无需额外修复
+
+### 结论
+
+本轮全面验证确认所有待处理变更质量合格。项目状态健康：42+ Go 包测试通过，109 前端测试通过，44 视图 UI 审计无控制台/页面错误，审计操作翻译已部署到线上并验证正常。
+
 ## 2026-05-12
 
 ### Telemetry Projector Test Coverage Improvement

@@ -298,6 +298,13 @@ function OpsSkeleton() {
 
 /* ============ Audit ============ */
 
+/** Translate an audit action key (e.g. "auth.login") to a human-readable label. */
+function formatAuditAction(action: string, t: (key: string) => string): string {
+  const key = 'auditAction.' + action.replace(/\./g, '_')
+  const label = t(key)
+  return label !== key ? label : action
+}
+
 function AuditTimeline({ events, t }: { events: AuditEvent[]; t: (key: string) => string }) {
   return (
     <div class="ops-timeline">
@@ -312,7 +319,7 @@ function AuditTimeline({ events, t }: { events: AuditEvent[]; t: (key: string) =
                 <span class={`ops-event-state ${ok ? 'success' : 'error'}`}>{ok ? t('filterSuccess') : t('filterFailed')}</span>
                 <span class="ops-event-time">{formatDate(event.time)}</span>
               </div>
-              <div class="ops-event-title">{event.action || 'unknown action'}</div>
+              <div class="ops-event-title">{event.action ? formatAuditAction(event.action, t) : 'unknown action'}</div>
               <div class="ops-event-meta">
                 <span>{event.resource || 'runtime'}</span>
                 <span>{event.actor || 'system'}</span>
@@ -425,7 +432,7 @@ function AuditView({ payload, busy, t }: { payload: AuditPayload; busy: boolean;
             {actions.map(([action, count]) => (
               <div class="ops-action-bar" key={action}>
                 <div class="ops-action-bar-label">
-                  <span>{action}</span>
+                  <span>{formatAuditAction(action, t)}</span>
                   <strong>{count}</strong>
                 </div>
                 <div class="ops-action-bar-track">

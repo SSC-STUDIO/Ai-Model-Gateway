@@ -700,6 +700,20 @@
       "telemetry_socket": "遥测 Socket"
     }
   },
+  "auditAction": {
+    "auth_login": "登录",
+    "config_publish": "发布配置",
+    "config_reload": "重载配置",
+    "config_rollback": "回滚配置",
+    "config_validate": "验证配置",
+    "config_update": "更新配置",
+    "config_preview": "预览配置",
+    "config_diff": "配置差异",
+    "pricing_refresh": "刷新价格",
+    "runtime_preflight": "运行时预检",
+    "diagnostics_generate": "生成诊断",
+    "client_error": "客户端错误"
+  },
   "empty": {
     "noRequests": "暂无请求数据，网关正在等待流量",
     "noTelemetry": "暂无遥测数据",
