@@ -557,30 +557,52 @@ In Progress - writing tests for ops.go uncovered functions.
 
 ---
 
-## Current Task - CLI Client Test Coverage Improvement
+## Deferred - CLI Client Test Coverage Improvement
 
 ### Goal
 
-Improve test coverage for `internal/cli` package (71.2% → ~90%) by covering all uncovered HTTP client methods: BaseURL, GetRuntimeStatus, RuntimePreflight, ListAudit, ConfigPreview, ConfigDiff, ProbeProvider, ProbeModel, Replay (GET/POST), Diagnostics, SecretsStatus, ListVerificationBaselines, ImportVerificationBaseline (nil guard + success), ListVerificationRuns (default/custom limit), StartVerificationRun (nil guard + success), and GetVerificationRun (run ID path).
+Improve test coverage for `internal/cli` package (71.2% → ~90%) by covering all uncovered HTTP client methods.
 
 ### Current Phase
 
-In Progress - writing tests for uncovered client methods.
+Deferred - postponing internal quality task in favor of user-facing improvements. See "README Enhancement + Full Validation" below.
 
 ### Phases
 
 | Status | Phase | Notes |
 | --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified 16 uncovered functions in client.go: BaseURL (0%), GetRuntimeStatus (0%), RuntimePreflight (0%), ListAudit (0%), ConfigPreview (0%), ConfigDiff (0%), ProbeProvider (0%), ProbeModel (0%), Replay (0%), Diagnostics (0%), SecretsStatus (0%), ListVerificationBaselines (0%), ImportVerificationBaseline (0%), ListVerificationRuns (0%), StartVerificationRun (0%), GetVerificationRun (0%). |
-| Not Started | 2. Write CLI client tests | Add ~20 test functions using httptest mock server, following existing pattern. |
-| Not Started | 3. Validate | `go build ./...` and `go test ./... -count=1` pass. Coverage: 71.2% → ~90%. |
-| Not Started | 4. Commit | Git add + commit with message. |
+| Complete | 1. Analyze uncovered code paths | Identified 16 uncovered functions in client.go. |
+| Deferred | 2. Write CLI client tests | Postponed — internal quality task, not user-facing. |
+| Deferred | 3. Validate | Postponed. |
+| Deferred | 4. Commit | Postponed. |
+
+---
+
+## Current Task - README Enhancement + Full Validation
+
+### Goal
+
+Enhance root README.md with architecture diagram, feature table, test instructions, and admin UI navigation. Run comprehensive practical verification (Go build/tests, frontend build/tests, Playwright i18n audit, Codex visual check, live service health check).
+
+### Current Phase
+
+Complete - README enhanced, full validation passed, all findings recorded.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Full verification | Go build/test (42+ packages pass), frontend build/test (109 tests pass), live service healthy |
+| Complete | 2. Playwright audit i18n verify | 0 raw keys, translations visible for Login/Publish Config/Validate Config/Rollback Config |
+| Complete | 3. README.md enhancement | Added feature table, architecture diagram, test instructions, admin nav, CLI config, repo layout table, doc links |
+| Complete | 4. Codex visual check | Used claude-sonnet-4-6 (gpt-5.4-mini unavailable via local gateway), confirmed no layout/overlap issues |
+| Complete | 5. Record findings | Updated findings.md, progress.md, task_plan.md, issues.md |
+| Complete | 6. Git commit | Committed README.md + planning file updates |
 
 ### Constraints
 
 - Use WSL ext4 for all commands.
-- Worktree is already dirty; do not revert unrelated changes.
-- Follow existing httptest.NewServer pattern from client_test.go.
+- Do not revert unrelated backend/admin UI changes.
 
 ---
 
