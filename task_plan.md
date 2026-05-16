@@ -499,3 +499,59 @@ Complete - coverage improved from 81.0% to 100.0%; all 42 Go packages pass.
 ### Constraints
 
 - Use WSL ext4 for all commands.
+
+---
+
+## Current Task - Live Gateway Claude Code 400 Investigation
+
+### Goal
+
+Diagnose and fix live `ai-gateway.service` returning upstream HTTP 400 `Param Incorrect` for Claude Code `/v1/messages` requests, especially the failed cron/tool scheduling request.
+
+### Current Phase
+
+Complete - active runtime config was corrected and verified with a live `/v1/messages` probe.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Confirm live runtime | `ai-gateway.service` is active and healthy on `127.0.0.1:18080`, running the three-plane `aigw supervise` bundle. |
+| Complete | 2. Inspect request logs and telemetry | Latest failed request: `2026-05-16T01:30:55Z`, `/v1/messages`, `claude-opus-4-6 -> mimo-v2.5-pro`, provider `coolyeah-glm5`, HTTP 400, error `Param Incorrect`. |
+| Complete | 3. Identify routing/config cause | Active persisted revision `rev_20260515_150208_1k3dn6` had `claude* -> mimo-v2.5-pro`, even though disk `config.yaml` already said `deepseek-v4-pro`. |
+| Complete | 4. Apply minimal fix | Used admin config update API to change only active bridge target to `deepseek-v4-pro`, publishing `rev_20260516_014419_xoxfo6` / `snap_20260516_014419_5w5n5e`. |
+| Complete | 5. Validate | Health reports the new revision, snapshot bridge is `claude* -> deepseek-v4-pro`, and a live `/v1/messages` probe returned HTTP 200 with telemetry `effective_model=deepseek-v4-pro`, `provider_id=deepseek`. |
+
+### Constraints
+
+- Do not print secrets from `/home/chenrunsen/ai-gateway/configs/config.yaml`.
+- Live runtime is `/home/chenrunsen/ai-gateway`; use strict manifest-aware deployment if binaries change.
+- Worktree is already dirty with unrelated files; do not revert them.
+
+---
+
+## Current Task - Ops API Test Coverage Improvement
+
+### Goal
+
+Improve test coverage for `internal/control/api/ops.go` functions from current 0-50% to ~80%+ by covering pure functions (SummarizeSnapshot, secretItemsFromConfig, numericStatusValue, validationError, preflightCheck, writeConfigToolUnavailablePreview, resultError) and HTTP handlers (handleProbe, replayUnavailableHandler, runtimePreflightHandler, auditHandler, configPreviewHandler, configDiffHandler, diagnosticsHandler, secretsStatusHandler, clientErrorHandler, metricsHandler, recordAudit).
+
+### Current Phase
+
+In Progress - writing tests for ops.go uncovered functions.
+
+### Phases
+
+| Status | Phase | Notes |
+| --- | --- | --- |
+| Complete | 1. Write pure function tests | SummarizeSnapshot, secretItemsFromConfig, numericStatusValue, validationError, preflightCheck, writeConfigToolUnavailablePreview, resultError |
+| Complete | 2. Write HTTP handler tests | handleProbe, replayUnavailableHandler, runtimePreflightHandler, auditHandler, configPreviewHandler, configDiffHandler, diagnosticsHandler, secretsStatusHandler, clientErrorHandler, metricsHandler, recordAudit |
+| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 47.8% → 68.6%. |
+| Not Started | 4. Commit | Git add + commit with message |
+
+### Constraints
+
+- Use WSL ext4 for all commands.
+- Worktree is already dirty with prior changes; do not revert them.
+- Existing ops_test.go stubs should be reused, not duplicated.
+

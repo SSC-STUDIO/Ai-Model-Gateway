@@ -41,6 +41,25 @@
 
 ### Rate Limiter Test Coverage Improvement
 
+---
+
+## 2026-05-16
+
+### Ops API Test Coverage Improvement
+
+- Started new task to improve `internal/control/api/ops.go` test coverage.
+- Baseline coverage: many ops.go functions at 0-10% (SummarizeSnapshot, secretItemsFromConfig, numericStatusValue, validationError, preflightCheck, writeConfigToolUnavailablePreview, handleProbe, replayUnavailableHandler), others below 25%.
+- Plan: Write pure function tests and HTTP handler tests using existing stubs in ops_test.go.
+- Parallel agents assigned: pure function tests in `pure_ops_test.go`, HTTP handler tests in `handle_ops_test.go`.
+
+### Ops API Test Coverage Improvement - Results
+
+- Expanded `internal/control/api/handle_ops_test.go` and `internal/control/api/pure_ops_test.go` with comprehensive tests.
+- Pure functions now 100% covered: SummarizeSnapshot, secretItemsFromConfig, numericStatusValue, validationError, preflightCheck, writeConfigToolUnavailablePreview, resultError, recordAudit.
+- HTTP handlers now 100% covered: runtimeStatusHandler, runtimePreflightHandler, auditHandler, configPreviewHandler, configDiffHandler, probeProviderHandler, probeModelHandler, handleProbe, diagnosticsHandler, clientErrorHandler, replayUnavailableHandler, secretsStatusHandler (90%), metricsHandler (95.5%).
+- Overall `internal/control/api` package coverage: 47.8% → 68.6%.
+- Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42 Go packages green.
+
 - Expanded `internal/gateway/ratelimit/limiter_test.go` from 10 test functions to 14 test functions.
 - Added `TestAllow_CleanupStaleBuckets` covering periodic stale-bucket sweep: creates a stale bucket (10min old) and a fresh bucket, triggers the 256-call cleanup interval, and verifies the stale bucket is removed while the fresh one survives.
 - Added `TestAllow_MaxBuckets_RejectsNewKeys` covering maxBuckets enforcement: sets `maxBuckets=2`, fills capacity, and verifies a third key is rejected while existing keys still work.
@@ -158,6 +177,14 @@
 - Added hook tests for default all-active behavior and quick-run POST body `{ all_active: true, suite: "general_protocol_v1" }`.
 - Cleaned chart CSS to remove radial/glow backgrounds from chart containers and timeseries charts, reduce decorative shadows, remove negative letter spacing in chart text, and add a restrained plot backdrop.
 - Validation passed: `npm --prefix web/admin test` reported 13 files / 109 tests passed; `npm --prefix web/admin run build` passed.
+- 2026-05-16: Started live gateway 400 investigation for Claude Code cron/tool scheduling failure.
+- 2026-05-16: Read required workstation context and AI-Model-Gateway runtime notes. `ai-gateway.service` is active/healthy with health `status=healthy`, `version=1.3.0`.
+- 2026-05-16: Inspected `gatewayd.log` and telemetry; latest failing request is `/v1/messages` `claude-opus-4-6 -> mimo-v2.5-pro` through `coolyeah-glm5`, returning upstream HTTP 400 `Param Incorrect`.
+- 2026-05-16: Inspected live redacted config. `compat.bridge` rewrites `claude*` to `deepseek-v4-pro`; `claude-opus-4-7` provider is present but disabled; `kimi-official` remains enabled for `claude-opus-4-6`.
+- 2026-05-16: Found the active publisher revision still had `claude* -> mimo-v2.5-pro`, even though disk `config.yaml` had already moved to `deepseek-v4-pro`.
+- 2026-05-16: Updated active config via `/api/admin/config/update` using the local bootstrap token without printing it; published `rev_20260516_014419_xoxfo6` / `snap_20260516_014419_5w5n5e`.
+- 2026-05-16: Verified health reports the new revision, applied snapshot bridge is `claude* -> deepseek-v4-pro`, and live `/v1/messages` probe returned HTTP 200 routed to `deepseek`.
+- 2026-05-16: Telemetry verified request `83095e97-502c-4021-9fbe-22e2d8b570c5` as `/v1/messages`, `claude-opus-4-6 -> deepseek-v4-pro`, provider `deepseek`, status `200`.
 - Deployed with `bash scripts/sync-bundle-to-home-ai-gateway.sh`; live `ai-gateway.service` restarted at 2026-05-10 09:41:50 CST and health returned `status=healthy`, `version=1.3.0`.
 - Verified live bundle with `/home/chenrunsen/ai-gateway/bin/aigw bundle verify -root /home/chenrunsen/ai-gateway -manifest /home/chenrunsen/ai-gateway/aigw-manifest.json`.
 - Added and ran `output/playwright/benchmark_capability_check.cjs`; live `/admin/benchmark` Chinese capability page verified no raw `benchmark.verification.*` keys, default checked all-upstream checkbox, disabled provider/model inputs, visible quick-run button, and non-radial chart background.
