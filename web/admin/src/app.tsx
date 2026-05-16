@@ -413,7 +413,7 @@ export function App() {
         </button>
       ))}
       {refreshInterval > 0 && (
-        <span class="auto-refresh-indicator">{t('autoRefresh.active')}</span>
+        <span class="auto-refresh-indicator">{t('autoRefresh.active')} ({refreshInterval / 1000}s)</span>
       )}
     </div>
   ), [t, refreshInterval])

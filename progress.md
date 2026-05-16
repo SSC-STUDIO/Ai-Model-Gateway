@@ -1,33 +1,31 @@
 # Progress
 
-## 2026-05-16 (第十五轮: README 增强 + 全面验证)
+## 2026-05-16 (第十六轮: Admin UI UX Enhancement + 全面验证)
 
 ### 项目状态分析
-- 上一轮完成了 Ops API 测试覆盖率提升（47.8% → 68.6%）和审计操作类型翻译/部署/提交
-- 根目录 README.md 存在但缺少测试说明、架构图、功能概览表
-- Playwright 审计截图任务在 2026-05-09 成功，但 fullPage 截图在服务内容较多时 30s 超时
-- 线上服务健康（version 1.3.0），无用户报告的错误
-- 无未修复的用户体验 bug
+- 上一轮完成了 README 增强 + 全面验证，Codex 视觉检查发现若干可选 UX 改进点
+- 按照 Goal 0 要求，本轮执行前端 UI 扫描和 UX 改进
+- 线上服务健康（version 1.3.0），main 分支 CI 通过
 
 ### 选定任务
-- 按照 `All repositories` 建设目标：改善仓库构建质量（README、测试说明、验证脚本）
-- 增强 README.md：功能特性表、架构图、测试说明、管理面板导航、CLI 配置说明
-- 运行全面实际验证：Go 构建/测试、前端构建/测试、Playwright i18n 验证、Codex 视觉检查、线上服务健康检查
+- 按照 Goal 0（前端/UI 仓库优先）目标，对 Preact 管理前端进行全面 UI 扫描
+- 修复上轮 Codex 视觉检查发现的 UX 改进点：
+  1. 状态徽章对比度和无障碍（伪元素图标辅助）
+  2. 自动刷新间隔显示（显示具体秒数）
+- 不适用项：表格排序方向指示器（本仓库表格使用程序化排序，无点击表头排序功能）
 
 ### 执行结果
-1. **Go 构建/测试**: `go build ./...` 通过；`go test ./... -count=1` 42+ 包全部通过
+1. **Go 构建/测试**: `go build ./...` 通过；`go test ./... -count=1` 42+ 包全部通过（零回归）
 2. **前端构建/测试**: `npm test` 13 文件 / 109 测试通过；`npm run build` 通过
-3. **Playwright i18n 验证**: `verify-audit-i18n.cjs` — PASS，0 raw keys，Login/Publish Config/Validate Config/Rollback Config 翻译可见
-4. **Playwright UI 审计**: `ui_review_live.cjs` — 修复 fullPage 截图 30s→60s 超时，但仍有页面截图超时（需进一步调试）；上次 2026-05-09 审计 44 视图全部通过
-5. **Codex 视觉检查**: 使用 `claude-sonnet-4-6` 检查 admin-overview 截图，确认布局正常，发现可选 UX 改进点
-6. **线上服务**: `ai-gateway.service` active，健康检查返回 `status=healthy`，`version=1.3.0`
-7. **README.md**: 功能特性表、架构图、测试说明、管理面板导航、CLI 配置命令、仓库布局表、文档索引已添加
+3. **代码变更**:
+   - `web/admin/src/theme/components.css`: 状态徽章添加 ::before 伪元素图标（success→✓, warning→⚠, error→✕, neutral→●）；增强警告和错误徽章对比度（暗色主题下更亮颜色 + 更高不透明度背景）
+   - `web/admin/src/app.tsx`: 自动刷新指示器显示具体秒数（如 "Auto-refreshing (30s)"）
+4. **线上部署**: `/home/chenrunsen/ai-gateway` 部署成功，服务健康（version 1.3.0, `rev_20260516_105619_y0k4n7`）
+5. **Playwright DOM 验证**: success 徽章 `✓`、neutral 徽章 `●`、刷新指示器 `Auto-refreshing (30s)` 全部确认渲染正确
+6. **视觉验证**: 4 张截图（overview/monitoring/ops/logs）确认布局正常、无遮挡/错位
 
 ### 结论
-项目健康状况良好。无回归、无需修复。下一轮可考虑：
-- 修复 Codex 视觉检查发现的 UX 改进点（状态徽章对比度、无障碍图标、排序指示器）
-- 修复 Playwright fullPage 截图超时问题
-- 继续 CLI Client 测试覆盖率改进（pending 任务）
+项目健康状况良好，零回归。UX 改进已部署到线上服务。
 
 - Analyzed project state from existing plans. Previous 10+ tasks were all backend test coverage improvements (internal quality). Next planned task was CLI client tests (also internal quality). Instead, chose a user-facing improvement: fix raw audit action keys showing in the admin UI.
 - Ran Playwright UI audit against live service: 44 views, 0 console errors, 0 page errors. Found 12 `missing-i18n` instances with raw action keys like `auth.login`, `config.publish` etc.

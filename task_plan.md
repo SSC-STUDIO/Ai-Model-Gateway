@@ -530,30 +530,43 @@ Complete - active runtime config was corrected and verified with a live `/v1/mes
 
 ---
 
-## Current Task - Ops API Test Coverage Improvement
+## Current Task - Admin UI UX Enhancement + Full Validation
 
 ### Goal
 
-Improve test coverage for `internal/control/api/ops.go` functions from current 0-50% to ~80%+ by covering pure functions (SummarizeSnapshot, secretItemsFromConfig, numericStatusValue, validationError, preflightCheck, writeConfigToolUnavailablePreview, resultError) and HTTP handlers (handleProbe, replayUnavailableHandler, runtimePreflightHandler, auditHandler, configPreviewHandler, configDiffHandler, diagnosticsHandler, secretsStatusHandler, clientErrorHandler, metricsHandler, recordAudit).
+依照 Goal 0（前端/UI 仓库优先）要求，对 Preact 管理前端进行全面 UI/交互扫描。修复上轮 Codex 视觉检查发现的可选 UX 改进点（状态徽章对比度、无障碍图标/标签、表格排序方向指示、自动刷新间隔显示）。运行全方位实际验证（Go 测试、前端测试、Playwright UI 审计、Codex 视觉检查、线上服务检查）。提交所有待提交变更。
 
 ### Current Phase
 
-In Progress - writing tests for ops.go uncovered functions.
+执行中 - 更新计划、运行基线、UI 扫描、修复、验证。
 
 ### Phases
 
 | Status | Phase | Notes |
 | --- | --- | --- |
-| Complete | 1. Write pure function tests | SummarizeSnapshot, secretItemsFromConfig, numericStatusValue, validationError, preflightCheck, writeConfigToolUnavailablePreview, resultError |
-| Complete | 2. Write HTTP handler tests | handleProbe, replayUnavailableHandler, runtimePreflightHandler, auditHandler, configPreviewHandler, configDiffHandler, diagnosticsHandler, secretsStatusHandler, clientErrorHandler, metricsHandler, recordAudit |
-| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 47.8% → 68.6%. |
-| Not Started | 4. Commit | Git add + commit with message |
+| In Progress | 1. 更新计划、运行测试基线 | Go build/test、前端 build/test、Playwright UI 审计 |
+| Not Started | 2. 状态徽章对比度 + 无障碍图标改进 | 添加图标辅助、改善 WCAG 对比度 |
+| Not Started | 3. 表格排序方向指示器 | 添加可见的排序箭头/方向提示 |
+| Not Started | 4. 自动刷新间隔显示改进 | 明确显示轮询间隔 |
+| Not Started | 5. Codex 视觉检查 | 截图视觉验证 |
+| Not Started | 6. 完整回归验证 | Go + 前端 + Playwright + 线上服务 |
+| Not Started | 7. 提交所有变更 | Git add + commit |
 
 ### Constraints
 
 - Use WSL ext4 for all commands.
 - Worktree is already dirty with prior changes; do not revert them.
-- Existing ops_test.go stubs should be reused, not duplicated.
+- Live deployment to `/home/chenrunsen/ai-gateway` via `scripts/sync-bundle-to-home-ai-gateway.sh`.
+- 优先 Preact 现有设计系统样式，避免引入新装饰模式。
+
+### Validation Targets
+
+1. `go build ./...` + `go test ./... -count=1` → 42+ 包全绿
+2. `npm --prefix web/admin test` → 109+ 测试全绿
+3. `npm --prefix web/admin run build` → Vite 构建通过
+4. Playwright 44 视图 UI 审计 → 0 console errors, 0 page errors
+5. Codex 视觉检查截图 → 无布局/遮挡问题
+6. 线上服务健康 → `curl http://127.0.0.1:18080/-/health`
 
 ---
 
