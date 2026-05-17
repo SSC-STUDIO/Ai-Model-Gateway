@@ -1709,6 +1709,41 @@ func TestAdaptChatResponseToResponses(t *testing.T) {
 	}
 }
 
+func TestAdaptChatResponseToResponsesPreservesCachedInputTokens(t *testing.T) {
+	chatResp := `{
+		"id":"chatcmpl-cache",
+		"object":"chat.completion",
+		"created":1700000000,
+		"model":"gpt-4o",
+		"choices":[{
+			"index":0,
+			"message":{"role":"assistant","content":"cached"},
+			"finish_reason":"stop"
+		}],
+		"usage":{"prompt_tokens":17,"completion_tokens":4,"total_tokens":21,"prompt_tokens_details":{"cached_tokens":9}}
+	}`
+	body, err := adaptChatResponseToResponses([]byte(chatResp), "", nil)
+	if err != nil {
+		t.Fatalf("adaptChatResponseToResponses() error = %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("decode responses body: %v", err)
+	}
+	usage, ok := payload["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("usage = %#v, want map", payload["usage"])
+	}
+	inputDetails, ok := usage["input_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatalf("input_tokens_details = %#v, want map", usage["input_tokens_details"])
+	}
+	if inputDetails["cached_tokens"] != float64(9) {
+		t.Fatalf("cached_tokens = %#v, want 9", inputDetails["cached_tokens"])
+	}
+}
+
 func TestAdaptChatResponseToResponsesConvertsArrayContentText(t *testing.T) {
 	chatResp := `{
 		"id":"chatcmpl-array",
@@ -2101,7 +2136,7 @@ func TestHandleResponsesStreamingEmitsCompletedAndDoneMarker(t *testing.T) {
 			stream := strings.Join([]string{
 				`data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":""}]}`,
 				"",
-				`data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":22,"completion_tokens":5,"total_tokens":27}}`,
+				`data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1700000000,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":22,"completion_tokens":5,"total_tokens":27,"prompt_tokens_details":{"cached_tokens":11}}}`,
 				"",
 				`data: [DONE]`,
 				"",
@@ -2172,6 +2207,11 @@ func TestHandleResponsesStreamingEmitsCompletedAndDoneMarker(t *testing.T) {
 			respPayload, _ := event["response"].(map[string]any)
 			if respPayload["status"] != "completed" {
 				t.Fatalf("completed response status = %#v, want completed", respPayload["status"])
+			}
+			usage, _ := respPayload["usage"].(map[string]any)
+			inputDetails, _ := usage["input_tokens_details"].(map[string]any)
+			if inputDetails["cached_tokens"] != float64(11) {
+				t.Fatalf("completed usage = %#v, want cached_tokens=11", usage)
 			}
 		case "response.done":
 			foundDoneLegacy = true

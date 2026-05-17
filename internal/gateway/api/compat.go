@@ -158,6 +158,9 @@ type openAIUsagePayload struct {
 	PromptTokensDetails struct {
 		CachedTokens int64 `json:"cached_tokens"`
 	} `json:"prompt_tokens_details"`
+	InputTokensDetails struct {
+		CachedTokens int64 `json:"cached_tokens"`
+	} `json:"input_tokens_details"`
 }
 
 type openAIStreamToolState struct {
@@ -1106,7 +1109,7 @@ func bridgeOpenAIStreamToAnthropicStarted(w http.ResponseWriter, flusher http.Fl
 		}
 	}
 
-	return state.usage.PromptTokens, state.usage.PromptTokensDetails.CachedTokens, state.usage.CompletionTokens
+	return state.usage.PromptTokens, openAIUsageCachedTokens(state.usage), state.usage.CompletionTokens
 }
 
 type anthropicStreamPayload struct {
@@ -1350,8 +1353,9 @@ func (s *openAIToAnthropicStreamState) mergeUsage(usage openAIUsagePayload) {
 	if usage.TotalTokens > s.usage.TotalTokens {
 		s.usage.TotalTokens = usage.TotalTokens
 	}
-	if usage.PromptTokensDetails.CachedTokens > s.usage.PromptTokensDetails.CachedTokens {
-		s.usage.PromptTokensDetails.CachedTokens = usage.PromptTokensDetails.CachedTokens
+	if cachedTokens := openAIUsageCachedTokens(usage); cachedTokens > openAIUsageCachedTokens(s.usage) {
+		s.usage.PromptTokensDetails.CachedTokens = cachedTokens
+		s.usage.InputTokensDetails.CachedTokens = cachedTokens
 	}
 }
 
@@ -1604,6 +1608,33 @@ func openAIUsageMap(promptTokens, cachedTokens, completionTokens int64) map[stri
 			"cached_tokens": cachedTokens,
 		},
 	}
+}
+
+func openAIUsageCachedTokens(usage openAIUsagePayload) int64 {
+	if usage.PromptTokensDetails.CachedTokens > 0 {
+		return usage.PromptTokensDetails.CachedTokens
+	}
+	return usage.InputTokensDetails.CachedTokens
+}
+
+func responsesUsageMap(inputTokens, cachedInputTokens, outputTokens, totalTokens int64) map[string]any {
+	if inputTokens < cachedInputTokens {
+		inputTokens = cachedInputTokens
+	}
+	if totalTokens == 0 || totalTokens < inputTokens+outputTokens {
+		totalTokens = inputTokens + outputTokens
+	}
+	usage := map[string]any{
+		"input_tokens":  inputTokens,
+		"output_tokens": outputTokens,
+		"total_tokens":  totalTokens,
+	}
+	if cachedInputTokens > 0 {
+		usage["input_tokens_details"] = map[string]any{
+			"cached_tokens": cachedInputTokens,
+		}
+	}
+	return usage
 }
 
 func mapAnthropicStopReason(reason string) string {
@@ -2831,11 +2862,7 @@ func adaptChatResponseToResponses(respBody []byte, clientModel string, customToo
 				FunctionCall *openAIToolCallFunction `json:"function_call"`
 			} `json:"message"`
 		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			TotalTokens      int64 `json:"total_tokens"`
-		} `json:"usage"`
+		Usage openAIUsagePayload `json:"usage"`
 	}
 	if err := json.Unmarshal(respBody, &payload); err != nil {
 		return nil, fmt.Errorf("decode chat response: %w", err)
@@ -2924,11 +2951,12 @@ func adaptChatResponseToResponses(respBody []byte, clientModel string, customToo
 		"created_at": payload.Created,
 		"model":      model,
 		"output":     outputItems,
-		"usage": map[string]any{
-			"input_tokens":  payload.Usage.PromptTokens,
-			"output_tokens": payload.Usage.CompletionTokens,
-			"total_tokens":  payload.Usage.TotalTokens,
-		},
+		"usage": responsesUsageMap(
+			payload.Usage.PromptTokens,
+			openAIUsageCachedTokens(payload.Usage),
+			payload.Usage.CompletionTokens,
+			payload.Usage.TotalTokens,
+		),
 		"status": "completed",
 	}
 
@@ -3265,11 +3293,7 @@ func (s *responsesStreamState) buildFinalResponse() map[string]any {
 		"model":      s.model,
 		"status":     "completed",
 		"output":     outputItems,
-		"usage": map[string]any{
-			"input_tokens":  s.promptTokens,
-			"output_tokens": s.completionTokens,
-			"total_tokens":  s.promptTokens + s.completionTokens,
-		},
+		"usage":      responsesUsageMap(s.promptTokens, s.cachedPromptTokens, s.completionTokens, 0),
 	}
 }
 
@@ -3568,11 +3592,7 @@ func translateChatStreamEventToResponses(data []byte, state *responsesStreamStat
 			} `json:"delta"`
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			TotalTokens      int64 `json:"total_tokens"`
-		} `json:"usage"`
+		Usage openAIUsagePayload `json:"usage"`
 	}
 	if err := json.Unmarshal([]byte(trimmed), &chunk); err != nil {
 		return nil, false
@@ -3592,6 +3612,12 @@ func translateChatStreamEventToResponses(data []byte, state *responsesStreamStat
 	}
 	if chunk.Usage.CompletionTokens > 0 {
 		state.completionTokens = chunk.Usage.CompletionTokens
+	}
+	if cachedTokens := openAIUsageCachedTokens(chunk.Usage); cachedTokens > 0 {
+		state.cachedPromptTokens = cachedTokens
+		if state.promptTokens < cachedTokens {
+			state.promptTokens = cachedTokens
+		}
 	}
 
 	payloads := make([][]byte, 0)
