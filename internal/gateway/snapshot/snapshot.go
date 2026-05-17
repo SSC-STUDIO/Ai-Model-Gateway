@@ -85,6 +85,10 @@ type ProviderSnapshot struct {
 	// ProviderID is the unique provider identifier.
 	ProviderID string `yaml:"provider_id" json:"provider_id"`
 
+	// UpstreamID is the logical upstream identity shared by providers that use
+	// the same effective base URL, even when they have different API keys.
+	UpstreamID string `yaml:"upstream_id" json:"upstream_id,omitempty"`
+
 	// ProtocolAdapter is the protocol adapter to use.
 	ProtocolAdapter string `yaml:"protocol_adapter" json:"protocol_adapter"`
 

@@ -4,6 +4,7 @@ package publish
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -432,8 +433,11 @@ func (p *Publisher) findRevisionLocked(revisionID string) (int, *Revision) {
 }
 
 func (p *Publisher) compileSnapshotLocked(rev *Revision) (*snapshot.Snapshot, error) {
-	if rev.Snapshot != nil {
+	if rev.Snapshot != nil && !snapshotNeedsDerivedFieldRefresh(rev.Snapshot) {
 		return rev.Snapshot, nil
+	}
+	if rev.Snapshot != nil && !p.canCompileRevisionLocked(rev) {
+		return p.backfillStoredSnapshotLocked(rev)
 	}
 
 	var (
@@ -468,6 +472,75 @@ func (p *Publisher) compileSnapshotLocked(rev *Revision) (*snapshot.Snapshot, er
 		return nil, fmt.Errorf("clone snapshot: %w", err)
 	}
 	return rev.Snapshot, nil
+}
+
+func (p *Publisher) canCompileRevisionLocked(rev *Revision) bool {
+	if p.revisionCompiler != nil {
+		return true
+	}
+	return p.compiler != nil && rev != nil && rev.Config != nil
+}
+
+func (p *Publisher) backfillStoredSnapshotLocked(rev *Revision) (*snapshot.Snapshot, error) {
+	snap, err := cloneSnapshot(rev.Snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("clone stored snapshot: %w", err)
+	}
+	backfillSnapshotDerivedFields(snap)
+	rev.Snapshot = snap
+	return rev.Snapshot, nil
+}
+
+func snapshotNeedsDerivedFieldRefresh(snap *snapshot.Snapshot) bool {
+	if snap == nil {
+		return false
+	}
+	for _, provider := range snap.Providers {
+		if strings.TrimSpace(provider.UpstreamID) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+func backfillSnapshotDerivedFields(snap *snapshot.Snapshot) {
+	if snap == nil {
+		return
+	}
+	for i := range snap.Providers {
+		provider := &snap.Providers[i]
+		if strings.TrimSpace(provider.UpstreamID) == "" {
+			provider.UpstreamID = logicalSnapshotUpstreamID(provider.ProviderID, provider.BaseURL, provider.AnthropicBaseURL)
+		}
+	}
+}
+
+func logicalSnapshotUpstreamID(providerID string, baseURL string, anthropicBaseURL string) string {
+	effectiveURL := strings.TrimSpace(anthropicBaseURL)
+	if effectiveURL == "" {
+		effectiveURL = strings.TrimSpace(baseURL)
+	}
+	if normalized := normalizeSnapshotUpstreamURL(effectiveURL); normalized != "" {
+		return normalized
+	}
+	return strings.TrimSpace(providerID)
+}
+
+func normalizeSnapshotUpstreamURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return strings.TrimRight(rawURL, "/")
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 // GetCurrentRevision returns the current active revision.

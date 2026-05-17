@@ -193,6 +193,20 @@ type ProviderHealth struct {
 	// Name is the provider identifier.
 	Name string
 
+	// UpstreamID is the logical upstream identity shared by providers that use
+	// the same effective base URL.
+	UpstreamID string
+
+	// ProviderIDs are the concrete configured providers grouped into this
+	// logical upstream.
+	ProviderIDs []string
+
+	// BaseURL is the configured provider base URL.
+	BaseURL string
+
+	// AnthropicBaseURL is the Anthropic-specific base URL, when configured.
+	AnthropicBaseURL string
+
 	// Healthy indicates if the provider is accepting requests.
 	Healthy bool
 

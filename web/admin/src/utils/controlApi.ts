@@ -115,6 +115,7 @@ function normalizeProviderHealthEntry(name: string, value: unknown): ProviderHea
   if (typeof value === 'boolean') {
     return {
       name: normalizedName,
+      upstream_id: normalizedName,
       healthy: value,
       status: value ? 'healthy' : 'unhealthy',
       consecutive_failures: 0,
@@ -132,6 +133,12 @@ function normalizeProviderHealthEntry(name: string, value: unknown): ProviderHea
 
   return {
     name: asString(record.Name ?? record.name) ?? normalizedName,
+    upstream_id: asString(record.UpstreamID ?? record.upstream_id) ?? normalizedName,
+    provider_ids: asArray(record.ProviderIDs ?? record.provider_ids)
+      .map((item) => asString(item))
+      .filter((item): item is string => Boolean(item)),
+    base_url: asString(record.BaseURL ?? record.base_url),
+    anthropic_base_url: asString(record.AnthropicBaseURL ?? record.anthropic_base_url),
     healthy,
     status,
     last_check: asString(record.LastCheck ?? record.last_check),

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
@@ -103,6 +104,49 @@ func TestRuntimeStateProviderHealthSnapshot(t *testing.T) {
 	}
 	if _, ok := health["provider-1"]; !ok {
 		t.Error("expected provider-1 in health map")
+	}
+}
+
+func TestRuntimeStateProviderHealthSnapshotGroupsByUpstreamID(t *testing.T) {
+	state := NewRuntimeState()
+	now := time.Date(2026, time.May, 17, 3, 0, 0, 0, time.UTC)
+	state.now = func() time.Time { return now }
+
+	snap := &snapshot.Snapshot{
+		RoutingPolicy: snapshot.RoutingPolicy{
+			FailurePolicy: snapshot.FailurePolicy{
+				Threshold:   5,
+				CooldownSec: 60,
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{ProviderID: "key-a", UpstreamID: "https://shared.example.com/v1", BaseURL: "https://shared.example.com/v1"},
+			{ProviderID: "key-b", UpstreamID: "https://shared.example.com/v1", BaseURL: "https://shared.example.com/v1"},
+		},
+	}
+	state.ApplySnapshot(snap)
+	state.reportAttemptResult("key-a", http.StatusTooManyRequests, 20*time.Millisecond, nil, snap)
+	state.reportAttemptResult("key-b", http.StatusOK, 40*time.Millisecond, nil, snap)
+
+	health := state.ProviderHealthSnapshot(snap)
+	if len(health) != 1 {
+		t.Fatalf("expected one logical upstream, got %#v", health)
+	}
+	item := health["https://shared.example.com/v1"]
+	if item.UpstreamID != "https://shared.example.com/v1" || item.Name != item.UpstreamID {
+		t.Fatalf("unexpected upstream identity: %#v", item)
+	}
+	if !reflect.DeepEqual(item.ProviderIDs, []string{"key-a", "key-b"}) {
+		t.Fatalf("provider ids = %#v", item.ProviderIDs)
+	}
+	if !item.Healthy {
+		t.Fatalf("expected grouped upstream to remain healthy while below threshold: %#v", item)
+	}
+	if item.ConsecutiveFailures != 1 {
+		t.Fatalf("consecutive failures = %d, want 1", item.ConsecutiveFailures)
+	}
+	if item.LatencyMs != 40 {
+		t.Fatalf("latency ms = %d, want max 40", item.LatencyMs)
 	}
 }
 

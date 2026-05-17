@@ -95,9 +95,9 @@ type Daemon struct {
 	startedAt         time.Time
 	activeReqs        atomic.Int64
 
-	remediationMu               sync.Mutex
-	lastAutoRemediationReason   string
-	lastAutoRemediationAt       time.Time
+	remediationMu             sync.Mutex
+	lastAutoRemediationReason string
+	lastAutoRemediationAt     time.Time
 }
 
 func main() {
@@ -427,12 +427,19 @@ func (d *Daemon) healthHandler(w http.ResponseWriter, r *http.Request) {
 			if providerHealth != nil {
 				providers := make([]map[string]interface{}, 0, len(snap.Providers))
 				for _, p := range snap.Providers {
+					upstreamID := p.UpstreamID
+					if strings.TrimSpace(upstreamID) == "" {
+						upstreamID = p.ProviderID
+					}
 					providerInfo := map[string]interface{}{
-						"provider_id": p.ProviderID,
-						"enabled":     p.ExecutionPolicy.Enabled,
+						"provider_id":        p.ProviderID,
+						"upstream_id":        upstreamID,
+						"base_url":           p.BaseURL,
+						"anthropic_base_url": p.AnthropicBaseURL,
+						"enabled":            p.ExecutionPolicy.Enabled,
 					}
 					// Add health details if available
-					if health, ok := providerHealth[p.ProviderID]; ok {
+					if health, ok := providerHealth[upstreamID]; ok {
 						providerInfo["healthy"] = health.Healthy
 						providerInfo["latency_ms"] = health.LatencyMs
 						providerInfo["consecutive_failures"] = health.ConsecutiveFailures

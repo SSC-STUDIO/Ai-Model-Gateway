@@ -1122,6 +1122,59 @@ func TestCompileSnapshotLockedUsesPreExistingSnapshot(t *testing.T) {
 	}
 }
 
+func TestCompileSnapshotLockedRecompilesStoredSnapshotMissingUpstreamID(t *testing.T) {
+	publisher := NewPublisher(nil, compiler.NewCompiler())
+	cfg := testConfig("127.0.0.1:19090")
+	cfg.Providers[0].BaseURL = "https://Config.Example.com/v1/"
+
+	stale := testSnapshot("rev_refresh", "127.0.0.1:18080")
+	stale.Providers[0].BaseURL = "https://stale.example.com/v1"
+	stale.Providers[0].UpstreamID = ""
+	rev := &Revision{
+		RevisionID: "rev_refresh",
+		Config:     cfg,
+		Snapshot:   stale,
+	}
+
+	got, err := publisher.compileSnapshotLocked(rev)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if got.Ingress.Listen != "127.0.0.1:19090" {
+		t.Fatalf("listen = %q, want recompiled config listen", got.Ingress.Listen)
+	}
+	if got.Providers[0].UpstreamID != "https://config.example.com/v1" {
+		t.Fatalf("upstream id = %q, want URL-derived id from config", got.Providers[0].UpstreamID)
+	}
+	if got.Providers[0].BaseURL != "https://Config.Example.com/v1/" {
+		t.Fatalf("base url = %q, want recompiled config base URL", got.Providers[0].BaseURL)
+	}
+}
+
+func TestCompileSnapshotLockedBackfillsStoredSnapshotMissingUpstreamIDWithoutConfig(t *testing.T) {
+	publisher := NewPublisher(nil, nil)
+	stale := testSnapshot("rev_backfill", "127.0.0.1:18080")
+	stale.Providers[0].ProviderID = "key-a"
+	stale.Providers[0].BaseURL = "https://base.example.com/v1/"
+	stale.Providers[0].AnthropicBaseURL = "https://Shared.Example.com/v1/"
+	stale.Providers[0].UpstreamID = ""
+	rev := &Revision{
+		RevisionID: "rev_backfill",
+		Snapshot:   stale,
+	}
+
+	got, err := publisher.compileSnapshotLocked(rev)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if got.Providers[0].UpstreamID != "https://shared.example.com/v1" {
+		t.Fatalf("upstream id = %q, want backfilled effective URL", got.Providers[0].UpstreamID)
+	}
+	if got.Providers[0].ProviderID != "key-a" {
+		t.Fatalf("provider id = %q, want original provider id", got.Providers[0].ProviderID)
+	}
+}
+
 func TestPublisherPolicyFromConfigNilCfg(t *testing.T) {
 	policy := PublisherPolicyFromConfig(nil)
 	if policy.PublishHistoryLimit <= 0 {

@@ -305,13 +305,13 @@ func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
 			Enabled: cfg.StickySessions.Enabled,
 			TTLSec:  cfg.StickySessions.TTLSec,
 		},
-			FailurePolicy: snapshot.FailurePolicy{
-				Threshold:                cfg.FailurePolicy.Threshold,
-				CooldownSec:              cfg.FailurePolicy.CooldownSec,
-				PassthroughAfterSec:      cfg.FailurePolicy.PassthroughAfterSec,
-				QuotaRecoveryIntervalMin: resolveQuotaRecoveryIntervalMin(cfg.FailurePolicy),
-				DisableCooldown:          cfg.FailurePolicy.DisableCooldown,
-			},
+		FailurePolicy: snapshot.FailurePolicy{
+			Threshold:                cfg.FailurePolicy.Threshold,
+			CooldownSec:              cfg.FailurePolicy.CooldownSec,
+			PassthroughAfterSec:      cfg.FailurePolicy.PassthroughAfterSec,
+			QuotaRecoveryIntervalMin: resolveQuotaRecoveryIntervalMin(cfg.FailurePolicy),
+			DisableCooldown:          cfg.FailurePolicy.DisableCooldown,
+		},
 		Retry: snapshot.RetryPolicy{
 			InfiniteOnError: cfg.Retry.InfiniteOnError,
 			AllErrors:       cfg.Retry.AllErrors,
@@ -395,6 +395,7 @@ func compileProvider(provider core.Provider, index int) (snapshot.ProviderSnapsh
 
 	return snapshot.ProviderSnapshot{
 		ProviderID:       providerID,
+		UpstreamID:       logicalUpstreamID(providerID, baseURL, anthropicBaseURL),
 		ProtocolAdapter:  protocolAdapter,
 		BaseURL:          baseURL,
 		AnthropicBaseURL: anthropicBaseURL,
@@ -416,6 +417,34 @@ func compileProvider(provider core.Provider, index int) (snapshot.ProviderSnapsh
 		},
 		FallbackModels: append([]string(nil), provider.FallbackModels...),
 	}, nil
+}
+
+func logicalUpstreamID(providerID string, baseURL string, anthropicBaseURL string) string {
+	effectiveURL := strings.TrimSpace(anthropicBaseURL)
+	if effectiveURL == "" {
+		effectiveURL = strings.TrimSpace(baseURL)
+	}
+	if normalized := normalizeUpstreamURL(effectiveURL); normalized != "" {
+		return normalized
+	}
+	return strings.TrimSpace(providerID)
+}
+
+func normalizeUpstreamURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return strings.TrimRight(rawURL, "/")
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func compileCredentials(provider core.Provider) snapshot.Credentials {

@@ -149,6 +149,31 @@ describe('controlApi', () => {
         status: 'healthy',
       })
     })
+
+    it('keeps logical upstream metadata from provider health entries', () => {
+      const result = normalizeControlStatus({
+        gateway: {
+          provider_health: {
+            'https://shared.example.com/v1': {
+              name: 'https://shared.example.com/v1',
+              upstream_id: 'https://shared.example.com/v1',
+              provider_ids: ['key-a', 'key-b'],
+              base_url: 'https://shared.example.com/v1',
+              anthropic_base_url: 'https://shared.example.com/v1',
+              healthy: true,
+            },
+          },
+        },
+      })
+
+      expect(result?.provider_health?.[0]).toMatchObject({
+        name: 'https://shared.example.com/v1',
+        upstream_id: 'https://shared.example.com/v1',
+        provider_ids: ['key-a', 'key-b'],
+        base_url: 'https://shared.example.com/v1',
+        anthropic_base_url: 'https://shared.example.com/v1',
+      })
+    })
   })
 
   describe('normalizeOverviewResponse', () => {

@@ -91,6 +91,9 @@ func TestCompileFromConfig_CompilesNormalizedSnapshot(t *testing.T) {
 	if provider.ProviderID != "primary" {
 		t.Fatalf("expected trimmed provider id %q, got %q", "primary", provider.ProviderID)
 	}
+	if provider.UpstreamID != "https://api.example.com/v1" {
+		t.Fatalf("expected URL-derived upstream id, got %q", provider.UpstreamID)
+	}
 	if provider.ProtocolAdapter != publicAPIOpenAIChatCompletions {
 		t.Fatalf("expected protocol adapter %q, got %q", publicAPIOpenAIChatCompletions, provider.ProtocolAdapter)
 	}
@@ -198,6 +201,44 @@ func TestCompileFromConfig_CompilesNormalizedSnapshot(t *testing.T) {
 	}
 	if cfg.Routing.Retry.StatusCodeMin != nil {
 		t.Fatalf("expected input config retry status code min to remain nil, got %v", *cfg.Routing.Retry.StatusCodeMin)
+	}
+}
+
+func TestCompileFromConfig_GroupsLogicalUpstreamByEffectiveBaseURL(t *testing.T) {
+	cfg := core.Config{
+		Providers: []core.Provider{
+			{
+				Name:             "provider-key-a",
+				BaseURL:          "https://shared.example.com/v1/",
+				AnthropicBaseURL: "https://Shared.Example.com/v1/",
+				APIKey:           "sk-a",
+				Models:           []string{"claude-sonnet"},
+			},
+			{
+				Name:             "provider-key-b",
+				BaseURL:          "https://other.example.com/v1",
+				AnthropicBaseURL: "https://shared.example.com/v1",
+				APIKey:           "sk-b",
+				Models:           []string{"claude-sonnet"},
+			},
+		},
+	}
+
+	snap, err := NewCompiler().CompileFromConfig(&cfg)
+	if err != nil {
+		t.Fatalf("CompileFromConfig() error = %v", err)
+	}
+	if len(snap.Providers) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(snap.Providers))
+	}
+	if snap.Providers[0].ProviderID == snap.Providers[1].ProviderID {
+		t.Fatalf("expected distinct provider ids, got %q", snap.Providers[0].ProviderID)
+	}
+	if snap.Providers[0].UpstreamID != "https://shared.example.com/v1" {
+		t.Fatalf("first upstream id = %q", snap.Providers[0].UpstreamID)
+	}
+	if snap.Providers[1].UpstreamID != snap.Providers[0].UpstreamID {
+		t.Fatalf("expected shared upstream id, got %q and %q", snap.Providers[0].UpstreamID, snap.Providers[1].UpstreamID)
 	}
 }
 
@@ -603,7 +644,7 @@ func TestCompileCompatPolicy(t *testing.T) {
 				ExcludeUserAgents: []string{"Bot/1.0", "Crawler"},
 				Rules: []core.BridgeRule{
 					{From: "gpt-4", To: "gpt-4o"},
-					{From: "   ", To: "gpt-4o"}, // empty From, skipped
+					{From: "   ", To: "gpt-4o"},   // empty From, skipped
 					{From: "claude-3", To: "   "}, // empty To, skipped
 					{From: "llama", To: "llama-3"},
 				},

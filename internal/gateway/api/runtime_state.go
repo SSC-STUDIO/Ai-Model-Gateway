@@ -17,7 +17,7 @@ type RuntimeState struct {
 	providers map[string]*providerRuntimeState
 	sticky    map[string]stickyBinding
 	// keyRotators holds live API key rotation state per provider (multi-key only).
-	keyRotators map[string]*KeyRotator
+	keyRotators  map[string]*KeyRotator
 	requestQueue *queue.Queue
 	queueConfig  snapshot.QueueConfig
 }
@@ -44,10 +44,10 @@ type providerGateState struct {
 
 func NewRuntimeState() *RuntimeState {
 	return &RuntimeState{
-		now:           time.Now,
-		providers:     make(map[string]*providerRuntimeState),
-		sticky:        make(map[string]stickyBinding),
-		keyRotators:   make(map[string]*KeyRotator),
+		now:         time.Now,
+		providers:   make(map[string]*providerRuntimeState),
+		sticky:      make(map[string]stickyBinding),
+		keyRotators: make(map[string]*KeyRotator),
 	}
 }
 
@@ -115,15 +115,32 @@ func (s *RuntimeState) ProviderHealthSnapshot(snap *snapshot.Snapshot) map[strin
 			lastCheck = st.lastSuccess
 		}
 
-		health[provider.ProviderID] = gatewaycontrol.ProviderHealth{
-			Name:                provider.ProviderID,
-			Healthy:             !gate.blocked,
-			LastCheck:           lastCheck,
-			LastSuccess:         st.lastSuccess,
-			ConsecutiveFailures: st.consecutiveFailures,
-			CooldownUntil:       gate.cooldownUntil,
-			LatencyMs:           st.lastLatency.Milliseconds(),
+		upstreamID := provider.UpstreamID
+		if strings.TrimSpace(upstreamID) == "" {
+			upstreamID = provider.ProviderID
 		}
+		current, exists := health[upstreamID]
+		if !exists {
+			current = gatewaycontrol.ProviderHealth{
+				Name:             upstreamID,
+				UpstreamID:       upstreamID,
+				BaseURL:          provider.BaseURL,
+				AnthropicBaseURL: provider.AnthropicBaseURL,
+				Healthy:          true,
+			}
+		}
+		current.ProviderIDs = append(current.ProviderIDs, provider.ProviderID)
+		if gate.blocked {
+			current.Healthy = false
+		}
+		current.LastCheck = maxTime(current.LastCheck, lastCheck)
+		current.LastSuccess = maxTime(current.LastSuccess, st.lastSuccess)
+		current.ConsecutiveFailures += st.consecutiveFailures
+		current.CooldownUntil = maxTime(current.CooldownUntil, gate.cooldownUntil)
+		if latencyMs := st.lastLatency.Milliseconds(); latencyMs > current.LatencyMs {
+			current.LatencyMs = latencyMs
+		}
+		health[upstreamID] = current
 	}
 
 	return health

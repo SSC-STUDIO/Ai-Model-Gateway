@@ -391,6 +391,10 @@ export interface ControlConfigView {
 
 export interface ProviderHealthView {
   name: string
+  upstream_id?: string
+  provider_ids?: string[]
+  base_url?: string
+  anthropic_base_url?: string
   healthy: boolean
   status: 'healthy' | 'cooldown' | 'unhealthy'
   last_check?: string

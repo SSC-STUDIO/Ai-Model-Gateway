@@ -315,20 +315,24 @@ type SystemStatus struct {
 
 // GatewayStatusResponse matches gatewaycontrol.GetStatusResponse
 type GatewayStatusResponse struct {
-	ActiveSnapshotID string                    `json:"active_snapshot_id"`
-	Readiness        string                    `json:"readiness"`
-	ActiveRequests   int                       `json:"active_requests"`
-	Listener         string                    `json:"listener"`
-	ProviderHealth   map[string]ProviderHealth `json:"provider_health"`
-	Uptime           string                    `json:"uptime"`
-	StartedAt        time.Time                 `json:"started_at"`
-	LastAutoRemediationReason string           `json:"last_auto_remediation_reason,omitempty"`
-	LastAutoRemediationAt     time.Time        `json:"last_auto_remediation_at,omitempty"`
+	ActiveSnapshotID          string                    `json:"active_snapshot_id"`
+	Readiness                 string                    `json:"readiness"`
+	ActiveRequests            int                       `json:"active_requests"`
+	Listener                  string                    `json:"listener"`
+	ProviderHealth            map[string]ProviderHealth `json:"provider_health"`
+	Uptime                    string                    `json:"uptime"`
+	StartedAt                 time.Time                 `json:"started_at"`
+	LastAutoRemediationReason string                    `json:"last_auto_remediation_reason,omitempty"`
+	LastAutoRemediationAt     time.Time                 `json:"last_auto_remediation_at,omitempty"`
 }
 
 // ProviderHealth represents provider health status
 type ProviderHealth struct {
 	Name                string    `json:"name"`
+	UpstreamID          string    `json:"upstream_id,omitempty"`
+	ProviderIDs         []string  `json:"provider_ids,omitempty"`
+	BaseURL             string    `json:"base_url,omitempty"`
+	AnthropicBaseURL    string    `json:"anthropic_base_url,omitempty"`
 	Healthy             bool      `json:"healthy"`
 	LastCheck           time.Time `json:"last_check"`
 	LastSuccess         time.Time `json:"last_success"`
