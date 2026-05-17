@@ -1,0 +1,38 @@
+ID,类别,严重度,文件,行号,摘要,状态,验证证据
+SEC-001,安全,Critical,internal/gateway/api/handler.go,27,sharedHTTPClient 未用 SSRFChecker.NewSafeTransport（DNS rebinding TOCTOU），上游转发可被重解析到内网 IP,Confirmed,forward.go:28 先 ValidateURL 但 handler.go:27 的 sharedHTTPClient 使用裸 net.Dialer；proxy/ssrf.go:229 提供的 NewSafeTransport 未被采用
+SEC-002,安全,High,internal/control/api/replay.go,199,targetURL 由 gatewayURL + req.Path 字符串拼接；当前 RequestBody 始终为空规避触发，但 API 已 expose 且 schema 扩展后即具可利用性,Confirmed,replay.go:190 early return + replay.go:199 拼接；无 url.Parse/Path 规范化
+SEC-003,安全,High,internal/control/api/replay.go,209,replay HTTP Client 未附带 admin 原请求的鉴权头；若 gateway 基于 API key 授权，replay 可能以匿名身份调用,Confirmed,replay.go:209 http.Client 仅设置 Timeout；httpReq 只设置 Content-Type
+SEC-004,安全,High,internal/telemetry/pricing_runtime.go,21,defaultPricingHTTPClient 未启用 SafeTransport；admin 可配置的 pricing source URL 可被用于 SSRF/内网探测,Confirmed,pricing_runtime.go:21-27 Transport 为裸 http.Transport；pricing_sources.go:74 直接用 source.URL fetch
+SEC-005,安全,High,.github/workflows/ci.yml,50,govulncheck 使用 @latest 而非 pinned 版本（Makefile:102 同样问题）；CI 非确定、供应链漂移,Confirmed,ci.yml:50 与 Makefile:102 均为 go run ...govulncheck@latest
+SEC-006,安全,Medium,internal/gateway/api/handler.go,41,sharedHTTPClient TLS 仅设 MinVersion:TLS12，未 pin CA；配合 SEC-001 的 DNS rebinding 放大风险,Confirmed,handler.go:41-43 TLSClientConfig 只设 MinVersion
+SEC-007,安全,Medium,internal/control/api/replay.go,210,replay client Timeout 120s 且无 body size 限制；可被大 response body 耗尽 admin 内存,Confirmed,replay.go:209-223 io.ReadAll(resp.Body) 无 MaxBytesReader
+SEC-008,安全,Low,internal/telemetry/pricing_runtime.go,18,pricingFXSourceURL 硬编码为 ECB URL 且无响应大小 / 完整性校验,Confirmed,pricing_runtime.go:18
+ERR-001,错误处理,High,internal/telemetry/store.go,1010,persistBatch 静默吞掉 tx.Begin 失败，batch 数据丢失无日志无指标,Confirmed,store.go:1009-1012 直接 return 无日志
+ERR-002,错误处理,High,internal/telemetry/store.go,1029,persistBatch execRequestWrite/execErrorWrite 失败默默 return 走 rollback，无日志无 metric，Confirmed,store.go:1029-1036 return 后 defer 回滚静默
+ERR-003,错误处理,Medium,internal/telemetry/store.go,1039,tx.Commit 失败静默（无日志 无 metric）,Confirmed,store.go:1039-1041 直接 return
+ERR-004,错误处理,Medium,internal/control/api/replay.go,213,replay 失败时将详细错误 %v 直接回写给 admin 客户端（信息泄露）,Confirmed,replay.go:213-218 Error: Sprintf("replay request failed: %v"... )
+ERR-005,错误处理,Medium,internal/gateway/api/forward.go,96,sharedHTTPClient.Do 错误未区分 context cancel / DNS 失败 / TLS 失败；上层 metric 无法区分故障类型,Suspected,需补充 error wrapping + typed sentinel
+ERR-006,错误处理,Low,多处,-,多处 _ = xxx.Close() 忽略错误（defer 链中），其中部分应至少记录 debug 级日志（如 tx.Rollback 返回 driver.ErrBadConn 会被静默）,Suspected,grep "_ = .*Close()" internal/**/*.go
+CONC-001,并发,High,internal/gateway/queue/queue.go,232,scheduler goroutine 中 go func 未设 defer recover()，用户 Execute panic 会 crash 整个 gatewayd 进程,Confirmed,queue.go:232-238 仅 defer 归还 sem + activeCount，无 recover
+CONC-002,并发,Medium,internal/gateway/api/handler.go,68,responseCache struct 用 sync.Mutex 保护 cache 引用，但 cache 内部方法的并发约定未在签名/注释中明确,Suspected,handler.go:68-80 需审视 cache.NewCache 的线程安全保证
+CONC-003,并发,Medium,internal/telemetry/store.go,1006,dbWriteMu 覆盖整个 persistBatch 含 prepared stmt.Exec；在高 QPS 下成为锁瓶颈，使 telemetry 背压,Confirmed,store.go:1006 Lock 到 1043 defer Unlock 范围过大
+CONC-004,并发,Low,internal/gateway/queue/queue.go,141,notify 非阻塞 send 依赖 channel 缓冲长度；文档未明确 notify 容量与丢通知容忍度,Suspected,queue.go:141 非阻塞 send 注释不完整
+FE-001,前端,High,web/admin/src/i18n/locales/*.json,-,ja/ko/es/fr/de 各缺 205 个 key（en=645 zh=645 其他=440），用户看到原始 i18n key 而非翻译,Confirmed,python flatten 对比脚本证实 205 差额 × 5 语种
+FE-002,前端,Medium,web/admin/src/components/tabs/LogsTab.tsx,-,本次会话已删除 loadMore 相关状态+按钮；验证无残留引用且构建 OK（减小 bundle ~1KB），但注意 logs 分页改为纯前端分页 可能掩盖 total > fetch 窗口的情况,Confirmed-Fixed,本次 commit 已修复，构建通过 tsc+vitest+vite
+FE-003,前端,Medium,web/admin/src/components/ErrorBoundary.tsx,-,未发现向遥测上报前端错误；用户错误仅终端于 console.error，无后端 metrics,Suspected,需验证 ErrorBoundary 实现
+FE-004,前端,Low,web/admin/src/theme/*.css,-,多个 theme 文件共存（benchmark/charts/components/layout/ops/polish/tables）易出现变量重复定义与层叠覆盖不一致,Suspected,git status 显示 7 个 theme CSS 全部被修改，需审核层叠顺序
+FE-005,前端,Low,web/admin/vite.config 及构建产物,-,构建后 JS 452K，对后台 admin 可接受 但未启用 code-splitting/route-lazy；未来加新 tab 时 bundle 会线性增长,Suspected,vite build 输出单 index-*.js
+BUILD-001,构建,High,.github/workflows/ci.yml,50,govulncheck 使用 @latest 未 pinned；同 SEC-005（从构建视角归类）,Confirmed,见 SEC-005
+BUILD-002,构建,Medium,.github/workflows/ci.yml,46,golangci-lint 使用 --new-from-rev=HEAD~ 只检查上一个 commit 新增 lint 问题，历史 lint 债会永久躲过 CI,Confirmed,ci.yml:46
+BUILD-003,构建,Medium,.github/workflows/ci.yml,65,coverage threshold=50% 偏低；且无 per-package 阈值与未覆盖文件白名单管理,Confirmed,ci.yml:65
+BUILD-004,构建,Low,Makefile,-,Makefile 与 ci.yml 中的 govulncheck/lint 命令未抽取为公共 target，版本漂移风险,Confirmed,Makefile:102 vs ci.yml:50
+API-001,API 设计,Medium,internal/control/api/replay.go,243,Replay handler ServeHTTP 未用 RESTful 动词；GET/POST 混合在同一 handler 分支 switch，不便扩展（cancel/retry/inspect 都挤在一起）,Suspected,replay.go:243-247 switch 方法
+ARCH-001,架构,Medium,internal/telemetry/ pricing_runtime.go vs internal/control/api/,-,pricing fetch 生活在 telemetry 包，但 admin API 直接访问 state；telemetry 职责被稀释，易滋生循环依赖,Suspected,需要包依赖图审视
+ARCH-002,架构,Medium,cmd/gatewayd/ cmd/controld/ cmd/telemetrysd/,-,三平面拆分后仍通过本地共享包+同进程 share state；无明确 RPC 边界；未来分进程部署需大规模改造,Suspected,internal/contracts 存在但实际共享是 in-process
+ARCH-003,架构,Low,internal/gateway/api/,-,handler.go 文件长度接近上限 职责混杂（cache 管理 / SSRF 委托 / shared client 都挤在一起）,Suspected,grep 已发现多个顶层 var 聚居
+FP-01,误报候选,-,internal/gateway/api/streaming.go,43,每行 flusher.Flush() 看似性能问题 实为 SSE 语义必须,Rejected,详见 02_核查过程
+FP-02,误报候选,-,internal/control/api/auth/cookie.go,197,兼容 legacy timestamp payload 看似逻辑错误 实为旧 cookie 兼容设计,Rejected,详见 02_核查过程
+FP-03,误报候选,-,cmd/*/main.go,-,os.Exit 出现在 main 包 为合规用法 非 lint 违规,Rejected,main 入口允许直接 Exit
+FP-04,误报候选,-,web/admin/src/components/Charts.tsx,-,memo 导入疑似未使用；实为 barrel re-export 消费侧继承 非 bug,Rejected,本会话前半段已确认
+FP-05,误报候选,-,internal/telemetry/store.go,1018,defer 中 _ = requestStmt.Close() 是 Go 习惯用法，rows 已处理完毕，非 bug,Rejected,符合 database/sql 惯用写法
+FP-06,误报候选,-,internal/infra/pathsecurity/,-,SanitizePath 返回空串表示失败 看似不一致 API；调用点已对空值 guard 非 bug,Rejected,注释和调用点已正确处理

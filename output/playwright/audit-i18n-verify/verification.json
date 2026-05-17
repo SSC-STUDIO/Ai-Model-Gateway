@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-05-16T11:08:20.704Z",
+  "url": "http://127.0.0.1:18080/admin/audit",
+  "screenshot": "/home/chenrunsen/workspace/My-Project/Active/Software/AI-Model-Gateway/output/playwright/audit-i18n-verify/audit-i18n-verified.png",
+  "textSnippet": "\n    AI Model Gateway1.3.0 · 1h3m24.186069191sOverviewMonitoringBenchmarkOpsConfigLogsGateway: readyTelemetry: connected中文EN日本語한국어EspañolFrançaisDeutschcookie-user · AdminLog OutAuditAuditSearch, filter, and inspect recent control-plane activity.RefreshEvents100Successful99Failed1Action Types7ActorA",
+  "authed": true,
+  "onLoginPage": false,
+  "hasTimeline": true,
+  "hasEvents": true,
+  "apiAuditCount": 100,
+  "rawKeysFound": [],
+  "rawKeyCount": 0,
+  "translationsVisible": [
+    "Login",
+    "Publish Config",
+    "Validate Config",
+    "Rollback Config"
+  ],
+  "translationCount": 4,
+  "verdict": "PASS - No raw audit action keys visible"
+}

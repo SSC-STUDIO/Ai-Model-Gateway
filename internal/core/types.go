@@ -106,6 +106,7 @@ type Provider struct {
 	Weight           int               `yaml:"weight"            json:"weight"`
 	TimeoutMs        int               `yaml:"timeout_ms"        json:"timeout_ms"`
 	SameRetries      int               `yaml:"same_retries"      json:"same_retries"`
+	RateLimit        RateLimitConfig   `yaml:"rate_limit"        json:"rate_limit"`
 	Enabled          *bool             `yaml:"enabled"           json:"enabled"`
 	Headers          map[string]string `yaml:"headers"           json:"headers,omitempty"`
 	FallbackModels   []string          `yaml:"fallback_models"   json:"fallback_models,omitempty"`

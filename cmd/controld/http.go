@@ -34,8 +34,9 @@ func (d *Daemon) createHandler() http.Handler {
 	deps := api.Deps{
 		ConfigQuery: d.publisher,
 		ConfigCommands: configCommandsAdapter{
-			publisher: d.publisher,
-			reloadFn:  d.reloadConfigFromSource,
+			publisher:  d.publisher,
+			reloadFn:   d.reloadConfigFromSource,
+			configPath: d.config.ConfigPath,
 		},
 		ConfigTools: configToolsAdapter{
 			publisher: d.publisher,

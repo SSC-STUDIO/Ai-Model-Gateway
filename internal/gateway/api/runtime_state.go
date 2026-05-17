@@ -17,9 +17,10 @@ type RuntimeState struct {
 	providers map[string]*providerRuntimeState
 	sticky    map[string]stickyBinding
 	// keyRotators holds live API key rotation state per provider (multi-key only).
-	keyRotators  map[string]*KeyRotator
-	requestQueue *queue.Queue
-	queueConfig  snapshot.QueueConfig
+	keyRotators          map[string]*KeyRotator
+	upstreamRateLimiters map[string]*upstreamRateLimiter
+	requestQueue         *queue.Queue
+	queueConfig          snapshot.QueueConfig
 }
 
 type providerRuntimeState struct {
@@ -44,10 +45,11 @@ type providerGateState struct {
 
 func NewRuntimeState() *RuntimeState {
 	return &RuntimeState{
-		now:         time.Now,
-		providers:   make(map[string]*providerRuntimeState),
-		sticky:      make(map[string]stickyBinding),
-		keyRotators: make(map[string]*KeyRotator),
+		now:                  time.Now,
+		providers:            make(map[string]*providerRuntimeState),
+		sticky:               make(map[string]stickyBinding),
+		keyRotators:          make(map[string]*KeyRotator),
+		upstreamRateLimiters: make(map[string]*upstreamRateLimiter),
 	}
 }
 
@@ -81,12 +83,26 @@ func (s *RuntimeState) ApplySnapshot(snap *snapshot.Snapshot) {
 	}
 
 	s.keyRotators = make(map[string]*KeyRotator)
+	activeLimiters := make(map[string]struct{})
 	if snap != nil {
 		for i := range snap.Providers {
 			p := &snap.Providers[i]
 			if len(p.APIKeys) > 0 {
 				s.keyRotators[p.ProviderID] = NewKeyRotator(p)
 			}
+			limit := p.ExecutionPolicy.RateLimit
+			if limit.Enabled && limit.RequestsPerSecond > 0 {
+				key := upstreamRateLimitKey(p)
+				activeLimiters[key] = struct{}{}
+				if existing := s.upstreamRateLimiters[key]; existing == nil || !existing.matches(limit) {
+					s.upstreamRateLimiters[key] = newUpstreamRateLimiter(limit, s.clockNow())
+				}
+			}
+		}
+	}
+	for key := range s.upstreamRateLimiters {
+		if _, ok := activeLimiters[key]; !ok {
+			delete(s.upstreamRateLimiters, key)
 		}
 	}
 	s.applyQueueConfigLocked(snap)
@@ -317,6 +333,117 @@ func (s *RuntimeState) TryRecoverAPIKeys(snap *snapshot.Snapshot, cooldown time.
 		}
 	}
 	return changed
+}
+
+func (s *RuntimeState) WaitForUpstreamSlot(ctx context.Context, provider *snapshot.ProviderSnapshot) error {
+	if s == nil || provider == nil {
+		return nil
+	}
+	limit := provider.ExecutionPolicy.RateLimit
+	if !limit.Enabled || limit.RequestsPerSecond <= 0 {
+		return nil
+	}
+
+	key := upstreamRateLimitKey(provider)
+	s.mu.Lock()
+	if s.upstreamRateLimiters == nil {
+		s.upstreamRateLimiters = make(map[string]*upstreamRateLimiter)
+	}
+	limiter := s.upstreamRateLimiters[key]
+	if limiter == nil || !limiter.matches(limit) {
+		limiter = newUpstreamRateLimiter(limit, s.clockNow())
+		s.upstreamRateLimiters[key] = limiter
+	}
+	wait := limiter.reserveDelay(s.clockNow())
+	s.mu.Unlock()
+
+	if wait <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(wait)
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		timer.Stop()
+		return ctx.Err()
+	}
+}
+
+type upstreamRateLimiter struct {
+	rps       float64
+	burst     int
+	tokens    float64
+	lastCheck time.Time
+}
+
+func newUpstreamRateLimiter(limit snapshot.RateLimitConfig, now time.Time) *upstreamRateLimiter {
+	burst := limit.Burst
+	if burst <= 0 {
+		burst = 1
+	}
+	return &upstreamRateLimiter{
+		rps:       limit.RequestsPerSecond,
+		burst:     burst,
+		tokens:    float64(burst),
+		lastCheck: now,
+	}
+}
+
+func (l *upstreamRateLimiter) matches(limit snapshot.RateLimitConfig) bool {
+	if l == nil {
+		return false
+	}
+	burst := limit.Burst
+	if burst <= 0 {
+		burst = 1
+	}
+	return l.rps == limit.RequestsPerSecond && l.burst == burst
+}
+
+func (l *upstreamRateLimiter) reserveDelay(now time.Time) time.Duration {
+	if l == nil || l.rps <= 0 {
+		return 0
+	}
+	if l.lastCheck.IsZero() {
+		l.lastCheck = now
+	}
+	if now.After(l.lastCheck) {
+		l.tokens += now.Sub(l.lastCheck).Seconds() * l.rps
+		if l.tokens > float64(l.burst) {
+			l.tokens = float64(l.burst)
+		}
+		l.lastCheck = now
+	}
+	if l.tokens >= 1 {
+		l.tokens--
+		return 0
+	}
+	needed := 1 - l.tokens
+	wait := time.Duration((needed / l.rps) * float64(time.Second))
+	if wait <= 0 {
+		wait = time.Nanosecond
+	}
+	l.tokens = 0
+	l.lastCheck = now.Add(wait)
+	return wait
+}
+
+func upstreamRateLimitKey(provider *snapshot.ProviderSnapshot) string {
+	if provider == nil {
+		return ""
+	}
+	if upstreamID := strings.TrimSpace(provider.UpstreamID); upstreamID != "" {
+		return upstreamID
+	}
+	if baseURL := strings.TrimSpace(provider.AnthropicBaseURL); baseURL != "" {
+		return baseURL
+	}
+	if baseURL := strings.TrimSpace(provider.BaseURL); baseURL != "" {
+		return baseURL
+	}
+	return strings.TrimSpace(provider.ProviderID)
 }
 
 func (s *RuntimeState) EnqueueRequest(ctx context.Context, snap *snapshot.Snapshot, priority queue.Priority, execute func() error) error {

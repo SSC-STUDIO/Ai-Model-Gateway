@@ -1,0 +1,99 @@
+{
+  "timestamp": "2026-05-16T14:42:41.651Z",
+  "summary": {
+    "views": 11,
+    "consoleErrors": 0,
+    "pageErrors": 0
+  },
+  "errors": [
+    {
+      "type": "screenshot.error",
+      "text": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n  - taking page screenshot\n  - waiting for fonts to load...\n  - fonts loaded\n",
+      "url": "http://127.0.0.1:18080/admin/audit"
+    },
+    {
+      "type": "screenshot.error",
+      "text": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n  - taking page screenshot\n  - waiting for fonts to load...\n  - fonts loaded\n",
+      "url": "http://127.0.0.1:18080/admin/probe"
+    }
+  ],
+  "results": [
+    {
+      "view": "overview",
+      "url": "http://127.0.0.1:18080/admin",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "monitoring",
+      "url": "http://127.0.0.1:18080/admin/monitoring",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "telemetry",
+      "url": "http://127.0.0.1:18080/admin/telemetry",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "pricing",
+      "url": "http://127.0.0.1:18080/admin/pricing",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "benchmark",
+      "url": "http://127.0.0.1:18080/admin/benchmark",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "ops",
+      "url": "http://127.0.0.1:18080/admin/ops",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 1
+    },
+    {
+      "view": "audit",
+      "url": "http://127.0.0.1:18080/admin/audit",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 4
+    },
+    {
+      "view": "probe",
+      "url": "http://127.0.0.1:18080/admin/probe",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "diagnostics",
+      "url": "http://127.0.0.1:18080/admin/diagnostics",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "config",
+      "url": "http://127.0.0.1:18080/admin/config",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    },
+    {
+      "view": "logs",
+      "url": "http://127.0.0.1:18080/admin/logs",
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "visibleErrors": 0
+    }
+  ]
+}

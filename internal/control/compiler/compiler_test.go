@@ -31,6 +31,11 @@ func TestCompileFromConfig_CompilesNormalizedSnapshot(t *testing.T) {
 				APIKey:      " sk-test ",
 				Models:      []string{"gpt-4o", " ", "gpt-4o", "gpt-4.1"},
 				SameRetries: 1,
+				RateLimit: core.RateLimitConfig{
+					Enabled:           true,
+					RequestsPerSecond: 0.333333,
+					Burst:             20,
+				},
 				Headers: map[string]string{
 					"X-Test": "1",
 					"   ":    "ignored",
@@ -138,6 +143,15 @@ func TestCompileFromConfig_CompilesNormalizedSnapshot(t *testing.T) {
 	}
 	if provider.ExecutionPolicy.ProviderClass != string(core.ProviderClassQuotaLimited) {
 		t.Fatalf("expected provider class %q, got %q", core.ProviderClassQuotaLimited, provider.ExecutionPolicy.ProviderClass)
+	}
+	if !provider.ExecutionPolicy.RateLimit.Enabled {
+		t.Fatal("expected provider outbound rate limit to be enabled")
+	}
+	if provider.ExecutionPolicy.RateLimit.RequestsPerSecond != 0.333333 {
+		t.Fatalf("provider rps = %v, want 0.333333", provider.ExecutionPolicy.RateLimit.RequestsPerSecond)
+	}
+	if provider.ExecutionPolicy.RateLimit.Burst != 20 {
+		t.Fatalf("provider burst = %d, want 20", provider.ExecutionPolicy.RateLimit.Burst)
 	}
 
 	if snap.RoutingPolicy.MaxRetries != 2 {

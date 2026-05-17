@@ -18,6 +18,9 @@ export interface ProviderEditorConfig {
   weight: number
   timeout_ms: number
   same_upstream_retries: number
+  rate_limit_enabled: boolean
+  rate_limit_rps: number
+  rate_limit_burst: number
   models: ProviderModelMapping[]
   headers: Record<string, string>
 }
@@ -298,20 +301,26 @@ export function visualStateFromConfig(config: ConfigRecord | null | undefined): 
 
   const providers = asRecordArray(config.providers)
   if (providers.length > 0) {
-    state.providers = providers.map((provider, index) => ({
-      id: String(index),
-      name: stringValue(provider.name, `Provider ${index + 1}`),
-      base_url: stringValue(provider.base_url, ''),
-      anthropic_base_url: stringValue(provider.anthropic_base_url, ''),
-      api_key: stringValue(provider.api_key, ''),
-      provider_class: stringValue(provider.provider_class, ''),
-      enabled: booleanValue(provider.enabled, true),
-      weight: numberValue(provider.weight, 1),
-      timeout_ms: numberValue(provider.timeout_ms, 30000),
-      same_upstream_retries: numberValue(provider.same_retries ?? provider.same_upstream_retries, 2),
-      models: providerModelsFromConfig(provider.models),
-      headers: stringRecordValue(provider.headers),
-    }))
+    state.providers = providers.map((provider, index) => {
+      const rateLimit = isRecord(provider.rate_limit) ? provider.rate_limit : null
+      return {
+        id: String(index),
+        name: stringValue(provider.name, `Provider ${index + 1}`),
+        base_url: stringValue(provider.base_url, ''),
+        anthropic_base_url: stringValue(provider.anthropic_base_url, ''),
+        api_key: stringValue(provider.api_key, ''),
+        provider_class: stringValue(provider.provider_class, ''),
+        enabled: booleanValue(provider.enabled, true),
+        weight: numberValue(provider.weight, 1),
+        timeout_ms: numberValue(provider.timeout_ms, 30000),
+        same_upstream_retries: numberValue(provider.same_retries ?? provider.same_upstream_retries, 2),
+        rate_limit_enabled: booleanValue(rateLimit?.enabled, false),
+        rate_limit_rps: numberValue(rateLimit?.requests_per_second, 0),
+        rate_limit_burst: numberValue(rateLimit?.burst, 0),
+        models: providerModelsFromConfig(provider.models),
+        headers: stringRecordValue(provider.headers),
+      }
+    })
   }
 
   const compatCfg = isRecord(config.compat) ? config.compat : null
@@ -467,6 +476,11 @@ export function buildVisualConfig(baseConfig: ConfigRecord | null, state: Visual
     existing.timeout_ms = provider.timeout_ms
     existing.same_retries = provider.same_upstream_retries
     delete existing.same_upstream_retries
+    const providerRateLimit = isRecord(existing.rate_limit) ? cloneRecord(existing.rate_limit) : {}
+    providerRateLimit.enabled = provider.rate_limit_enabled
+    providerRateLimit.requests_per_second = provider.rate_limit_rps
+    providerRateLimit.burst = provider.rate_limit_burst
+    existing.rate_limit = providerRateLimit
     existing.models = compileProviderModels(provider.name, provider.models)
     existing.headers = cloneStringMap(provider.headers)
     return existing

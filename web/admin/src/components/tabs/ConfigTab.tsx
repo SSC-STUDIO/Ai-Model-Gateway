@@ -820,6 +820,35 @@ const ConfigTabComponent = ({
                         onChange={(e) => handleProviderFieldChange(activeProvider.id, 'same_upstream_retries', parseInt((e.currentTarget as HTMLInputElement).value) || 0)}
                       />
                     </div>
+                    <div class="visual-form-group visual-form-row">
+                      <label class="visual-checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={activeProvider.rate_limit_enabled}
+                          onChange={(e) => handleProviderFieldChange(activeProvider.id, 'rate_limit_enabled', (e.currentTarget as HTMLInputElement).checked)}
+                        />
+                        <span>{t('config.providers.outboundRateLimit')}</span>
+                      </label>
+                    </div>
+                    <div class="visual-form-group">
+                      <label>{t('config.providers.outboundRateLimitRps')}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.000001"
+                        value={activeProvider.rate_limit_rps}
+                        onChange={(e) => handleProviderFieldChange(activeProvider.id, 'rate_limit_rps', parseFloat((e.currentTarget as HTMLInputElement).value) || 0)}
+                      />
+                    </div>
+                    <div class="visual-form-group">
+                      <label>{t('config.providers.outboundRateLimitBurst')}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={activeProvider.rate_limit_burst}
+                        onChange={(e) => handleProviderFieldChange(activeProvider.id, 'rate_limit_burst', parseInt((e.currentTarget as HTMLInputElement).value) || 0)}
+                      />
+                    </div>
                     <div class="model-mappings">
                       <div class="model-mappings-header">
                         <span>{t('config.providers.modelMappings')}</span>

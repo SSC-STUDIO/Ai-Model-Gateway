@@ -923,6 +923,53 @@ func TestPublishInitialRevisionWithGateway(t *testing.T) {
 	}
 }
 
+func TestConfigUpdatePersistsAuthoringConfig(t *testing.T) {
+	configPath := writeAdminAuthoringConfig(t)
+	gateway := &stubGatewayRPC{}
+	comp := compiler.NewCompiler()
+	publisher := newConfiguredPublisher(gateway, comp, nil)
+	d := &Daemon{
+		config:    Config{ConfigPath: configPath, Listen: "127.0.0.1:18081"},
+		compiler:  comp,
+		publisher: publisher,
+	}
+	if err := d.seedInitialRevision(); err != nil {
+		t.Fatalf("seedInitialRevision() error = %v", err)
+	}
+
+	view, err := publisher.GetCurrentConfigView()
+	if err != nil {
+		t.Fatalf("GetCurrentConfigView() error = %v", err)
+	}
+	if view == nil || view.Config == nil {
+		t.Fatal("expected seeded config view")
+	}
+	if len(view.Config.Providers) == 0 {
+		t.Fatal("test config should contain a provider")
+	}
+	view.Config.Providers[0].Weight = 7
+
+	adapter := configCommandsAdapter{
+		publisher:  publisher,
+		configPath: d.config.ConfigPath,
+	}
+	result, err := adapter.UpdateConfig(view.Config, "change provider weight from UI")
+	if err != nil {
+		t.Fatalf("UpdateConfig() error = %v", err)
+	}
+	if result == nil || !result.Success {
+		t.Fatalf("UpdateConfig() result = %#v, want success", result)
+	}
+
+	reloaded, err := loadInitialRevision(configPath)
+	if err != nil {
+		t.Fatalf("loadInitialRevision() after update error = %v", err)
+	}
+	if len(reloaded.Config.Providers) == 0 || reloaded.Config.Providers[0].Weight != 7 {
+		t.Fatalf("persisted provider weight = %d, want 7", reloaded.Config.Providers[0].Weight)
+	}
+}
+
 func TestRenderAdminLoginPage(t *testing.T) {
 	d := &Daemon{}
 	rec := httptest.NewRecorder()

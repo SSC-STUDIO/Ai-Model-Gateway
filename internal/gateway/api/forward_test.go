@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"ai-model-gateway/internal/gateway/snapshot"
 )
@@ -80,6 +82,59 @@ func TestForwardToUpstream_SuccessNonStreaming(t *testing.T) {
 	}
 	if ct != "" {
 		t.Fatalf("expected empty content type, got %q", ct)
+	}
+}
+
+func TestForwardToUpstream_WaitsOnProviderRateLimitBeforeSending(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+
+	var calls atomic.Int32
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"id":"ok","choices":[]}`)),
+			}, nil
+		}),
+	})
+
+	state := NewRuntimeState()
+	provider := &snapshot.ProviderSnapshot{
+		ProviderID: "key-a",
+		UpstreamID: "https://shared.example.com/v1",
+		BaseURL:    "http://203.0.113.1",
+		ExecutionPolicy: snapshot.ExecutionPolicy{
+			Enabled:   true,
+			Weight:    1,
+			TimeoutMs: 5000,
+			RateLimit: snapshot.RateLimitConfig{
+				Enabled:           true,
+				RequestsPerSecond: 1,
+				Burst:             1,
+			},
+		},
+	}
+
+	statusCode, _, _, _, _, err := forwardToUpstream(context.Background(), state, provider, "/v1/chat/completions", []byte(`{"model":"test"}`), false, nil, false)
+	if err != nil || statusCode != http.StatusOK {
+		t.Fatalf("first request status=%d err=%v", statusCode, err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	statusCode, _, _, _, _, err = forwardToUpstream(ctx, state, provider, "/v1/chat/completions", []byte(`{"model":"test"}`), false, nil, false)
+	if err == nil {
+		t.Fatal("expected second request to wait for upstream slot and time out")
+	}
+	if statusCode != http.StatusGatewayTimeout {
+		t.Fatalf("second request status=%d, want %d", statusCode, http.StatusGatewayTimeout)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("expected second request not to reach upstream before slot, calls=%d", calls.Load())
 	}
 }
 
@@ -347,7 +402,7 @@ func TestForwardToUpstream_AnthropicBaseURL(t *testing.T) {
 	})
 
 	provider := &snapshot.ProviderSnapshot{
-		BaseURL:         "http://203.0.113.1",
+		BaseURL:          "http://203.0.113.1",
 		AnthropicBaseURL: "http://203.0.113.2/anthropic",
 		ExecutionPolicy: snapshot.ExecutionPolicy{
 			Enabled:   true,

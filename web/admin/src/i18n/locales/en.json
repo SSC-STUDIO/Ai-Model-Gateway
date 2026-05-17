@@ -179,7 +179,10 @@
       "classFree": "Free",
       "classQuotaLimited": "Quota Limited",
       "timeoutMs": "Timeout (ms)",
-      "sameUpstreamRetries": "Same Upstream Retries"
+      "sameUpstreamRetries": "Same Upstream Retries",
+      "outboundRateLimit": "Outbound upstream rate limit",
+      "outboundRateLimitRps": "Outbound limit (RPS)",
+      "outboundRateLimitBurst": "Outbound burst"
     },
     "visualEditor": "Visual Editor",
     "visualEditorComingSoon": "Visual Editor Coming Soon",

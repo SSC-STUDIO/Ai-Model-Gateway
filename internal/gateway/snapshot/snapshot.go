@@ -181,6 +181,9 @@ type ExecutionPolicy struct {
 
 	// ProviderClass is the provider class (free, quota_limited).
 	ProviderClass string `yaml:"provider_class" json:"provider_class"`
+
+	// RateLimit limits outbound requests sent to the logical upstream.
+	RateLimit RateLimitConfig `yaml:"rate_limit" json:"rate_limit"`
 }
 
 // RoutingPolicy contains the routing and retry configuration.

@@ -52,6 +52,9 @@ function sampleState(): VisualConfigState {
         weight: 100,
         timeout_ms: 180000,
         same_upstream_retries: 3,
+        rate_limit_enabled: true,
+        rate_limit_rps: 0.333333,
+        rate_limit_burst: 20,
         models: [
           { public_model: 'gpt-4o', upstream_model: 'gpt-4o' },
           { public_model: 'gpt-4.1', upstream_model: 'gpt-4.1' },
@@ -176,6 +179,11 @@ providers:
           weight: 0,
           timeout_ms: 0,
           same_retries: 0,
+          rate_limit: {
+            enabled: true,
+            requests_per_second: 0,
+            burst: 0,
+          },
           models: [
             'claude-3-5-sonnet',
             { public_model: 'claude-public', upstream_model: 'claude-upstream' },
@@ -255,6 +263,9 @@ providers:
           weight: 0,
           timeout_ms: 0,
           same_upstream_retries: 0,
+          rate_limit_enabled: true,
+          rate_limit_rps: 0,
+          rate_limit_burst: 0,
           models: [
             { public_model: 'claude-3-5-sonnet', upstream_model: 'claude-3-5-sonnet' },
             { public_model: 'claude-public', upstream_model: 'claude-upstream' },
@@ -358,6 +369,9 @@ providers:
       enabled: true,
       weight: 1,
       timeout_ms: 30000,
+      rate_limit_enabled: false,
+      rate_limit_rps: 0,
+      rate_limit_burst: 0,
     })
     expect(state.interceptRules[0]).toMatchObject({
       enabled: true,
@@ -511,6 +525,11 @@ pricing:
       expect.objectContaining({
         api_key: 'provider-secret',
         same_retries: 3,
+        rate_limit: {
+          enabled: true,
+          requests_per_second: 0.333333,
+          burst: 20,
+        },
         models: ['gpt-4o', 'gpt-4.1'],
         headers: { 'x-extra': '1' },
       }),

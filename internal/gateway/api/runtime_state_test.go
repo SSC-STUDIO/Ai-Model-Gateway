@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"reflect"
 	"testing"
@@ -147,6 +148,62 @@ func TestRuntimeStateProviderHealthSnapshotGroupsByUpstreamID(t *testing.T) {
 	}
 	if item.LatencyMs != 40 {
 		t.Fatalf("latency ms = %d, want max 40", item.LatencyMs)
+	}
+}
+
+func TestWaitForUpstreamSlotGroupsByUpstreamID(t *testing.T) {
+	state := NewRuntimeState()
+	now := time.Date(2026, time.May, 17, 4, 0, 0, 0, time.UTC)
+	state.now = func() time.Time { return now }
+
+	limit := snapshot.RateLimitConfig{
+		Enabled:           true,
+		RequestsPerSecond: 10,
+		Burst:             1,
+	}
+	providerA := &snapshot.ProviderSnapshot{
+		ProviderID: "key-a",
+		UpstreamID: "https://shared.example.com/v1",
+		ExecutionPolicy: snapshot.ExecutionPolicy{
+			RateLimit: limit,
+		},
+	}
+	providerB := &snapshot.ProviderSnapshot{
+		ProviderID: "key-b",
+		UpstreamID: "https://shared.example.com/v1",
+		ExecutionPolicy: snapshot.ExecutionPolicy{
+			RateLimit: limit,
+		},
+	}
+
+	if err := state.WaitForUpstreamSlot(context.Background(), providerA); err != nil {
+		t.Fatalf("first wait error = %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	if err := state.WaitForUpstreamSlot(ctx, providerB); err == nil {
+		t.Fatal("expected second provider with same upstream id to wait and hit context timeout")
+	}
+}
+
+func TestWaitForUpstreamSlotDoesNothingWhenDisabled(t *testing.T) {
+	state := NewRuntimeState()
+	provider := &snapshot.ProviderSnapshot{
+		ProviderID: "provider",
+		ExecutionPolicy: snapshot.ExecutionPolicy{
+			RateLimit: snapshot.RateLimitConfig{
+				Enabled:           false,
+				RequestsPerSecond: 0,
+				Burst:             0,
+			},
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	if err := state.WaitForUpstreamSlot(ctx, provider); err != nil {
+		t.Fatalf("disabled limiter should not wait: %v", err)
 	}
 }
 

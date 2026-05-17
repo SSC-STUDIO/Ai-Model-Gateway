@@ -140,6 +140,21 @@ function isTelemetryConnectionError(message: string): boolean {
     || value === 'eof'
 }
 
+function AppLoading() {
+  return (
+    <main class="app-shell login-shell">
+      <div class="app-loading" role="status" aria-live="polite" aria-label="Loading AI Model Gateway">
+        <div class="app-loading-mark" aria-hidden="true">
+          <BrandMark />
+        </div>
+        <div class="app-loading-rail" aria-hidden="true">
+          <span />
+        </div>
+      </div>
+    </main>
+  )
+}
+
 export function App() {
   const { t } = useI18n()
   const { toasts, removeToast } = useToast()
@@ -547,7 +562,7 @@ export function App() {
   })()
 
   if (sessionLoading) {
-    return <main class="app-shell login-shell" />
+    return <AppLoading />
   }
 
   if (!canAccessAdmin) {

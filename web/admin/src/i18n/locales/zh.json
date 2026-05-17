@@ -179,7 +179,10 @@
       "classFree": "免费",
       "classQuotaLimited": "配额受限",
       "timeoutMs": "超时 (毫秒)",
-      "sameUpstreamRetries": "同上游重试次数"
+      "sameUpstreamRetries": "同上游重试次数",
+      "outboundRateLimit": "上游出站限速",
+      "outboundRateLimitRps": "上游限制 (RPS)",
+      "outboundRateLimitBurst": "上游突发额度"
     },
     "visualEditor": "图形化配置",
     "visualEditorComingSoon": "图形化编辑器即将推出",

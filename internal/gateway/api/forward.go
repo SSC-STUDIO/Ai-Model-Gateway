@@ -40,6 +40,12 @@ func forwardToUpstream(ctx context.Context, runtimeState *RuntimeState, provider
 		timeout = 30 * time.Second
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	if runtimeState != nil {
+		if err := runtimeState.WaitForUpstreamSlot(reqCtx, provider); err != nil {
+			cancel()
+			return http.StatusGatewayTimeout, nil, nil, "", 0, err
+		}
+	}
 
 	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, upstreamURL, bodyReader)
 	if err != nil {

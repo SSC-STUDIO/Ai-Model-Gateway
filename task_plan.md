@@ -1,694 +1,140 @@
-# Task Plan
+# Task Plan - AI-Model-Gateway
 
-## Current Task - Telemetry Projector Test Coverage Improvement
+## 上一轮状态
+第16轮（Admin UI UX Enhancement + 全面验证）已完成：
+- 状态徽章无障碍图标（::before 伪元素）✓
+- 对比度增强（warning/error 更亮颜色 + 更高不透明度）✓
+- 刷新间隔显示（Auto-refreshing (30s)）✓
+- 全面验证 + 线上部署 ✓
 
-### Goal
-
-Improve test coverage for `internal/telemetry/project` (71.8% → 93.6%) by covering Drain (nil guards, checkpoint load error, success loop, projection error), normalizeProjectedPricingStatus (all status/tokens combos), and Run error paths (checkpoint load warning, nil eventLog).
-
-### Current Phase
-
-Complete - coverage improved from 71.8% to 93.6%; all 42+ Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in Drain (0%), normalizeProjectedPricingStatus (60%), Run checkpoint load error path. |
-| Complete | 2. Write projector tests | Added 8 test functions: TestDrainNilGuards (nil eventLog/queryStore), TestDrainCheckpointLoadError, TestDrainSuccessWithEvents, TestDrainEmptyTable, TestDrainProjectionError, TestNormalizeProjectedPricingStatus (9 sub-cases), TestRunWithCheckpointErrorThenRecovery, TestRunNilEventLogRun. |
-| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42+ packages). Coverage: 71.8% → 93.6%. |
-
-### Constraints
-
-- Use WSL ext4 for all commands.
-
----
-
-## Current Task - Eventlog Test Coverage Improvement
+## 本轮任务 - 全景回归验证 + 前端交互视觉审计
 
 ### Goal
 
-Improve test coverage for `internal/telemetry/eventlog` (74.0% → 78.0%) by covering serializePayload with pricing/benchmark fields, closed-DB Append error path, directory creation error, concurrent Append, and duplicate+accept mixed batches.
+对 AI-Model-Gateway 进行全景式回归验证，覆盖 Go 后端、Preact 前端、线上服务。执行实际 Playwright 浏览器交互和视觉检查，发现并修复影响使用体验的问题。
 
-### Current Phase
+### 选择理由
 
-Complete - coverage improved from 74.0% to 78.0%; all 42+ Go packages pass.
+1. 上轮（第16轮）验证距今已有时日，需要确认无回归
+2. 本仓库有 web 前端（admin UI），按 Goal 0 要求需做实际交互验证和视觉检查
+3. 当前已有 audit-output/ 和 dist-live/ 等目录残留，需要清理状态
+4. 需要确认前端测试（当前 109 tests）和新构建无问题
 
-### Phases
+### 验证方案
 
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in New (MkdirAll error), Append (closed DB error), serializePayload (pricing/benchmark fields). |
-| Complete | 2. Write eventlog tests | Added 6 test functions: TestSerializePayloadPricingFields, TestSerializePayloadBenchmarkFields, TestNewMkdirAllError, TestAppendClosedDB, TestAppendDuplicateAndAccept, TestAppendWithAllFields, TestAppendConcurrent. |
-| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42+ packages). Coverage: 74.0% → 78.0%. |
+1. Go 构建 + 测试: `go build ./...` → `go test ./... -count=1`
+2. 前端构建 + 测试: `npm --prefix web/admin run build` → `npm --prefix web/admin test`
+3. Playwright UI 交互验证: 启动线上服务，浏览器截图关键页面
+4. Codex 视觉检查: 使用 sonnet-4-6 检查截图
 
-### Constraints
+### 视觉验证点
 
-- Use WSL ext4 for all commands.
+- Login 页面
+- Overview 仪表盘
+- Monitoring → Telemetry / Pricing 子视图
+- Ops → Audit / Diagnostics 子视图
+- Config 编辑器
+- Logs 页面
 
----
+### Agent Team 分工
 
-## Current Task - Telemetry Test Coverage Improvement
+本任务涉及多个独立验证维度，可以并行执行：
+- Agent A: Go 构建/测试
+- Agent B: 前端构建/测试 + Playwright UI 审计
+- Agent C: 线上服务检查 + 截图 + Codex 视觉验证
 
-### Goal
+### 第17轮状态
 
-Improve test coverage for `internal/telemetry` (64.6% → 79.9%) by covering pricing runtime helpers (shouldRefresh, cloneSourceCatalogs, mergeSourceCatalogs, clonePricingSourceStates, clonePricingFXSnapshot, annotateSourceCatalog, applyFXToPrice, applyFXToCatalog, hydrateSourceStates, loadPricingFXCache, savePricingFXCache), pricing source parsers (parseGenericPricingTables, extractPriceFromCells, inferCurrency, extractMoneyValues, parseModelAliasesFromCell, fetchSinglePageCatalog mock), pricing page parsers (parseAPIPricingPage, parseGPT52PricingPage), and FX XML parsing (fetchPricingFXFromBytes success/error paths).
-
-### Current Phase
-
-Complete - coverage improved from 64.6% to 79.9%; all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in pricing_runtime (shouldRefresh, clone*, FX cache, applyFX*), pricing_sources (inferCurrency, extractMoneyValues, parseModelAliases, parseGenericPricingTables, fetchSinglePageCatalog), pricing_catalog (parseAPIPricingPage, parseGPT52PricingPage), and FX XML parsing. |
-| Complete | 2. Write pricing runtime tests | Added 14 test functions: shouldRefresh, cloneSourceCatalogs, mergeSourceCatalogs, clonePricingSourceStates, clonePricingFXSnapshot, loadPricingFXCache (round-trip + error), savePricingFXCache, applyFXToPrice (USD/CNY/disabled/noRates), applyFXToCatalog, annotateSourceCatalog, hydrateSourceStates, clonePricingCatalogSnapshot. |
-| Complete | 3. Write pricing source/parser tests | Added 11 test functions: inferCurrency, extractMoneyValues, parseModelAliasesFromCell, extractPriceFromCells, parseGenericPricingTables, fetchPricingSourceCatalogUnsupportedVendor, fetchSinglePageCatalog (emptyURL + mock server success/empty/error), fetchPricingFXFromBytes (success + invalid XML + missing USD), fetchPricingFXFromBytesSuccess, parseAPIPricingPage, parseGPT52PricingPage. |
-| Complete | 4. Refactor fetchPricingFX | Extracted fetchPricingFXFromBytes from fetchPricingFX for testable FX XML parsing without HTTP dependency. |
-| Complete | 5. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 64.6% → 79.9%. |
-
-### Constraints
-
-- Use WSL ext4 for all commands.
-
----
-
-## Current Task - Benchmarking Test Coverage Improvement
-
-### Goal
-
-Improve test coverage for `internal/control/benchmarking` (72.2% → 83.4%) by covering all scorer functions (exactTextScorer, judgeScorer, jsonScorer, toolCallScorer, streamScorer), extractAssistantText/extractToolCall edge cases, baseCaseResult paths, clampScore, excerpt, suiteByName, buildRequest/buildToolRequest protocol variants, ListRuns, Service nil-guard error paths, resolveJudgeProvider branches, expandTargets validation, and normalizeProtocol.
-
-### Current Phase
-
-Complete - benchmarking coverage 72.2% → 83.4%; all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in scorers, extractAssistantText/extractToolCall, baseCaseResult, ListRuns, Service nil guards, resolveJudgeProvider, expandTargets, normalizeProtocol, clampScore, excerpt. |
-| Complete | 2. Write suite scorer tests | Added 35 test functions: extractAssistantText (OpenAI, Anthropic, skips non-text, empty choices, invalid JSON), extractToolCall (OpenAI match/mismatch/no calls, Anthropic match/mismatch/invalid JSON, OpenAI invalid JSON), clampScore, excerpt, suiteByName, all 5 scorers with match/mismatch/incomplete/nil-judge/empty-response/judge-error paths, baseCaseResult (nil, error, HTTP error status, field copying), buildRequest/buildToolRequest (OpenAI, Anthropic, unsupported protocol). |
-| Complete | 3. Write store and service tests | Added 20 test functions: ListRuns empty/after-run, Service nil-guard (ListRuns, GetRun, StartRun), StartRun error paths (no gateway, no config, disabled), resolveJudgeProvider (nil config, preferred not found, model mismatch, fallback not found), normalizeProtocol, uniqueStrings, weightedAverage/zero-weight, maxFloat, absFloat, expandTargets (nil config, missing fields, provider not found, model not advertised), validateBaselineSelection empty, parseBaselineRows empty. |
-| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 72.2% → 83.4%. |
-
-### Constraints
-
-- Worktree is already dirty with prior staged changes; do not revert them.
-- Use WSL ext4 for all commands.
-
----
-
-## Current Task - Release And Audit Test Coverage Improvement
-
-### Goal
-
-Improve test coverage for `internal/release` (72.6% → 87.8%) and `internal/control/audit` (65.3% → 92.1%) by covering SaveManifest, LoadManifest, BuildManifest edge cases, HashFile/HashDir error paths, verifyBinary paths, and full audit store CRUD/redaction coverage.
-
-### Current Phase
-
-Complete - release coverage 72.6% → 87.8%; audit coverage 65.3% → 92.1%; all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | release: SaveManifest (0%), LoadManifest (0%), BuildManifest defaults/edge cases, HashFile error (0%), HashDir error (0%), verifyBinary path error. audit: Path (0%), NewStore empty path, Record nil store/cancelled ctx/auto ID, List nil store/empty file/action filter/since filter/limit. |
-| Complete | 2. Write release tests | Added 14 test functions: SaveAndLoadManifestRoundTrip, SaveManifestEmptyPath, LoadManifestInvalidJSON, LoadManifestNonExistent, BuildManifestDefaultsAndEdgeCases (4 sub-tests), HashFileError, HashDirWithSubdirectories, HashDirError, VerifyManifestPlatformMismatch, VerifyManifestMissingDaemon, VerifyManifestBinaryHashMismatch, VerifyManifestEmptySchemaVersion, VerifyManifestEmptyProductVersion, VerifyManifestAdminDistHashMismatch. |
-| Complete | 3. Write audit tests | Expanded from 1 test to 15 test functions: NewStoreEmptyPath, NewStoreCreatesParentDir, PathNilStore, RecordNilStore, RecordCancelledContext, RecordGeneratesIDAndTime, RecordTrimsFields, ListNilStore, ListCancelledContext, ListNonExistentFile, ListActionFilter, ListSinceFilter, ListLimitEnforcement, ListDefaultLimit, ListMaxLimit, ListReverseChronological, RedactMapNilAndEmpty, RedactMapSensitiveKeys, RedactMapStringMap, RedactMapSliceValues. |
-| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). release: 72.6% → 87.8%; audit: 65.3% → 92.1%. |
-
-### Constraints
-
-- Worktree is already dirty with prior staged changes; do not revert them.
-- Use WSL ext4 for all commands.
-
----
-
-## Current Task - i18n And Compiler Test Coverage Improvement
-
-### Goal
-
-Improve test coverage for `internal/i18n` (79.5% → 92.3%) and `internal/control/compiler` (79.1% → 97.1%) packages.
-
-### Current Phase
-
-Complete - i18n coverage 79.5% → 92.3%; compiler coverage 79.1% → 97.1%; all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | i18n: SetLanguage (0%), MustLoadCatalog (0%), LoadCatalog error path (20% uncovered). compiler: cloneStringMap (0%), compileCompatPolicy (37.5%), Validate (62.5%), resolveQuotaRecoveryIntervalMin (62.5%). |
-| Complete | 2. Write i18n tests | Added 4 test functions: SetLanguage, MustLoadCatalog success/fallback, LoadCatalog all langs. |
-| Complete | 3. Write compiler tests | Added 12 test functions: cloneStringMap, compileCompatPolicy, Validate (8 sub-cases), resolveQuotaRecoveryIntervalMin (6 sub-cases), empty revision ID, nil config, pricing sources, clone mutation, headers all empty, empty credentials, provider errors. |
-| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). i18n: 79.5% → 92.3%; compiler: 79.1% → 97.1%. |
-
-### Constraints
-
-- Worktree is already dirty with prior staged changes; do not revert them.
-- Use WSL ext4 for all commands.
-
-## Current Task - Pricing Catalog Test Coverage Improvement
-
-### Goal
-
-Improve test coverage for the `internal/infra/pricing` package (64.5% → 100%) by covering RefreshNow nil guard and normal paths, fromLegacySnapshot with full data (sources, sourceCatalogs, FX rates), cloneRates empty/nil/non-empty paths, and struct field verification.
-
-### Current Phase
-
-Complete - coverage improved from 64.5% to 100.0%; all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in RefreshNow, fromLegacySnapshot with full data, cloneRates non-empty path, SourceState/FXSnapshot field coverage. |
-| Complete | 2. Write pricing tests | Added 7 new test functions covering RefreshNow nil guard, RefreshNow normal invocation, fromLegacySnapshot with complete sources/FX/sourceCatalogs data, fromLegacySnapshot with empty data, cloneRates non-empty/nil/empty, SourceState fields, FXSnapshot fields. |
-| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 64.5% → 100.0%. |
-
-### Constraints
-
-- Worktree is already dirty with prior staged changes; do not revert them.
-- Use WSL ext4 for all commands.
-
-## Current Task - Cache And WebSocket Test Coverage Improvement
-
-### Goal
-
-Improve test coverage for the `internal/gateway/cache` package (59.8% → 86%+) by covering Close, Stats, MaxBytes, byte-limit eviction, sweepExpired, MakeKeyLegacy, and makeKeyRaw paths. Also fix a pre-existing concurrent websocket write race in `TestForwardMessages_NormalFlow`.
-
-### Current Phase
-
-Complete - cache coverage 59.8% → 86.1%; websocket concurrent-write panic fixed; all 42+ Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in Close, Stats, MaxBytes, sweepExpired, ensureSize, MakeKeyLegacy, makeKeyRaw, byte-limit eviction, and byte accounting. |
-| Complete | 2. Write cache tests | Added 16 new test functions covering Close idempotency, Stats hit/miss/eviction counters, MaxBytes accessor, byte-limit LRU eviction, sweepExpired, MakeKeyLegacy equivalence, MakeKey with namespace, makeKeyRaw, byte accounting on overwrite, delete-decrements-bytes, zero-byte-cache eviction, and sweep-on-get expiry removal. |
-| Complete | 3. Fix websocket concurrent-write panic | Removed concurrent `echoConn.WriteMessage` in `TestForwardMessages_NormalFlow` that raced with `forwardMessages` goroutine writing to the same connection. |
-| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42+ packages). Cache coverage: 59.8% → 86.1%. |
-
-### Constraints
-
-- Worktree is already dirty with prior staged changes; do not revert them.
-- Use WSL ext4 for all commands.
-
-## Current Task - Test HTTP Client Isolation Improvement
-
-### Goal
-
-Improve test isolation by ensuring each test case uses its own HTTP client instead of sharing the production `sharedHTTPClient`, preventing cross-test interference in bridge and e2e tests.
-
-### Current Phase
-
-Complete - exported `SetSharedHTTPClientForTesting`, refactored e2e and compat tests, all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Add exported test helper | `SetSharedHTTPClientForTesting` in `handler.go` swaps `sharedHTTPClient` and returns a restore function. |
-| Complete | 2. Refactor e2e tests | `cmd/gatewayd/bridge_e2e_test.go` uses the new helper for per-test HTTP client isolation. |
-| Complete | 3. Refactor compat tests | `internal/gateway/api/compat_test.go` uses `swapSharedHTTPClient` consistently and fixes init ordering. |
-| Complete | 4. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). |
-
-### Constraints
-
-- Do not revert unrelated backend or frontend changes already in the worktree.
-- Use WSL ext4 for all commands.
-
-## Current Task - WSL Codex Uses Gateway But Does Not Edit Code
-
-### Goal
-
-Diagnose and fix why WSL Codex routed through the local AI gateway can read repository files but does not perform code edits.
-
-### Current Phase
-
-Complete - Responses custom apply_patch bridge and adjacent silent-downgrade paths fixed, deployed, and verified.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Inspect configuration and known issues | Bootstrap status is OK; WSL Codex is `codex-cli 0.128.0`; config is not read-only and points at the local Responses gateway. |
-| Complete | 2. Reproduce with a minimal WSL Codex edit task | Initial shell-write smoke passed; first apply_patch smoke showed the model tried to run `apply_patch` as a shell command. |
-| Complete | 3. Identify gateway or Codex config root cause | Responses custom `apply_patch` tools were not preserved/restored correctly across the Responses-to-Chat bridge for chat-only upstreams. |
-| Complete | 4. Patch/configure the smallest fix | Updated `internal/gateway/api/compat.go` to bridge custom tools as Chat function tools and restore Responses custom tool calls/events. |
-| Complete | 5. Validate and record capsule | `go test ./internal/gateway/api -count=1`, `go test ./... -count=1`, live deploy, health probe, real WSL Codex apply_patch smoke, and capsule completed. |
-| Complete | 6. Sweep adjacent Responses bridge downgrades | Fixed forced/object `tool_choice`, top-level `instructions`, `parallel_tool_calls`, unsupported hosted-tool errors, `output_text` history, Chat array text output, and legacy `function_call` response/stream conversion. |
-
-### Constraints
-
-- Do not print API keys or bearer tokens from Codex or gateway config.
-- The repo is already dirty with unrelated frontend and backend changes.
-- Prefer WSL ext4 commands for Codex behavior checks.
-- Use the live gateway facts from workstation context before restarting or changing runtime.
-
-## Current Task - Admin UI Icon And Logs Interaction Bugs
-
-### Goal
-
-Fix broken small-icon interactions, starting with the Logs page expand/detail control, non-working load-more behavior, and incorrect 504/error presentation. Validate with browser interaction tests and redeploy the live admin UI.
-
-### Current Phase
-
-Complete - logs icon and load-more controls fixed and deployed.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Reproduce logs interaction bugs | Browser reproduction confirmed no explicit detail icon, dead load-more path, and ambiguous 504 display. |
-| Complete | 2. Patch logs controls and data handling | Added explicit detail button, real load-more control, backend `total` normalization, and HTTP 504 display. |
-| Complete | 3. Sweep similar icon controls | Checked visible icon buttons on Logs, Benchmark, Ops, and Config; active icon controls expose labels/titles. |
-| Complete | 4. Validate locally | Build, 107 frontend tests, targeted Logs Playwright check, and 44-view UI audit passed. |
-| Complete | 5. Deploy live | Rebuilt/synced bundle and verified live `/admin/logs` plus full live UI audit. |
-
-## Current Task - Admin UI Full Surface Review And Fixes
-
-### Goal
-
-Review every admin UI screen and sub-screen, identify visible/runtime UI defects, fix confirmed problems without reverting existing local work, and validate with browser screenshots plus frontend build/tests.
-
-### Current Phase
-
-Complete - UI review fixes deployed live.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Map admin UI surface | App shell has Overview, Monitoring, Benchmark, Ops, Config, Logs; Monitoring/Benchmark/Ops/Config have nested views. |
-| Complete | 2. Run frontend validation | `npm --prefix web/admin run build` and `npm --prefix web/admin test` pass. |
-| Complete | 3. Browser review all views | Playwright covered 44 desktop/mobile views and subviews. |
-| Complete | 4. Fix confirmed defects | Shared layout, table, segmented control, pricing-source, chart, benchmark, and ops CSS fixes are in place. |
-| Complete | 5. Re-validate | Frontend build, 106 tests, local 44-view Playwright audit, and live 44-view Playwright audit pass. |
-| Complete | 6. Deploy if needed | Live bundle replaced under `/home/chenrunsen/ai-gateway` with matching `admin_dist_hash` and healthy service. |
-
-### Constraints
-
-- The worktree is already dirty with substantial admin UI changes from prior work.
-- Do not revert unrelated backend or UI changes.
-- Use WSL ext4 for commands.
-- Prefer existing design system styles and avoid new decorative patterns.
-
-### Coverage Checklist
-
-| Status | View |
+| Status | Phase |
 | --- | --- |
-| Complete | Login/auth state if shown |
-| Complete | Overview/dashboard |
-| Complete | Monitoring and nested telemetry/pricing views |
-| Complete | Benchmark and nested upstream/capability views |
-| Complete | Config editor and sub-sections |
-| Complete | Logs |
-| Complete | Any error/loading/empty states reachable locally |
+| Completed | 1. 创建任务计划 + 读取项目状态 |
+| Completed | 2. Go 构建/测试基线 — 42+ 包全部通过 |
+| Completed | 3. 前端构建/测试 — 13 文件 / 109 测试全部通过；修复 vitest pool 超时 |
+| Completed | 4. Playwright UI 审计 + 截图 — 11 视图, 0 console errors, 0 page errors |
+| Completed | 5. 视觉检查 — 关键页面排版正常，无遮挡/错位/不可读文字 |
+| Completed | 6. 无需修复——零回归 |
+| Completed | 7. 更新 planning 文件 + git commit |
 
 ---
 
-## Current Task - OpenAI Messages Bug Fix And Live Deploy
+## 本轮任务（第18轮） - 前端测试覆盖补充 + 全量回归验证
 
 ### Goal
 
-Fix the OpenAI-compatible `/v1/messages` bridge bug, replace the live gateway bundle under `/home/chenrunsen/ai-gateway`, restart `ai-gateway.service`, and verify the deployed endpoint.
+补充 admin 前端关键组件的单元测试，提升前端测试覆盖率；同时运行全量回归验证确保无退化。当前前端 30+ 组件中仅 13 个有测试文件，主要缺覆盖的是核心 UI 组件（登录、图表、错误边界、Toast 通知等）和业务 tab 组件。
 
-### Current Phase
+### 选择理由
 
-Phase 5 - Complete. All deployed behavior verified.
+1. 前端测试覆盖缺口大：30+ 组件仅 13 个有测试，核心组件（LoginScreen、ErrorBoundary、Toast、Icon）完全无测试
+2. 用户体验直接影响的组件（如 ErrorBoundary 错误处理、Toast 反馈、LoginScreen 认证流）若出现回归，用户会直接遇到崩溃或无反馈
+3. 前端 tab 组件（OverviewTab、LogsTab 等）缺少测试意味着业务逻辑回归只能靠 Playwright 手动发现
+4. 按 shared_prompt Goal 6 "improve repository construction quality" 和 Goal 0 "fewer errors"，测试覆盖是减少用户可见错误的最直接手段
 
-### Phases
+### 验证方案
 
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Diagnose OpenAI messages bug | Existing `/v1/messages` bridge changes pass focused tests; API package exposed a stream infinite-retry regression. |
-| Complete | 2. Implement targeted backend fix | Added stream infinite-retry SSE keep-alive path in `handler.go`. |
-| Complete | 3. Validate locally | Focused `/v1/messages` tests, full `internal/gateway/api`, and `go test ./...` pass. |
-| Complete | 4. Replace and deploy live bundle | Updated sync script to stop service before replacing binaries; deployed and restarted live service. |
-| Complete | 5. Verify deployed behavior | Health (HTTP 200, 1ms), service running (PID 4591, active since 2026-05-11 21:05 CST), and live `/v1/messages` returns proper Anthropic Messages response (HTTP 200, 33s) on 2026-05-11. |
+1. Go 构建 + 测试: `go build ./...` → `go test ./... -count=1`
+2. 前端测试: `npx vitest run` — 确认 vitest config 修复有效 + 新增测试通过
+3. 前端构建: `npm run build` — 确认无构建回归
+4. Playwright 交互验证: 线上服务关键页面截图检查
+5. 线上服务: `curl http://127.0.0.1:18080/-/health`
 
-### Constraints
+### 状态
 
-- The repository is already dirty, including backend compatibility files and unrelated admin UI work.
-- Do not revert unrelated user changes.
-- The live runtime is `/home/chenrunsen/ai-gateway` served by `ai-gateway.service`.
-- Strict manifest mode requires rebuilding/replacing the bundle consistently rather than copying a single binary.
-
-### Validation Targets
-
-1. `go test ./internal/gateway/api`
-2. Relevant full build or `go test ./...` if practical
-3. `bash scripts/sync-bundle-to-home-ai-gateway.sh`
-4. `systemctl --user restart ai-gateway.service`
-5. `curl http://127.0.0.1:18080/-/health`
+| Status | Phase |
+| --- | --- |
+| In Progress | 1. 更新任务计划 + 读取项目状态 |
+| Pending | 2. Go 构建/测试基线 |
+| Pending | 3. 前端测试基线（验证 vitest config 修复） |
+| Pending | 4. 前端关键组件测试补充 |
+| Pending | 5. 前端构建 + 全量测试回归 |
+| Pending | 6. Playwright 交互验证 + 视觉检查 |
+| Pending | 7. 更新 planning 文件 + git commit |
 
 ---
 
-## Goal
-
-Refactor the admin Benchmark tab into a segmented navigation workspace like Monitoring, splitting the current combined page into independent "model upstream" and "model capability" views while preserving existing behavior and minimizing interference with ongoing local changes.
-
-## Current Phase
-
-Complete - segmented workspace refactor validated and summarized.
-
-## Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Bootstrap + inspect current repo state | Read workstation context, planning workflow, and target files. |
-| Complete | 2. Implement Benchmark segmented navigation refactor | Updated Benchmark segmented layout and reused shared `WorkspaceBand`. |
-| Complete | 3. Validate | `npx tsc --noEmit` passed; `npx vitest run` reported 13 files / 109 tests passed; `npm run build` passed. |
-| Complete | 4. Summarize | BenchmarkTab refactored into two-segment workspace (upstream/capability) matching Monitoring pattern; no remaining risks. |
-
-## Scope
-
-- `web/admin/src/components/WorkspaceBand.tsx`
-- `web/admin/src/components/tabs/MonitoringTab.tsx`
-- `web/admin/src/components/tabs/BenchmarkTab.tsx`
-- `web/admin/src/theme/benchmark.css`
-- `web/admin/src/i18n/locales/en.json`
-- `web/admin/src/i18n/locales/zh.json`
-
-## Constraints
-
-- Repository is already dirty, including several target files.
-- Do not revert or overwrite unrelated user changes.
-- Prefer smallest change that aligns Benchmark with the existing Monitoring segmented pattern.
-
-## Validation Targets
-
-1. `npx tsc --noEmit`
-2. `npx vitest run`
-3. `npm run build`
-4. Manual sanity check by code inspection that each segment renders inside its own `WorkspaceBand`
-
-## Errors Encountered
-
-| Error | Attempt | Resolution |
-| --- | --- | --- |
-| `Get-Content /mnt/c/.../SKILL.md` failed in PowerShell path resolution | 1 | Switched to Windows path `C:\Users\96152\...` |
-| Several workstation reference reads timed out | 1 | Used partial outputs that returned enough context for this task |
-| Planning skill template paths referenced in `SKILL.md` were absent | 1 | Created local planning files manually |
-| `npx tsc --noEmit` from PowerShell under `\\wsl.localhost\...` failed with UNC-path fallback and wrong `tsc` resolution | 1 | Switch validation commands to WSL/bash execution |
-
-## Current Task - Admin UI Functional Optimization
+## 2026-05-17 Hotfix - Provider Outbound Rate Limit UI Clarity
 
 ### Goal
 
-Improve practical admin UI workflows without large visual redesign. Initial scope: Logs page export and copy-detail actions for faster operations/debugging.
+Make the admin visual config editor show and persist provider-level outbound rate limits, so operators can set upstream RPM limits without confusing them with admin/client ingress rate limits.
 
-### Phases
+### Scope
 
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Inspect UI structure | Logs page already has search, pagination, load more, detail expansion. |
-| Complete | 2. Implement feature optimizations | Added CSV export for current filtered logs and copy details for expanded rows. |
-| Complete | 3. Validate | Admin tests/build passed, targeted live Logs Playwright check passed, and full live UI audit had 0 console/page errors. |
-| Complete | 4. Deploy if validation passes | Synced bundle to `/home/chenrunsen/ai-gateway`; live service restarted healthy on 2026-05-10 08:25 CST. |
+1. Add provider outbound rate limit state to `configEditor.ts`.
+2. Render provider outbound rate limit controls in the visual config editor.
+3. Add focused frontend unit coverage for hydrate/build round trips.
+4. Validate with frontend tests and a targeted Go/runtime smoke where useful.
 
-### Constraints
+### Status
 
-- Worktree already has unrelated backend/admin UI changes; do not revert them.
-- Keep changes scoped and compatible with existing design system.
-- Use WSL ext4 commands.
-
-### Outcome
-
-- Logs toolbar now exports the current filtered result set as CSV.
-- Expanded log details now include a copy-details action with clipboard fallback.
-- Live admin UI at `http://127.0.0.1:18080/admin` has the new bundle deployed and verified.
-
-## Current Task - Benchmark Capability Quick Run And Chart Polish
-
-### Goal
-
-Fix missing Benchmark capability translations, make model capability verification default to automatically test all enabled upstream provider/model routes, and clean up chart styling for a more readable operational UI.
-
-### Current Phase
-
-Complete - translations, all-upstream capability verification default, chart polish, live deploy, and browser checks are done.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Inspect current implementation | Confirmed `benchmark.verification.quickRun` is missing from locale files and the hook already supports `all_active` quick runs. |
-| Complete | 2. Patch translations and default run behavior | Added missing locale keys and defaulted manual capability verification to all enabled upstream routes. |
-| Complete | 3. Optimize chart styling | Removed radial/glow backgrounds and tightened chart summaries, plot areas, labels, and hover states. |
-| Complete | 4. Validate and deploy | Frontend tests/build passed, live bundle synced, health/bundle verify passed, and Playwright verified the capability page. |
-
-### Constraints
-
-- Worktree is already dirty with unrelated backend/admin UI changes; do not revert them.
-- Use WSL ext4 execution for npm/build/deploy commands.
-- Live runtime remains `/home/chenrunsen/ai-gateway` served by `ai-gateway.service`.
+| Status | Phase |
+| --- | --- |
+| Completed | 1. Confirm live runtime, active DeepSeek upstream, and outbound-only limiter behavior |
+| In Progress | 2. Add provider outbound rate limit fields to admin visual editor |
+| Pending | 3. Run focused frontend tests |
+| Pending | 4. Record result and leave live service stable |
 
 ---
 
-## Current Task - SSRF Proxy Test Coverage Improvement
+## 2026-05-17 Hotfix - Preserve GPT Cached Token Usage
 
 ### Goal
 
-Improve test coverage for the security-critical `internal/proxy` package (SSRF protection) from 51.3% to 85%+, covering configuration options, DNS validation, safe transport/dialer construction, and pinned IP dialing paths.
-
-### Current Phase
-
-Complete - coverage improved from 51.3% to 97.4%; all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in AllowLocalhost/AllowPrivateIP config, ResolveAndValidateHost, hex-encoded host, pinnedIPDialer, NewSafeTransport, NewSafeDialer. |
-| Complete | 2. Write SSRF config option tests | AllowLocalhost bypasses hostname check only (DNS still blocks private); AllowPrivateIP removes all blocked ranges; combined flags needed for full localhost access. |
-| Complete | 3. Write ResolveAndValidateHost tests | Covered nil-return for no blocked ranges, public IP resolution, and unresolvable host error. |
-| Complete | 4. Write ValidateURL edge cases | Hex-encoded host rejection, path traversal variants, ws/wss scheme support, user info variants. |
-| Complete | 5. Write transport/dialer tests | NewSafeTransport (nil/custom base), NewSafeDialer TLS config, pinnedIPDialer (private IP, localhost IP, private-resolved localhost, public host, invalid address, unresolvable host), end-to-end httptest TLS server, transport blocks private IP. |
-| Complete | 6. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 51.3% → 97.4%. |
-
-### Constraints
-
-- Worktree is already dirty with prior staged changes; do not revert them.
-- Use WSL ext4 for all commands.
-
----
-
-## Current Task - Rate Limiter Test Coverage Improvement
-
-### Goal
-
-Improve test coverage for the `internal/gateway/ratelimit` package (81.0% → 100%) by covering cleanupStaleBucketsLocked periodic sweep, maxBuckets enforcement (reject new keys when at capacity, allow after stale cleanup), and token refill cap (burst ceiling).
-
-### Current Phase
-
-Complete - coverage improved from 81.0% to 100.0%; all 42 Go packages pass.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified gaps in cleanupStaleBucketsLocked (0% coverage), maxBuckets new-key rejection and cleanup recovery, and token refill burst cap. |
-| Complete | 2. Write ratelimit tests | Added 4 test functions: TestAllow_CleanupStaleBuckets (periodic sweep removes stale bucket after 256 calls), TestAllow_MaxBuckets_RejectsNewKeys (third key rejected at capacity), TestAllow_MaxBuckets_CleanupAllowsNewKeys (stale bucket cleanup frees slot for new key), TestAllow_TokenRefillCap (elapsed-time refill capped to burst). |
-| Complete | 3. Validate | `go build ./...` and `go test ./... -count=1` passed (42 packages). Coverage: 81.0% → 100.0%. |
-
-### Constraints
-
-- Use WSL ext4 for all commands.
-
----
-
-## Current Task - Live Gateway Claude Code 400 Investigation
-
-### Goal
-
-Diagnose and fix live `ai-gateway.service` returning upstream HTTP 400 `Param Incorrect` for Claude Code `/v1/messages` requests, especially the failed cron/tool scheduling request.
-
-### Current Phase
-
-Complete - active runtime config was corrected and verified with a live `/v1/messages` probe.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Confirm live runtime | `ai-gateway.service` is active and healthy on `127.0.0.1:18080`, running the three-plane `aigw supervise` bundle. |
-| Complete | 2. Inspect request logs and telemetry | Latest failed request: `2026-05-16T01:30:55Z`, `/v1/messages`, `claude-opus-4-6 -> mimo-v2.5-pro`, provider `coolyeah-glm5`, HTTP 400, error `Param Incorrect`. |
-| Complete | 3. Identify routing/config cause | Active persisted revision `rev_20260515_150208_1k3dn6` had `claude* -> mimo-v2.5-pro`, even though disk `config.yaml` already said `deepseek-v4-pro`. |
-| Complete | 4. Apply minimal fix | Used admin config update API to change only active bridge target to `deepseek-v4-pro`, publishing `rev_20260516_014419_xoxfo6` / `snap_20260516_014419_5w5n5e`. |
-| Complete | 5. Validate | Health reports the new revision, snapshot bridge is `claude* -> deepseek-v4-pro`, and a live `/v1/messages` probe returned HTTP 200 with telemetry `effective_model=deepseek-v4-pro`, `provider_id=deepseek`. |
-
-### Constraints
-
-- Do not print secrets from `/home/chenrunsen/ai-gateway/configs/config.yaml`.
-- Live runtime is `/home/chenrunsen/ai-gateway`; use strict manifest-aware deployment if binaries change.
-- Worktree is already dirty with unrelated files; do not revert them.
-
----
-
-## Current Task - Admin UI UX Enhancement + Full Validation
-
-### Goal
-
-依照 Goal 0（前端/UI 仓库优先）要求，对 Preact 管理前端进行全面 UI/交互扫描。修复上轮 Codex 视觉检查发现的可选 UX 改进点（状态徽章对比度、无障碍图标/标签、表格排序方向指示、自动刷新间隔显示）。运行全方位实际验证（Go 测试、前端测试、Playwright UI 审计、Codex 视觉检查、线上服务检查）。提交所有待提交变更。
-
-### Current Phase
-
-执行中 - 更新计划、运行基线、UI 扫描、修复、验证。
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| In Progress | 1. 更新计划、运行测试基线 | Go build/test、前端 build/test、Playwright UI 审计 |
-| Not Started | 2. 状态徽章对比度 + 无障碍图标改进 | 添加图标辅助、改善 WCAG 对比度 |
-| Not Started | 3. 表格排序方向指示器 | 添加可见的排序箭头/方向提示 |
-| Not Started | 4. 自动刷新间隔显示改进 | 明确显示轮询间隔 |
-| Not Started | 5. Codex 视觉检查 | 截图视觉验证 |
-| Not Started | 6. 完整回归验证 | Go + 前端 + Playwright + 线上服务 |
-| Not Started | 7. 提交所有变更 | Git add + commit |
-
-### Constraints
-
-- Use WSL ext4 for all commands.
-- Worktree is already dirty with prior changes; do not revert them.
-- Live deployment to `/home/chenrunsen/ai-gateway` via `scripts/sync-bundle-to-home-ai-gateway.sh`.
-- 优先 Preact 现有设计系统样式，避免引入新装饰模式。
-
-### Validation Targets
-
-1. `go build ./...` + `go test ./... -count=1` → 42+ 包全绿
-2. `npm --prefix web/admin test` → 109+ 测试全绿
-3. `npm --prefix web/admin run build` → Vite 构建通过
-4. Playwright 44 视图 UI 审计 → 0 console errors, 0 page errors
-5. Codex 视觉检查截图 → 无布局/遮挡问题
-6. 线上服务健康 → `curl http://127.0.0.1:18080/-/health`
-
----
-
-## Deferred - CLI Client Test Coverage Improvement
-
-### Goal
-
-Improve test coverage for `internal/cli` package (71.2% → ~90%) by covering all uncovered HTTP client methods.
-
-### Current Phase
-
-Deferred - postponing internal quality task in favor of user-facing improvements. See "README Enhancement + Full Validation" below.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Analyze uncovered code paths | Identified 16 uncovered functions in client.go. |
-| Deferred | 2. Write CLI client tests | Postponed — internal quality task, not user-facing. |
-| Deferred | 3. Validate | Postponed. |
-| Deferred | 4. Commit | Postponed. |
-
----
-
-## Current Task - README Enhancement + Full Validation
-
-### Goal
-
-Enhance root README.md with architecture diagram, feature table, test instructions, and admin UI navigation. Run comprehensive practical verification (Go build/tests, frontend build/tests, Playwright i18n audit, Codex visual check, live service health check).
-
-### Current Phase
-
-Complete - README enhanced, full validation passed, all findings recorded.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Full verification | Go build/test (42+ packages pass), frontend build/test (109 tests pass), live service healthy |
-| Complete | 2. Playwright audit i18n verify | 0 raw keys, translations visible for Login/Publish Config/Validate Config/Rollback Config |
-| Complete | 3. README.md enhancement | Added feature table, architecture diagram, test instructions, admin nav, CLI config, repo layout table, doc links |
-| Complete | 4. Codex visual check | Used claude-sonnet-4-6 (gpt-5.4-mini unavailable via local gateway), confirmed no layout/overlap issues |
-| Complete | 5. Record findings | Updated findings.md, progress.md, task_plan.md, issues.md |
-| Complete | 6. Git commit | Committed README.md + planning file updates |
-
-### Constraints
-
-- Use WSL ext4 for all commands.
-- Do not revert unrelated backend/admin UI changes.
-
----
-
-## Current Task - Admin UI Audit Action Type Translations
-
-### Goal
-
-Fix missing i18n translations for audit action types in the admin UI. Raw action keys like `auth.login`, `config.publish`, `config.validate`, `config.rollback`, `config.update`, `diagnostics.generate` were displayed directly to operators in the audit timeline and action mix chart.
-
-### Current Phase
-
-Complete - all 12 audit action types now display human-readable translations; deployed and verified live.
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. Run Playwright UI audit | Identified 12 missing-i18n instances across ops/audit/diagnostics views. |
-| Complete | 2. Add i18n keys | Added `auditAction` section to en.json and zh.json with all 12 action types. |
-| Complete | 3. Update AuditTimeline component | Changed raw `event.action` display to `formatAuditAction(event.action, t)` lookup. |
-| Complete | 4. Update action mix chart | Changed raw action label in ops-action-bar to translated `formatAuditAction(action, t)`. |
-| Complete | 5. Validate | Frontend build + 37 tests passed; Playwright screenshot verified 0 raw keys visible; translations for Login/Publish Config/Validate Config/Rollback Config confirmed. |
-| Complete | 6. Deploy live | New bundle deployed to /home/chenrunsen/ai-gateway; service healthy. |
-
-### Key Detail
-
-The i18n `t()` function uses dot-separated path traversal (`getString` splits by `.`). Action keys like `auth.login` contain dots, so adding them directly under `auditAction` object would fail. The fix normalizes action keys by replacing `.` with `_` via `formatAuditAction()` before looking up: `auditAction.auth_login` instead of `auditAction.auth.login`.
-
-### Constraints
-
-- Use WSL ext4 for all commands.
-- Changes are frontend-only (no Go backend changes needed).
-- Live deployment via `scripts/sync-bundle-to-home-ai-gateway.sh`.
-
----
-
-## Current Task - 全面验证 + 清理待提交变更
-
-### Goal
-
-完成对所有待处理变更的实际验证，确保 Ops API 测试和审计操作翻译变更没有任何回归，运行 Playwright 视觉审计，提交干净 git 状态。
-
-### Rationale
-
-上一轮完成了 Ops API 测试覆盖率提升（47.8% → 68.6%）和审计操作类型翻译，工作已部署到线上服务并验证通过，但尚未提交 git commit。本轮进行全面的实际验证，确保所有变更质量，恢复正常干净的 git 状态。
-
-### Current Phase
-
-执行中 - 运行测试套件、Playwright 视觉审计、提交变更。
-
-### Phases
-
-| Status | Phase | Notes |
-| --- | --- | --- |
-| Complete | 1. 运行完整 Go 测试套件 | `go test ./... -count=1` 全部通过，42+ 包 |
-| Complete | 2. 运行前端测试 + 构建 | `npm test` 109 通过，`npm run build` 通过 |
-| Complete | 3. Playwright 视觉审计 | 44 视图，0 console errors，0 page errors |
-| Complete | 4. Codex GPT-5.4-mini 视觉检查 | Audit 页面通过，确认翻译正确 |
-| Complete | 5. 修复发现的问题 | 未发现需要修复的问题 |
-| Complete | 6. 部署修复 | 无需部署（已验证线上正常运行） |
-| Complete | 7. 提交所有变更到 git | `git add -A && git commit` |
-| Complete | 8. 更新 progress.md / findings.md / issues.md | 已全部更新 |
-
-### Verification Plan
-
-- Go 测试: `go build ./...` + `go test ./... -count=1` → 全部通过
-- 前端测试: `npm test` → 109 tests 通过
-- Playwright: 审计无控制台/页面错误，无原始 i18n key
-- Codex 视觉: GPT-5.4-mini 检查 Playwright 截图
-- 线上服务: health 检查 OK
-
-### Constraints
-
-- 工作树已 dirty，不要还原无关变更
-- 使用 WSL ext4 执行命令
-- 线上部署用 `scripts/sync-bundle-to-home-ai-gateway.sh`
+Prevent OpenAI/GPT prompt-cache usage from being lost when Chat Completions upstream responses are bridged back to the Responses API. The gateway must preserve upstream cache accounting so Codex/OpenAI-compatible clients can see `usage.input_tokens_details.cached_tokens`.
+
+### Scope
+
+1. Preserve `prompt_tokens_details.cached_tokens` and `input_tokens_details.cached_tokens` in the shared OpenAI usage payload.
+2. Emit cached input token details in non-streaming Chat-to-Responses conversions.
+3. Emit cached input token details in streaming `response.completed` events.
+4. Keep adjacent OpenAI-to-Anthropic streaming usage extraction aligned with both cached-token field shapes.
+
+### Status
+
+| Status | Phase |
+| --- | --- |
+| Completed | 1. Confirmed cache loss root cause in Chat-to-Responses usage conversion |
+| Completed | 2. Implemented shared cached-token extraction and Responses usage builder |
+| Completed | 3. Added non-streaming and streaming regression coverage |
+| Completed | 4. Ran `go test ./internal/gateway/api -count=1` successfully |
+| Pending | 5. Decide whether to deploy the broader dirty worktree to the live gateway bundle |

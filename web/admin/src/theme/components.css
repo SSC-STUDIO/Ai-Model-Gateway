@@ -345,17 +345,23 @@
 /* === Loading Dots === */
 
 .loading-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  position: relative;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 12px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: loading-bounce 1.4s infinite ease-in-out both;
+  animation-delay: -0.16s;
   vertical-align: middle;
 }
 
 .loading-dots::before,
-.loading-dots::after,
-.loading-dots {
+.loading-dots::after {
   content: '';
-  display: inline-block;
+  position: absolute;
+  top: 0;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -364,14 +370,12 @@
 }
 
 .loading-dots::before {
+  left: -10px;
   animation-delay: -0.32s;
 }
 
-.loading-dots {
-  animation-delay: -0.16s;
-}
-
 .loading-dots::after {
+  left: 10px;
   animation-delay: 0s;
 }
 

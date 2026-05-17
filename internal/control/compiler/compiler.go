@@ -414,6 +414,11 @@ func compileProvider(provider core.Provider, index int) (snapshot.ProviderSnapsh
 			TimeoutMs:     provider.TimeoutMs,
 			SameRetries:   provider.SameRetries,
 			ProviderClass: string(provider.ProviderClass),
+			RateLimit: snapshot.RateLimitConfig{
+				Enabled:           provider.RateLimit.Enabled,
+				RequestsPerSecond: provider.RateLimit.RequestsPerSecond,
+				Burst:             provider.RateLimit.Burst,
+			},
 		},
 		FallbackModels: append([]string(nil), provider.FallbackModels...),
 	}, nil

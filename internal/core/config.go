@@ -92,10 +92,10 @@ type StickySessionConfig struct {
 
 // FailurePolicyConfig controls circuit-breaker / cooldown behaviour.
 type FailurePolicyConfig struct {
-	Threshold                int `yaml:"threshold"                   json:"threshold"`
-	CooldownSec              int `yaml:"cooldown_sec"                json:"cooldown_sec"`
-	PassthroughAfterSec      int `yaml:"passthrough_after_sec"       json:"passthrough_after_sec"`
-	QuotaRecoveryIntervalMin int `yaml:"quota_recovery_interval_min" json:"quota_recovery_interval_min"`
+	Threshold                int  `yaml:"threshold"                   json:"threshold"`
+	CooldownSec              int  `yaml:"cooldown_sec"                json:"cooldown_sec"`
+	PassthroughAfterSec      int  `yaml:"passthrough_after_sec"       json:"passthrough_after_sec"`
+	QuotaRecoveryIntervalMin int  `yaml:"quota_recovery_interval_min" json:"quota_recovery_interval_min"`
 	DisableCooldown          bool `yaml:"disable_cooldown"           json:"disable_cooldown"`
 }
 
@@ -140,13 +140,13 @@ type KeyRotationConfig struct {
 
 // QueueConfig controls request queuing.
 type QueueConfig struct {
-	MaxConcurrent    int `yaml:"max_concurrent"    json:"max_concurrent"`
-	HighPriorityPct  int `yaml:"high_priority_pct" json:"high_priority_pct"`
+	MaxConcurrent   int `yaml:"max_concurrent"    json:"max_concurrent"`
+	HighPriorityPct int `yaml:"high_priority_pct" json:"high_priority_pct"`
 }
 
 // CompressionConfig controls response compression.
 type CompressionConfig struct {
-	Level       int `yaml:"level"         json:"level"`
+	Level        int `yaml:"level"         json:"level"`
 	MinSizeBytes int `yaml:"min_size_bytes" json:"min_size_bytes"`
 }
 
@@ -661,6 +661,15 @@ func (c *Config) Validate() error {
 		case ProtocolAdapterOpenAIChatCompletions, ProtocolAdapterAnthropicMessages:
 		default:
 			return fmt.Errorf("providers[%d].protocol_adapter must be one of %q or %q", i, ProtocolAdapterOpenAIChatCompletions, ProtocolAdapterAnthropicMessages)
+		}
+		if p.RateLimit.RequestsPerSecond < 0 {
+			return fmt.Errorf("providers[%d].rate_limit.requests_per_second must be >= 0", i)
+		}
+		if p.RateLimit.Burst < 0 {
+			return fmt.Errorf("providers[%d].rate_limit.burst must be >= 0", i)
+		}
+		if p.RateLimit.Enabled && p.RateLimit.RequestsPerSecond <= 0 {
+			return fmt.Errorf("providers[%d].rate_limit.requests_per_second must be > 0 when provider rate limiting is enabled", i)
 		}
 	}
 	return nil

@@ -102,6 +102,14 @@ providers:
     timeout_ms: 300000
     same_retries: 0
     enabled: true
+    # Limits outbound requests to this logical upstream only. Client requests
+    # are accepted by the gateway and wait before dispatch instead of receiving
+    # a gateway-side 429. Providers sharing the same effective base URL share
+    # the same outbound limiter.
+    rate_limit:
+      enabled: false
+      requests_per_second: 0.333333 # 20 RPM
+      burst: 20
 
   # Example: Provider supporting Anthropic Messages API format
   # When anthropic_base_url is set, /v1/messages requests use this URL

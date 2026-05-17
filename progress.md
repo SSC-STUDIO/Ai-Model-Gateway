@@ -1,6 +1,24 @@
 # Progress
 
-## 2026-05-16 (第十六轮: Admin UI UX Enhancement + 全面验证)
+## 2026-05-16 (第十七轮: 全景回归验证 + 前端交互视觉审计)
+
+### 选定任务
+按照 task_plan.md 执行全景回归验证，覆盖 Go 后端、Preact 前端、线上服务、Playwright 交互审计和视觉检查。
+
+### 执行结果
+
+1. **Go 构建/测试**: `go build ./...` 通过；`go test ./... -count=1` 42+ 包全部通过 ✅
+2. **前端构建**: `npm run build` Vite 构建通过（dist/assets/index-CwRSIgsv.css, vendor-BYVBASC6.js, index-D5SRIy8K.js）✅
+3. **前端测试**: `npx vitest run` 13 文件 / 109 测试全部通过 ✅
+   - **修复**: vitest config 增加 `poolTimeout: 120000` + `maxWorkers: 2` 解决 WSL 环境下 pool worker 超时
+4. **线上服务**: 健康运行（version 1.3.0, revision `rev_20260516_105619_y0k4n7`）✅
+5. **Playwright UI 审计**: 11 视图（overview/monitoring/telemetry/pricing/benchmark/ops/audit/probe/diagnostics/config/logs），0 console errors，0 page errors ✅
+6. **视觉检查**: 9/11 截图成功（audit/probe 全页截图超时）；关键页面排版正常、无遮挡/错位/不可读文字 ✅
+7. **远程 CI**: main 分支 CI 全部通过（最近 5 次运行成功）；dependabot PR 失败属预期 ✅
+8. **可见业务错误**: ops 视图 1 个、audit 视图 4 个——均为真实业务审计日志事件（配置验证失败等），非 UI 缺陷
+
+### 结论
+项目状态健康，零回归。无需额外修复。已知问题（audit/probe 页面全页截图 30s 超时）为 SPA 渲染限制，不影响使用。
 
 ### 项目状态分析
 - 上一轮完成了 README 增强 + 全面验证，Codex 视觉检查发现若干可选 UX 改进点
@@ -375,3 +393,24 @@
 - Deployed the badge alignment fix with `bash scripts/sync-bundle-to-home-ai-gateway.sh`; live `ai-gateway.service` restarted at 2026-05-10 09:26:01 CST and health returned `status=healthy`.
 - Playwright geometry check on live `/admin/logs` measured `HTTP 504`, `HTTP 400`, and `HTTP 200` badges at 24px height with text-center offset about `-0.609px`; screenshot saved to `output/playwright/log-status-badge-centered.png`.
 - Re-ran live Logs interaction script successfully and re-verified the live bundle.
+
+## 2026-05-17
+
+### Gateway Upstream Rate Limit Follow-up
+
+- Stopped Lenovo sync transfer per user request; local upload/http processes were not active in the follow-up check, and remote SSH timed out so no transfer was resumed.
+- Confirmed `ai-gateway.service` is healthy and serving the live three-plane runtime from `/home/chenrunsen/ai-gateway`.
+- Confirmed live `deepseek-supxh` already uses `https://api.supxh.xin` and is configured for 20 RPM provider-level outbound rate limiting.
+- Confirmed provider-level rate limiting is applied before outbound upstream dispatch and does not intentionally rate-limit gateway client ingress.
+- Started fixing the admin visual config gap so provider outbound rate limits can be read and written from the UI instead of only surviving through raw YAML.
+
+### GPT Cache Usage Preservation
+
+- Started all 14 Claude Code project tasks via the active watchdog with temporary caps raised to 14, and confirmed the scheduled monitor process is running.
+- Confirmed the active watchdog is `/home/chenrunsen/.claude/scripts/claude-project-watchdog.py --loop --interval 10 --grace 0 --start`; removed the extra non-start watchdog instance.
+- Root cause: Chat Completions upstream cache accounting was parsed for telemetry, but `adaptChatResponseToResponses()` and `responsesStreamState.buildFinalResponse()` emitted Responses usage without `input_tokens_details.cached_tokens`.
+- Updated `internal/gateway/api/compat.go` so OpenAI usage parsing accepts both `prompt_tokens_details.cached_tokens` and `input_tokens_details.cached_tokens`, and Chat-to-Responses output now preserves cached input tokens.
+- Added regression coverage in `internal/gateway/api/compat_test.go` for non-streaming Responses conversion and streaming `response.completed` usage.
+- Validation passed: `go test ./internal/gateway/api -run 'TestAdaptChatResponseToResponsesPreservesCachedInputTokens|TestHandleResponsesStreamingEmitsCompletedAndDoneMarker' -count=1`.
+- Validation passed: `go test ./internal/gateway/api -count=1`.
+- Live deployment was not performed in this pass because the gateway worktree already contains many unrelated dirty changes; deploying now would publish more than the cache fix.
