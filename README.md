@@ -4,100 +4,103 @@
 
 # AI Model Gateway
 
-AI 模型路由网关 — 统一管理多模型提供商的路由、遥测、限流、缓存、SSRF 防护和管理面板。
+AI Model Gateway is a self-hosted LLM gateway for teams that want provider routing, configuration publishing, telemetry, benchmarks, and day-2 operations in one compact Go runtime.
 
-[变更日志](CHANGELOG.md) · [贡献指南](CONTRIBUTING.md) · [安全](SECURITY.md) · [文档](docs/)
+It is not trying to be another hosted model marketplace. The project is optimized for local control: one supervisor command, separate data/control/telemetry planes, OpenAI-compatible client entry points, provider health visibility, safe config rollout, and an admin UI that behaves like an operations console.
 
----
+[Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Differentiation](docs/differentiation.md)
 
-## 功能特性
+## Why This Exists
 
-| 功能 | 说明 |
-|------|------|
-| **多协议支持** | OpenAI Chat Completions、Anthropic Messages、OpenAI Responses |
-| **模型路由** | 通配符匹配、provider 级路由、策略 fallback |
-| **速率限制** | 令牌桶算法、API Key / IP / 模型级限流 |
-| **请求缓存** | 内存 LRU 缓存、可配置 TTL 和条目数 |
-| **SSRF 防护** | DNS 固定、私有 IP 检测、可配置白名单 |
-| **智能降级** | 主模型失败时自动 fallback 备选模型、循环检测 |
-| **遥测** | 异步事件收集、成本聚合、投影查询 |
-| **审计日志** | 控制面操作全量记录、可搜索过滤 |
-| **管理面板** | Preact SPA：Overview / Monitoring / Benchmark / Ops / Config / Logs |
-| **i18n 国际化** | 中文 / English / 日本語 / 한국어 / Español / Français / Deutsch |
-| **配置热加载** | YAML authoring config → 编译 snapshot → 无中断发布 |
-| **基准测试** | 多模型能力对比、5 种评分器（exact / judge / json / tool / stream） |
+The AI gateway space already has strong projects:
 
-## 架构
+| Project type | Good at | AI Model Gateway difference |
+| --- | --- | --- |
+| [LiteLLM](https://github.com/BerriAI/litellm) / [Portkey](https://github.com/Portkey-AI/gateway)-style gateways | Broad provider coverage, unified APIs, spend controls, guardrails | Adds a native three-plane runtime, local config publishing, rollback, diagnostics, and an ops-first admin console |
+| [Helicone](https://github.com/Helicone/helicone)-style observability | Request tracing, analytics, evaluations, experiments | Treats observability as one part of the gateway lifecycle instead of the whole product |
+| [OpenRouter](https://openrouter.ai/)-style hosted routers | Fast access to many public models through a hosted broker | Keeps routing, keys, telemetry, and policy inside the user's own environment |
+| Kong / [Envoy AI Gateway](https://github.com/envoyproxy/ai-gateway) stacks | Enterprise gateway ecosystem, plugins, Kubernetes-native traffic policy | Focuses on LLM-specific operations with fewer moving parts and a small self-hosted binary set |
 
-仓库使用**三面内部架构**，统一运维入口 `aigw supervise`：
+See [docs/differentiation.md](docs/differentiation.md) for the full positioning notes and roadmap guardrails.
+
+## Core Capabilities
+
+| Capability | What it does |
+| --- | --- |
+| Multi-protocol gateway | OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses compatibility |
+| Provider routing | Model matching, provider-level routing, fallback policy, and loop detection |
+| Rate limiting | Token-bucket limits by API key, IP, and model |
+| Request cache | In-memory LRU cache with configurable TTL and item count |
+| SSRF protection | DNS pinning, private IP detection, and allowlist support |
+| Config publishing | Authoring YAML -> compiled snapshot -> zero-interruption publish and rollback |
+| Telemetry plane | Async event ingestion, cost aggregation, timeseries projections, and query APIs |
+| Audit log | Searchable control-plane operation history |
+| Admin UI | Overview, Monitoring, Benchmark, Ops, Config, and Logs workspaces |
+| Benchmarking | Multi-model comparison with exact, judge, JSON, tool, and stream scoring modes |
+| Local CLI | Runtime status, preflight, diagnostics, provider probes, config diff, publish history, and rollback |
+
+## Architecture
+
+The runtime uses one operator entry point and three internal planes:
 
 ```text
-                   ┌──────────────────────────────────────┐
-                   │    Supervisor / systemd / k8s         │
-                   └──────────────────┬───────────────────┘
-                                      │
-                               ┌──────▼──────┐
-                               │   aigw      │
-                               │  supervise  │
-                               └──────┬──────┘
-                                      │
-                    ┌─────────────────▼──────┐  ┌──────────▼──────────┐
-                    │   Data Plane           │  │   Control Plane     │
-                    │   gatewayd (:18080)    │  │   controld (:18081) │
-                    └──────────┬─────────────┘  └──────────┬──────────┘
-                               │                           │
-                               │                 ┌─────────▼──────────┐
-                               └────────────────►│  Telemetry Plane   │
-                                                  │  telemetryd (IPC)  │
-                                                  └────────────────────┘
+                  external supervisor / systemd / k8s
+                                |
+                         +--------------+
+                         | aigw         |
+                         | supervise    |
+                         +------+-------+
+                                |
+             +------------------+------------------+
+             |                                     |
+      +------+-------+                     +-------+------+
+      | Data Plane   |                     | Control Plane|
+      | gatewayd     |                     | controld     |
+      | :18080       |                     | :18081       |
+      +------+-------+                     +-------+------+
+             |                                     |
+             +------------------+------------------+
+                                |
+                         +------+-------+
+                         | Telemetry    |
+                         | telemetryd   |
+                         | IPC only     |
+                         +--------------+
 ```
 
-- **`aigw`** — 本地运维入口：supervise、doctor、bundle verify、版本升级/回滚
-- **`gatewayd`** — 数据面：客户端推理流量、OpenAI/Anthropic API、健康检查（监听 `:18080`）
-- **`controld`** — 控制面：管理面板 API、配置编译/发布/回滚、审计、探测、基准测试（监听 `:18081`）
-- **`telemetryd`** — Telemetry 面：异步事件收集、投影聚合、查询（仅 IPC，不暴露 HTTP）
+- `aigw` is the local operations entry point for `supervise`, `doctor`, bundle verification, upgrades, and rollback workflows.
+- `gatewayd` handles client inference traffic, compatible API routes, health checks, and telemetry event emission.
+- `controld` serves the admin APIs and owns authoring config, compile/publish/rollback, audit, probing, and benchmark workflows.
+- `telemetryd` ingests events over IPC and exposes projections through the control plane.
 
-`gateway` / `gateway.exe` 旧 launcher 已移除。生产运维默认只管理 `aigw supervise`。
+The old `gateway` / `gateway.exe` launcher has been removed. Production deployments should supervise `aigw supervise`.
 
-## 管理面板
+## Admin UI
 
-启动后在 `http://localhost:18080/admin` 访问管理面板：
+Open the admin console at `http://localhost:18080/admin` after the runtime starts.
 
-| 页面 | 功能 |
-|------|------|
-| **Overview** | 网关概览、健康状态、关键指标 |
-| **Monitoring** | 流量监控、成本追踪、模型使用统计、价格查看 |
-| **Benchmark** | 多模型能力对比、自动评分、模型上游/能力视图 |
-| **Ops** | Runtime 状态、Provider 探测、审计日志、诊断、Replay |
-| **Config** | YAML/JSON/图形化配置编辑、发布历史/版本对比 |
-| **Logs** | 请求日志搜索、错误查看筛选、CSV 导出 |
+| Workspace | Primary jobs |
+| --- | --- |
+| Overview | Gateway health, time windows, runtime state, provider health |
+| Monitoring | Traffic, latency, cost, model usage, and pricing visibility |
+| Benchmark | Model capability comparison, scoring, and promotion signals |
+| Ops | Runtime status, provider probes, audit log, diagnostics, replay |
+| Config | YAML/JSON/visual config editing, publish history, revision diff |
+| Logs | Request search, error filtering, and CSV export |
 
-## 测试
+### Screenshots
 
-```bash
-# 全部 Go 测试
-go test ./... -count=1
+| Overview | Monitoring |
+| --- | --- |
+| ![Admin overview](docs/assets/admin-overview.png) | ![Admin monitoring](docs/assets/admin-monitoring.png) |
 
-# 特定包测试（含覆盖率）
-go test ./internal/gateway/... -count=1 -cover
+| Ops mobile | Benchmark mobile |
+| --- | --- |
+| ![Admin ops mobile](docs/assets/admin-ops-mobile.png) | ![Admin benchmark mobile](docs/assets/admin-benchmark-mobile.png) |
 
-# 前端测试
-cd web/admin && npm test
+## Quick Start
 
-# 前端构建
-cd web/admin && npm run build
-
-# Playwright UI 审计
-node output/playwright/ui_review_live.cjs
-```
-
-部署验证脚本：`scripts/sync-bundle-to-home-ai-gateway.sh`（构建 → manifest → 部署 → 验证完整流程）。
-
----
-
-## 快速开始
-
-### 构建
+### Build
 
 ```bash
 go build -o ./dist/aigw        ./cmd/aigw
@@ -107,16 +110,15 @@ go build -o ./dist/telemetryd  ./cmd/telemetryd
 go build -o ./dist/gateway-cli ./cmd/gateway-cli
 ```
 
-正式发布包应生成并校验 manifest：
+Generate and verify a release manifest before packaging:
 
 ```bash
 ./dist/aigw bundle build -root . -out aigw-manifest.json
 ./dist/aigw bundle verify -root . -manifest aigw-manifest.json
 ```
 
-### 配置
+### Configure
 
-1. 准备 authoring config：
 ```powershell
 Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 $env:ADMIN_BOOTSTRAP_TOKEN = "<32+ chars>"
@@ -125,18 +127,20 @@ $env:ADMIN_TOKEN = "<admin token>"
 $env:VIEWER_TOKEN = "<viewer token>"
 ```
 
-2. 配置加载器会在校验前展开 `config.yaml` 里的 `$VAR` / `${VAR}`。
+`config.yaml` is the operator authoring config. The daemon bootstrap files are separate:
 
-3. daemon bootstrap JSON 是独立文件：`configs/gatewayd.json`、`configs/controld.json`、`configs/telemetryd.json`
+- `configs/gatewayd.json`
+- `configs/controld.json`
+- `configs/telemetryd.json`
 
-### 启动
+### Run
 
 ```bash
 mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
 ./dist/aigw supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir ./dist
 ```
 
-### 验证
+### Verify
 
 ```bash
 curl http://127.0.0.1:18080/-/health
@@ -144,32 +148,25 @@ curl http://127.0.0.1:18080/v1/models
 curl http://127.0.0.1:18081/admin
 ```
 
-**本机开发注意**：如果 live 服务已占用 `127.0.0.1:18080`，不要同时启动开发三面 runtime 抢占同一端口。
+Local development note: if another live service already owns `127.0.0.1:18080`, stop it or move the development runtime to different ports before starting the three-plane runtime.
 
-### 将本机 Codex / Claude Code / OpenClaw 指向网关
+## Point Local AI Tools At The Gateway
 
-可用 `aigw clients` 生成环境变量片段或一键写入本机工具配置：
+`aigw clients` can print environment snippets or update local tool config for Codex, Claude Code, and OpenClaw:
 
 ```bash
-# 仅打印（不写盘）
 ./dist/aigw clients print -config-dir configs
-
-# 写入 ~/.codex/config.toml、~/.claude/settings.json、~/.openclaw/openclaw.json
 ./dist/aigw clients apply -config-dir configs -api-key "<API key>"
-
-# 预览 apply 行为
 ./dist/aigw clients apply -dry-run
 ```
 
-## CLI 工具
+## CLI Examples
 
-`gateway-cli` 是独立的命令行管理工具。
-
-### 命令示例
+`gateway-cli` is the remote management CLI:
 
 ```bash
-# 配置管理
-./dist/gateway-cli config show                    # 显示当前配置
+# Config
+./dist/gateway-cli config show
 ./dist/gateway-cli config preview configs/config.yaml
 ./dist/gateway-cli config diff --file configs/config.yaml
 
@@ -177,89 +174,89 @@ curl http://127.0.0.1:18081/admin
 ./dist/gateway-cli runtime status
 ./dist/gateway-cli runtime preflight
 
-# 审计与诊断
-./dist/gateway-cli audit 50                       # 最近 50 条审计记录
+# Audit and diagnostics
+./dist/gateway-cli audit 50
 ./dist/gateway-cli diagnostics
 ./dist/gateway-cli secrets check
 
-# Provider 探测
+# Provider probes
 ./dist/gateway-cli probe model gpt-4 openai-demo
 ./dist/gateway-cli provider list
 ./dist/gateway-cli provider test openai
 
-# 遥测查询
+# Telemetry
 ./dist/gateway-cli telemetry events
 
-# 发布管理
+# Publish management
 ./dist/gateway-cli publish history
 ./dist/gateway-cli publish rollback rev-001
-
-# 其他
-./dist/gateway-cli --help                         # 显示帮助
-./dist/gateway-cli version                        # 显示版本
 ```
 
-### 选项
+Useful options:
 
-- `-server url` — 控制面 URL（默认：http://127.0.0.1:18081）
-- `-token token` — Admin token（或 `ADMIN_TOKEN` 环境变量）
-- `-format text|json|csv` — 输出格式
+- `-server url`: control-plane URL, default `http://127.0.0.1:18081`
+- `-token token`: admin token, or use `ADMIN_TOKEN`
+- `-format text|json|csv`: output format
 
-## 端口与接口
+## Tests
 
-数据面默认 `:18080`，控制面默认 `:18081`（数据面 + 1）。
+```bash
+# Go tests
+go test ./... -count=1
 
-完整路由列表见 [`docs/cli.md`](docs/cli.md)。
+# Focused Go tests with coverage
+go test ./internal/gateway/... -count=1 -cover
 
-## 管理界面截图
+# Admin unit/component tests
+npm --prefix web/admin test
 
-### Overview
+# Admin production build
+npm --prefix web/admin run build
 
-![Admin overview](docs/screenshots/admin-overview.png)
+# Admin Playwright audit
+npm --prefix web/admin run test:e2e
+```
 
-### Config
+## Repository Layout
 
-![Admin config](docs/assets/admin-settings.png)
-
-## 仓库布局
-
-| 路径 | 说明 |
-|------|------|
-| `cmd/aigw/` | 运维入口 |
-| `cmd/gatewayd/` | 数据面 daemon |
-| `cmd/controld/` | 控制面 daemon |
+| Path | Purpose |
+| --- | --- |
+| `cmd/aigw/` | Operations entry point |
+| `cmd/gatewayd/` | Data-plane daemon |
+| `cmd/controld/` | Control-plane daemon |
 | `cmd/telemetryd/` | Telemetry daemon |
-| `cmd/gateway-cli/` | 远程管理 CLI |
-| `internal/control/` | 控制面 API、compiler、publisher |
-| `internal/gateway/` | snapshot、API handler、telemetry client |
-| `internal/telemetry/` | event log、projection、query |
-| `internal/contracts/` | 跨面 RPC/transport 契约 |
-| `internal/infra/` | 共享基础设施（auth、configloader、pricing） |
-| `internal/proxy/` | SSRF 安全代理 |
-| `web/admin/` | 管理面板 SPA（Preact + Vite） |
-| `configs/` | 配置文件 |
-| `docs/` | 文档 |
-| `scripts/` | 部署/验证辅助脚本 |
+| `cmd/gateway-cli/` | Remote management CLI |
+| `internal/control/` | Control-plane API, compiler, publisher |
+| `internal/gateway/` | Snapshot runtime, API handlers, telemetry client |
+| `internal/telemetry/` | Event log, projections, query layer |
+| `internal/contracts/` | Cross-plane RPC and transport contracts |
+| `internal/infra/` | Shared auth, config loader, pricing, and infrastructure |
+| `internal/proxy/` | SSRF-safe proxy helpers |
+| `web/admin/` | Admin SPA built with Preact and Vite |
+| `configs/` | Example and bootstrap configuration |
+| `docs/` | Architecture, installation, deployment, and operations docs |
+| `scripts/` | Deployment and verification helpers |
 
-## 运维约束
+## Operations Constraints
 
-- 不在正常升级中单独替换 `gatewayd`、`controld` 或 `telemetryd`。发布包必须通过同一个 manifest 校验。
-- 单独运行 daemon 仅用于高级调试。生产路径使用 `aigw supervise`。
-- Linux 使用 `deploy/aigw.service` 或 `aigw service print` 生成的 unit；Windows 使用 NSSM 包装 `aigw.exe supervise`。
+- Do not replace `gatewayd`, `controld`, or `telemetryd` independently during a normal upgrade. Ship one manifest-verified bundle.
+- Run individual daemons only for advanced debugging. Production paths should use `aigw supervise`.
+- Linux deployments can use `deploy/aigw.service` or `aigw service print`. Windows deployments should wrap `aigw.exe supervise` with NSSM or an equivalent service manager.
 
-## 文档
+## Documentation
 
-- [架构设计](docs/architecture.md)
-- [安装指南](docs/installation.md)
-- [部署指南](docs/deployment.md)
-- [CLI 指南](docs/cli.md)
-- [故障排除](docs/troubleshooting.md)
-- [API Messages 端点](docs/api-messages-endpoint.md)
-- [国内模型集成](docs/chinese-models-integration.md)
-- [变更日志](CHANGELOG.md)
-- [贡献指南](CONTRIBUTING.md)
-- [安全政策](SECURITY.md)
+- [Differentiation](docs/differentiation.md)
+- [Architecture](docs/architecture.md)
+- [Installation](docs/installation.md)
+- [Deployment](docs/deployment.md)
+- [CLI Guide](docs/cli.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [API Messages Endpoint](docs/api-messages-endpoint.md)
+- [Chinese Model Integration](docs/chinese-models-integration.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 
 ## License
 
-MIT — 详见 [LICENSE](LICENSE)。
+MIT. See [LICENSE](LICENSE).
