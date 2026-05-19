@@ -18,6 +18,7 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ### Fixed
 
+- **恢复 Admin 前端测试接线并打通标准 live sync**: 将 `web/admin` 新增组件测试统一切回仓库既有的 `vitest + @testing-library/preact` 栈，补上 `.test.tsx` 的 Vitest include，新增 `toast.close` i18n 文案，修复 `npm run build` 只在构建期报错而 `npm test` 实际未执行这些测试的问题；验证通过 `npm run build`、`npm test`（17 files / 116 tests）以及 `scripts/sync-bundle-to-home-ai-gateway.sh`，live `ai-gateway.service` 与 `/-/health` 恢复标准部署链路
 - 修复 Admin UI 静态资源 404 错误（/icon.svg、/favicon.svg、/manifest.json）
 - 修复 SSRF 检查器变量重复声明问题
 - 修复缓存测试中未定义的 entrySize 变量
