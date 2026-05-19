@@ -1,0 +1,73 @@
+name: Config or routing help
+description: Ask for help with config shape, routing behavior, provider setup, or local startup.
+title: "[Config] "
+labels:
+  - question
+  - config
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Redact secrets before pasting config, logs, or request headers. Include enough detail for maintainers to reproduce the routing decision.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Help area
+      options:
+        - provider credentials
+        - model routing
+        - fallback / retry behavior
+        - admin authentication
+        - telemetry / pricing
+        - local startup
+        - Docker or packaging
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to run?
+      description: Describe the expected request flow or runtime setup.
+      placeholder: Route OpenAI-compatible requests for model X to upstream Y with fallback Z.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: Paste the smallest redacted config fragment that shows upstreams, models, routing, and admin settings.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: request
+    attributes:
+      label: Request or command
+      description: Include the command, endpoint path, model name, and status code when applicable.
+      render: shell
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed result
+      description: Include redacted logs, admin UI status, or response body.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v2.0.0 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Docker
+        - Other
+    validations:
+      required: true

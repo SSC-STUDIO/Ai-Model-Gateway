@@ -29,6 +29,8 @@ Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 
 ## Development workflow
 
+For CI-equivalent commands and toolchain notes, see [docs/ci-local.md](docs/ci-local.md).
+
 Before opening a pull request:
 
 1. Format Go files:
@@ -46,6 +48,7 @@ go test ./...
 3. Build the admin frontend:
 
 ```powershell
+npm --prefix .\web\admin test
 npm exec --prefix .\web\admin -- tsc -p .\web\admin\tsconfig.json --noEmit
 npm --prefix .\web\admin run build
 ```

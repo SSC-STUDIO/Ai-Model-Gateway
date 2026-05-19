@@ -1,0 +1,34 @@
+# Repository profile suggestions for maintainers.
+#
+# GitHub topics are managed in the repository settings or through the GitHub API.
+# Keep this file in sync with the public README, release notes, and project scope.
+name: ai-model-gateway
+description: OpenAI-compatible AI model gateway with routing, telemetry, pricing, and an admin console.
+homepage: ""
+topics:
+  - ai-gateway
+  - llm
+  - openai-compatible
+  - model-routing
+  - reverse-proxy
+  - telemetry
+  - pricing
+  - golang
+  - preact
+  - observability
+visibility: public
+primary_language: Go
+areas:
+  routing:
+    - internal/router
+    - internal/proxy
+    - configs
+  admin-ui:
+    - web/admin
+  telemetry-pricing:
+    - internal/telemetry
+    - internal/pricing
+  packaging:
+    - cmd/aigw
+    - internal/release
+    - .github/workflows
