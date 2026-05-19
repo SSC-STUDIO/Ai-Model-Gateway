@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collapseLabeledValues, describeDonutArc } from './charting'
+import { collapseLabeledValues, describeDonutArc, truncateLabel } from './charting'
 
 describe('charting', () => {
   describe('describeDonutArc', () => {
@@ -25,6 +25,21 @@ describe('charting', () => {
       expect(result).toHaveLength(9)
       expect(result.slice(0, 8).map((item) => item.label)).toEqual(values.slice(0, 8).map((item) => item.label))
       expect(result[8]).toEqual({ label: 'Other', value: 3, color: '#94a3b8' })
+    })
+  })
+
+  describe('truncateLabel', () => {
+    it('keeps short labels unchanged', () => {
+      expect(truncateLabel('gateway', 10)).toBe('gateway')
+    })
+
+    it('uses a stable ascii ellipsis for long labels', () => {
+      expect(truncateLabel('long-gateway-model-name', 12)).toBe('long-gate...')
+    })
+
+    it('honors very small label budgets', () => {
+      expect(truncateLabel('abcdef', 2)).toBe('..')
+      expect(truncateLabel('abcdef', 0)).toBe('')
     })
   })
 })

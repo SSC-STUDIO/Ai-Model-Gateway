@@ -93,7 +93,9 @@ export function formatTooltipValue(value: number, unit: string): string {
 }
 
 export function truncateLabel(label: string, maxLength: number): string {
-  return label.length > maxLength ? `${label.slice(0, maxLength - 1)}…` : label
+  if (label.length <= maxLength) return label
+  if (maxLength <= 3) return '.'.repeat(Math.max(0, maxLength))
+  return `${label.slice(0, maxLength - 3)}...`
 }
 
 export function buildChartAssetId(prefix: string, ...parts: string[]): string {
