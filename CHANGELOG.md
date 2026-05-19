@@ -6,35 +6,53 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-05-20
+
 ### Added
 
+- **Professional admin UI release**: Reworked the admin console toward an operations-tool style with quieter loading states, clearer navigation, tighter workspace grouping, and less decorative motion.
+- **Monitoring / Ops / Benchmark workspace consolidation**: Folded legacy pricing, telemetry, audit, probe, and diagnostics routes into clearer Monitoring and Ops workspaces while keeping old links compatible.
+- **Admin UI test coverage**: Added focused Vitest coverage for icons, toast behavior, URL canonicalization, config editor handling, formatting helpers, control API normalization, and workspace navigation behavior.
+- **Release automation upgrades**: Expanded tag builds to Linux amd64, Linux arm64, Windows amd64, and macOS arm64 bundles with manifest verification, SHA-256 checksums, and GHCR image publishing.
+- **Project positioning docs**: Added a public differentiation guide comparing LiteLLM, Portkey, Helicone, OpenRouter, Envoy AI Gateway, Kong, and related Go-native gateways.
+- **Updated README screenshots**: Replaced stale admin screenshots with current Overview, Monitoring, Ops mobile, and Benchmark mobile images.
 - **`aigw clients print|apply`**：从 `configs/gatewayd.json`（或 `-gateway-url`）解析数据面地址，打印或写入 Codex（`openai_base_url`）、Claude Code（`~/.claude/settings.json` 中 `ANTHROPIC_*`）、OpenClaw（`~/.openclaw/openclaw.json` 中自定义 OpenAI 兼容 provider），便于本机工具一键指向本网关。
 
 ### Security
 
-- **移除 URL token 登录**: `/admin?token=...` 登录方式已移除，改用 `POST /api/admin/login` JSON 请求登录，防止 token 泄露到浏览器历史和代理日志
-- **同源校验**: Cookie-auth 写请求现在要求 `Origin` 或 `Referer` 头，Bearer token 认证不受影响
-- **移除硬编码凭据**: `configs/config.yaml` 不再包含 demo 凭据，改用环境变量占位符
+- Hardened WebSocket DNS pinning and origin validation paths.
+
+### Changed
+
+- Repositioned the project as a self-hosted LLM operations gateway rather than a generic model marketplace or decorative dashboard.
+- Rewrote the README into a cleaner GitHub landing page with architecture, quick start, CLI examples, operations constraints, and current screenshots.
+- Removed generated runtime/test artifacts from tracking and cleaned up invalid Windows-path repository entries.
+- Improved repository contributor metadata.
 
 ### Fixed
 
-- **恢复 Admin 前端测试接线并打通标准 live sync**: 将 `web/admin` 新增组件测试统一切回仓库既有的 `vitest + @testing-library/preact` 栈，补上 `.test.tsx` 的 Vitest include，新增 `toast.close` i18n 文案，修复 `npm run build` 只在构建期报错而 `npm test` 实际未执行这些测试的问题；验证通过 `npm run build`、`npm test`（17 files / 116 tests）以及 `scripts/sync-bundle-to-home-ai-gateway.sh`，live `ai-gateway.service` 与 `/-/health` 恢复标准部署链路
-- 修复 Admin UI 静态资源 404 错误（/icon.svg、/favicon.svg、/manifest.json）
-- 修复 SSRF 检查器变量重复声明问题
-- 修复缓存测试中未定义的 entrySize 变量
-- 添加 daemon JSON 配置文件用于服务启动
-- **修复 Logger 并发安全问题**: `SetLevel` 与热路径 `Debug`/`Info`/`Warn`/`Error` 之间添加 `sync.RWMutex` 保护，消除 data race
-- **WebSocket DNS Pinning 安全增强**: `NewProxy()` 创建 `pinnedIPDialer` 防止 DNS 重绑定攻击，移除死代码 `ssrfSafeDialer` 接口
-- **WebSocket Origin 校验**: 添加 `SetAllowedOrigin` 配置接口和 `NewProxyWithOrigin` 便捷构造函数，为同源校验提供扩展点
-- **修复基准测试状态静默丢失**: `_ = s.store.UpdateRunStatus(...)` 改为 `logger.Error` 日志记录，确保异步 goroutine 中的失败可见
-- **修复无限重试循环逻辑**: `handler.go` 中 `maxAttempts == 0` 时内层循环可无限制重试同一 provider（非流式请求），修复 5 个无限重试测试
-- **修复 HandleResponses API 转换**: `handleChatOrMessages` 参数从 `isAnthropic bool` 改为 `clientFmt clientFormat`，确保 `/v1/responses` 请求正确执行 Responses→Chat 格式转换
-- **消除 handler.go 约 30 个重复声明**: 移除与 `forward.go`/`streaming.go`/`routing.go`/`compat_body.go` 冲突的重复函数/结构体
+- Fixed admin frontend build/test wiring so `.test.tsx` component tests are included in Vitest and the standard live sync path works again.
+- Fixed release manifest tests on Windows.
+- Fixed grouped provider health by upstream URL.
+- Preserved Responses API cached token usage during compatibility conversion.
+- Fixed benchmark status logging, retry loop behavior, and Responses API request conversion.
+- Removed duplicate `handler.go` declarations that conflicted with the newer forwarding, streaming, routing, and compatibility modules.
+- Added safety coverage around logger concurrency, response forwarding, streaming, retry loop behavior, and Anthropic header forwarding.
 
-### Added
+## [1.3.0] — 2026-05-01
 
-- **forward_test.go — 9 个直接单元测试**: SSRF 阻断、正常非流式、SSE 检测、响应过大(>10MB)、超时、500 上游、User-Agent 转发、anthropic-version 头、AnthropicBaseURL 覆盖
-- **streaming_test.go — 14 个直接单元测试**: Content-Type SSE 检测、桥接模型解析、通配符匹配、客户端断开、nil body、usage 提取、响应头写入、心跳内容验证、非流式 keep-alive、cancelOnClose
+### Security
+
+- Removed `/admin?token=...` URL-token login and require JSON login via `POST /api/admin/login` to avoid token leakage through browser history and proxy logs.
+- Added same-origin checks for cookie-auth write requests while keeping Bearer-token automation flows supported.
+- Removed demo credentials from `configs/config.yaml` and replaced them with environment-variable placeholders.
+
+### Fixed
+
+- Fixed admin UI static asset routing for `/icon.svg`, `/favicon.svg`, and `/manifest.json`.
+- Fixed SSRF checker duplicate declarations.
+- Fixed cache tests that referenced an undefined `entrySize` variable.
+- Added daemon JSON config files for service startup.
 
 ## [1.2.0] — 2026-04-19
 
