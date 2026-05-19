@@ -13,9 +13,9 @@
   gap: 2px;
   padding: 4px;
   border-radius: var(--radius-control);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--button-segment-bg) 88%, var(--surface-raised)) 0%, var(--button-segment-bg) 100%);
+  background: var(--button-segment-bg);
   border: 1px solid var(--border-color-strong);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(17, 24, 39, 0.04);
+  box-shadow: none;
 }
 
 .segment-btn {
@@ -29,7 +29,7 @@
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   min-height: 38px;
   letter-spacing: 0.01em;
   box-shadow: none;
@@ -37,26 +37,25 @@
 }
 
 .segment-btn:hover:not(.active) {
-  background: color-mix(in srgb, var(--button-soft-bg-hover) 82%, transparent);
+  background: var(--button-soft-bg-hover);
   border-color: var(--button-soft-border);
   color: var(--text-primary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
+  box-shadow: none;
 }
 
 .segment-btn.active {
   z-index: 2;
-  background: linear-gradient(180deg, var(--button-primary-start) 0%, var(--button-primary-end) 100%);
+  background: var(--accent-color);
   color: var(--accent-text);
   border-color: var(--button-primary-border);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.12), 0 12px 22px -16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: none;
 }
 
 .segment-btn.active:hover {
-  background: linear-gradient(180deg, var(--button-primary-start) 0%, var(--button-primary-end) 100%);
+  background: var(--accent-color);
   color: var(--accent-text);
   border-color: var(--button-primary-border);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.12), 0 12px 22px -16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: none;
 }
 
 /* Map existing classes to segment pattern: shared rules duplicated via selector groups below */
@@ -70,9 +69,9 @@
   isolation: isolate;
   align-items: center;
   border-radius: var(--radius-control);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--button-segment-bg) 88%, var(--surface-raised)) 0%, var(--button-segment-bg) 100%);
+  background: var(--button-segment-bg);
   border: 1px solid var(--border-color-strong);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(17, 24, 39, 0.04);
+  box-shadow: none;
 }
 
 .view-mode-btn,
@@ -90,7 +89,7 @@
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   min-height: 38px;
   letter-spacing: 0.01em;
   box-shadow: none;
@@ -105,8 +104,7 @@
   background: color-mix(in srgb, var(--button-soft-bg-hover) 82%, transparent);
   border-color: var(--button-soft-border);
   color: var(--text-primary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
+  box-shadow: none;
 }
 
 .view-mode-btn.active,
@@ -115,10 +113,10 @@
 .logs-type-btn.active,
 .config-sub-tab.active {
   z-index: 2;
-  background: linear-gradient(180deg, var(--button-primary-start) 0%, var(--button-primary-end) 100%);
+  background: var(--accent-color);
   color: var(--accent-text);
   border-color: var(--button-primary-border);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.12), 0 12px 22px -16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: none;
 }
 
 .view-mode-btn.active:hover,
@@ -126,10 +124,10 @@
 .auto-refresh-btn.active:hover,
 .logs-type-btn.active:hover,
 .config-sub-tab.active:hover {
-  background: linear-gradient(180deg, var(--button-primary-start) 0%, var(--button-primary-end) 100%);
+  background: var(--accent-color);
   color: var(--accent-text);
   border-color: var(--button-primary-border);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.12), 0 12px 22px -16px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: none;
 }
 
 /* === Language Select & Icon Buttons === */
@@ -144,15 +142,15 @@
   padding: 8px 28px 8px 12px;
   border-radius: var(--radius-control);
   border: 1px solid var(--button-soft-border);
-  background: linear-gradient(180deg, var(--button-soft-bg) 0%, var(--button-soft-bg-active) 100%);
+  background-color: var(--button-soft-bg);
   color: var(--text-primary);
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   min-width: 70px;
   height: 36px;
-  box-shadow: 0 8px 16px -16px rgba(15, 23, 42, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: none;
   background-repeat: no-repeat;
   background-position: right 8px center;
   background-size: 10px;
@@ -162,8 +160,7 @@
 .lang-select:hover {
   background-color: var(--button-soft-bg-hover);
   border-color: var(--accent-color);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 18px -16px rgba(15, 23, 42, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  box-shadow: none;
 }
 
 [data-theme="dark"] .lang-select {
@@ -174,12 +171,12 @@
   padding: 0;
   border: 1px solid var(--button-soft-border);
   border-radius: var(--radius-control);
-  background: linear-gradient(180deg, var(--button-soft-bg) 0%, var(--button-soft-bg-active) 100%);
+  background: var(--button-soft-bg);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 1rem;
   line-height: 1;
-  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -191,7 +188,7 @@
   max-height: 36px;
   flex-shrink: 0;
   box-sizing: border-box;
-  box-shadow: 0 8px 16px -16px rgba(15, 23, 42, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  box-shadow: none;
   position: relative;
   overflow: hidden;
 }
@@ -199,15 +196,14 @@
 .icon-btn:hover {
   background-color: var(--button-soft-bg-hover);
   border-color: var(--accent-color);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 18px -16px rgba(15, 23, 42, 0.3), 0 0 12px -4px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  box-shadow: none;
 }
 
 .icon-btn.active {
-  background: linear-gradient(180deg, var(--button-primary-start) 0%, var(--button-primary-end) 100%);
+  background: var(--accent-color);
   color: white;
   border-color: var(--button-primary-border);
-  box-shadow: var(--button-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: none;
 }
 
 /* === History Toolbar === */
@@ -244,7 +240,7 @@
 .history-toolbar select:focus {
   outline: none;
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px var(--accent-glow), 0 0 20px -4px var(--accent-glow);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 /* === Badges === */
@@ -253,13 +249,13 @@
   display: inline-block;
   padding: 2px 8px;
   border-radius: var(--radius-control);
-  background: linear-gradient(180deg, rgba(22, 163, 74, 0.12) 0%, rgba(22, 163, 74, 0.06) 100%);
+  background: color-mix(in srgb, var(--success-color) 10%, transparent);
   color: var(--success-color);
   font-size: 0.7rem;
   font-weight: 600;
   margin-left: 6px;
   margin-right: 6px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: none;
 }
 
 .status-badge {

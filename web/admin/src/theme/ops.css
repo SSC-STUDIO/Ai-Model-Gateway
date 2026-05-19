@@ -122,7 +122,7 @@
   padding: 6px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--surface-raised) 84%, transparent);
+  background: var(--button-segment-bg);
   min-width: 0;
   max-width: 100%;
 }
@@ -134,7 +134,7 @@
   gap: 10px;
   min-height: 58px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 7px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--button-soft-text);
@@ -156,7 +156,7 @@
 
 .ops-workspace-switch-btn.active {
   border-color: color-mix(in srgb, var(--accent-color) 38%, var(--button-soft-border));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-color) 12%, var(--button-soft-bg-hover)) 0%, var(--button-soft-bg-active) 100%);
+  background: color-mix(in srgb, var(--accent-color) 10%, var(--button-soft-bg-hover));
   color: var(--text-primary);
 }
 
@@ -705,12 +705,12 @@
   border-radius: var(--radius-card);
   background: var(--surface-card);
   box-shadow: var(--card-shadow);
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: border-color 0.16s ease, background 0.16s ease;
 }
 
 .ops-metric:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--card-shadow-hover);
+  background: color-mix(in srgb, var(--surface-card) 92%, var(--bg-secondary));
+  box-shadow: var(--card-shadow);
 }
 
 .ops-metric-icon {
@@ -786,14 +786,14 @@
   border-radius: var(--radius-card);
   background: var(--surface-card);
   box-shadow: var(--card-shadow);
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: border-color 0.16s ease, background 0.16s ease;
   min-width: 0;
   max-width: 100%;
 }
 
 .ops-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--card-shadow-hover);
+  background: color-mix(in srgb, var(--surface-card) 92%, var(--bg-secondary));
+  box-shadow: var(--card-shadow);
 }
 
 .ops-card-header {
@@ -1056,12 +1056,12 @@
   border-radius: var(--radius-card);
   background: var(--surface-raised);
   box-shadow: var(--card-shadow);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.16s ease, background 0.16s ease;
 }
 
 .ops-runtime-node:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--card-shadow-hover);
+  background: color-mix(in srgb, var(--surface-raised) 92%, var(--bg-secondary));
+  box-shadow: var(--card-shadow);
 }
 
 .ops-runtime-node.success {

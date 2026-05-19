@@ -3,15 +3,15 @@
 /* === Charts === */
 
 .chart-container {
-  background: linear-gradient(180deg, var(--surface-card) 0%, var(--bg-glass) 100%);
-  backdrop-filter: blur(16px) saturate(1.15);
-  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+  background: var(--surface-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
   padding: 20px;
   min-width: 0;
-  box-shadow: var(--card-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  transition: box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: var(--card-shadow);
+  transition: border-color 0.16s ease, background 0.16s ease;
   position: relative;
   overflow: hidden;
   max-width: 100%;
@@ -19,19 +19,12 @@
 
 .chart-container.line-chart,
 .chart-container.history-chart {
-  background: linear-gradient(180deg, var(--surface-card) 0%, var(--bg-glass) 100%);
+  background: var(--surface-card);
 }
 
 .chart-container::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  opacity: 0.5;
-  pointer-events: none;
+  display: none;
+  content: none;
 }
 
 [data-theme="dark"] .chart-container::after {
@@ -40,12 +33,12 @@
 
 [data-theme="dark"] .chart-container.line-chart,
 [data-theme="dark"] .chart-container.history-chart {
-  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
+  background: var(--surface-card);
 }
 
 .chart-container:hover {
-  box-shadow: var(--card-shadow-hover);
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--surface-card) 92%, var(--bg-secondary));
+  box-shadow: var(--card-shadow);
 }
 
 .chart-header {
@@ -74,7 +67,7 @@
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-card) 82%, var(--bg-primary));
   border: 1px solid var(--border-color);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: none;
 }
 
 .chart-summary-label {
@@ -255,9 +248,9 @@
 
 .chart-tooltip {
   position: absolute;
-  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
-  backdrop-filter: blur(12px) saturate(1.2);
-  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  background: var(--surface-raised);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--border-color-strong);
   border-radius: var(--radius-card);
   padding: 12px 15px;
@@ -265,7 +258,7 @@
   transform: translate(-50%, -100%);
   margin-top: -10px;
   z-index: 10;
-  box-shadow: var(--card-shadow-hover), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  box-shadow: var(--card-shadow);
   min-width: 88px;
 }
 
@@ -376,7 +369,7 @@
   padding: 4px 0;
   border-radius: 12px;
   padding-inline: 8px;
-  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.16s ease;
   outline: none;
   cursor: pointer;
   min-width: 0;
@@ -392,9 +385,9 @@
 .donut-legend-item:hover,
 .donut-legend-item:focus-visible,
 .donut-legend-item.active {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.08) 100%);
-  transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 10px -8px rgba(15, 23, 42, 0.28);
+  background: color-mix(in srgb, var(--accent-color) 7%, transparent);
+  transform: none;
+  box-shadow: none;
 }
 
 .donut-legend-swatch {
@@ -475,11 +468,9 @@
 /* === Chart Container Shimmer on Load === */
 .chart-skeleton {
   min-height: 250px;
-  border-radius: 22px;
-  background:
-    linear-gradient(90deg, var(--bg-tertiary) 0%, var(--bg-secondary) 50%, var(--bg-tertiary) 100%);
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.6s infinite linear;
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--bg-tertiary) 72%, var(--surface-card));
+  animation: skeleton-breathe 2.2s ease-in-out infinite;
 }
 
 /* === Chart Empty Icon === */
@@ -488,31 +479,31 @@
 }
 /* === Donut Chart Center Glow === */
 .donut-center-value {
-  transition: filter 0.3s ease;
+  transition: color 0.16s ease;
 }
 /* === Legend Item Hover === */
 .legend-item {
-  transition: transform 0.15s ease;
+  transition: color 0.16s ease;
 }
 .legend-item:hover {
-  transform: translateX(2px);
+  transform: none;
 }
 
 /* === Bar Chart Bar Hover & Polish === */
 .bar-rect {
   cursor: pointer;
-  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.12));
-  transition: filter 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  filter: none;
+  transition: opacity 0.16s ease;
 }
 
 .bar-rect:hover {
-  filter: brightness(1.08) drop-shadow(0 3px 8px rgba(15, 23, 42, 0.16));
+  filter: none;
+  opacity: 0.86;
 }
 
 .bar-rect:active {
-  filter: brightness(1.05);
-  transform: scaleY(0.97);
-  transform-origin: bottom;
+  filter: none;
+  transform: none;
 }
 
 /* Gradient highlight overlay on bars */
@@ -535,7 +526,7 @@
 
 /* === Tooltip Enhanced === */
 .chart-tooltip {
-  animation: tooltip-pop 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: none;
 }
 @keyframes tooltip-pop {
   from { opacity: 0; transform: translate(-50%, -90%); }
@@ -544,11 +535,11 @@
 
 /* === TimeSeries Chart === */
 .timeseries-chart {
-  background: linear-gradient(180deg, var(--surface-card) 0%, var(--bg-glass) 100%);
+  background: var(--surface-card);
 }
 
 [data-theme="dark"] .timeseries-chart {
-  background: linear-gradient(180deg, var(--bg-glass-hover) 0%, var(--bg-glass) 100%);
+  background: var(--surface-card);
 }
 
 /* Compact mode: same height as LineChart */

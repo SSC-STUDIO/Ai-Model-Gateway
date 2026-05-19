@@ -194,11 +194,19 @@ function AppLoading() {
   return (
     <main class="app-shell login-shell">
       <div class="app-loading" role="status" aria-live="polite" aria-label="Loading AI Model Gateway">
-        <div class="app-loading-mark" aria-hidden="true">
-          <BrandMark />
+        <div class="app-loading-header">
+          <div class="app-loading-mark" aria-hidden="true">
+            <BrandMark />
+          </div>
+          <div class="app-loading-copy">
+            <strong>AI Model Gateway</strong>
+            <span>Loading admin workspace</span>
+          </div>
         </div>
-        <div class="app-loading-rail" aria-hidden="true">
-          <span />
+        <div class="app-loading-skeleton" aria-hidden="true">
+          <span class="skeleton skeleton-text long" />
+          <span class="skeleton skeleton-text medium" />
+          <span class="skeleton skeleton-text short" />
         </div>
       </div>
     </main>

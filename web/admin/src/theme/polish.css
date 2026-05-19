@@ -1,12 +1,11 @@
 /* ====== polish.css ====== */
 
 /* ============================================
-   UI Polish & Micro-interactions
-   Animation, transitions, and motion only.
-   No structural or variable overrides.
+   Professional UI finish.
+   This file intentionally removes decorative motion and glass effects
+   while preserving clear focus, hover, and loading feedback.
    ============================================ */
 
-/* --- Reduced Motion Guard --- */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -18,288 +17,277 @@
   }
 }
 
-/* --- App Shell Entrance --- */
-.app-shell {
-  animation: shell-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes shell-enter {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* --- Tab Content Transitions --- */
-.tab-content-wrapper {
-  animation: tab-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes tab-enter {
-  from { opacity: 0; transform: translateY(12px) scale(0.995); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* --- Panel Enter Stagger --- */
-.panel-stagger > * {
-  animation: panel-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.panel-stagger > *:nth-child(1) { animation-delay: 0ms; }
-.panel-stagger > *:nth-child(2) { animation-delay: 50ms; }
-.panel-stagger > *:nth-child(3) { animation-delay: 100ms; }
-.panel-stagger > *:nth-child(4) { animation-delay: 150ms; }
-.panel-stagger > *:nth-child(5) { animation-delay: 200ms; }
-.panel-stagger > *:nth-child(6) { animation-delay: 250ms; }
-.panel-stagger > *:nth-child(7) { animation-delay: 300ms; }
-.panel-stagger > *:nth-child(8) { animation-delay: 350ms; }
-@keyframes panel-fade-up {
-  from { opacity: 0; transform: translateY(18px) scale(0.992); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* --- Toast Animations --- */
-@keyframes toast-slide-in-right {
-  from { opacity: 0; transform: translateX(30px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-@keyframes toast-slide-out-right {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(30px); }
-}
-
-/* --- Metric Value Flash --- */
-.metric-value.flash {
-  animation: metric-flash 0.55s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes metric-flash {
-  0% { color: var(--metric-value-color); text-shadow: none; transform: scale(1); }
-  35% { color: var(--accent-color); text-shadow: 0 0 24px var(--accent-glow); transform: scale(1.02); }
-  100% { color: var(--metric-value-color); text-shadow: none; transform: scale(1); }
-}
-
-/* --- Overview Window Value Pop --- */
-.overview-window-value {
-  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.3s ease;
-}
-.overview-window-card:hover .overview-window-value {
-  transform: scale(1.03);
-  text-shadow: 0 0 20px var(--accent-glow);
-}
-
-/* --- Overview Subtle Banner --- */
+.app-shell,
+.tab-content-wrapper,
+.panel-stagger > *,
 .overview-subtle-banner {
-  animation: banner-slide 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes banner-slide {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  animation: none;
 }
 
-/* --- Topbar Brand Glow --- */
-.topbar-brand svg {
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), filter 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.topbar-brand:hover svg {
-  transform: scale(1.06) rotate(-3deg);
-  filter: drop-shadow(0 0 10px var(--accent-glow));
-}
-
-/* --- Topbar Title Transition --- */
-.topbar h1 {
-  transition: opacity 0.2s ease;
-}
-
-/* --- Metric Card Number Glow --- */
-.metric-value {
-  transition: color 0.35s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.metric-card:hover .metric-value {
-  text-shadow: 0 0 20px var(--accent-glow);
-  transform: translateY(-1px);
-}
-
-/* --- Button Press Effect --- */
-button {
-  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-}
-button:active:not(:disabled) {
-  transform: scale(0.97);
-  transition-duration: 0.08s;
-}
-
-/* --- Tab Hover Underline Glow --- */
-.tab {
-  overflow: hidden;
-}
-.tab::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  width: 0;
-  height: 2.5px;
-  background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
-  border-radius: 2px;
-  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1), left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  opacity: 0.7;
-  filter: blur(0.5px);
-}
-.tab:hover::after {
-  left: 8%;
-  width: 84%;
-}
-.tab.active::after {
-  width: 0;
-}
-
-/* --- Chart Tooltip Pop --- */
-.chart-tooltip {
-  animation: tooltip-pop 0.15s cubic-bezier(0.22, 1, 0.36, 1);
-}
-@keyframes tooltip-pop {
-  from { opacity: 0; transform: translate(-50%, -90%); }
-  to { opacity: 1; transform: translate(-50%, -100%); }
-}
-
-/* --- Cost Value Glow --- */
-.cost-value {
-  transition: text-shadow 0.3s ease;
-}
-.cost-value:hover {
-  text-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
-}
-
-/* --- Data Row Hover Slide --- */
-.data-row {
-  transition: background 0.2s cubic-bezier(0.22, 1, 0.36, 1), transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.data-row:hover {
-  transform: translateX(3px);
-}
-
-/* --- Legend Item Hover --- */
-.legend-item {
-  transition: transform 0.15s ease;
-}
-.legend-item:hover {
-  transform: translateX(2px);
-}
-
-/* --- Donut Center Glow --- */
-.donut-center-value {
-  transition: filter 0.3s ease;
-}
-.donut-svg:hover .donut-center-value {
-  filter: drop-shadow(0 0 6px var(--accent-glow));
-}
-
-/* --- Bar Rect Hover --- */
+.topbar-brand svg,
+.topbar-brand:hover svg,
+.overview-window-value,
+.metric-value,
+.cost-value,
+.legend-item,
+.donut-center-value,
+.model-chip,
+.config-card,
+.runtime-card,
+.data-row,
 .bar-rect {
-  transition: filter 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-  cursor: pointer;
+  filter: none;
+  text-shadow: none;
+  transform: none;
 }
+
+.metric-card:hover .metric-value,
+.overview-window-card:hover .overview-window-value,
+.cost-value:hover,
+.legend-item:hover,
+.donut-svg:hover .donut-center-value,
+.model-chip:hover,
+.config-card:hover,
+.runtime-card:hover,
+.data-row:hover,
 .bar-rect:hover {
-  filter: brightness(1.15) drop-shadow(0 0 6px var(--accent-glow));
-}
-.bar-rect:active {
-  filter: brightness(1.08);
-  transform: scale(0.98);
-  transform-origin: center;
+  filter: none;
+  text-shadow: none;
+  transform: none;
 }
 
-/* --- Model Chip Hover --- */
-.model-chip {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-.model-chip:hover {
-  transform: translateY(-1px);
-  border-color: var(--accent-color);
-  box-shadow: 0 6px 14px -8px var(--accent-glow);
+button:active:not(:disabled) {
+  transform: none;
 }
 
-/* --- Config Card Hover --- */
-.config-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-.config-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--card-shadow-hover);
-  border-color: var(--border-color-strong);
-}
-
-/* --- Runtime Card Hover --- */
-.runtime-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-.runtime-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--card-shadow-hover);
-  border-color: var(--border-color-strong);
-}
-
-/* --- Panel Header Accent Dot --- */
-.panel h2::before {
-  content: '';
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--metric-accent-amber), var(--accent-color));
-  margin-right: 10px;
-  vertical-align: middle;
-  box-shadow: 0 0 8px var(--accent-glow);
-}
-
-/* --- Panel Section Title Decorative Line --- */
-.panel h2 {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  padding-bottom: 8px;
-}
-.panel h2::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 40px;
-  height: 3px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--accent-color), transparent);
-  opacity: 0.6;
-}
-
-/* --- Glass Shine Edge on Cards --- */
+.tab::after,
+.panel h2::before,
+.panel h2::after,
 .metric-card::after,
 .overview-window-card::after,
 .runtime-card::after,
 .config-card::after,
 .table-wrap::after,
 .chart-container::after,
-.panel::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
-  opacity: 0.5;
-  pointer-events: none;
+.panel::after,
+.panel::before,
+.ops-card::after,
+.ops-metric::after,
+button::after,
+.icon-btn::after,
+.workspace-nav-btn::after {
+  display: none;
+  content: none;
 }
 
-[data-theme="dark"] .metric-card::after,
-[data-theme="dark"] .overview-window-card::after,
-[data-theme="dark"] .runtime-card::after,
-[data-theme="dark"] .config-card::after,
-[data-theme="dark"] .table-wrap::after,
-[data-theme="dark"] .chart-container::after,
-[data-theme="dark"] .panel::after {
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+.panel h2 {
+  padding-bottom: 0;
 }
 
-/* --- Panel Top Accent Bar --- */
-.panel::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 4px;
-  background: linear-gradient(90deg, var(--metric-accent-amber) 0%, var(--accent-color) 46%, var(--metric-accent-green) 100%);
-  opacity: 0.78;
+.chart-tooltip {
+  animation: none;
+}
+
+.status-badge {
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  box-shadow: none;
+}
+
+.status-badge::before {
+  content: '' !important;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.status-badge.neutral::before {
+  opacity: 0.52;
+}
+
+.status-badge.success {
+  background: color-mix(in srgb, var(--success-color) 10%, transparent);
+  border-color: color-mix(in srgb, var(--success-color) 30%, transparent);
+  box-shadow: none;
+}
+
+.status-badge.warning {
+  background: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warning-color) 32%, transparent);
+  box-shadow: none;
+}
+
+.status-badge.error,
+.status-badge-strong {
+  background: color-mix(in srgb, var(--danger-color) 11%, transparent);
+  border-color: color-mix(in srgb, var(--danger-color) 32%, transparent);
+  box-shadow: none;
+}
+
+.status-badge.neutral {
+  background: color-mix(in srgb, var(--text-muted) 9%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 24%, transparent);
+  box-shadow: none;
+}
+
+.empty-state-box,
+.verification-empty-panel,
+.chart-empty {
+  box-shadow: none;
+}
+
+.empty-state-icon,
+.chart-empty .empty-state-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  box-shadow: none;
+  font-size: 1.35rem;
+}
+
+.chart-container,
+.table-wrap,
+.benchmark-summary-card,
+.benchmark-chart,
+.benchmark-reset-card,
+.verification-surface,
+.ops-command-metric,
+.ops-command-main,
+.ops-provider-panel,
+.ops-preflight-panel,
+.ops-recent-panel,
+.ops-card,
+.ops-metric,
+.ops-runtime-card,
+.config-card,
+.runtime-card,
+.metric-card,
+.overview-window-card,
+.pricing-source-details,
+.toast,
+.service-state-panel,
+.config-editor-card,
+.config-section-card,
+.logs-toolbar,
+.logs-table-wrap,
+.model-chip {
+  background: var(--surface-card);
+  box-shadow: var(--card-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.chart-container:hover,
+.benchmark-summary-card:hover,
+.benchmark-chart:hover,
+.ops-card:hover,
+.ops-metric:hover,
+.ops-runtime-card:hover,
+.config-card:hover,
+.runtime-card:hover,
+.metric-card:hover,
+.overview-window-card:hover,
+.model-chip:hover {
+  transform: none;
+  box-shadow: var(--card-shadow);
+}
+
+.table-wrap {
+  background: var(--surface-card);
+}
+
+.table-wrap th {
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  backdrop-filter: none;
+}
+
+.table-wrap tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--bg-secondary) 42%, transparent);
+}
+
+.table-wrap tbody tr:hover,
+.table-wrap tbody tr:focus-visible {
+  background: color-mix(in srgb, var(--accent-color) 7%, transparent);
+  transform: none;
+}
+
+.chart-summary,
+.chart-body,
+.verification-empty-panel,
+.verification-baseline-card,
+.logs-filter-panel,
+.config-editor-panel,
+.config-visual-panel,
+.service-state-panel {
+  box-shadow: none;
+}
+
+.chart-empty,
+.empty-state-box,
+.verification-empty-panel {
+  background: var(--surface-muted);
+}
+
+.toast {
+  animation: none;
+}
+
+.toast.success,
+.toast.error,
+.toast.warning,
+.toast.info {
+  background: var(--surface-raised);
+}
+
+.loading-dots,
+.loading-dots::before,
+.loading-dots::after,
+.status-dot {
+  animation: none;
+}
+
+.view-mode-tabs,
+.timeseries-selector,
+.logs-type-selector,
+.config-sub-tabs,
+.topbar-nav .tabbar,
+.workspace-nav-segmented,
+.ops-workspace-switch {
+  background: var(--button-segment-bg);
+  box-shadow: none;
+}
+
+.view-mode-btn:hover:not(.active),
+.ts-btn:hover:not(.active),
+.auto-refresh-btn:hover:not(.active),
+.logs-type-btn:hover:not(.active),
+.config-sub-tab:hover:not(.active),
+.ops-workspace-switch-btn:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+.view-mode-btn.active,
+.ts-btn.active,
+.auto-refresh-btn.active,
+.logs-type-btn.active,
+.config-sub-tab.active {
+  background: var(--accent-color);
+  box-shadow: none;
+}
+
+.metric-value.flash,
+.overview-window-value.flash {
+  animation: metric-flash-subtle 0.42s ease-out;
+}
+
+@keyframes metric-flash-subtle {
+  0% { color: var(--metric-value-color); }
+  35% { color: var(--accent-color); }
+  100% { color: var(--metric-value-color); }
 }

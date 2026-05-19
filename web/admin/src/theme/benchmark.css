@@ -310,7 +310,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: linear-gradient(135deg, rgba(217, 119, 6, 0.08) 0%, rgba(217, 119, 6, 0.03) 100%);
+  background: color-mix(in srgb, var(--warning-color) 9%, transparent);
   border: 1px solid rgba(217, 119, 6, 0.15);
   border-radius: var(--radius-card);
   font-size: 0.82rem;
@@ -331,7 +331,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, var(--surface-card) 0%, color-mix(in srgb, var(--accent-color) 6%, var(--surface-card)) 100%);
+  background: var(--surface-card);
   border: 1px solid color-mix(in srgb, var(--accent-color) 20%, var(--border-color-strong));
   border-radius: var(--radius-card);
   margin-bottom: 0;
@@ -397,7 +397,7 @@
   padding: 16px;
   border: 1px solid var(--border-color-strong);
   border-radius: var(--radius-card);
-  background: var(--surface-card, var(--bg-glass));
+  background: var(--surface-card);
   box-shadow: var(--card-shadow);
 }
 
