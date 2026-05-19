@@ -10,7 +10,9 @@ type OpsWorkspaceMode = 'runtime' | 'probe' | 'audit' | 'diagnostics'
 type Tone = 'success' | 'warning' | 'error' | 'neutral'
 
 interface OperationsTabProps {
+  mode: OpsWorkspaceMode
   canWrite: boolean
+  onModeChange: (mode: OpsWorkspaceMode) => void
   onUnauthorized?: () => void
 }
 
@@ -345,7 +347,7 @@ function RecentOpsPanel({ audit, t }: { audit: AuditSummary; t: (key: string) =>
               <span class="ops-recent-dot" />
               <div>
                 <strong>{event.action || 'unknown'}</strong>
-                <small>{event.actor || 'system'} · {event.resource || 'runtime'}</small>
+                <small>{event.actor || 'system'} / {event.resource || 'runtime'}</small>
               </div>
               <time>{formatDate(event.time)}</time>
             </article>
@@ -435,9 +437,8 @@ function RuntimeCommandCenter({
   )
 }
 
-export function OperationsTab({ canWrite, onUnauthorized }: OperationsTabProps) {
+export function OperationsTab({ mode, canWrite, onModeChange, onUnauthorized }: OperationsTabProps) {
   const { t } = useI18n()
-  const [mode, setMode] = useState<OpsWorkspaceMode>('runtime')
   const [runtimePayload, setRuntimePayload] = useState<RuntimePayload>(() => normalizeRuntimePayload(null))
   const [audit, setAudit] = useState<AuditSummary>({ events: [], count: 0 })
   const [runtimeBusy, setRuntimeBusy] = useState(false)
@@ -519,7 +520,7 @@ export function OperationsTab({ canWrite, onUnauthorized }: OperationsTabProps) 
       icon: 'activity',
       label: t('ops.providers'),
       value: `${providers.filter((provider) => provider.healthy).length}/${providers.length}`,
-      detail: `${status?.cooldown_provider_count ?? 0} ${t('ops.cooldown')} · ${status?.unhealthy_provider_count ?? 0} ${t('ops.unhealthy')}`,
+      detail: `${status?.cooldown_provider_count ?? 0} ${t('ops.cooldown')} / ${status?.unhealthy_provider_count ?? 0} ${t('ops.unhealthy')}`,
       tone: (status?.unhealthy_provider_count ?? 0) > 0 ? 'error' : (status?.cooldown_provider_count ?? 0) > 0 ? 'warning' : providers.length > 0 ? 'success' : 'neutral',
     },
     {
@@ -554,7 +555,7 @@ export function OperationsTab({ canWrite, onUnauthorized }: OperationsTabProps) 
             <Icon name="refresh" />
             {runtimeBusy ? t('ops.refreshing') : t('ops.refresh')}
           </button>
-          <button type="button" class="secondary" onClick={() => setMode('diagnostics')}>
+          <button type="button" class="secondary" onClick={() => onModeChange('diagnostics')}>
             <Icon name="download" />
             {t('ops.generateDiagnostics')}
           </button>
@@ -574,7 +575,7 @@ export function OperationsTab({ canWrite, onUnauthorized }: OperationsTabProps) 
             key={item.mode}
             type="button"
             class={`ops-workspace-switch-btn${mode === item.mode ? ' active' : ''}`}
-            onClick={() => setMode(item.mode)}
+            onClick={() => onModeChange(item.mode)}
           >
             <Icon name={item.icon} />
             <span>

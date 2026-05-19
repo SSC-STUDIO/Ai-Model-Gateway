@@ -21,6 +21,7 @@ interface PricingTabProps {
   onHoursChange?: (hours: string) => void
   onRefreshPricing?: () => Promise<void> | void
   onRetry?: () => Promise<void> | void
+  hideTitle?: boolean
 }
 
 const PROVIDER_OPTIONS = [
@@ -150,7 +151,7 @@ function formatPricingTimestamp(value: string | null | undefined): string {
   return new Date(parsed).toLocaleString()
 }
 
-const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, onRefreshPricing, onRetry }: PricingTabProps) => {
+const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, onRefreshPricing, onRetry, hideTitle = false }: PricingTabProps) => {
   const { t } = useI18n()
   const [activeProvider, setActiveProvider] = useState('all')
   const [refreshing, setRefreshing] = useState(false)
@@ -250,7 +251,7 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
   if (telemetryUnavailable) {
     return (
       <section class="panel">
-        <h2>{t('pricing.title')}</h2>
+        {!hideTitle ? <h2>{t('pricing.title')}</h2> : null}
         <ServiceStatePanel
           icon="pricing"
           title={t('services.telemetryUnavailableTitle')}
@@ -271,7 +272,7 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
   if (!telemetry) {
     return (
       <section class="panel">
-        <h2>{t('pricing.title')}</h2>
+        {!hideTitle ? <h2>{t('pricing.title')}</h2> : null}
         <div class="skeleton-grid" style={{ marginTop: '20px' }}>
           <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
           <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
@@ -285,7 +286,7 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
   if (!hasData) {
     return (
       <section class="panel">
-        <h2>{t('pricing.title')}</h2>
+        {!hideTitle ? <h2>{t('pricing.title')}</h2> : null}
         <div class="empty-state-box">
           <div class="empty-state-icon"><Icon name="pricing" size={30} /></div>
           <p class="empty-state-title">{t('pricing.noData')}</p>
@@ -297,7 +298,7 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
 
   return (
     <section class="panel">
-      <h2>{t('pricing.title')}</h2>
+      {!hideTitle ? <h2>{t('pricing.title')}</h2> : null}
 
       <div class="panel-subsection">
         <div class="timeseries-header" style={{ marginBottom: '12px' }}>
@@ -489,10 +490,10 @@ const PricingTabComponent = ({ telemetry, status, hours = 'all', onHoursChange, 
                         <span class="table-cell-primary">{m?.display_model ?? 'unknown'}</span>
                         <span class="table-cell-secondary">
                           {m?._providers?.size
-                            ? [...m._providers].filter(Boolean).join(' · ')
+                            ? [...m._providers].filter(Boolean).join(' / ')
                             : [m?.effective_model, m?.upstream ?? m?.provider, m?.pricing_model]
                               .filter(Boolean)
-                              .join(' · ')}
+                              .join(' / ')}
                         </span>
                       </div>
                     </td>

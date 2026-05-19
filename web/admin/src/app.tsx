@@ -19,7 +19,7 @@ import {
   useAutoRefresh,
 } from './hooks'
 import type { ControlTabKey, PrimaryTabKey } from './types'
-import { OverviewTab, MonitoringTab, TelemetryTab, BenchmarkTab, ConfigTab, LogsTab, PricingTab, OpsTab, OperationsTab } from './components/tabs'
+import { OverviewTab, MonitoringTab, BenchmarkTab, ConfigTab, LogsTab, OperationsTab } from './components/tabs'
 import { fetchJSON } from './utils/fetch'
 import {
   benchmarkURL,
@@ -44,6 +44,54 @@ const tabPaths: Record<ControlTabKey, string> = {
   audit: '/admin/audit',
   probe: '/admin/probe',
   diagnostics: '/admin/diagnostics',
+}
+
+type MonitoringWorkspaceView = 'traffic' | 'cost'
+type OpsWorkspaceView = 'runtime' | 'probe' | 'audit' | 'diagnostics'
+
+const WORKSPACE_QUERY_KEY = 'view'
+
+function legacyWorkspaceRoute(pathname: string): { pathname: string; view: string } | null {
+  const normalized = pathname.replace(/\/+$/, '') || DEFAULT_ADMIN_PATH
+  switch (normalized) {
+    case '/admin/telemetry':
+      return { pathname: '/admin/monitoring', view: 'telemetry' }
+    case '/admin/pricing':
+      return { pathname: '/admin/monitoring', view: 'pricing' }
+    case '/admin/audit':
+      return { pathname: '/admin/ops', view: 'audit' }
+    case '/admin/probe':
+      return { pathname: '/admin/ops', view: 'probe' }
+    case '/admin/diagnostics':
+      return { pathname: '/admin/ops', view: 'diagnostics' }
+    default:
+      return null
+  }
+}
+
+function hrefOf(url: URL): string {
+  return `${url.pathname}${url.search}${url.hash}`
+}
+
+function normalizeAdminURL(target: string, origin: string): URL {
+  const url = new URL(target, origin)
+  const legacy = legacyWorkspaceRoute(url.pathname)
+  if (legacy) {
+    url.pathname = legacy.pathname
+    url.searchParams.set(WORKSPACE_QUERY_KEY, legacy.view)
+  }
+  return url
+}
+
+export function canonicalAdminHref(target: string, origin = 'http://localhost'): string {
+  return hrefOf(normalizeAdminURL(target, origin))
+}
+
+function workspaceViewFromLocation(pathname: string, search: string): string {
+  const legacy = legacyWorkspaceRoute(pathname)
+  if (legacy) return legacy.view
+  const view = new URLSearchParams(search).get(WORKSPACE_QUERY_KEY) ?? ''
+  return ['telemetry', 'pricing', 'runtime', 'audit', 'probe', 'diagnostics'].includes(view) ? view : ''
 }
 
 // Primary tab icons used in the top navigation.
@@ -100,7 +148,9 @@ function getPrimaryTab(tab: ControlTabKey): PrimaryTabKey {
   }
 }
 
-function inferTab(pathname: string): ControlTabKey {
+export function inferTab(pathname: string): ControlTabKey {
+  const legacy = legacyWorkspaceRoute(pathname)
+  if (legacy) return inferTab(legacy.pathname)
   if (pathname.endsWith('/monitoring')) return 'monitoring'
   if (pathname.endsWith('/telemetry')) return 'telemetry'
   if (pathname.endsWith('/logs')) return 'logs'
@@ -171,6 +221,7 @@ export function App() {
   } = useAdminSession()
 
   const [tab, setTab] = useState<ControlTabKey>(() => inferTab(window.location.pathname))
+  const [workspaceView, setWorkspaceView] = useState(() => workspaceViewFromLocation(window.location.pathname, window.location.search))
   const [refreshInterval, setRefreshInterval] = usePersistentState<number>('admin-refresh-interval', 30000)
   const [telemetryHours, setTelemetryHours] = useUrlState<string>('hours', '168')
   const [telemetryBucket, setTelemetryBucket] = useUrlState<string>('bucket', '1')
@@ -189,8 +240,8 @@ export function App() {
   const canWrite = !authEnabled || session?.role !== 'viewer'
 
   const navigate = useCallback((target: string, mode: 'push' | 'replace' = 'push') => {
-    const url = new URL(target, window.location.origin)
-    const href = `${url.pathname}${url.search}${url.hash}`
+    const url = normalizeAdminURL(target, window.location.origin)
+    const href = hrefOf(url)
     const state = { tab: inferTab(url.pathname) }
     if (mode === 'replace') {
       window.history.replaceState(state, '', href)
@@ -198,6 +249,7 @@ export function App() {
       window.history.pushState(state, '', href)
     }
     setTab(inferTab(url.pathname))
+    setWorkspaceView(workspaceViewFromLocation(url.pathname, url.search))
   }, [])
 
   const handleUnauthorized = useCallback(() => {
@@ -234,6 +286,16 @@ export function App() {
   } = useControlData(tab, telemetryHours, telemetryBucket, logsHours, canAccessAdmin, handleUnauthorized)
 
   const navItems = useMemo(() => getNavItems(t), [t])
+
+  const buildPrimaryTabTarget = useCallback((nextTab: ControlTabKey) => {
+    const url = new URL(tabPaths[nextTab], window.location.origin)
+    const current = new URLSearchParams(window.location.search)
+    for (const key of ['hours', 'bucket', 'logsHours']) {
+      const value = current.get(key)
+      if (value) url.searchParams.set(key, value)
+    }
+    return hrefOf(url)
+  }, [])
 
   const prefetchTabResources = useCallback((targetTab: ControlTabKey) => {
     switch (targetTab) {
@@ -278,9 +340,28 @@ export function App() {
   }, [telemetryHours, telemetryBucket, logsHours])
 
   const handleTabChange = useCallback((nextTab: ControlTabKey) => {
-    navigate(tabPaths[nextTab] + window.location.search, 'push')
+    navigate(buildPrimaryTabTarget(nextTab), 'push')
     prefetchTabResources(nextTab)
-  }, [navigate, prefetchTabResources])
+  }, [buildPrimaryTabTarget, navigate, prefetchTabResources])
+
+  const navigateWorkspaceView = useCallback((pathname: string, view: string) => {
+    const url = new URL(window.location.href)
+    url.pathname = pathname
+    if (view) {
+      url.searchParams.set(WORKSPACE_QUERY_KEY, view)
+    } else {
+      url.searchParams.delete(WORKSPACE_QUERY_KEY)
+    }
+    navigate(hrefOf(url), 'push')
+  }, [navigate])
+
+  const handleMonitoringModeChange = useCallback((mode: MonitoringWorkspaceView) => {
+    navigateWorkspaceView('/admin/monitoring', mode === 'cost' ? 'pricing' : '')
+  }, [navigateWorkspaceView])
+
+  const handleOpsModeChange = useCallback((mode: OpsWorkspaceView) => {
+    navigateWorkspaceView('/admin/ops', mode === 'runtime' ? '' : mode)
+  }, [navigateWorkspaceView])
 
   useEffect(() => {
     if (!historyPayload.versions.length) {
@@ -303,11 +384,23 @@ export function App() {
 
   useEffect(() => {
     const handler = () => {
+      const legacy = legacyWorkspaceRoute(window.location.pathname)
+      if (legacy) {
+        navigate(`${window.location.pathname}${window.location.search}${window.location.hash}`, 'replace')
+        return
+      }
       setTab(inferTab(window.location.pathname))
+      setWorkspaceView(workspaceViewFromLocation(window.location.pathname, window.location.search))
     }
     window.addEventListener('popstate', handler)
     return () => window.removeEventListener('popstate', handler)
-  }, [])
+  }, [navigate])
+
+  useEffect(() => {
+    if (legacyWorkspaceRoute(window.location.pathname)) {
+      navigate(`${window.location.pathname}${window.location.search}${window.location.hash}`, 'replace')
+    }
+  }, [navigate])
 
   useEffect(() => {
     if (sessionLoading) return
@@ -433,6 +526,11 @@ export function App() {
     </div>
   ), [t, refreshInterval])
 
+  const monitoringMode: MonitoringWorkspaceView = workspaceView === 'pricing' ? 'cost' : 'traffic'
+  const opsMode: OpsWorkspaceView = workspaceView === 'probe' || workspaceView === 'audit' || workspaceView === 'diagnostics'
+    ? workspaceView
+    : 'runtime'
+
   const tabContent = (() => {
     switch (tab) {
       case 'overview':
@@ -449,8 +547,12 @@ export function App() {
           </>
         )
       case 'monitoring':
+      case 'telemetry':
+      case 'pricing':
         return (
           <MonitoringTab
+            mode={tab === 'pricing' ? 'cost' : tab === 'telemetry' ? 'traffic' : monitoringMode}
+            onModeChange={handleMonitoringModeChange}
             telemetry={telemetry}
             timeseries={telemetryTimeseries}
             status={status}
@@ -462,24 +564,6 @@ export function App() {
             onRetry={() => { void retryTelemetryState() }}
             refreshControls={refreshControls}
           />
-        )
-      case 'telemetry':
-        return (
-          <>
-            {refreshControls}
-            <TelemetryTab
-              telemetry={telemetry}
-              timeseries={telemetryTimeseries}
-              hours={telemetryHours}
-              onHoursChange={setTelemetryHours}
-              bucketMinutes={parseInt(telemetryBucket, 10) || 1}
-              onBucketChange={setTelemetryBucket}
-              telemetryStatus={status?.telemetry_status}
-              telemetryError={status?.telemetry_error}
-              telemetryLastCheckedAt={status?.telemetry_last_checked_at}
-              onRetry={() => { void retryTelemetryState() }}
-            />
-          </>
         )
       case 'logs':
         return (
@@ -493,18 +577,6 @@ export function App() {
               telemetryStatus={status?.telemetry_status}
               telemetryError={status?.telemetry_error}
               telemetryLastCheckedAt={status?.telemetry_last_checked_at}
-              onRetry={() => { void retryTelemetryState() }}
-            />
-          </>
-        )
-      case 'pricing':
-        return (
-          <>
-            {refreshControls}
-            <PricingTab
-              telemetry={telemetry}
-              status={status}
-              onRefreshPricing={refreshPricingStatus}
               onRetry={() => { void retryTelemetryState() }}
             />
           </>
@@ -551,13 +623,17 @@ export function App() {
           />
         )
       case 'ops':
-        return <OperationsTab canWrite={canWrite} onUnauthorized={handleUnauthorized} />
       case 'audit':
-        return <OpsTab mode="audit" canWrite={canWrite} onUnauthorized={handleUnauthorized} />
       case 'probe':
-        return <OpsTab mode="probe" canWrite={canWrite} onUnauthorized={handleUnauthorized} />
       case 'diagnostics':
-        return <OpsTab mode="diagnostics" canWrite={canWrite} onUnauthorized={handleUnauthorized} />
+        return (
+          <OperationsTab
+            mode={tab === 'audit' || tab === 'probe' || tab === 'diagnostics' ? tab : opsMode}
+            canWrite={canWrite}
+            onModeChange={handleOpsModeChange}
+            onUnauthorized={handleUnauthorized}
+          />
+        )
     }
   })()
 
@@ -590,7 +666,7 @@ export function App() {
             <BrandMark />
             <div>
               <h1>{t('header.title')}</h1>
-              <p class="muted">{status?.version ? `${status.version} · ${status.uptime ?? '-'}` : t('header.subtitle')}</p>
+              <p class="muted">{status?.version ? `${status.version} / ${status.uptime ?? '-'}` : t('header.subtitle')}</p>
             </div>
           </div>
 
@@ -635,7 +711,7 @@ export function App() {
               {authEnabled ? (
                 <>
                   <span class="status-badge neutral">
-                    {session?.name ?? t('auth.sessionCurrent')} · {roleLabel(session?.role, t)}
+                    {session?.name ?? t('auth.sessionCurrent')} / {roleLabel(session?.role, t)}
                   </span>
                   <button type="button" class="logout-btn" onClick={handleLogout} disabled={logoutBusy}>
                     {logoutBusy ? t('auth.loggingOut') : t('auth.logout')}

@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact'
-import { useCallback, useState } from 'preact/compat'
+import { useCallback } from 'preact/compat'
 import { useI18n } from '../../i18n'
 import type { ControlStatusView, DataResponse, TimeSeriesResponse } from '../../types'
 import { Icon } from '../Icon'
@@ -8,6 +8,8 @@ import { PricingTab } from './PricingTab'
 import { TelemetryTab } from './TelemetryTab'
 
 interface MonitoringTabProps {
+  mode: 'traffic' | 'cost'
+  onModeChange: (mode: 'traffic' | 'cost') => void
   telemetry: DataResponse | null
   timeseries: TimeSeriesResponse | null
   status?: ControlStatusView | null
@@ -33,6 +35,8 @@ function telemetryTone(status?: ControlStatusView | null): 'success' | 'warning'
 }
 
 export function MonitoringTab({
+  mode,
+  onModeChange,
   telemetry,
   timeseries,
   status,
@@ -45,10 +49,16 @@ export function MonitoringTab({
   refreshControls,
 }: MonitoringTabProps) {
   const { t } = useI18n()
-  const [mode, setMode] = useState<'traffic' | 'cost'>('traffic')
   const handleRetry = useCallback(() => {
     if (onRetry) void onRetry()
   }, [onRetry])
+
+  const selectMode = useCallback((nextMode: 'traffic' | 'cost') => {
+    onModeChange(nextMode)
+    if (nextMode === 'cost' && telemetryHours !== 'all') {
+      onTelemetryHoursChange('all')
+    }
+  }, [onModeChange, onTelemetryHoursChange, telemetryHours])
 
   return (
     <section class="panel workspace-page">
@@ -56,7 +66,7 @@ export function MonitoringTab({
         <div class="workspace-hero-copy">
           <span class="workspace-kicker">{t('tabs.monitoring')}</span>
           <h2 class="workspace-title">{t('tabs.monitoring')}</h2>
-          <p class="workspace-subtitle">{[t('telemetry.title'), t('tabs.pricing')].join(' · ')}</p>
+          <p class="workspace-subtitle">{[t('telemetry.title'), t('tabs.pricing')].join(' / ')}</p>
         </div>
         <div class="workspace-hero-meta">
           <span class={`status-badge ${gatewayTone(status)}`}>
@@ -79,7 +89,7 @@ export function MonitoringTab({
           class={`workspace-nav-btn${mode === 'traffic' ? ' active' : ''}`}
           role="tab"
           aria-selected={mode === 'traffic'}
-          onClick={() => setMode('traffic')}
+          onClick={() => selectMode('traffic')}
         >
           <Icon name="telemetry" class="tab-icon" />
           <span>{t('telemetry.title')}</span>
@@ -89,12 +99,7 @@ export function MonitoringTab({
           class={`workspace-nav-btn${mode === 'cost' ? ' active' : ''}`}
           role="tab"
           aria-selected={mode === 'cost'}
-          onClick={() => {
-            setMode('cost')
-            if (telemetryHours !== 'all') {
-              onTelemetryHoursChange('all')
-            }
-          }}
+          onClick={() => selectMode('cost')}
         >
           <Icon name="pricing" class="tab-icon" />
           <span>{t('tabs.pricing')}</span>
@@ -107,7 +112,7 @@ export function MonitoringTab({
           icon="telemetry"
           kicker={t('tabs.monitoring')}
           title={t('telemetry.title')}
-          detail={[t('telemetry.requests'), t('telemetry.latency'), t('telemetry.successRate')].join(' · ')}
+          detail={[t('telemetry.requests'), t('telemetry.latency'), t('telemetry.successRate')].join(' / ')}
         >
           <TelemetryTab
             telemetry={telemetry}
@@ -120,6 +125,7 @@ export function MonitoringTab({
             telemetryError={status?.telemetry_error}
             telemetryLastCheckedAt={status?.telemetry_last_checked_at}
             onRetry={onRetry ? handleRetry : undefined}
+            hideTitle
           />
         </WorkspaceBand>
       ) : (
@@ -128,7 +134,7 @@ export function MonitoringTab({
           icon="pricing"
           kicker={t('tabs.monitoring')}
           title={t('tabs.pricing')}
-          detail={[t('telemetry.totalCost'), t('telemetry.cacheSavings'), t('pricing.costSummary')].join(' · ')}
+          detail={[t('telemetry.totalCost'), t('telemetry.cacheSavings'), t('pricing.costSummary')].join(' / ')}
         >
           <PricingTab
             telemetry={telemetry}
@@ -137,6 +143,7 @@ export function MonitoringTab({
             onHoursChange={onTelemetryHoursChange}
             onRefreshPricing={onRefreshPricing}
             onRetry={onRetry ? handleRetry : undefined}
+            hideTitle
           />
         </WorkspaceBand>
       )}

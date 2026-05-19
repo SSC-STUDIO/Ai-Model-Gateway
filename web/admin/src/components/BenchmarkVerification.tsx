@@ -252,7 +252,7 @@ export function BenchmarkVerification({ canWrite, onRunStarted, onUnauthorized }
               <option value="">{t('benchmark.verification.selectRunPlaceholder')}</option>
               {verification.runs.map((run) => (
                 <option key={run.run_id} value={run.run_id}>
-                  {run.run_id} · {run.status} · {run.suite_version}
+                  {run.run_id} / {run.status} / {run.suite_version}
                 </option>
               ))}
             </select>
@@ -362,7 +362,7 @@ export function BenchmarkVerification({ canWrite, onRunStarted, onUnauthorized }
                   <select value={verification.selectedTarget?.target_id ?? ''} onChange={(e) => verification.setSelectedTargetID((e.currentTarget as HTMLSelectElement).value)}>
                     {verification.selectedRun.targets.map((target) => (
                       <option key={target.target_id} value={target.target_id}>
-                        {target.provider_id} · {target.public_model} · {target.verdict ?? target.status}
+                        {target.provider_id} / {target.public_model} / {target.verdict ?? target.status}
                       </option>
                     ))}
                   </select>

@@ -340,7 +340,7 @@ const BenchmarkTabComponent = ({
           icon="telemetry"
           kicker={t('benchmark.title')}
           title={t('benchmark.modeUpstream')}
-          detail={[t('benchmark.upstreamSuccessRateComparison'), t('benchmark.upstreamLatencyComparison'), t('benchmark.upstreamCostComparison')].join(' · ')}
+          detail={[t('benchmark.upstreamSuccessRateComparison'), t('benchmark.upstreamLatencyComparison'), t('benchmark.upstreamCostComparison')].join(' / ')}
         >
           <div class="timeseries-header benchmark-workspace-toolbar">
             <h3>{t('benchmark.title')}</h3>
@@ -506,7 +506,7 @@ const BenchmarkTabComponent = ({
           icon="benchmark"
           kicker={t('benchmark.title')}
           title={t('benchmark.modeCapability')}
-          detail={[t('benchmark.officialComparison'), t('benchmark.scoreMatrix'), t('benchmark.verification.title')].join(' · ')}
+          detail={[t('benchmark.officialComparison'), t('benchmark.scoreMatrix'), t('benchmark.verification.title')].join(' / ')}
         >
           <div class="timeseries-header benchmark-workspace-toolbar">
             <div>

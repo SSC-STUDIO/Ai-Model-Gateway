@@ -152,7 +152,7 @@ function unifyEntries(requests: RequestEntry[] | undefined, errors: ErrorEntry[]
 
 function joinSecondary(parts: Array<string | null | undefined>): string | undefined {
   const filtered = parts.filter((part): part is string => Boolean(part && part.trim().length > 0))
-  return filtered.length > 0 ? filtered.join(' · ') : undefined
+  return filtered.length > 0 ? filtered.join(' / ') : undefined
 }
 
 function buildLogCsvRows(entries: UnifiedLogEntry[]) {

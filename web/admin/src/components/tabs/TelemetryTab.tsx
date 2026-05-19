@@ -19,6 +19,7 @@ interface TelemetryTabProps {
   telemetryError?: string
   telemetryLastCheckedAt?: string
   onRetry?: () => void
+  hideTitle?: boolean
 }
 
 const TELEMETRY_WINDOW_OPTIONS = [
@@ -88,6 +89,7 @@ const TelemetryTabComponent = ({
   telemetryError,
   telemetryLastCheckedAt,
   onRetry,
+  hideTitle = false,
 }: TelemetryTabProps) => {
   const { t } = useI18n()
   const telemetryUnavailable = telemetryStatus && telemetryStatus !== 'connected'
@@ -133,7 +135,7 @@ const TelemetryTabComponent = ({
   if (telemetryUnavailable) {
     return (
       <section class="panel">
-        <h2>{t('telemetry.title')}</h2>
+        {!hideTitle ? <h2>{t('telemetry.title')}</h2> : null}
         <ServiceStatePanel
           icon="telemetry"
           title={t('services.telemetryUnavailableTitle')}
@@ -154,7 +156,7 @@ const TelemetryTabComponent = ({
   if (!telemetry || !timeseries) {
     return (
       <section class="panel">
-        <h2>{t('telemetry.title')}</h2>
+        {!hideTitle ? <h2>{t('telemetry.title')}</h2> : null}
         <div class="skeleton-grid" style={{ marginTop: '20px' }}>
           <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
           <div class="skeleton skeleton-card"><div style={{ padding: '18px' }}><div class="skeleton skeleton-label" /><div class="skeleton skeleton-metric" /></div></div>
@@ -177,7 +179,7 @@ const TelemetryTabComponent = ({
   if (!hasData) {
     return (
       <section class="panel">
-        <h2>{t('telemetry.title')}</h2>
+        {!hideTitle ? <h2>{t('telemetry.title')}</h2> : null}
         <div class="empty-state-box">
           <div class="empty-state-icon"><Icon name="chart" size={30} /></div>
           <p class="empty-state-title">{t('empty.noTelemetry')}</p>
@@ -190,7 +192,7 @@ const TelemetryTabComponent = ({
   return (
     <section class="panel">
       <div class="timeseries-header">
-        <h2>{t('telemetry.title')}</h2>
+        {!hideTitle ? <h2>{t('telemetry.title')}</h2> : null}
         <div class="timeseries-controls">
           <div class="timeseries-selector">
             <span>{t('timeseries.bucketSize')}:</span>

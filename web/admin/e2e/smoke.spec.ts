@@ -548,22 +548,9 @@ test.describe('Admin UI Smoke Tests', () => {
     await page.click('text=Benchmark')
 
     await expect(page).toHaveURL(/\/admin\/benchmark/)
-    await expect(page.locator('.benchmark-reset-page')).toContainText('Model Capability Benchmark Ranking')
-    await expect(page.locator('.benchmark-reset-page')).toContainText('Public Gap')
+    await expect(page.locator('.benchmark-reset-page')).toContainText('Upstream Performance')
     await expect(page.locator('.benchmark-reset-page')).toContainText('Upstream Performance Ranking')
     await expect(page.locator('.benchmark-reset-page')).toContainText('Model Detail Table')
-    await expect(page.locator('.benchmark-verification')).toContainText('Manual Benchmark')
-    await page.locator('.benchmark-verification input[placeholder="provider-id"]').fill('provider-openai')
-    await page.locator('.benchmark-verification input[placeholder="gpt-4o"]').fill('gpt-5.5')
-    await expect(page.getByRole('button', { name: 'Run Benchmark' })).toBeEnabled()
-    await page.getByRole('button', { name: 'Run Benchmark' }).click()
-    await expect.poll(() => benchmarkStartPayloads.length).toBe(1)
-    expect(benchmarkStartPayloads[0]).toMatchObject({
-      provider_id: 'provider-openai',
-      public_model: 'gpt-5.5',
-      public_snapshot_id: '',
-      vendor_snapshot_id: '',
-    })
     await expect(page.locator('.benchmark-summary-grid')).toContainText('Observed upstreams')
     await expect(page.locator('.benchmark-summary-grid')).toContainText('2')
     await expect(page.locator('.benchmark-summary-grid')).toContainText('2,040')
@@ -575,6 +562,24 @@ test.describe('Admin UI Smoke Tests', () => {
     await expect(modelDetails).toContainText('gpt-5.5')
     await expect(modelDetails).toContainText('claude-3.7-sonnet')
     await expect(page.locator('.benchmark-charts-grid')).toContainText('Upstream Success Rate Comparison')
+
+    await page.locator('.workspace-nav button', { hasText: 'Capability' }).click()
+    await expect(page.locator('.benchmark-reset-page')).toContainText('Model Capability Benchmark Ranking')
+    await expect(page.locator('.benchmark-reset-page')).toContainText('Public Gap')
+    await expect(page.locator('.benchmark-verification')).toContainText('Manual Benchmark')
+    await expect(page.locator('.benchmark-verification input[placeholder="provider-id"]')).toBeDisabled()
+    await page.getByLabel('All enabled upstream models').uncheck()
+    await page.locator('.benchmark-verification input[placeholder="provider-id"]').fill('provider-openai')
+    await page.locator('.benchmark-verification input[placeholder="gpt-4o"]').fill('gpt-5.5')
+    await expect(page.getByRole('button', { name: 'Run Benchmark' })).toBeEnabled()
+    await page.getByRole('button', { name: 'Run Benchmark' }).click()
+    await expect.poll(() => benchmarkStartPayloads.length).toBe(1)
+    expect(benchmarkStartPayloads[0]).toMatchObject({
+      provider_id: 'provider-openai',
+      public_model: 'gpt-5.5',
+      public_snapshot_id: '',
+      vendor_snapshot_id: '',
+    })
   })
 
   test('monitoring page focuses telemetry and pricing sections', async ({ page }) => {
@@ -590,6 +595,7 @@ test.describe('Admin UI Smoke Tests', () => {
     await expect(timeButtons.first()).toBeVisible()
 
     await page.locator('.workspace-nav button', { hasText: 'Pricing' }).click()
+    await expect(page).toHaveURL(/\/admin\/monitoring\?.*view=pricing/)
     await expect(page.locator('#monitoring-pricing')).toContainText('Pricing')
     await expect(page.locator('#monitoring-telemetry')).toHaveCount(0)
   })
@@ -623,9 +629,11 @@ test.describe('Admin UI Smoke Tests', () => {
     expect(diagnosticsRequests).toBe(0)
 
     await page.locator('.ops-workspace-switch button', { hasText: 'Probe' }).click()
+    await expect(page).toHaveURL(/\/admin\/ops\?.*view=probe/)
     await expect(page.locator('.ops-probe-form input').first()).toBeVisible()
 
     await page.locator('.ops-workspace-switch button', { hasText: 'Diagnostics' }).click()
+    await expect(page).toHaveURL(/\/admin\/ops\?.*view=diagnostics/)
     await expect(page.locator('.ops-surface-diagnostics')).toContainText('Runtime topology')
     expect(diagnosticsRequests).toBe(1)
   })
@@ -657,6 +665,22 @@ test.describe('Admin UI Smoke Tests', () => {
     await page.locator('.workspace-nav button', { hasText: 'Pricing' }).click()
     await expect(page.locator('#monitoring-pricing')).toBeVisible()
     await page.locator('.workspace-nav button', { hasText: 'Telemetry' }).click()
+    await expect(page).toHaveURL(/\/admin\/monitoring/)
+    expect(new URL(page.url()).searchParams.get('view')).toBeNull()
     await expect(page.locator('#monitoring-telemetry')).toBeVisible()
+  })
+
+  test('legacy workspace URLs open unified workspaces', async ({ page }) => {
+    await page.goto('/admin/pricing?hours=24')
+    await expect(page).toHaveURL(/\/admin\/monitoring\?hours=24&view=pricing/)
+    await expect(page.locator('#monitoring-pricing')).toBeVisible()
+
+    await page.goto('/admin/probe')
+    await expect(page).toHaveURL(/\/admin\/ops\?view=probe/)
+    await expect(page.locator('.ops-surface-probe')).toBeVisible()
+
+    await page.goto('/admin/diagnostics')
+    await expect(page).toHaveURL(/\/admin\/ops\?view=diagnostics/)
+    await expect(page.locator('.ops-surface-diagnostics')).toBeVisible()
   })
 })
