@@ -462,6 +462,9 @@
   "language": {
     "selectorLabel": "语言"
   },
+  "toast": {
+    "close": "关闭通知"
+  },
   "charts": {
     "emptyTitle": "暂无可展示数据",
     "emptyHint": "收到数据后这里会自动更新。",

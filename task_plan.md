@@ -138,3 +138,28 @@ Prevent OpenAI/GPT prompt-cache usage from being lost when Chat Completions upst
 | Completed | 3. Added non-streaming and streaming regression coverage |
 | Completed | 4. Ran `go test ./internal/gateway/api -count=1` successfully |
 | Pending | 5. Decide whether to deploy the broader dirty worktree to the live gateway bundle |
+
+---
+
+## 2026-05-19 Hotfix - Repair Admin Frontend Test Integration And Restore Standard Live Sync
+
+### Goal
+
+Repair the broken `web/admin` test integration that was blocking `npm run build` and therefore blocking the standard `scripts/sync-bundle-to-home-ai-gateway.sh` live deployment path.
+
+### Scope
+
+1. Fix the newly added component tests so they use the repo's existing `vitest + @testing-library/preact` stack.
+2. Include `.test.tsx` files in Vitest so component tests are actually executed instead of only breaking TypeScript builds.
+3. Re-run admin frontend build and test validation.
+4. Re-run the standard live sync script and verify `ai-gateway.service` stays healthy under strict manifest mode.
+
+### Status
+
+| Status | Phase |
+| --- | --- |
+| Completed | 1. Identified broken half-migrated test setup (`preact-testing-library`, Jest globals, `.tsx` tests excluded from Vitest) |
+| Completed | 2. Rewrote component tests to the existing Vitest + `@testing-library/preact` style |
+| Completed | 3. Added `toast.close` locale strings and updated Vitest include/worker settings |
+| Completed | 4. Verified `npm run build` and `npm test` (`17` files / `116` tests) |
+| Completed | 5. Verified `bash scripts/sync-bundle-to-home-ai-gateway.sh` and healthy live `ai-gateway.service` |

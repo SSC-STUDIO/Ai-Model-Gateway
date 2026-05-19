@@ -1,46 +1,74 @@
-import { render, screen } from 'preact-testing-library';
-import { LoginScreen } from './LoginScreen';
-import { useI18n } from '../i18n';
+import { fireEvent, render, screen, waitFor } from '@testing-library/preact'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { I18nProvider } from '../i18n'
+import { LoginScreen } from './LoginScreen'
 
-jest.mock('../i18n', () => ({
-  useI18n: jest.fn(),
-}));
+function installMatchMediaMock() {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  })
+}
+
+function renderLoginScreen(props?: Partial<preact.ComponentProps<typeof LoginScreen>>) {
+  const onLogin = props?.onLogin ?? vi.fn().mockResolvedValue(true)
+  const onClearError = props?.onClearError ?? vi.fn()
+
+  return {
+    onLogin,
+    onClearError,
+    ...render(
+      <I18nProvider>
+        <LoginScreen
+          loginBusy={props?.loginBusy ?? false}
+          sessionError={props?.sessionError ?? ''}
+          onClearError={onClearError}
+          onLogin={onLogin}
+        />
+      </I18nProvider>
+    ),
+  }
+}
 
 describe('LoginScreen', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-  });
+    localStorage.clear()
+    installMatchMediaMock()
+  })
 
-  it('renders with default props', () => {
-    const mockOnLogin = jest.fn().mockResolvedValue(true);
-    const { rerender } = render(
-      <LoginScreen
-        loginBusy={false}
-        sessionError={''}
-        onClearError={() => {}}
-        onLogin={mockOnLogin}
-      />
-    );
+  it('renders the localized sign-in form', () => {
+    renderLoginScreen()
 
-    expect(screen.getByText('Login')).toBeInTheDocument();
-    expect(screen.getByLabelText('auth.hideToken')).toBeInTheDocument();
-  });
+    expect(screen.getByRole('heading', { name: 'Admin Sign In' })).toBeTruthy()
+    expect(screen.getByPlaceholderText('Paste admin or viewer token')).toBeTruthy()
+    expect(screen.getByLabelText('Show token')).toBeTruthy()
+  })
 
-  it('calls onLogin with token when submitted', async () => {
-    const mockOnLogin = jest.fn().mockResolvedValue(true);
-    const { rerender } = render(
-      <LoginScreen
-        loginBusy={false}
-        sessionError={''}
-        onClearError={() => {}}
-        onLogin={mockOnLogin}
-      />
-    );
+  it('submits the entered token and clears session errors while typing', async () => {
+    const { onLogin, onClearError } = renderLoginScreen({ sessionError: 'bad token' })
 
-    const input = screen.getByPlaceholderText('auth.tokenPlaceholder');
-    fireEvent.change(input, { target: { value: 'test-token' } });
-    fireEvent.click(screen.getByText('auth.submit'));
+    const input = screen.getByPlaceholderText('Paste admin or viewer token') as HTMLInputElement
+    fireEvent.input(input, { target: { value: 'test-token' } })
 
-    expect(mockOnLogin).toHaveBeenCalledWith('test-token');
-  });
-});
+    expect(onClearError).toHaveBeenCalledTimes(1)
+    expect(input.value).toBe('test-token')
+
+    const submitButton = screen.getByRole('button', { name: 'Sign In' }) as HTMLButtonElement
+    expect(submitButton.disabled).toBe(false)
+
+    fireEvent.click(submitButton)
+
+    await waitFor(() => {
+      expect(onLogin).toHaveBeenCalledWith('test-token')
+    })
+  })
+})

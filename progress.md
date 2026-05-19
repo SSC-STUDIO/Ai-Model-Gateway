@@ -116,6 +116,35 @@
 - Added `TestAppendConcurrent` covering concurrent Append from 5 goroutines with mutex serialization.
 - Validation: `go build ./...` passed; `go test ./... -count=1` passed with all 42+ packages green. Coverage: 74.0% → 78.0%.
 
+## 2026-05-19
+
+### Repair Admin Frontend Test Integration
+
+1. **Root cause**: `web/admin` contained four new `.test.tsx` files that were not wired into the repo's actual test stack. They used `preact-testing-library` and Jest globals, while the repo uses `vitest + @testing-library/preact`. `vitest.config.ts` also excluded `.test.tsx`, so the files broke `tsc` during `npm run build` without ever being executed by `npm test`.
+2. **Code changes**:
+   - `web/admin/vitest.config.ts`
+     - include `src/**/*.test.tsx`
+     - keep WSL-stable worker settings with `poolTimeout: 120000` and `maxWorkers: 2`
+   - `web/admin/src/components/ErrorBoundary.test.tsx`
+   - `web/admin/src/components/Icon.test.tsx`
+   - `web/admin/src/components/LoginScreen.test.tsx`
+   - `web/admin/src/components/ToastContainer.test.tsx`
+     - rewritten to `vitest + @testing-library/preact`
+   - `web/admin/src/i18n/locales/en.json`
+   - `web/admin/src/i18n/locales/zh.json`
+     - added `toast.close`
+3. **Validation**:
+   - `npm run build` ✅
+   - `npm test` ✅ (`17` files / `116` tests)
+4. **Live deployment validation**:
+   - `bash scripts/sync-bundle-to-home-ai-gateway.sh` ✅
+   - `ai-gateway.service` restarted successfully under strict manifest mode ✅
+   - `curl http://127.0.0.1:18080/-/health` ✅
+   - `curl http://127.0.0.1:18081/-/health` ✅
+5. **Operational result**:
+   - Standard live sync is unblocked again.
+   - The emergency runtime-only repair path is no longer required for this specific frontend build failure.
+
 ### Telemetry Test Coverage Improvement
 
 - Expanded `internal/telemetry/pricing_test.go` with 25 new test functions targeting uncovered code paths.

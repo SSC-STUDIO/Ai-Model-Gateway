@@ -1,8 +1,17 @@
-import { render } from 'preact-testing-library'
+import { render, screen } from '@testing-library/preact'
+import { describe, expect, it } from 'vitest'
 import { ErrorBoundary } from './ErrorBoundary'
 
-test('renders component without error', () => {
-  render(<ErrorBoundary><div data-testid="test"></div></ErrorBoundary>)
-  // The component should render children when there is no error
-  expect(screen.getByTestId('test')).toBeInTheDocument()
+describe('ErrorBoundary', () => {
+  it('renders children when no error is thrown', () => {
+    render(
+      <ErrorBoundary>
+        <div data-testid="child">ok</div>
+      </ErrorBoundary>
+    )
+
+    const child = screen.getByTestId('child')
+    expect(child).toBeTruthy()
+    expect(child.textContent).toBe('ok')
+  })
 })

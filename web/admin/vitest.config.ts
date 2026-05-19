@@ -4,7 +4,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     pool: 'forks',
+    poolTimeout: 120000,
+    maxWorkers: 2,
   },
 })

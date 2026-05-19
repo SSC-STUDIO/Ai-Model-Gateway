@@ -462,6 +462,9 @@
   "language": {
     "selectorLabel": "Language"
   },
+  "toast": {
+    "close": "Close notification"
+  },
   "charts": {
     "emptyTitle": "No data available",
     "emptyHint": "This chart will update automatically once data arrives.",

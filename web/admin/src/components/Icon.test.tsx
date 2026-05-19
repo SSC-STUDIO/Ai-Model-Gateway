@@ -1,12 +1,17 @@
-import { render } from 'preact-testing-library'
+import { render } from '@testing-library/preact'
+import { describe, expect, it } from 'vitest'
 import { Icon } from './Icon'
 
-test('renders overview icon without error', () => {
-  const { getByRole } = render(<Icon name="overview" />)
-  expect(getByRole('img')).toBeInTheDocument()
-})
+describe('Icon', () => {
+  it('renders an accessible icon when a title is provided', () => {
+    const { getByRole } = render(<Icon name="overview" title="Overview" />)
+    expect(getByRole('img', { name: 'Overview' })).toBeTruthy()
+  })
 
-test('renders telemetry icon without error', () => {
-  const { getByRole } = render(<Icon name="telemetry" />
-  expect(getByRole('img')).toBeInTheDocument()
+  it('renders a decorative icon as aria-hidden by default', () => {
+    const { container } = render(<Icon name="telemetry" />)
+    const icon = container.querySelector('svg')
+    expect(icon).toBeTruthy()
+    expect(icon?.getAttribute('aria-hidden')).toBe('true')
+  })
 })
