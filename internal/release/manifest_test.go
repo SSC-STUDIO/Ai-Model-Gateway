@@ -10,6 +10,18 @@ import (
 	"ai-model-gateway/internal/version"
 )
 
+func writeTestBundleBinary(t *testing.T, binDir, name string, contents []byte) {
+	t.Helper()
+
+	path := filepath.Join(binDir, name)
+	if runtime.GOOS == "windows" {
+		path += ".exe"
+	}
+	if err := os.WriteFile(path, contents, 0755); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBuildAndVerifyManifest(t *testing.T) {
 	root := t.TempDir()
 	binDir := filepath.Join(root, "bin")
@@ -17,13 +29,7 @@ func TestBuildAndVerifyManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"aigw", "gatewayd", "controld", "telemetryd", "gateway-cli"} {
-		path := filepath.Join(binDir, name)
-		if runtime.GOOS == "windows" {
-			path += ".exe"
-		}
-		if err := os.WriteFile(path, []byte("binary:"+name), 0755); err != nil {
-			t.Fatal(err)
-		}
+		writeTestBundleBinary(t, binDir, name, []byte("binary:"+name))
 	}
 	adminDist := filepath.Join(root, "web", "admin", "dist")
 	if err := os.MkdirAll(adminDist, 0755); err != nil {
@@ -60,9 +66,7 @@ func TestVerifyManifestRejectsMixedDaemonVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"gatewayd", "controld", "telemetryd"} {
-		if err := os.WriteFile(filepath.Join(binDir, name), []byte(name), 0755); err != nil {
-			t.Fatal(err)
-		}
+		writeTestBundleBinary(t, binDir, name, []byte(name))
 	}
 
 	manifest, err := BuildManifest(BuildOptions{Root: root})
@@ -96,13 +100,7 @@ func TestVerifyIncomingBundleAllowsNewerBundleIdentity(t *testing.T) {
 	}
 	// Include all required binaries for an update bundle (including aigw).
 	for _, name := range []string{"aigw", "gatewayd", "controld", "telemetryd", "gateway-cli"} {
-		path := filepath.Join(binDir, name)
-		if runtime.GOOS == "windows" {
-			path += ".exe"
-		}
-		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
-			t.Fatal(err)
-		}
+		writeTestBundleBinary(t, binDir, name, []byte(name))
 	}
 
 	manifest, err := BuildManifest(BuildOptions{Root: root, ProductVersion: "9.9.9"})
@@ -130,13 +128,7 @@ func TestVerifyIncomingBundleRejectsMissingAigw(t *testing.T) {
 	}
 	// Only include daemon binaries, omit aigw.
 	for _, name := range []string{"gatewayd", "controld", "telemetryd"} {
-		path := filepath.Join(binDir, name)
-		if runtime.GOOS == "windows" {
-			path += ".exe"
-		}
-		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
-			t.Fatal(err)
-		}
+		writeTestBundleBinary(t, binDir, name, []byte(name))
 	}
 
 	manifest, err := BuildManifest(BuildOptions{Root: root, ProductVersion: "9.9.9"})
@@ -277,13 +269,7 @@ func TestBuildManifestDefaultsAndEdgeCases(t *testing.T) {
 			t.Fatal(err)
 		}
 		name := "aigw"
-		path := filepath.Join(distDir, name)
-		if runtime.GOOS == "windows" {
-			path += ".exe"
-		}
-		if err := os.WriteFile(path, []byte("dist-binary"), 0755); err != nil {
-			t.Fatal(err)
-		}
+		writeTestBundleBinary(t, distDir, name, []byte("dist-binary"))
 		manifest, err := BuildManifest(BuildOptions{Root: root})
 		if err != nil {
 			t.Fatalf("BuildManifest() error = %v", err)
@@ -381,9 +367,7 @@ func TestVerifyManifestMissingDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Only write gatewayd, omit controld and telemetryd
-	if err := os.WriteFile(filepath.Join(binDir, "gatewayd"), []byte("g"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	writeTestBundleBinary(t, binDir, "gatewayd", []byte("g"))
 
 	manifest, err := BuildManifest(BuildOptions{Root: root})
 	if err != nil {
@@ -412,9 +396,7 @@ func TestVerifyManifestBinaryHashMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"aigw", "gatewayd", "controld", "telemetryd", "gateway-cli"} {
-		if err := os.WriteFile(filepath.Join(binDir, name), []byte(name), 0755); err != nil {
-			t.Fatal(err)
-		}
+		writeTestBundleBinary(t, binDir, name, []byte(name))
 	}
 
 	manifest, err := BuildManifest(BuildOptions{Root: root})
@@ -502,9 +484,7 @@ func TestVerifyManifestAdminDistHashMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"aigw", "gatewayd", "controld", "telemetryd", "gateway-cli"} {
-		if err := os.WriteFile(filepath.Join(binDir, name), []byte(name), 0755); err != nil {
-			t.Fatal(err)
-		}
+		writeTestBundleBinary(t, binDir, name, []byte(name))
 	}
 
 	manifest, err := BuildManifest(BuildOptions{Root: root})
