@@ -316,7 +316,7 @@ type SystemStatus struct {
 // GatewayStatusResponse matches gatewaycontrol.GetStatusResponse
 type GatewayStatusResponse struct {
 	ActiveSnapshotID          string                    `json:"active_snapshot_id"`
-	Readiness                 string                    `json:"readiness"`
+	Readiness                 GatewayReadiness          `json:"readiness"`
 	ActiveRequests            int                       `json:"active_requests"`
 	Listener                  string                    `json:"listener"`
 	ProviderHealth            map[string]ProviderHealth `json:"provider_health"`
@@ -324,6 +324,36 @@ type GatewayStatusResponse struct {
 	StartedAt                 time.Time                 `json:"started_at"`
 	LastAutoRemediationReason string                    `json:"last_auto_remediation_reason,omitempty"`
 	LastAutoRemediationAt     time.Time                 `json:"last_auto_remediation_at,omitempty"`
+}
+
+// GatewayReadiness accepts both the normalized string used by the Admin API
+// and the gatewaycontrol numeric enum that can appear in embedded gateway data.
+type GatewayReadiness string
+
+func (r *GatewayReadiness) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*r = GatewayReadiness(text)
+		return nil
+	}
+
+	var code int
+	if err := json.Unmarshal(data, &code); err != nil {
+		return err
+	}
+	switch code {
+	case 1:
+		*r = "starting"
+	case 2:
+		*r = "ready"
+	case 3:
+		*r = "draining"
+	case 4:
+		*r = "stopped"
+	default:
+		*r = "unknown"
+	}
+	return nil
 }
 
 // ProviderHealth represents provider health status

@@ -54,7 +54,7 @@ func (c *HealthCommand) Check(ctx context.Context, format string) error {
 				if status.Gateway == nil {
 					return ""
 				}
-				return status.Gateway.Readiness
+				return string(status.Gateway.Readiness)
 			}(),
 			"latency_ms": latency,
 			"version":    status.Version,

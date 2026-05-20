@@ -493,6 +493,37 @@ func TestControlPlaneClient_doRequest_AuthHeader(t *testing.T) {
 	}
 }
 
+func TestControlPlaneClient_GetStatusNumericReadiness(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"version": "test",
+			"gateway_status": "connected",
+			"telemetry_status": "connected",
+			"gateway": {
+				"active_snapshot_id": "snap_1",
+				"readiness": 2,
+				"active_requests": 0,
+				"listener": "127.0.0.1:18080",
+				"provider_health": {}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewControlPlaneClient(server.URL, "token")
+	status, err := client.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetStatus failed: %v", err)
+	}
+	if status.Gateway == nil {
+		t.Fatal("expected gateway status")
+	}
+	if status.Gateway.Readiness != "ready" {
+		t.Fatalf("readiness = %q, want ready", status.Gateway.Readiness)
+	}
+}
+
 func TestControlPlaneClient_doRequest_ErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

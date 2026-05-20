@@ -1,8 +1,11 @@
 package core
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestConfig_Normalize_Defaults(t *testing.T) {
@@ -68,6 +71,28 @@ func TestConfig_Normalize_Defaults(t *testing.T) {
 	}
 	if cfg.Admin.PublishHistoryLimit != DefaultAdminPublishHistoryLimit {
 		t.Errorf("expected publish_history_limit %d, got %d", DefaultAdminPublishHistoryLimit, cfg.Admin.PublishHistoryLimit)
+	}
+}
+
+func TestConfig_Normalize_PreservesExplicitEmptyPricingSources(t *testing.T) {
+	var cfg Config
+	if err := yaml.Unmarshal([]byte(`pricing:
+  sources: []
+`), &cfg); err != nil {
+		t.Fatalf("unmarshal yaml: %v", err)
+	}
+	cfg.Normalize()
+	if len(cfg.Pricing.Sources) != 0 {
+		t.Fatalf("expected explicit empty pricing sources to stay empty, got %d", len(cfg.Pricing.Sources))
+	}
+
+	var jsonCfg Config
+	if err := json.Unmarshal([]byte(`{"pricing":{"sources":[]}}`), &jsonCfg); err != nil {
+		t.Fatalf("unmarshal json: %v", err)
+	}
+	jsonCfg.Normalize()
+	if len(jsonCfg.Pricing.Sources) != 0 {
+		t.Fatalf("expected explicit empty JSON pricing sources to stay empty, got %d", len(jsonCfg.Pricing.Sources))
 	}
 }
 

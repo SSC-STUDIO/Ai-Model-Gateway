@@ -367,6 +367,9 @@ func (d *Daemon) createHandler() http.Handler {
 		mux.Handle("/admin/", adminProxy)
 		mux.Handle("/api/admin", adminProxy)
 		mux.Handle("/api/admin/", adminProxy)
+		mux.Handle("/icon.svg", adminProxy)
+		mux.Handle("/favicon.svg", adminProxy)
+		mux.Handle("/manifest.json", adminProxy)
 	}
 
 	// Models endpoint

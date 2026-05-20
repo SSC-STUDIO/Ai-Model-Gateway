@@ -1,9 +1,12 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ---------------------------------------------------------------------------
@@ -172,9 +175,50 @@ type PricingConfig struct {
 	RefreshIntervalHours   int                   `yaml:"refresh_interval_hours"    json:"refresh_interval_hours"`
 	RefreshIntervalMinutes int                   `yaml:"refresh_interval_minutes"  json:"refresh_interval_minutes"`
 	RequestTimeoutMs       int                   `yaml:"request_timeout_ms"        json:"request_timeout_ms"`
-	Sources                []PricingSourceConfig `yaml:"sources"                   json:"sources"`
+	Sources                []PricingSourceConfig `yaml:"sources,omitempty"         json:"sources,omitempty"`
 	FX                     PricingFXConfig       `yaml:"fx"                        json:"fx"`
 	ManualPrices           []PricingManualPrice  `yaml:"manual_prices"             json:"manual_prices"`
+	sourcesSet             bool
+}
+
+type pricingConfigAlias PricingConfig
+
+func (p *PricingConfig) UnmarshalYAML(value *yaml.Node) error {
+	type rawPricingConfig pricingConfigAlias
+	var raw rawPricingConfig
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*p = PricingConfig(raw)
+	p.sourcesSet = mappingHasKey(value, "sources")
+	return nil
+}
+
+func (p *PricingConfig) UnmarshalJSON(data []byte) error {
+	type rawPricingConfig pricingConfigAlias
+	var raw rawPricingConfig
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*p = PricingConfig(raw)
+	_, p.sourcesSet = fields["sources"]
+	return nil
+}
+
+func mappingHasKey(node *yaml.Node, key string) bool {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
 }
 
 // PricingSourceConfig defines an official pricing source to poll.
@@ -442,7 +486,7 @@ func (p *PricingConfig) normalize() {
 		enabled := true
 		p.FX.Enabled = &enabled
 	}
-	if len(p.Sources) == 0 {
+	if len(p.Sources) == 0 && !p.sourcesSet {
 		p.Sources = defaultPricingSources(p.RefreshIntervalMinutes, p.RequestTimeoutMs)
 	}
 	for i := range p.Sources {

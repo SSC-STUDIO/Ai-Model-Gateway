@@ -105,7 +105,7 @@ func TestCreateHandlerProxiesLegacyAdminPaths(t *testing.T) {
 	d := &Daemon{config: Config{AdminProxyURL: backend.URL}}
 	handler := d.createHandler()
 
-	for _, path := range []string{"/admin", "/admin/ops", "/api/admin/runtime/status"} {
+	for _, path := range []string{"/admin", "/admin/ops", "/api/admin/runtime/status", "/manifest.json", "/icon.svg", "/favicon.svg"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 
