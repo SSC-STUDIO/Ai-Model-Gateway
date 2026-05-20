@@ -186,7 +186,7 @@ func (s *SQLiteStateStore) Save(state *PublisherState) error {
 	if err != nil {
 		return fmt.Errorf("begin publisher sqlite save: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.Exec(`
 		INSERT INTO publisher_state (singleton_id, version, active_revision_id, updated_at)

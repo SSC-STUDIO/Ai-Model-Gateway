@@ -583,7 +583,7 @@ func maxInt(a, b int) int {
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 func writeStreamErrorEvent(w http.ResponseWriter, status int, message string) {

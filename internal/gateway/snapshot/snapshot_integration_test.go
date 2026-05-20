@@ -217,9 +217,14 @@ func TestSnapshotClone(t *testing.T) {
 	}
 
 	// Serialize and deserialize to create a deep copy
-	data, _ := json.Marshal(original)
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
 	var clone Snapshot
-	json.Unmarshal(data, &clone)
+	if err := json.Unmarshal(data, &clone); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
 
 	// Modify clone
 	clone.Providers[0].ModelTable[0].PublicModel = "modified"

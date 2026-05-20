@@ -140,7 +140,7 @@ func (s *Store) InsertBaselineSnapshot(ctx context.Context, snapshot BaselineSna
 	if err != nil {
 		return nil, fmt.Errorf("begin baseline snapshot insert: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if snapshot.ImportedAt.IsZero() {
 		snapshot.ImportedAt = time.Now().UTC()
@@ -312,7 +312,7 @@ func (s *Store) CreateRun(ctx context.Context, run RunSummary, targets []RunTarg
 	if err != nil {
 		return fmt.Errorf("begin benchmark run insert: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO benchmark_runs
@@ -425,7 +425,7 @@ func (s *Store) UpdateTarget(ctx context.Context, target RunTargetDetail) error 
 	if err != nil {
 		return fmt.Errorf("begin benchmark target update: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE benchmark_targets
@@ -711,7 +711,7 @@ func backfillBenchmarkOverallScores(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("begin benchmark overall score backfill: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Prepare(`
 		UPDATE benchmark_targets

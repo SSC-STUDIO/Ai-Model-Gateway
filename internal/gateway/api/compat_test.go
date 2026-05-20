@@ -1786,7 +1786,9 @@ func TestAdaptChatResponseToResponsesPreservesClientModel(t *testing.T) {
 	}
 
 	var payload map[string]any
-	json.Unmarshal(body, &payload)
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
 	if payload["model"] != "my-custom-model" {
 		t.Fatalf("model = %#v, want my-custom-model", payload["model"])
 	}

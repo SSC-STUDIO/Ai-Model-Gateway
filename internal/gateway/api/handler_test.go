@@ -1144,8 +1144,12 @@ func TestHandleChatCompletionDoesNotCacheStreamRequests(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request %d: %v", i, err)
 		}
-		io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if _, err := io.ReadAll(resp.Body); err != nil {
+			t.Fatalf("read response %d: %v", i, err)
+		}
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("close response %d: %v", i, err)
+		}
 	}
 
 	if upstreamCalls != 2 {

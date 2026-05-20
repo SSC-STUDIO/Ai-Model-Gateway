@@ -88,7 +88,9 @@ func TestClientBatching(t *testing.T) {
 
 	// Emit 4 events - should not trigger flush
 	for i := 0; i < 4; i++ {
-		client.Emit(telemetryingest.Event{EventID: fmt.Sprintf("evt-%d", i)})
+		if err := client.Emit(telemetryingest.Event{EventID: fmt.Sprintf("evt-%d", i)}); err != nil {
+			t.Fatalf("Emit event %d failed: %v", i, err)
+		}
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -97,7 +99,9 @@ func TestClientBatching(t *testing.T) {
 	}
 
 	// Emit 1 more event - should trigger flush
-	client.Emit(telemetryingest.Event{EventID: "evt-4"})
+	if err := client.Emit(telemetryingest.Event{EventID: "evt-4"}); err != nil {
+		t.Fatalf("Emit batch trigger event failed: %v", err)
+	}
 
 	time.Sleep(50 * time.Millisecond)
 	if mock.callCount.Load() != 1 {
@@ -129,7 +133,9 @@ func TestClientReconnection(t *testing.T) {
 	defer client.Close()
 
 	// Emit an event - should trigger reconnection after failure
-	client.Emit(telemetryingest.Event{EventID: "evt-1", EventType: "gateway.attempt.completed"})
+	if err := client.Emit(telemetryingest.Event{EventID: "evt-1", EventType: "gateway.attempt.completed"}); err != nil {
+		t.Fatalf("Emit reconnection event failed: %v", err)
+	}
 	client.Flush()
 
 	// Give reconnection time to happen
@@ -165,7 +171,9 @@ func TestClientReconnectionExhausted(t *testing.T) {
 	}
 	defer client.Close()
 
-	client.Emit(telemetryingest.Event{EventID: "evt-1", EventType: "gateway.attempt.completed"})
+	if err := client.Emit(telemetryingest.Event{EventID: "evt-1", EventType: "gateway.attempt.completed"}); err != nil {
+		t.Fatalf("Emit retry exhaustion event failed: %v", err)
+	}
 	client.Flush()
 
 	time.Sleep(200 * time.Millisecond)
