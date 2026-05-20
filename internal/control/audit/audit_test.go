@@ -45,6 +45,13 @@ func TestStoreRecordsAndRedactsAuditEvents(t *testing.T) {
 	}
 }
 
+func mustRecord(t *testing.T, store *Store, event Event) {
+	t.Helper()
+	if err := store.Record(context.Background(), event); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+}
+
 func TestNewStoreEmptyPath(t *testing.T) {
 	if _, err := NewStore(""); err == nil {
 		t.Fatal("NewStore('') error = nil, want error")
@@ -166,7 +173,7 @@ func TestListCancelledContext(t *testing.T) {
 	}
 	// Write a couple events first
 	for i := 0; i < 3; i++ {
-		store.Record(context.Background(), Event{Action: "test"})
+		mustRecord(t, store, Event{Action: "test"})
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -196,9 +203,9 @@ func TestListActionFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Record(context.Background(), Event{Action: "config.publish", Time: time.Now()})
-	store.Record(context.Background(), Event{Action: "config.rollback", Time: time.Now()})
-	store.Record(context.Background(), Event{Action: "config.publish", Time: time.Now()})
+	mustRecord(t, store, Event{Action: "config.publish", Time: time.Now()})
+	mustRecord(t, store, Event{Action: "config.rollback", Time: time.Now()})
+	mustRecord(t, store, Event{Action: "config.publish", Time: time.Now()})
 
 	events, err := store.List(context.Background(), Query{Limit: 100, Action: "config.publish"})
 	if err != nil {
@@ -221,8 +228,8 @@ func TestListSinceFilter(t *testing.T) {
 	}
 	oldTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	newTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	store.Record(context.Background(), Event{Action: "old", Time: oldTime})
-	store.Record(context.Background(), Event{Action: "new", Time: newTime})
+	mustRecord(t, store, Event{Action: "old", Time: oldTime})
+	mustRecord(t, store, Event{Action: "new", Time: newTime})
 
 	events, err := store.List(context.Background(), Query{
 		Limit: 100,
@@ -245,7 +252,7 @@ func TestListLimitEnforcement(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		store.Record(context.Background(), Event{Action: "test", Time: time.Now().Add(time.Duration(i) * time.Second)})
+		mustRecord(t, store, Event{Action: "test", Time: time.Now().Add(time.Duration(i) * time.Second)})
 	}
 
 	events, err := store.List(context.Background(), Query{Limit: 3})
@@ -262,7 +269,7 @@ func TestListDefaultLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Record(context.Background(), Event{Action: "test"})
+	mustRecord(t, store, Event{Action: "test"})
 
 	// Limit=0 should default to 100
 	events, err := store.List(context.Background(), Query{Limit: 0})
@@ -280,7 +287,7 @@ func TestListMaxLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 10; i++ {
-		store.Record(context.Background(), Event{Action: "test", Time: time.Now().Add(time.Duration(i) * time.Second)})
+		mustRecord(t, store, Event{Action: "test", Time: time.Now().Add(time.Duration(i) * time.Second)})
 	}
 
 	// Limit > 1000 should be capped to 1000
@@ -298,8 +305,8 @@ func TestListReverseChronological(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Record(context.Background(), Event{Action: "first", Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
-	store.Record(context.Background(), Event{Action: "second", Time: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)})
+	mustRecord(t, store, Event{Action: "first", Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)})
+	mustRecord(t, store, Event{Action: "second", Time: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)})
 
 	events, err := store.List(context.Background(), Query{Limit: 10})
 	if err != nil {
