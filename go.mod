@@ -1,6 +1,6 @@
 module ai-model-gateway
 
-go 1.25.9
+go 1.25.10
 
 require (
 	github.com/Microsoft/go-winio v0.6.2

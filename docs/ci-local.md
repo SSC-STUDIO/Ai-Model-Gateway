@@ -18,7 +18,7 @@ go env -w GOSUMDB=sum.golang.google.cn
 If Go was installed outside `PATH`, prepend the binary directory for the current PowerShell session:
 
 ```powershell
-$env:PATH = "D:\EliuaK_Csy\Working-Paper\My-Program\_tools\go1.25.9\bin;$env:PATH"
+$env:PATH = "D:\EliuaK_Csy\Working-Paper\My-Program\_tools\go1.25.10\bin;$env:PATH"
 ```
 
 ## Fast Loop
