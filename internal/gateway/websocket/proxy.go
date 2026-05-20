@@ -117,7 +117,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 	candidates := collectProviderCandidates(snap, model)
 	if len(candidates) == 0 {
 		logger.Warn("model not found", "model", model)
-		clientConn.WriteMessage(websocket.TextMessage, []byte(`{"error":"model not found: `+model+`"}`))
+		if err := clientConn.WriteMessage(websocket.TextMessage, []byte(`{"error":"model not found: `+model+`"}`)); err != nil {
+			logger.Warn("failed to send websocket error", "error", err)
+		}
 		return
 	}
 
@@ -154,7 +156,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request, snap *snapshot
 
 	if upstreamConn == nil {
 		logger.Warn("no provider available", "model", model)
-		clientConn.WriteMessage(websocket.TextMessage, []byte(`{"error":"no provider available"}`))
+		if err := clientConn.WriteMessage(websocket.TextMessage, []byte(`{"error":"no provider available"}`)); err != nil {
+			logger.Warn("failed to send websocket error", "error", err)
+		}
 		return
 	}
 	defer upstreamConn.Close()

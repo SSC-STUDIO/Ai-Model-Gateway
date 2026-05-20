@@ -19,6 +19,20 @@ func (m *mockSSRFChecker) ValidateURL(rawURL string) error {
 	return nil
 }
 
+func mustSetReadDeadline(t *testing.T, conn *websocket.Conn, deadline time.Time) {
+	t.Helper()
+	if err := conn.SetReadDeadline(deadline); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+}
+
+func mustWriteMessage(t *testing.T, conn *websocket.Conn, messageType int, data []byte) {
+	t.Helper()
+	if err := conn.WriteMessage(messageType, data); err != nil {
+		t.Fatalf("WriteMessage() error = %v", err)
+	}
+}
+
 func TestNewProxy(t *testing.T) {
 	proxy := NewProxy()
 	if proxy == nil {
@@ -467,7 +481,7 @@ func TestServeHTTP_NoProviderAvailable(t *testing.T) {
 	defer conn.Close()
 
 	// Set a read deadline to avoid hanging
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	mustSetReadDeadline(t, conn, time.Now().Add(5*time.Second))
 
 	_, message, err := conn.ReadMessage()
 	if err != nil {
@@ -555,7 +569,7 @@ func TestForwardMessages_NormalFlow(t *testing.T) {
 	}
 
 	// Read from echo connection (should receive the forwarded message)
-	echoConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	mustSetReadDeadline(t, echoConn, time.Now().Add(2*time.Second))
 	mt, msg, err := echoConn.ReadMessage()
 	if err != nil {
 		t.Fatalf("failed to read from echo: %v", err)
@@ -642,10 +656,10 @@ func TestForwardMessages_CloseError(t *testing.T) {
 	}()
 
 	// Send a message first
-	srcClient.WriteMessage(websocket.TextMessage, []byte(`test`))
+	mustWriteMessage(t, srcClient, websocket.TextMessage, []byte(`test`))
 
 	// Close src client with going away
-	srcClient.WriteMessage(websocket.CloseMessage,
+	mustWriteMessage(t, srcClient, websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseGoingAway, "going away"))
 	srcClient.Close()
 
@@ -718,10 +732,10 @@ func TestForwardMessages_AbnormalClosure(t *testing.T) {
 	}()
 
 	// Send a message
-	srcClient.WriteMessage(websocket.TextMessage, []byte(`test`))
+	mustWriteMessage(t, srcClient, websocket.TextMessage, []byte(`test`))
 
 	// Close with abnormal closure
-	srcClient.WriteMessage(websocket.CloseMessage,
+	mustWriteMessage(t, srcClient, websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, "abnormal"))
 	srcClient.Close()
 
@@ -805,7 +819,7 @@ func TestServeHTTP_Success(t *testing.T) {
 	}
 
 	// Read the response
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	mustSetReadDeadline(t, conn, time.Now().Add(2*time.Second))
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("failed to read message: %v", err)
@@ -841,7 +855,9 @@ func TestServeHTTP_ProviderFallback(t *testing.T) {
 			if err != nil {
 				return
 			}
-			conn.WriteMessage(mt, msg)
+			if err := conn.WriteMessage(mt, msg); err != nil {
+				return
+			}
 		}
 	}))
 	defer upstream.Close()
@@ -889,7 +905,7 @@ func TestServeHTTP_ProviderFallback(t *testing.T) {
 		t.Fatalf("failed to send message: %v", err)
 	}
 
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	mustSetReadDeadline(t, conn, time.Now().Add(2*time.Second))
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("failed to read message: %v", err)
@@ -931,7 +947,7 @@ func TestServeHTTP_SSRFValidationFail(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	mustSetReadDeadline(t, conn, time.Now().Add(2*time.Second))
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
@@ -962,7 +978,9 @@ func TestServeHTTP_WithAuthHeaders(t *testing.T) {
 			if err != nil {
 				return
 			}
-			conn.WriteMessage(mt, msg)
+			if err := conn.WriteMessage(mt, msg); err != nil {
+				return
+			}
 		}
 	}))
 	defer upstream.Close()
@@ -1003,7 +1021,7 @@ func TestServeHTTP_WithAuthHeaders(t *testing.T) {
 		t.Fatalf("failed to send message: %v", err)
 	}
 
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	mustSetReadDeadline(t, conn, time.Now().Add(2*time.Second))
 	_, msg, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("failed to read message: %v", err)
@@ -1111,7 +1129,7 @@ func TestForwardMessages_WriteError(t *testing.T) {
 	}()
 
 	// Send a message - write should fail
-	srcClient.WriteMessage(websocket.TextMessage, []byte(`test`))
+	mustWriteMessage(t, srcClient, websocket.TextMessage, []byte(`test`))
 
 	select {
 	case <-done:
