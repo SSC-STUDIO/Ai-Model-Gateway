@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"net/rpc"
 	"time"
 
@@ -22,7 +23,9 @@ func NewIngestRPCServer(daemon *Daemon) *IngestRPCServer {
 		daemon: daemon,
 		server: rpc.NewServer(),
 	}
-	s.server.Register(&TelemetryIngestRPC{daemon: daemon})
+	if err := s.server.Register(&TelemetryIngestRPC{daemon: daemon}); err != nil {
+		panic(fmt.Sprintf("register telemetry ingest RPC: %v", err))
+	}
 	return s
 }
 

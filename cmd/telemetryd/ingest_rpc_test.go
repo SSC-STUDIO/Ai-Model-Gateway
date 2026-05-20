@@ -130,11 +130,16 @@ func TestTelemetryIngestRPCPingWithEvents(t *testing.T) {
 	}
 	defer eventLog.Close()
 
-	// Add some events
-	eventLog.Append([]telemetryingest.Event{
+	accepted, dropped, err := eventLog.Append([]telemetryingest.Event{
 		newTelemetryEvent("evt-1"),
 		newTelemetryEvent("evt-2"),
 	})
+	if err != nil {
+		t.Fatalf("eventLog.Append() error = %v", err)
+	}
+	if accepted != 2 || dropped != 0 {
+		t.Fatalf("eventLog.Append() accepted=%d dropped=%d, want accepted=2 dropped=0", accepted, dropped)
+	}
 
 	rpc := &TelemetryIngestRPC{daemon: &Daemon{eventLog: eventLog}}
 

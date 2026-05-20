@@ -1018,7 +1018,9 @@ func TestAdminLoginPageHandlerAlreadyAuthenticated(t *testing.T) {
 	authenticator, _ := d.currentAuthenticator()
 	req := httptest.NewRequest(http.MethodGet, "/admin/login", nil)
 	rec := httptest.NewRecorder()
-	authenticator.Login(rec, strings.Repeat("a", 34))
+	if err := authenticator.Login(rec, strings.Repeat("a", 34)); err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
 
 	// Use the cookie in a new request
 	req = httptest.NewRequest(http.MethodGet, "/admin/login?next=/admin/config", nil)

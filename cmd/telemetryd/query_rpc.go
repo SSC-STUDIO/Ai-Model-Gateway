@@ -24,7 +24,9 @@ func NewQueryRPCServer(daemon *Daemon) *QueryRPCServer {
 		daemon: daemon,
 		server: rpc.NewServer(),
 	}
-	s.server.Register(&TelemetryQueryRPC{daemon: daemon})
+	if err := s.server.Register(&TelemetryQueryRPC{daemon: daemon}); err != nil {
+		panic(fmt.Sprintf("register telemetry query RPC: %v", err))
+	}
 	return s
 }
 

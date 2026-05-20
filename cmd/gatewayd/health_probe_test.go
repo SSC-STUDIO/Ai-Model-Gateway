@@ -245,7 +245,13 @@ func TestProbeProviderHealthWithBearer(t *testing.T) {
 	}
 	healthCfg := snapshot.HealthConfig{Path: "/health"}
 
-	d.probeProviderHealth(context.Background(), provider, healthCfg)
+	statusCode, _, err := d.probeProviderHealth(context.Background(), provider, healthCfg)
+	if err != nil {
+		t.Fatalf("probeProviderHealth() error = %v", err)
+	}
+	if statusCode != http.StatusOK {
+		t.Fatalf("statusCode = %d, want %d", statusCode, http.StatusOK)
+	}
 }
 
 func TestProbeProviderHealthErrorStatus(t *testing.T) {

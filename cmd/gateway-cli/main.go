@@ -156,10 +156,14 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	case "audit":
 		limit := 100
 		if len(cmdArgs) > 1 {
-			fmt.Sscanf(cmdArgs[1], "%d", &limit)
+			if _, scanErr := fmt.Sscanf(cmdArgs[1], "%d", &limit); scanErr != nil {
+				err = fmt.Errorf("invalid audit limit %q: %w", cmdArgs[1], scanErr)
+			}
 		}
 		var resp map[string]interface{}
-		resp, err = client.ListAudit(ctx, limit)
+		if err == nil {
+			resp, err = client.ListAudit(ctx, limit)
+		}
 		if err == nil {
 			err = printGeneric(stdout, resp, *format)
 		}

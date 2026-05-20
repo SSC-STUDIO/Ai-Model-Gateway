@@ -17,7 +17,7 @@ func writeTestBundleBinary(t *testing.T, binDir, name string, contents []byte) {
 	if runtime.GOOS == "windows" {
 		path += ".exe"
 	}
-	if err := os.WriteFile(path, contents, 0755); err != nil {
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

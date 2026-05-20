@@ -130,40 +130,11 @@ func (d *Daemon) tryRestoreSnapshotFromDisk() {
 		logger.Warn("snapshot cache: read meta", "error", metaErr)
 		return
 	}
-	req := gatewaycontrol.ApplySnapshotRequest{SnapshotBytes: payload}
-	if len(metaBytes) > 0 {
-		var diskMeta snapshotDiskMeta
-		if err := json.Unmarshal(metaBytes, &diskMeta); err != nil {
-			logger.Warn("snapshot cache: parse meta", "error", err)
-			req.SnapshotID = ""
-		} else {
-			req.SnapshotID = diskMeta.SnapshotID
-			req.RevisionID = diskMeta.RevisionID
-			req.SchemaVersion = diskMeta.SchemaVersion
-			if diskMeta.GeneratedAt != "" {
-				if t, err := time.Parse(time.RFC3339Nano, diskMeta.GeneratedAt); err == nil {
-					req.GeneratedAt = t
-				} else if t, err := time.Parse(time.RFC3339, diskMeta.GeneratedAt); err == nil {
-					req.GeneratedAt = t
-				}
-			}
-		}
-	}
+	req := snapshotRestoreRequest(payload, metaBytes)
 	if strings.TrimSpace(req.SnapshotID) == "" {
-		var snap snapshot.Snapshot
-		if err := parseSnapshot(payload, &snap); err != nil {
+		if err := fillRestoreRequestFromPayload(&req, payload); err != nil {
 			logger.Warn("snapshot cache: parse payload for meta-less restore", "error", err)
 			return
-		}
-		req.SnapshotID = strings.TrimSpace(snap.Meta.SnapshotID)
-		if req.SchemaVersion == 0 {
-			req.SchemaVersion = snap.Meta.SchemaVersion
-		}
-		if req.RevisionID == "" {
-			req.RevisionID = snap.Meta.RevisionID
-		}
-		if req.GeneratedAt.IsZero() && !snap.Meta.GeneratedAt.IsZero() {
-			req.GeneratedAt = snap.Meta.GeneratedAt
 		}
 	}
 	if strings.TrimSpace(req.SnapshotID) == "" {
@@ -175,4 +146,52 @@ func (d *Daemon) tryRestoreSnapshotFromDisk() {
 	}
 	d.recordAutoRemediation("restored_snapshot_disk_cache")
 	logger.Info("restored snapshot from disk cache", "snapshot_id", req.SnapshotID, "revision_id", req.RevisionID)
+}
+
+func snapshotRestoreRequest(payload, metaBytes []byte) gatewaycontrol.ApplySnapshotRequest {
+	req := gatewaycontrol.ApplySnapshotRequest{SnapshotBytes: payload}
+	if len(metaBytes) == 0 {
+		return req
+	}
+	var diskMeta snapshotDiskMeta
+	if err := json.Unmarshal(metaBytes, &diskMeta); err != nil {
+		logger.Warn("snapshot cache: parse meta", "error", err)
+		return req
+	}
+	req.SnapshotID = diskMeta.SnapshotID
+	req.RevisionID = diskMeta.RevisionID
+	req.SchemaVersion = diskMeta.SchemaVersion
+	req.GeneratedAt = parseSnapshotDiskGeneratedAt(diskMeta.GeneratedAt)
+	return req
+}
+
+func parseSnapshotDiskGeneratedAt(raw string) time.Time {
+	if raw == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t
+	}
+	return time.Time{}
+}
+
+func fillRestoreRequestFromPayload(req *gatewaycontrol.ApplySnapshotRequest, payload []byte) error {
+	var snap snapshot.Snapshot
+	if err := parseSnapshot(payload, &snap); err != nil {
+		return err
+	}
+	req.SnapshotID = strings.TrimSpace(snap.Meta.SnapshotID)
+	if req.SchemaVersion == 0 {
+		req.SchemaVersion = snap.Meta.SchemaVersion
+	}
+	if req.RevisionID == "" {
+		req.RevisionID = snap.Meta.RevisionID
+	}
+	if req.GeneratedAt.IsZero() && !snap.Meta.GeneratedAt.IsZero() {
+		req.GeneratedAt = snap.Meta.GeneratedAt
+	}
+	return nil
 }

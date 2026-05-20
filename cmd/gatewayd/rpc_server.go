@@ -34,7 +34,9 @@ func NewRPCServer(daemon *Daemon) *RPCServer {
 		daemon: daemon,
 		server: rpc.NewServer(),
 	}
-	s.server.Register(&GatewayControlRPC{daemon: daemon})
+	if err := s.server.Register(&GatewayControlRPC{daemon: daemon}); err != nil {
+		panic(fmt.Sprintf("register gateway control RPC: %v", err))
+	}
 	return s
 }
 
