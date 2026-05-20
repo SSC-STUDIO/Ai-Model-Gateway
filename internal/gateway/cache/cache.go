@@ -28,11 +28,11 @@ type Stats struct {
 
 // Config configures cache behaviour.
 type Config struct {
-	MaxEntries     int
-	TTLSec         int
-	MaxBytes       int64
-	SweepInterval  time.Duration
-	SweepOnGet     bool
+	MaxEntries    int
+	TTLSec        int
+	MaxBytes      int64
+	SweepInterval time.Duration
+	SweepOnGet    bool
 }
 
 // Cache is a thread-safe LRU cache with TTL expiration and byte-level limits.
@@ -45,7 +45,7 @@ type Cache struct {
 	now      func() time.Time
 
 	// Byte-level accounting
-	maxBytes    int64
+	maxBytes     int64
 	currentBytes atomic.Int64
 
 	// Counters

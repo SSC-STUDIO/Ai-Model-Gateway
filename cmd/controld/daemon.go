@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"ai-model-gateway/internal/contracts"
+	"ai-model-gateway/internal/contracts/gatewaycontrol"
 	"ai-model-gateway/internal/control/api"
 	"ai-model-gateway/internal/control/audit"
 	"ai-model-gateway/internal/control/benchmarking"
 	"ai-model-gateway/internal/control/compiler"
 	"ai-model-gateway/internal/control/publish"
-	"ai-model-gateway/internal/contracts/gatewaycontrol"
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/infra/configloader"
 	"ai-model-gateway/internal/infra/logger"

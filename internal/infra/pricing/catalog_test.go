@@ -210,11 +210,11 @@ func TestFromLegacySnapshotWithFullData(t *testing.T) {
 				ModelCount: 10,
 			},
 			{
-				ID:         "anthropic",
-				Vendor:     "Anthropic",
-				Enabled:    false,
-				Status:     "disabled",
-				LastError:  "source disabled",
+				ID:        "anthropic",
+				Vendor:    "Anthropic",
+				Enabled:   false,
+				Status:    "disabled",
+				LastError: "source disabled",
 			},
 		},
 		FX: telemetry.PricingFXSnapshot{
@@ -231,20 +231,20 @@ func TestFromLegacySnapshotWithFullData(t *testing.T) {
 		SourceCatalogs: map[string]map[string]telemetry.Pricing{
 			"openai": {
 				"gpt-4": {
-					Currency:   "USD",
-					InputPer1M: 30.0,
+					Currency:    "USD",
+					InputPer1M:  30.0,
 					OutputPer1M: 60.0,
-					Source:     "openai",
-					SourceID:   "openai",
+					Source:      "openai",
+					SourceID:    "openai",
 				},
 			},
 			"anthropic": {
 				"claude-opus-4-6[1m]": {
-					Currency:   "USD",
-					InputPer1M: 15.0,
+					Currency:    "USD",
+					InputPer1M:  15.0,
 					OutputPer1M: 75.0,
-					Source:     "anthropic",
-					SourceID:   "anthropic",
+					Source:      "anthropic",
+					SourceID:    "anthropic",
 				},
 			},
 		},

@@ -49,12 +49,12 @@ func MergeOpenClawConfig(path, openAIBase, apiKey string, publicModelID string, 
 		"api":     "openai-completions",
 		"models": []interface{}{
 			map[string]interface{}{
-				"id":              publicModelID,
-				"name":            "AI Model Gateway (" + publicModelID + ")",
-				"reasoning":       false,
-				"input":           []interface{}{"text"},
-				"contextWindow":   128000,
-				"maxTokens":       16384,
+				"id":            publicModelID,
+				"name":          "AI Model Gateway (" + publicModelID + ")",
+				"reasoning":     false,
+				"input":         []interface{}{"text"},
+				"contextWindow": 128000,
+				"maxTokens":     16384,
 			},
 		},
 	}

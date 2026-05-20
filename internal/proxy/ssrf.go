@@ -47,26 +47,26 @@ func NewSSRFCheckerWithConfig(config SSRFConfig) *SSRFChecker {
 	// Block private IP ranges (unless explicitly allowed)
 	if !config.AllowPrivateIP {
 		ranges := []string{
-			"10.0.0.0/8",      // Private network (RFC 1918)
-			"172.16.0.0/12",   // Private network (RFC 1918)
-			"192.168.0.0/16",  // Private network (RFC 1918)
-			"127.0.0.0/8",     // Loopback
-			"169.254.0.0/16",  // Link-local (includes cloud metadata 169.254.169.254)
-			"0.0.0.0/8",       // Current network (RFC 1122)
-			"100.64.0.0/10",   // CGNAT (RFC 6598)
-			"192.0.0.0/24",    // IETF Protocol Assignments (RFC 6890)
-			"192.0.2.0/24",    // TEST-NET-1 (RFC 5737)
-			"198.51.100.0/24", // TEST-NET-2 (RFC 5737)
-			"203.0.113.0/24",  // TEST-NET-3 (RFC 5737)
-			"224.0.0.0/4",     // Multicast (RFC 5771)
-			"240.0.0.0/4",     // Reserved (RFC 1112)
+			"10.0.0.0/8",         // Private network (RFC 1918)
+			"172.16.0.0/12",      // Private network (RFC 1918)
+			"192.168.0.0/16",     // Private network (RFC 1918)
+			"127.0.0.0/8",        // Loopback
+			"169.254.0.0/16",     // Link-local (includes cloud metadata 169.254.169.254)
+			"0.0.0.0/8",          // Current network (RFC 1122)
+			"100.64.0.0/10",      // CGNAT (RFC 6598)
+			"192.0.0.0/24",       // IETF Protocol Assignments (RFC 6890)
+			"192.0.2.0/24",       // TEST-NET-1 (RFC 5737)
+			"198.51.100.0/24",    // TEST-NET-2 (RFC 5737)
+			"203.0.113.0/24",     // TEST-NET-3 (RFC 5737)
+			"224.0.0.0/4",        // Multicast (RFC 5771)
+			"240.0.0.0/4",        // Reserved (RFC 1112)
 			"255.255.255.255/32", // Broadcast
-			"::1/128",         // IPv6 loopback
-			"fc00::/7",        // IPv6 unique local
-			"fe80::/10",       // IPv6 link-local
-			"ff00::/8",        // IPv6 multicast
-			"100::/64",        // IPv6 discard prefix (RFC 6666)
-			"2001:db8::/32",   // IPv6 documentation (RFC 3849)
+			"::1/128",            // IPv6 loopback
+			"fc00::/7",           // IPv6 unique local
+			"fe80::/10",          // IPv6 link-local
+			"ff00::/8",           // IPv6 multicast
+			"100::/64",           // IPv6 discard prefix (RFC 6666)
+			"2001:db8::/32",      // IPv6 documentation (RFC 3849)
 		}
 
 		for _, r := range ranges {

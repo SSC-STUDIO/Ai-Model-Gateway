@@ -512,7 +512,7 @@ func TestByteLimitAccounting(t *testing.T) {
 		MaxBytes:   100,
 	})
 
-	c.Put("a", []byte("12345")) // 5
+	c.Put("a", []byte("12345"))      // 5
 	c.Put("b", []byte("1234567890")) // 10
 	if c.CurrentBytes() != 15 {
 		t.Fatalf("expected 15 bytes, got %d", c.CurrentBytes())
@@ -520,7 +520,7 @@ func TestByteLimitAccounting(t *testing.T) {
 
 	// Overwrite "a" with a larger value.
 	c.Put("a", []byte("123456789012345")) // 15, old 5 removed
-	if c.CurrentBytes() != 25 { // 15+10
+	if c.CurrentBytes() != 25 {           // 15+10
 		t.Fatalf("expected 25 bytes after overwrite, got %d", c.CurrentBytes())
 	}
 }

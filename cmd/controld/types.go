@@ -75,7 +75,7 @@ type Daemon struct {
 	frontendBundle *api.AdminFrontendBundle
 	configWatcher  *configloader.Watcher
 
-	gwReadinessRepublishMu       sync.Mutex
+	gwReadinessRepublishMu        sync.Mutex
 	lastGatewayReadinessRepublish time.Time
 
 	// testRepublishHook is invoked at the start of each republish attempt (including no-ops); tests only.

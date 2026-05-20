@@ -253,11 +253,11 @@ func TestBuildStatusPayload_GatewayConnected(t *testing.T) {
 		StartedAt: time.Now(),
 		GatewayRPC: &stubGatewayController{
 			status: &gatewaycontrol.GetStatusResponse{
-				Readiness:          gatewaycontrol.ReadinessReady,
-				Listener:           ":18080",
-				ActiveSnapshotID:   "snap_1",
-				ActiveRequests:     5,
-				ProviderHealth:     map[string]gatewaycontrol.ProviderHealth{"openai": {Healthy: true}, "anthropic": {Healthy: false}},
+				Readiness:        gatewaycontrol.ReadinessReady,
+				Listener:         ":18080",
+				ActiveSnapshotID: "snap_1",
+				ActiveRequests:   5,
+				ProviderHealth:   map[string]gatewaycontrol.ProviderHealth{"openai": {Healthy: true}, "anthropic": {Healthy: false}},
 			},
 		},
 	}

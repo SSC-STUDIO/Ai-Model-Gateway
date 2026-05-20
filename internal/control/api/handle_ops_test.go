@@ -24,10 +24,10 @@ func baseHandlerDeps() Deps {
 		StartedAt: time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
 		AuditLog:  &stubAuditLog{},
 		Runtime: RuntimeConfig{
-			BundleVersion:  "1.0.0",
-			ConfigPath:     "/etc/aigw/config.yaml",
-			Listen:         ":18080",
-			GatewaySocket:  "/tmp/gateway.sock",
+			BundleVersion:   "1.0.0",
+			ConfigPath:      "/etc/aigw/config.yaml",
+			Listen:          ":18080",
+			GatewaySocket:   "/tmp/gateway.sock",
 			TelemetrySocket: "/tmp/telemetry.sock",
 		},
 	}
@@ -105,11 +105,11 @@ func TestRuntimePreflightHandler(t *testing.T) {
 		deps := baseHandlerDeps()
 		deps.GatewayRPC = &stubGatewayController{
 			status: &gatewaycontrol.GetStatusResponse{
-				Readiness:          gatewaycontrol.ReadinessReady,
-				Listener:           ":18080",
-				ActiveSnapshotID:   "snap_1",
-				ActiveRequests:     3,
-				ProviderHealth:     map[string]gatewaycontrol.ProviderHealth{},
+				Readiness:        gatewaycontrol.ReadinessReady,
+				Listener:         ":18080",
+				ActiveSnapshotID: "snap_1",
+				ActiveRequests:   3,
+				ProviderHealth:   map[string]gatewaycontrol.ProviderHealth{},
 			},
 		}
 		deps.TelemetryRPC = &stubTelemetryQuerier{
@@ -143,11 +143,11 @@ func TestRuntimePreflightHandler(t *testing.T) {
 		deps := baseHandlerDeps()
 		deps.GatewayRPC = &stubGatewayController{
 			status: &gatewaycontrol.GetStatusResponse{
-				Readiness:          gatewaycontrol.ReadinessStarting,
-				Listener:           ":18080",
-				ActiveSnapshotID:   "",
-				ActiveRequests:     0,
-				ProviderHealth:     map[string]gatewaycontrol.ProviderHealth{},
+				Readiness:        gatewaycontrol.ReadinessStarting,
+				Listener:         ":18080",
+				ActiveSnapshotID: "",
+				ActiveRequests:   0,
+				ProviderHealth:   map[string]gatewaycontrol.ProviderHealth{},
 			},
 		}
 		handler := runtimePreflightHandler(deps)
@@ -296,10 +296,10 @@ func TestConfigPreviewHandler(t *testing.T) {
 		deps := baseHandlerDeps()
 		deps.ConfigTools = &stubConfigTools{
 			preview: &ConfigPreviewResponse{
-				Valid:          true,
-				RevisionID:     "rev_1",
-				ProviderCount:  2,
-				EnabledRoutes:  []string{"/v1/chat"},
+				Valid:         true,
+				RevisionID:    "rev_1",
+				ProviderCount: 2,
+				EnabledRoutes: []string{"/v1/chat"},
 			},
 		}
 		handler := configPreviewHandler(deps)
@@ -713,9 +713,9 @@ func TestMetricsHandler(t *testing.T) {
 		deps := baseHandlerDeps()
 		deps.GatewayRPC = &stubGatewayController{
 			status: &gatewaycontrol.GetStatusResponse{
-				Readiness:          gatewaycontrol.ReadinessReady,
-				ActiveRequests:     5,
-				ProviderHealth:     map[string]gatewaycontrol.ProviderHealth{},
+				Readiness:      gatewaycontrol.ReadinessReady,
+				ActiveRequests: 5,
+				ProviderHealth: map[string]gatewaycontrol.ProviderHealth{},
 			},
 		}
 		handler := metricsHandler(deps)
