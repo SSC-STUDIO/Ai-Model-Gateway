@@ -44,7 +44,7 @@ func TestControlPlaneClient_GetConfig(t *testing.T) {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ConfigResponse{
+		_ = json.NewEncoder(w).Encode(ConfigResponse{
 			Revision: &RevisionInfo{
 				RevisionID: "rev-001",
 				CreatedAt:  time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC),
@@ -83,7 +83,7 @@ func TestControlPlaneClient_GetConfigHistory(t *testing.T) {
 				if r.URL.String() != tt.expectedPath {
 					t.Errorf("unexpected request: %s?%s", r.URL.Path, r.URL.RawQuery)
 				}
-				json.NewEncoder(w).Encode([]RevisionInfo{
+				_ = json.NewEncoder(w).Encode([]RevisionInfo{
 					{RevisionID: "rev-001", IsActive: true},
 				})
 			}))
@@ -118,7 +118,7 @@ func TestControlPlaneClient_PublishConfig(t *testing.T) {
 		if req.RevisionID != "rev-001" {
 			t.Errorf("expected revision rev-001, got %s", req.RevisionID)
 		}
-		json.NewEncoder(w).Encode(PublishResult{
+		_ = json.NewEncoder(w).Encode(PublishResult{
 			Success:    true,
 			RevisionID: "rev-001",
 		})
@@ -143,7 +143,7 @@ func TestControlPlaneClient_ReloadConfig(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
-		json.NewEncoder(w).Encode(PublishResult{
+		_ = json.NewEncoder(w).Encode(PublishResult{
 			Success:    true,
 			RevisionID: "rev-reloaded",
 		})
@@ -168,7 +168,7 @@ func TestControlPlaneClient_RollbackConfig(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
-		json.NewEncoder(w).Encode(PublishResult{
+		_ = json.NewEncoder(w).Encode(PublishResult{
 			Success:    true,
 			RevisionID: "rev-001",
 		})
@@ -190,7 +190,7 @@ func TestControlPlaneClient_GetOverview(t *testing.T) {
 		if r.URL.Path != "/api/admin/overview" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(OverviewResponse{
+		_ = json.NewEncoder(w).Encode(OverviewResponse{
 			Windows: map[string]WindowData{
 				"last_1h": {TotalRequests: 100},
 			},
@@ -237,7 +237,7 @@ func TestControlPlaneClient_GetTelemetry(t *testing.T) {
 				if r.URL.String() != tt.expectedPath {
 					t.Errorf("expected %s, got %s?%s", tt.expectedPath, r.URL.Path, r.URL.RawQuery)
 				}
-				json.NewEncoder(w).Encode(TelemetryResult{Total: 0})
+				_ = json.NewEncoder(w).Encode(TelemetryResult{Total: 0})
 			}))
 			defer server.Close()
 
@@ -288,7 +288,7 @@ func TestControlPlaneClient_GetVerificationRunTelemetry(t *testing.T) {
 				if got := r.URL.String(); got != tt.expectedPath {
 					t.Fatalf("expected %s, got %s", tt.expectedPath, got)
 				}
-				json.NewEncoder(w).Encode(TelemetryResult{
+				_ = json.NewEncoder(w).Encode(TelemetryResult{
 					Total: 1,
 					Events: []EventRecord{
 						{RequestID: "req-1", BenchmarkCaseID: "reasoning_exact"},
@@ -326,7 +326,7 @@ func TestControlPlaneClient_GetTimeSeries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(TimeSeriesResult{})
+				_ = json.NewEncoder(w).Encode(TimeSeriesResult{})
 			}))
 			defer server.Close()
 
@@ -354,7 +354,7 @@ func TestControlPlaneClient_GetBenchmark(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(BenchmarkResult{})
+				_ = json.NewEncoder(w).Encode(BenchmarkResult{})
 			}))
 			defer server.Close()
 
@@ -375,7 +375,7 @@ func TestControlPlaneClient_GetStatus(t *testing.T) {
 		if r.URL.Path != "/api/admin/status" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(SystemStatus{
+		_ = json.NewEncoder(w).Encode(SystemStatus{
 			Version: "1.1.1",
 			Uptime:  "1h",
 		})
@@ -394,7 +394,7 @@ func TestControlPlaneClient_GetStatus(t *testing.T) {
 
 func TestControlPlaneClient_ListProviders(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(SystemStatus{
+		_ = json.NewEncoder(w).Encode(SystemStatus{
 			Version: "1.1.1",
 			Gateway: &GatewayStatusResponse{
 				ProviderHealth: map[string]ProviderHealth{
@@ -426,7 +426,7 @@ func TestControlPlaneClient_ListProviders(t *testing.T) {
 
 func TestControlPlaneClient_ListProviders_NoGateway(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(SystemStatus{Version: "1.1.1"})
+		_ = json.NewEncoder(w).Encode(SystemStatus{Version: "1.1.1"})
 	}))
 	defer server.Close()
 
@@ -442,7 +442,7 @@ func TestControlPlaneClient_ListProviders_NoGateway(t *testing.T) {
 
 func TestControlPlaneClient_TestProvider(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(SystemStatus{
+		_ = json.NewEncoder(w).Encode(SystemStatus{
 			Version: "1.1.1",
 			Gateway: &GatewayStatusResponse{
 				ProviderHealth: map[string]ProviderHealth{
@@ -482,7 +482,7 @@ func TestControlPlaneClient_doRequest_AuthHeader(t *testing.T) {
 		if accept != "application/json" {
 			t.Errorf("expected Accept header 'application/json', got %q", accept)
 		}
-		json.NewEncoder(w).Encode(SystemStatus{})
+		_ = json.NewEncoder(w).Encode(SystemStatus{})
 	}))
 	defer server.Close()
 
@@ -527,7 +527,7 @@ func TestControlPlaneClient_GetStatusNumericReadiness(t *testing.T) {
 func TestControlPlaneClient_doRequest_ErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "internal error"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "internal error"})
 	}))
 	defer server.Close()
 
@@ -541,7 +541,7 @@ func TestControlPlaneClient_doRequest_ErrorResponse(t *testing.T) {
 func TestControlPlaneClient_doRequest_ErrorResponseWithoutJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
-		w.Write([]byte("bad gateway"))
+		_, _ = w.Write([]byte("bad gateway"))
 	}))
 	defer server.Close()
 
@@ -555,7 +555,7 @@ func TestControlPlaneClient_doRequest_ErrorResponseWithoutJSON(t *testing.T) {
 func TestControlPlaneClient_doRequest_InvalidJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("invalid json"))
+		_, _ = w.Write([]byte("invalid json"))
 	}))
 	defer server.Close()
 
@@ -577,7 +577,7 @@ func TestControlPlaneClient_doRequest_ConnectionError(t *testing.T) {
 func TestControlPlaneClient_doRequest_WithContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
-		json.NewEncoder(w).Encode(SystemStatus{})
+		_ = json.NewEncoder(w).Encode(SystemStatus{})
 	}))
 	defer server.Close()
 
@@ -615,7 +615,7 @@ func TestControlPlaneClient_doRequest_NoToken(t *testing.T) {
 		if auth != "" {
 			t.Errorf("expected no Authorization header when token is empty, got %q", auth)
 		}
-		json.NewEncoder(w).Encode(SystemStatus{})
+		_ = json.NewEncoder(w).Encode(SystemStatus{})
 	}))
 	defer server.Close()
 
@@ -631,7 +631,7 @@ func TestControlPlaneClient_doRequest_PostWithBody(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("expected Content-Type application/json, got %q", r.Header.Get("Content-Type"))
 		}
-		json.NewEncoder(w).Encode(PublishResult{})
+		_ = json.NewEncoder(w).Encode(PublishResult{})
 	}))
 	defer server.Close()
 
@@ -644,7 +644,7 @@ func TestControlPlaneClient_doRequest_PostWithBody(t *testing.T) {
 
 func TestControlPlaneClient_TestProvider_NoGatewayInStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(SystemStatus{
+		_ = json.NewEncoder(w).Encode(SystemStatus{
 			Version: "1.1.1",
 			// No Gateway field
 		})
