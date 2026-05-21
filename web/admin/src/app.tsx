@@ -47,7 +47,7 @@ const tabPaths: Record<ControlTabKey, string> = {
 }
 
 type MonitoringWorkspaceView = 'traffic' | 'cost'
-type OpsWorkspaceView = 'runtime' | 'probe' | 'audit' | 'diagnostics'
+type OpsWorkspaceView = 'runtime' | 'updates' | 'probe' | 'audit' | 'diagnostics'
 
 const WORKSPACE_QUERY_KEY = 'view'
 
@@ -91,7 +91,7 @@ function workspaceViewFromLocation(pathname: string, search: string): string {
   const legacy = legacyWorkspaceRoute(pathname)
   if (legacy) return legacy.view
   const view = new URLSearchParams(search).get(WORKSPACE_QUERY_KEY) ?? ''
-  return ['telemetry', 'pricing', 'runtime', 'audit', 'probe', 'diagnostics'].includes(view) ? view : ''
+  return ['telemetry', 'pricing', 'runtime', 'updates', 'audit', 'probe', 'diagnostics'].includes(view) ? view : ''
 }
 
 // Primary tab icons used in the top navigation.
@@ -337,6 +337,7 @@ export function App() {
         break
       case 'ops':
         primeCacheSilently('/api/admin/runtime/status', 30000)
+        primeCacheSilently('/api/admin/update/status', 30000)
         primeCacheSilently('/api/admin/audit?limit=20', 30000)
         break
       case 'diagnostics':
@@ -535,7 +536,7 @@ export function App() {
   ), [t, refreshInterval])
 
   const monitoringMode: MonitoringWorkspaceView = workspaceView === 'pricing' ? 'cost' : 'traffic'
-  const opsMode: OpsWorkspaceView = workspaceView === 'probe' || workspaceView === 'audit' || workspaceView === 'diagnostics'
+  const opsMode: OpsWorkspaceView = workspaceView === 'updates' || workspaceView === 'probe' || workspaceView === 'audit' || workspaceView === 'diagnostics'
     ? workspaceView
     : 'runtime'
 

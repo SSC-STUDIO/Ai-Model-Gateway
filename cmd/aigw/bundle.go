@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"ai-model-gateway/internal/release"
+	"ai-model-gateway/internal/updater"
 )
 
 func runBundle(args []string, stdout io.Writer) error {
@@ -78,62 +79,121 @@ func runBundle(args []string, stdout io.Writer) error {
 
 func runUpdate(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: aigw update <apply|rollback>")
+		return fmt.Errorf("usage: aigw update <check|fetch|apply|rollback>")
 	}
 	switch args[0] {
+	case "check":
+		fs := flag.NewFlagSet("update check", flag.ContinueOnError)
+		repository := fs.String("repo", updater.DefaultRepository, "GitHub repository owner/name")
+		apiBaseURL := fs.String("api-base-url", updater.DefaultAPIBaseURL, "GitHub API base URL")
+		platform := fs.String("platform", "", "platform override, defaults to GOOS/GOARCH")
+		format := fs.String("format", "text", "output format (text|json)")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		result, err := updater.CheckLatest(context.Background(), updater.Options{
+			CurrentVersion: Version,
+			Repository:     *repository,
+			APIBaseURL:     *apiBaseURL,
+			Platform:       *platform,
+		})
+		if err != nil {
+			return err
+		}
+		return writeOutput(stdout, *format, result, func() error {
+			if result.UpdateAvailable {
+				fmt.Fprintf(stdout, "update available: %s -> %s\n", result.CurrentVersion, result.LatestVersion)
+			} else {
+				fmt.Fprintf(stdout, "already current: %s\n", result.CurrentVersion)
+			}
+			if result.AssetName != "" {
+				fmt.Fprintf(stdout, "asset: %s\n", result.AssetName)
+			}
+			if result.ReleaseURL != "" {
+				fmt.Fprintf(stdout, "release: %s\n", result.ReleaseURL)
+			}
+			if result.Message != "" {
+				fmt.Fprintf(stdout, "message: %s\n", result.Message)
+			}
+			return nil
+		})
+	case "fetch":
+		fs := flag.NewFlagSet("update fetch", flag.ContinueOnError)
+		repository := fs.String("repo", updater.DefaultRepository, "GitHub repository owner/name")
+		apiBaseURL := fs.String("api-base-url", updater.DefaultAPIBaseURL, "GitHub API base URL")
+		platform := fs.String("platform", "", "platform override, defaults to GOOS/GOARCH")
+		outDir := fs.String("out", filepath.Join(".gateway-runtime", "update", "downloads"), "download directory")
+		force := fs.Bool("force", false, "download even when no newer release is available")
+		format := fs.String("format", "text", "output format (text|json)")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		result, err := updater.FetchLatest(context.Background(), updater.Options{
+			CurrentVersion: Version,
+			Repository:     *repository,
+			APIBaseURL:     *apiBaseURL,
+			Platform:       *platform,
+			DownloadDir:    *outDir,
+		}, *force)
+		if err != nil {
+			return err
+		}
+		return writeOutput(stdout, *format, result, func() error {
+			fmt.Fprintf(stdout, "downloaded %s\n", result.AssetName)
+			fmt.Fprintf(stdout, "archive: %s\n", result.ArchivePath)
+			fmt.Fprintf(stdout, "bundle: %s\n", result.BundleDir)
+			fmt.Fprintf(stdout, "version: %s\n", result.Manifest.ProductVersion)
+			fmt.Fprintf(stdout, "verify: %v\n", result.Verify.OK)
+			return nil
+		})
 	case "apply":
 		fs := flag.NewFlagSet("update apply", flag.ContinueOnError)
 		bundleRoot := fs.String("bundle", "", "bundle root")
 		installDir := fs.String("install-dir", ".", "install directory")
 		stateDir := fs.String("state-dir", filepath.Join(".gateway-runtime", "update"), "update state directory")
 		dryRun := fs.Bool("dry-run", false, "show the plan without copying files")
+		format := fs.String("format", "text", "output format (text|json)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if strings.TrimSpace(*bundleRoot) == "" {
 			return fmt.Errorf("-bundle is required")
 		}
-		manifestPath := filepath.Join(*bundleRoot, release.ManifestFileName)
-		manifest, err := release.LoadManifest(manifestPath)
+		result, err := updater.ApplyBundle(updater.ApplyOptions{
+			BundleRoot: *bundleRoot,
+			InstallDir: *installDir,
+			StateDir:   *stateDir,
+			DryRun:     *dryRun,
+		})
 		if err != nil {
 			return err
 		}
-		report := release.VerifyIncomingBundle(*bundleRoot, manifest)
-		if !report.OK {
-			return fmt.Errorf("bundle verification failed: %s", strings.Join(report.Issues, "; "))
-		}
-		backupDir := filepath.Join(*stateDir, "backups", time.Now().UTC().Format("20060102-150405"))
-		fmt.Fprintf(stdout, "preflight ok: bundle=%s version=%s\n", *bundleRoot, manifest.ProductVersion)
-		fmt.Fprintf(stdout, "backup target: %s\n", backupDir)
-		if *dryRun {
-			fmt.Fprintln(stdout, "dry-run: no files copied")
+		return writeOutput(stdout, *format, result, func() error {
+			fmt.Fprintf(stdout, "preflight ok: bundle=%s version=%s\n", result.BundleRoot, result.ProductVersion)
+			fmt.Fprintf(stdout, "backup target: %s\n", result.BackupDir)
+			if result.DryRun {
+				fmt.Fprintln(stdout, "dry-run: no files copied")
+				return nil
+			}
+			fmt.Fprintln(stdout, "update applied")
 			return nil
-		}
-		if err := backupInstallPayload(*installDir, backupDir, manifest); err != nil {
-			return err
-		}
-		if err := copyBundlePayload(*bundleRoot, *installDir, manifest); err != nil {
-			_ = restoreInstallPayload(backupDir, *installDir)
-			return fmt.Errorf("copy bundle payload: %w", err)
-		}
-		fmt.Fprintln(stdout, "update applied")
-		return nil
+		})
 	case "rollback":
 		fs := flag.NewFlagSet("update rollback", flag.ContinueOnError)
 		installDir := fs.String("install-dir", ".", "install directory")
 		stateDir := fs.String("state-dir", filepath.Join(".gateway-runtime", "update"), "update state directory")
+		format := fs.String("format", "text", "output format (text|json)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		backupDir, err := latestBackup(filepath.Join(*stateDir, "backups"))
+		result, err := updater.Rollback(updater.RollbackOptions{InstallDir: *installDir, StateDir: *stateDir})
 		if err != nil {
 			return err
 		}
-		if err := restoreInstallPayload(backupDir, *installDir); err != nil {
-			return err
-		}
-		fmt.Fprintf(stdout, "rolled back from %s\n", backupDir)
-		return nil
+		return writeOutput(stdout, *format, result, func() error {
+			fmt.Fprintf(stdout, "rolled back from %s\n", result.BackupDir)
+			return nil
+		})
 	default:
 		return fmt.Errorf("unknown update subcommand: %s", args[0])
 	}

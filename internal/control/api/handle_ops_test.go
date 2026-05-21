@@ -14,6 +14,7 @@ import (
 	"ai-model-gateway/internal/control/audit"
 	"ai-model-gateway/internal/control/publish"
 	"ai-model-gateway/internal/core"
+	"ai-model-gateway/internal/updater"
 )
 
 // --- shared test deps ---
@@ -163,6 +164,99 @@ func TestRuntimePreflightHandler(t *testing.T) {
 		}
 		if body["ok"] != false {
 			t.Errorf("ok = %v, want false", body["ok"])
+		}
+	})
+}
+
+func TestUpdateHandlers(t *testing.T) {
+	status := &updater.Status{
+		CurrentVersion:  "1.4.1",
+		LatestVersion:   "1.4.2",
+		LatestTag:       "v1.4.2",
+		UpdateAvailable: true,
+		CachedBundleDir: "/tmp/aigw-bundle",
+		CachedVersion:   "1.4.2",
+	}
+
+	t.Run("status returns update payload", func(t *testing.T) {
+		deps := baseHandlerDeps()
+		deps.Updates = &stubUpdateManager{status: status}
+		rec := httptest.NewRecorder()
+		updateStatusHandler(deps).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/update/status", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var body updater.Status
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.LatestVersion != "1.4.2" {
+			t.Fatalf("LatestVersion = %q, want 1.4.2", body.LatestVersion)
+		}
+	})
+
+	t.Run("check calls manager and audits", func(t *testing.T) {
+		manager := &stubUpdateManager{status: status}
+		auditLog := &stubAuditLog{}
+		deps := baseHandlerDeps()
+		deps.Updates = manager
+		deps.AuditLog = auditLog
+		rec := httptest.NewRecorder()
+		updateCheckHandler(deps).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/update/check", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+		if !manager.checkCalled {
+			t.Fatal("Check was not called")
+		}
+		if len(auditLog.events) == 0 || auditLog.events[len(auditLog.events)-1].Action != "update.check" {
+			t.Fatalf("audit events = %#v", auditLog.events)
+		}
+	})
+
+	t.Run("fetch accepts force", func(t *testing.T) {
+		manager := &stubUpdateManager{status: status}
+		deps := baseHandlerDeps()
+		deps.Updates = manager
+		req := httptest.NewRequest(http.MethodPost, "/update/fetch", strings.NewReader(`{"force":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		updateFetchHandler(deps).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		if !manager.fetchCalled || !manager.lastForce {
+			t.Fatalf("fetchCalled=%v lastForce=%v", manager.fetchCalled, manager.lastForce)
+		}
+	})
+
+	t.Run("apply forwards bundle options", func(t *testing.T) {
+		manager := &stubUpdateManager{status: status}
+		deps := baseHandlerDeps()
+		deps.Updates = manager
+		req := httptest.NewRequest(http.MethodPost, "/update/apply", strings.NewReader(`{"bundle_dir":"C:\\bundle","download":true,"dry_run":true,"force":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		updateApplyHandler(deps).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+		if !manager.applyCalled || !manager.lastDownload || !manager.lastDryRun || !manager.lastApplyForce || manager.lastBundleDir == "" {
+			t.Fatalf("manager state = %#v", manager)
+		}
+	})
+
+	t.Run("rollback calls manager", func(t *testing.T) {
+		manager := &stubUpdateManager{status: status}
+		deps := baseHandlerDeps()
+		deps.Updates = manager
+		rec := httptest.NewRecorder()
+		updateRollbackHandler(deps).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/update/rollback", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		if !manager.rollbackCalled {
+			t.Fatal("Rollback was not called")
 		}
 	})
 }

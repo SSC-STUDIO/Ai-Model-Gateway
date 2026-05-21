@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"ai-model-gateway/internal/infra/logger"
+	"ai-model-gateway/internal/updater"
 	"path/filepath"
 	"runtime"
 )
@@ -16,6 +17,11 @@ func loadConfig(configPath, listen, gatewaySocket, telemetrySocket, dataDir, aut
 		DataDir:    "data/control",
 		ConfigPath: "configs/config.yaml",
 		LogLevel:   "info",
+		Update: updater.Options{
+			Repository: updater.DefaultRepository,
+			InstallDir: ".",
+			StateDir:   filepath.Join(".gateway-runtime", "update"),
+		},
 	}
 
 	if configPath != "" {
@@ -48,6 +54,15 @@ func loadConfig(configPath, listen, gatewaySocket, telemetrySocket, dataDir, aut
 	}
 	if cfg.TelemetrySocket == "" {
 		cfg.TelemetrySocket = defaultSocketPath("telemetry-query")
+	}
+	if cfg.Update.Repository == "" {
+		cfg.Update.Repository = updater.DefaultRepository
+	}
+	if cfg.Update.InstallDir == "" {
+		cfg.Update.InstallDir = "."
+	}
+	if cfg.Update.StateDir == "" {
+		cfg.Update.StateDir = filepath.Join(".gateway-runtime", "update")
 	}
 
 	return cfg

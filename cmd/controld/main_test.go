@@ -24,6 +24,9 @@ func TestLoadConfigDefaultsToOperatorYAML(t *testing.T) {
 	if got, want := filepath.ToSlash(cfg.ConfigPath), "configs/config.yaml"; got != want {
 		t.Fatalf("ConfigPath = %q, want %q", got, want)
 	}
+	if cfg.Update.Repository == "" || cfg.Update.StateDir == "" {
+		t.Fatalf("Update defaults not set: %#v", cfg.Update)
+	}
 }
 
 func TestLoadConfigAllowsDirectFlagOverrides(t *testing.T) {
@@ -464,6 +467,11 @@ func TestSameOriginWriteProtection(t *testing.T) {
 		{
 			name: "pricing refresh",
 			path: "/api/admin/pricing/refresh",
+			body: `{}`,
+		},
+		{
+			name: "update check",
+			path: "/api/admin/update/check",
 			body: `{}`,
 		},
 		{

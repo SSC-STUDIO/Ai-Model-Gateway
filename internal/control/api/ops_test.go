@@ -11,6 +11,7 @@ import (
 	"ai-model-gateway/internal/contracts/telemetryquery"
 	"ai-model-gateway/internal/control/audit"
 	"ai-model-gateway/internal/control/publish"
+	"ai-model-gateway/internal/updater"
 	"ai-model-gateway/internal/version"
 )
 
@@ -208,6 +209,68 @@ type stubConfigTools struct {
 	preview *ConfigPreviewResponse
 	diff    *ConfigDiffResponse
 	err     error
+}
+
+// --- stub for UpdateManager ---
+
+type stubUpdateManager struct {
+	status *updater.Status
+	err    error
+
+	checkCalled    bool
+	fetchCalled    bool
+	applyCalled    bool
+	rollbackCalled bool
+
+	lastForce      bool
+	lastBundleDir  string
+	lastDownload   bool
+	lastDryRun     bool
+	lastApplyForce bool
+}
+
+func (s *stubUpdateManager) Status() (*updater.Status, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.status, nil
+}
+
+func (s *stubUpdateManager) Check(_ context.Context) (*updater.Status, error) {
+	s.checkCalled = true
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.status, nil
+}
+
+func (s *stubUpdateManager) Fetch(_ context.Context, force bool) (*updater.Status, error) {
+	s.fetchCalled = true
+	s.lastForce = force
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.status, nil
+}
+
+func (s *stubUpdateManager) Apply(_ context.Context, bundleDir string, download bool, dryRun bool, force bool) (*updater.Status, error) {
+	s.applyCalled = true
+	s.lastBundleDir = bundleDir
+	s.lastDownload = download
+	s.lastDryRun = dryRun
+	s.lastApplyForce = force
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.status, nil
+}
+
+func (s *stubUpdateManager) Rollback() (*updater.Status, error) {
+	s.rollbackCalled = true
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.status, nil
 }
 
 func (s *stubConfigTools) PreviewConfig(_ context.Context, _ ConfigPreviewRequest) (*ConfigPreviewResponse, error) {

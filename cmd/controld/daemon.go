@@ -22,6 +22,7 @@ import (
 	"ai-model-gateway/internal/core"
 	"ai-model-gateway/internal/infra/configloader"
 	"ai-model-gateway/internal/infra/logger"
+	"ai-model-gateway/internal/updater"
 )
 
 // NewDaemon creates a new controld daemon.
@@ -75,6 +76,21 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	d.compiler = compiler.NewCompiler()
 	d.publisher = newConfiguredPublisher(publisherGatewayAdapter{daemon: d}, d.compiler, d.publisherStateStore())
+	updateOpts := d.config.Update
+	if strings.TrimSpace(updateOpts.InstallDir) == "" {
+		updateOpts.InstallDir = "."
+	}
+	if strings.TrimSpace(updateOpts.StateDir) == "" {
+		updateOpts.StateDir = filepath.Join(d.config.DataDir, "updates")
+	}
+	if strings.TrimSpace(updateOpts.DownloadDir) == "" {
+		updateOpts.DownloadDir = filepath.Join(updateOpts.StateDir, "downloads")
+	}
+	if strings.TrimSpace(updateOpts.Repository) == "" {
+		updateOpts.Repository = updater.DefaultRepository
+	}
+	updateOpts.CurrentVersion = Version
+	d.updateManager = updater.NewManager(updateOpts)
 	benchmarkStore, err := benchmarking.NewStore(filepath.Join(d.config.DataDir, "benchmark.db"))
 	if err != nil {
 		return fmt.Errorf("initialize benchmark store: %w", err)

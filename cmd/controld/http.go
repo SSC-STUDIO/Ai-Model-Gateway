@@ -80,6 +80,9 @@ func (d *Daemon) createHandler() http.Handler {
 	if d.benchmarkSvc != nil {
 		deps.Benchmarking = d.benchmarkSvc
 	}
+	if d.updateManager != nil {
+		deps.Updates = d.updateManager
+	}
 	api.Mount(mux, deps, d.frontendBundle)
 
 	return mux
@@ -187,6 +190,7 @@ func isSameOriginWriteRequired(path, method string) bool {
 		strings.HasPrefix(path, "/api/admin/upstreams") ||
 		strings.HasPrefix(path, "/api/admin/pricing/refresh") ||
 		strings.HasPrefix(path, "/api/admin/runtime/preflight") ||
+		strings.HasPrefix(path, "/api/admin/update/") ||
 		strings.HasPrefix(path, "/api/admin/probe/") ||
 		strings.HasPrefix(path, "/api/admin/replay") ||
 		strings.HasPrefix(path, "/api/admin/benchmark/baselines/import") ||

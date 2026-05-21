@@ -14,6 +14,7 @@ import (
 	"ai-model-gateway/internal/control/benchmarking"
 	"ai-model-gateway/internal/control/publish"
 	authinfra "ai-model-gateway/internal/infra/auth"
+	"ai-model-gateway/internal/updater"
 )
 
 // Deps groups the dependencies for the control API.
@@ -30,6 +31,7 @@ type Deps struct {
 	GatewayRPC           GatewayController
 	GatewayRPCProvider   func() GatewayController
 	Benchmarking         VerificationBenchmarker
+	Updates              UpdateManager
 	Version              string
 	StartedAt            time.Time
 	AdminMiddleware      func(http.Handler) http.Handler
@@ -77,6 +79,15 @@ type VerificationBenchmarker interface {
 	ListRuns(ctx context.Context, limit int) ([]benchmarking.RunSummary, error)
 	StartRun(ctx context.Context, req benchmarking.StartRunRequest) (*benchmarking.RunDetail, error)
 	GetRun(ctx context.Context, runID string) (*benchmarking.RunDetail, error)
+}
+
+// UpdateManager exposes local software update operations to the admin API.
+type UpdateManager interface {
+	Status() (*updater.Status, error)
+	Check(ctx context.Context) (*updater.Status, error)
+	Fetch(ctx context.Context, force bool) (*updater.Status, error)
+	Apply(ctx context.Context, bundleDir string, download bool, dryRun bool, force bool) (*updater.Status, error)
+	Rollback() (*updater.Status, error)
 }
 
 // RevisionInfo contains information about a config revision.
@@ -140,6 +151,11 @@ func Mount(mux *http.ServeMux, deps Deps, frontendBundle *AdminFrontendBundle) {
 	mux.Handle("/api/admin/status", wrap(http.HandlerFunc(statusHandler(deps))))
 	mux.Handle("/api/admin/runtime/status", wrap(http.HandlerFunc(runtimeStatusHandler(deps))))
 	mux.Handle("/api/admin/runtime/preflight", wrap(http.HandlerFunc(runtimePreflightHandler(deps))))
+	mux.Handle("/api/admin/update/status", wrap(http.HandlerFunc(updateStatusHandler(deps))))
+	mux.Handle("/api/admin/update/check", wrap(http.HandlerFunc(updateCheckHandler(deps))))
+	mux.Handle("/api/admin/update/fetch", wrap(http.HandlerFunc(updateFetchHandler(deps))))
+	mux.Handle("/api/admin/update/apply", wrap(http.HandlerFunc(updateApplyHandler(deps))))
+	mux.Handle("/api/admin/update/rollback", wrap(http.HandlerFunc(updateRollbackHandler(deps))))
 	mux.Handle("/api/admin/audit", wrap(http.HandlerFunc(auditHandler(deps))))
 	mux.Handle("/api/admin/probe/provider", wrap(http.HandlerFunc(probeProviderHandler(deps))))
 	mux.Handle("/api/admin/probe/model", wrap(http.HandlerFunc(probeModelHandler(deps))))

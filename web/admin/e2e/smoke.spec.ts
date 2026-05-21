@@ -478,6 +478,87 @@ test.describe('Admin UI Smoke Tests', () => {
         }),
       })
     })
+    await page.route('/api/admin/update/status', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          current_version: '1.4.1',
+          platform: 'windows/amd64',
+          repository: 'SSC-STUDIO/Ai-Model-Gateway',
+          install_dir: 'D:\\Ai-Model-Gateway',
+          state_dir: '.gateway-runtime/update',
+          latest_version: '1.4.2',
+          latest_tag: 'v1.4.2',
+          update_available: true,
+          asset_name: 'ai-model-gateway-windows-amd64.zip',
+          cached_bundle_dir: 'D:\\Ai-Model-Gateway\\.gateway-runtime\\update\\downloads\\v1.4.2-windows-amd64\\bundle',
+          cached_version: '1.4.2',
+          cached_verify: { ok: true },
+          last_backup_dir: 'D:\\Ai-Model-Gateway\\.gateway-runtime\\update\\backups\\20260520-120000',
+          message: 'update bundle downloaded and verified',
+        }),
+      })
+    })
+    await page.route('/api/admin/update/check', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          current_version: '1.4.1',
+          latest_version: '1.4.2',
+          latest_tag: 'v1.4.2',
+          update_available: true,
+          platform: 'windows/amd64',
+          repository: 'SSC-STUDIO/Ai-Model-Gateway',
+          asset_name: 'ai-model-gateway-windows-amd64.zip',
+        }),
+      })
+    })
+    await page.route('/api/admin/update/fetch', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          current_version: '1.4.1',
+          latest_version: '1.4.2',
+          update_available: true,
+          cached_bundle_dir: 'D:\\Ai-Model-Gateway\\.gateway-runtime\\update\\downloads\\v1.4.2-windows-amd64\\bundle',
+          cached_version: '1.4.2',
+          cached_verify: { ok: true },
+          message: 'update bundle downloaded and verified',
+        }),
+      })
+    })
+    await page.route('/api/admin/update/apply', async (route) => {
+      const payload = route.request().postDataJSON() as Record<string, unknown>
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          current_version: '1.4.1',
+          latest_version: '1.4.2',
+          update_available: true,
+          cached_bundle_dir: payload.bundle_dir || 'D:\\Ai-Model-Gateway\\.gateway-runtime\\update\\downloads\\v1.4.2-windows-amd64\\bundle',
+          cached_version: '1.4.2',
+          cached_verify: { ok: true },
+          last_backup_dir: 'D:\\Ai-Model-Gateway\\.gateway-runtime\\update\\backups\\20260520-120000',
+          message: payload.dry_run ? 'dry-run: bundle verified; no files copied' : 'update applied; restart the service to run the new binaries',
+        }),
+      })
+    })
+    await page.route('/api/admin/update/rollback', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          current_version: '1.4.1',
+          cached_version: '1.4.2',
+          last_backup_dir: 'D:\\Ai-Model-Gateway\\.gateway-runtime\\update\\backups\\20260520-120000',
+          message: 'rollback restored the last update backup',
+        }),
+      })
+    })
     await page.route('/api/admin/diagnostics', async (route) => {
       diagnosticsRequests += 1
       await route.fulfill({
@@ -627,6 +708,12 @@ test.describe('Admin UI Smoke Tests', () => {
     await expect(page.locator('.ops-provider-panel')).toContainText('Provider health')
     await expect(page.locator('.ops-workspace-switch')).toContainText('Diagnostics')
     expect(diagnosticsRequests).toBe(0)
+
+    await page.locator('.ops-workspace-switch button', { hasText: 'Updates' }).click()
+    await expect(page).toHaveURL(/\/admin\/ops\?.*view=updates/)
+    await expect(page.locator('.ops-update-layout')).toContainText('Update available')
+    await expect(page.locator('.ops-update-layout')).toContainText('1.4.2')
+    await expect(page.getByRole('button', { name: /Dry-run apply/ })).toBeEnabled()
 
     await page.locator('.ops-workspace-switch button', { hasText: 'Probe' }).click()
     await expect(page).toHaveURL(/\/admin\/ops\?.*view=probe/)

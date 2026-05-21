@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n'
 import { Icon, type IconName } from '../Icon'
 import { OpsTab } from './OpsTab'
 
-type OpsWorkspaceMode = 'runtime' | 'probe' | 'audit' | 'diagnostics'
+type OpsWorkspaceMode = 'runtime' | 'updates' | 'probe' | 'audit' | 'diagnostics'
 type Tone = 'success' | 'warning' | 'error' | 'neutral'
 
 interface OperationsTabProps {
@@ -47,6 +47,39 @@ interface PreflightCheck {
 interface PreflightPayload {
   ok: boolean
   checks: PreflightCheck[]
+}
+
+interface UpdateVerifyReport {
+  ok?: boolean
+  issues?: string[]
+}
+
+interface UpdateStatus {
+  current_version?: string
+  platform?: string
+  repository?: string
+  install_dir?: string
+  state_dir?: string
+  download_dir?: string
+  latest_version?: string
+  latest_tag?: string
+  update_available?: boolean
+  asset_name?: string
+  asset_url?: string
+  release_url?: string
+  published_at?: string
+  last_checked_at?: string
+  last_check_error?: string
+  cached_bundle_dir?: string
+  cached_archive_path?: string
+  cached_version?: string
+  cached_verify?: UpdateVerifyReport
+  last_applied_at?: string
+  last_apply_error?: string
+  last_backup_dir?: string
+  last_rolled_back_at?: string
+  last_rollback_error?: string
+  message?: string
 }
 
 interface OpsSummaryItemProps {
@@ -151,6 +184,41 @@ function normalizePreflight(value: unknown): PreflightPayload {
   return {
     ok: asBoolean(record?.ok ?? record?.OK) ?? checks.every((check) => check.ok),
     checks,
+  }
+}
+
+function normalizeUpdateStatus(value: unknown): UpdateStatus {
+  const record = asRecord(value)
+  const verify = asRecord(record?.cached_verify || record?.CachedVerify)
+  return {
+    current_version: asString(record?.current_version || record?.CurrentVersion),
+    platform: asString(record?.platform || record?.Platform),
+    repository: asString(record?.repository || record?.Repository),
+    install_dir: asString(record?.install_dir || record?.InstallDir),
+    state_dir: asString(record?.state_dir || record?.StateDir),
+    download_dir: asString(record?.download_dir || record?.DownloadDir),
+    latest_version: asString(record?.latest_version || record?.LatestVersion),
+    latest_tag: asString(record?.latest_tag || record?.LatestTag),
+    update_available: asBoolean(record?.update_available ?? record?.UpdateAvailable),
+    asset_name: asString(record?.asset_name || record?.AssetName),
+    asset_url: asString(record?.asset_url || record?.AssetURL),
+    release_url: asString(record?.release_url || record?.ReleaseURL),
+    published_at: asString(record?.published_at || record?.PublishedAt),
+    last_checked_at: asString(record?.last_checked_at || record?.LastCheckedAt),
+    last_check_error: asString(record?.last_check_error || record?.LastCheckError),
+    cached_bundle_dir: asString(record?.cached_bundle_dir || record?.CachedBundleDir),
+    cached_archive_path: asString(record?.cached_archive_path || record?.CachedArchivePath),
+    cached_version: asString(record?.cached_version || record?.CachedVersion),
+    cached_verify: verify ? {
+      ok: asBoolean(verify.ok ?? verify.OK),
+      issues: asArray(verify.issues || verify.Issues).map((item) => asString(item)).filter(Boolean),
+    } : undefined,
+    last_applied_at: asString(record?.last_applied_at || record?.LastAppliedAt),
+    last_apply_error: asString(record?.last_apply_error || record?.LastApplyError),
+    last_backup_dir: asString(record?.last_backup_dir || record?.LastBackupDir),
+    last_rolled_back_at: asString(record?.last_rolled_back_at || record?.LastRolledBackAt),
+    last_rollback_error: asString(record?.last_rollback_error || record?.LastRollbackError),
+    message: asString(record?.message || record?.Message),
   }
 }
 
@@ -330,6 +398,136 @@ function PreflightPanel({
   )
 }
 
+function UpdatePanel({
+  status,
+  busy,
+  error,
+  canWrite,
+  manualBundle,
+  onManualBundle,
+  onCheck,
+  onFetch,
+  onApply,
+  onDryRun,
+  onRollback,
+  t,
+}: {
+  status: UpdateStatus
+  busy: string
+  error: string
+  canWrite: boolean
+  manualBundle: string
+  onManualBundle: (value: string) => void
+  onCheck: () => void
+  onFetch: () => void
+  onApply: () => void
+  onDryRun: () => void
+  onRollback: () => void
+  t: (key: string) => string
+}) {
+  const updateAvailable = status.update_available === true
+  const verifyOK = status.cached_verify?.ok === true
+  const latest = status.latest_version || '-'
+  const current = status.current_version || '-'
+  const cachedBundle = status.cached_bundle_dir || ''
+  const manualReady = manualBundle.trim().length > 0
+  const canApply = canWrite && !busy && (verifyOK || manualReady)
+
+  return (
+    <div class="ops-update-layout">
+      <section class="ops-update-main">
+        <div class="ops-section-heading">
+          <div>
+            <span class="workspace-kicker"><Icon name="download" class="workspace-kicker-icon" />{t('ops.updates')}</span>
+            <h3>{updateAvailable ? t('ops.updateAvailable') : t('ops.updateStatus')}</h3>
+          </div>
+          <span class={`status-badge ${updateAvailable ? 'warning' : status.last_check_error ? 'error' : 'success'}`}>
+            {updateAvailable ? t('ops.updateAvailable') : status.last_check_error ? t('ops.updateCheckFailed') : t('ops.updateCurrent')}
+          </span>
+        </div>
+
+        <div class="ops-update-version-grid">
+          <OpsSummaryItem icon="shield" label={t('ops.currentVersion')} value={current} detail={status.platform || '-'} tone="neutral" />
+          <OpsSummaryItem icon="download" label={t('ops.latestVersion')} value={latest} detail={status.latest_tag || status.repository || '-'} tone={updateAvailable ? 'warning' : 'success'} />
+          <OpsSummaryItem icon="file" label={t('ops.bundleAsset')} value={status.asset_name || '-'} detail={status.published_at ? formatDate(status.published_at) : status.repository || '-'} tone={status.asset_name ? 'success' : 'neutral'} />
+          <OpsSummaryItem icon="check" label={t('ops.bundleVerify')} value={verifyOK ? t('ops.verified') : t('ops.notVerified')} detail={cachedBundle || t('ops.noCachedBundle')} tone={verifyOK ? 'success' : 'neutral'} />
+        </div>
+
+        {error ? <p class="ops-alert error">{error}</p> : null}
+        {status.message ? <p class="ops-alert success">{status.message}</p> : null}
+        {status.last_check_error ? <p class="ops-alert error">{status.last_check_error}</p> : null}
+        {status.last_apply_error ? <p class="ops-alert error">{status.last_apply_error}</p> : null}
+        {status.last_rollback_error ? <p class="ops-alert error">{status.last_rollback_error}</p> : null}
+        {!canWrite ? <p class="ops-alert warning">{t('ops.updateReadOnly')}</p> : null}
+
+        <div class="ops-update-actions">
+          <button type="button" onClick={onCheck} disabled={Boolean(busy)}>
+            <Icon name="refresh" />
+            {busy === 'check' ? t('ops.checkingUpdate') : t('ops.checkForUpdates')}
+          </button>
+          <button type="button" class="secondary" onClick={onFetch} disabled={!canWrite || Boolean(busy) || !updateAvailable}>
+            <Icon name="download" />
+            {busy === 'fetch' ? t('ops.downloadingUpdate') : t('ops.downloadUpdate')}
+          </button>
+          <button type="button" class="secondary" onClick={onDryRun} disabled={!canApply}>
+            <Icon name="check" />
+            {busy === 'dry-run' ? t('ops.verifyingUpdate') : t('ops.verifyApply')}
+          </button>
+          <button type="button" onClick={onApply} disabled={!canApply}>
+            <Icon name="upload" />
+            {busy === 'apply' ? t('ops.applyingUpdate') : t('ops.applyUpdate')}
+          </button>
+          <button type="button" class="secondary" onClick={onRollback} disabled={!canWrite || Boolean(busy) || !status.last_backup_dir}>
+            <Icon name="history" />
+            {busy === 'rollback' ? t('ops.rollingBack') : t('ops.rollbackUpdate')}
+          </button>
+        </div>
+      </section>
+
+      <section class="ops-update-side">
+        <div class="ops-section-heading">
+          <div>
+            <span class="workspace-kicker"><Icon name="file" class="workspace-kicker-icon" />{t('ops.manualBundle')}</span>
+            <h3>{t('ops.localBundlePath')}</h3>
+          </div>
+        </div>
+        <label class="ops-field">
+          <span>{t('ops.bundleDirectory')}</span>
+          <input
+            value={manualBundle}
+            placeholder={cachedBundle || 'D:\\path\\to\\bundle'}
+            onInput={(event) => onManualBundle((event.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+        <div class="ops-path-list">
+          <div class="ops-path-row">
+            <span>{t('ops.installDir')}</span>
+            <code>{status.install_dir || '-'}</code>
+          </div>
+          <div class="ops-path-row">
+            <span>{t('ops.stateDir')}</span>
+            <code>{status.state_dir || '-'}</code>
+          </div>
+          <div class="ops-path-row">
+            <span>{t('ops.cachedArchive')}</span>
+            <code>{status.cached_archive_path || '-'}</code>
+          </div>
+          <div class="ops-path-row">
+            <span>{t('ops.lastBackup')}</span>
+            <code>{status.last_backup_dir || '-'}</code>
+          </div>
+        </div>
+        {status.cached_verify?.issues?.length ? (
+          <div class="ops-update-issues">
+            <strong>{t('ops.verifyIssues')}</strong>
+            {status.cached_verify.issues.map((issue) => <span key={issue}>{issue}</span>)}
+          </div>
+        ) : null}
+      </section>
+    </div>
+  )
+}
+
 function RecentOpsPanel({ audit, t }: { audit: AuditSummary; t: (key: string) => string }) {
   const events = audit.events.slice(0, 3)
   return (
@@ -443,9 +641,13 @@ export function OperationsTab({ mode, canWrite, onModeChange, onUnauthorized }: 
   const [audit, setAudit] = useState<AuditSummary>({ events: [], count: 0 })
   const [runtimeBusy, setRuntimeBusy] = useState(false)
   const [preflightBusy, setPreflightBusy] = useState(false)
+  const [updateBusy, setUpdateBusy] = useState('')
   const [runtimeError, setRuntimeError] = useState('')
   const [auditError, setAuditError] = useState('')
+  const [updateError, setUpdateError] = useState('')
   const [preflight, setPreflight] = useState<PreflightPayload | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>(() => normalizeUpdateStatus(null))
+  const [manualBundle, setManualBundle] = useState('')
 
   const loadRuntime = useCallback(async () => {
     setRuntimeBusy(true)
@@ -468,6 +670,15 @@ export function OperationsTab({ mode, canWrite, onModeChange, onUnauthorized }: 
     }
   }, [onUnauthorized])
 
+  const loadUpdateStatus = useCallback(async () => {
+    setUpdateError('')
+    try {
+      setUpdateStatus(normalizeUpdateStatus(await fetchJSON('/api/admin/update/status', { onUnauthorized })))
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err))
+    }
+  }, [onUnauthorized])
+
   const runPreflight = useCallback(async () => {
     setPreflightBusy(true)
     setRuntimeError('')
@@ -484,9 +695,42 @@ export function OperationsTab({ mode, canWrite, onModeChange, onUnauthorized }: 
     }
   }, [loadAudit, loadRuntime, onUnauthorized])
 
+  const runUpdateAction = useCallback(async (
+    action: 'check' | 'fetch' | 'dry-run' | 'apply' | 'rollback'
+  ) => {
+    setUpdateBusy(action)
+    setUpdateError('')
+    try {
+      let endpoint = '/api/admin/update/check'
+      let body: Record<string, unknown> | undefined
+      if (action === 'fetch') {
+        endpoint = '/api/admin/update/fetch'
+      } else if (action === 'dry-run' || action === 'apply') {
+        endpoint = '/api/admin/update/apply'
+        body = {
+          bundle_dir: manualBundle.trim() || undefined,
+          download: !manualBundle.trim() && !updateStatus.cached_bundle_dir,
+          dry_run: action === 'dry-run',
+        }
+      } else if (action === 'rollback') {
+        endpoint = '/api/admin/update/rollback'
+      }
+      setUpdateStatus(normalizeUpdateStatus(await fetchJSON(endpoint, {
+        method: 'POST',
+        body: body ? JSON.stringify(body) : undefined,
+        onUnauthorized,
+      })))
+      await loadAudit()
+    } catch (err) {
+      setUpdateError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUpdateBusy('')
+    }
+  }, [loadAudit, manualBundle, onUnauthorized, updateStatus.cached_bundle_dir])
+
   useEffect(() => {
-    void Promise.all([loadRuntime(), loadAudit()])
-  }, [loadAudit, loadRuntime])
+    void Promise.all([loadRuntime(), loadAudit(), loadUpdateStatus()])
+  }, [loadAudit, loadRuntime, loadUpdateStatus])
 
   const status = runtimePayload.status
   const providers = status?.provider_health ?? []
@@ -524,16 +768,24 @@ export function OperationsTab({ mode, canWrite, onModeChange, onUnauthorized }: 
       tone: (status?.unhealthy_provider_count ?? 0) > 0 ? 'error' : (status?.cooldown_provider_count ?? 0) > 0 ? 'warning' : providers.length > 0 ? 'success' : 'neutral',
     },
     {
+      icon: 'download',
+      label: t('ops.updates'),
+      value: updateStatus.update_available ? t('ops.updateAvailableShort') : t('ops.updateCurrentShort'),
+      detail: updateStatus.latest_version || updateStatus.last_checked_at || t('ops.notChecked'),
+      tone: updateStatus.update_available ? 'warning' : updateStatus.last_check_error ? 'error' : 'neutral',
+    },
+    {
       icon: 'clock',
       label: t('ops.activeRequests'),
       value: status?.active_requests ?? 0,
       detail: `${failedAuditCount} ${t('ops.recentFailures')}`,
       tone: failedAuditCount > 0 ? 'warning' : 'neutral',
     },
-  ], [audit.events, gatewayState, providers, status, t, telemetryState])
+  ], [audit.events, gatewayState, providers, status, t, telemetryState, updateStatus])
 
   const workspaceItems: Array<{ mode: OpsWorkspaceMode; icon: IconName; label: string; detail: string }> = [
     { mode: 'runtime', icon: 'server', label: t('ops.runtime'), detail: t('ops.runtimeWorkspaceHint') },
+    { mode: 'updates', icon: 'download', label: t('ops.updates'), detail: t('ops.updatesWorkspaceHint') },
     { mode: 'probe', icon: 'search', label: t('tabs.probe'), detail: t('ops.probeWorkspaceHint') },
     { mode: 'audit', icon: 'history', label: t('tabs.audit'), detail: t('ops.auditWorkspaceHint') },
     { mode: 'diagnostics', icon: 'file', label: t('tabs.diagnostics'), detail: t('ops.diagnosticsWorkspaceHint') },
@@ -605,6 +857,22 @@ export function OperationsTab({ mode, canWrite, onModeChange, onUnauthorized }: 
               canWrite={canWrite}
             />
           )
+        ) : null}
+        {mode === 'updates' ? (
+          <UpdatePanel
+            status={updateStatus}
+            busy={updateBusy}
+            error={updateError}
+            canWrite={canWrite}
+            manualBundle={manualBundle}
+            onManualBundle={setManualBundle}
+            onCheck={() => { void runUpdateAction('check') }}
+            onFetch={() => { void runUpdateAction('fetch') }}
+            onDryRun={() => { void runUpdateAction('dry-run') }}
+            onApply={() => { void runUpdateAction('apply') }}
+            onRollback={() => { void runUpdateAction('rollback') }}
+            t={t}
+          />
         ) : null}
         {mode === 'probe' ? <OpsTab mode="probe" canWrite={canWrite} embedded onUnauthorized={onUnauthorized} /> : null}
         {mode === 'audit' ? <OpsTab mode="audit" canWrite={canWrite} embedded onUnauthorized={onUnauthorized} /> : null}

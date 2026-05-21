@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-05-21
+
+### Added
+
+- **In-product update workflow**: Added release check, verified bundle download, dry-run apply, local apply, and rollback surfaces through `aigw update` and the Admin Ops workspace.
+
+### Fixed
+
+- Fixed unresolved Chinese placeholders in the Admin Ops update workspace and added locale regression coverage so placeholder text cannot ship unnoticed.
+- Synced embedded Admin UI assets with the rebuilt frontend bundle.
+
 ## [1.4.0] — 2026-05-20
 
 ### Added

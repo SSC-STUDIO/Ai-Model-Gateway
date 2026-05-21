@@ -16,6 +16,7 @@ describe('admin route compatibility', () => {
     expect(canonicalAdminHref('/admin/audit')).toBe('/admin/ops?view=audit')
     expect(canonicalAdminHref('/admin/probe')).toBe('/admin/ops?view=probe')
     expect(canonicalAdminHref('/admin/diagnostics')).toBe('/admin/ops?view=diagnostics')
+    expect(canonicalAdminHref('/admin/ops?view=updates')).toBe('/admin/ops?view=updates')
   })
 
   it('keeps canonical primary routes unchanged', () => {

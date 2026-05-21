@@ -38,7 +38,7 @@
 
 .ops-command-metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
 }
@@ -117,7 +117,7 @@
 
 .ops-workspace-switch {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   padding: 6px;
   border: 1px solid var(--border-color);
@@ -193,6 +193,63 @@
 
 .ops-workspace-panel {
   min-width: 0;
+}
+
+.ops-update-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.75fr);
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
+.ops-update-main,
+.ops-update-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border-color-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-card);
+  box-shadow: var(--card-shadow);
+}
+
+.ops-update-version-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.ops-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ops-update-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ops-update-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--danger-color) 28%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger-color) 5%, transparent);
+  color: var(--danger-color);
+  font-size: 0.78rem;
+}
+
+.ops-update-issues strong {
+  color: var(--text-primary);
 }
 
 .ops-command-layout {
@@ -635,6 +692,11 @@
       "providers"
       "preflight"
       "recent";
+  }
+
+  .ops-update-layout,
+  .ops-update-version-grid {
+    grid-template-columns: 1fr;
   }
 
   .ops-topology-canvas {
@@ -1572,7 +1634,9 @@
   .ops-command-metrics,
   .ops-workspace-switch,
   .ops-command-layout,
-  .ops-provider-grid {
+  .ops-provider-grid,
+  .ops-update-layout,
+  .ops-update-version-grid {
     grid-template-columns: 1fr;
   }
 

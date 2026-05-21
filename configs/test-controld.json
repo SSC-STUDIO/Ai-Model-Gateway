@@ -6,5 +6,10 @@
   "config_path": "configs/test-config.yaml",
   "rpc_retry_count": 1,
   "rpc_retry_interval_sec": 1,
-  "gateway_readiness_republish_min_interval_sec": 15
+  "gateway_readiness_republish_min_interval_sec": 15,
+  "update": {
+    "repository": "SSC-STUDIO/Ai-Model-Gateway",
+    "install_dir": ".",
+    "state_dir": "data/test-control/update"
+  }
 }

@@ -14,6 +14,7 @@ import (
 	"ai-model-gateway/internal/control/compiler"
 	"ai-model-gateway/internal/control/publish"
 	"ai-model-gateway/internal/infra/configloader"
+	"ai-model-gateway/internal/updater"
 )
 
 // Config is the bootstrap configuration for controld.
@@ -52,6 +53,9 @@ type Config struct {
 	// automatic snapshot republish attempts while gatewayd reports a non-ready
 	// readiness state but the RPC link is still healthy. Zero defaults to 15s.
 	GatewayReadinessRepublishMinIntervalSec int `json:"gateway_readiness_republish_min_interval_sec"`
+
+	// Update configures in-product software update checks and local bundle apply.
+	Update updater.Options `json:"update"`
 }
 
 // Daemon represents the controld daemon.
@@ -74,6 +78,7 @@ type Daemon struct {
 	runCancel      context.CancelFunc
 	frontendBundle *api.AdminFrontendBundle
 	configWatcher  *configloader.Watcher
+	updateManager  *updater.Manager
 
 	gwReadinessRepublishMu        sync.Mutex
 	lastGatewayReadinessRepublish time.Time

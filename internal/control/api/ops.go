@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -223,6 +225,138 @@ func runtimePreflightHandler(deps Deps) http.HandlerFunc {
 		recordAudit(deps, r, "runtime.preflight", "runtime", ok, "", map[string]any{"checks": checks})
 		writeJSON(w, http.StatusOK, map[string]any{"ok": ok, "checks": checks, "runtime": deps.Runtime})
 	}
+}
+
+func updateStatusHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if deps.Updates == nil {
+			writeError(w, http.StatusServiceUnavailable, "update manager not available")
+			return
+		}
+		status, err := deps.Updates.Status()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, status)
+	}
+}
+
+func updateCheckHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if deps.Updates == nil {
+			writeError(w, http.StatusServiceUnavailable, "update manager not available")
+			return
+		}
+		status, err := deps.Updates.Check(r.Context())
+		if err != nil {
+			recordAudit(deps, r, "update.check", "release", false, err.Error(), nil)
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		recordAudit(deps, r, "update.check", status.LatestTag, true, "", map[string]any{"update_available": status.UpdateAvailable})
+		writeJSON(w, http.StatusOK, status)
+	}
+}
+
+func updateFetchHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if deps.Updates == nil {
+			writeError(w, http.StatusServiceUnavailable, "update manager not available")
+			return
+		}
+		var req struct {
+			Force bool `json:"force"`
+		}
+		if err := decodeOptionalJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		status, err := deps.Updates.Fetch(r.Context(), req.Force)
+		if err != nil {
+			recordAudit(deps, r, "update.fetch", "release", false, err.Error(), nil)
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		recordAudit(deps, r, "update.fetch", status.CachedVersion, status.CachedVerify.OK, firstNonEmpty(status.LastCheckError, status.LastApplyError), map[string]any{"bundle_dir": status.CachedBundleDir})
+		writeJSON(w, http.StatusOK, status)
+	}
+}
+
+func updateApplyHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if deps.Updates == nil {
+			writeError(w, http.StatusServiceUnavailable, "update manager not available")
+			return
+		}
+		var req struct {
+			BundleDir string `json:"bundle_dir"`
+			Download  bool   `json:"download"`
+			DryRun    bool   `json:"dry_run"`
+			Force     bool   `json:"force"`
+		}
+		if err := decodeOptionalJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		status, err := deps.Updates.Apply(r.Context(), req.BundleDir, req.Download, req.DryRun, req.Force)
+		if err != nil {
+			recordAudit(deps, r, "update.apply", req.BundleDir, false, err.Error(), map[string]any{"dry_run": req.DryRun, "download": req.Download})
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		recordAudit(deps, r, "update.apply", status.CachedVersion, true, "", map[string]any{"dry_run": req.DryRun, "bundle_dir": status.CachedBundleDir, "backup_dir": status.LastBackupDir})
+		writeJSON(w, http.StatusOK, status)
+	}
+}
+
+func updateRollbackHandler(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		if deps.Updates == nil {
+			writeError(w, http.StatusServiceUnavailable, "update manager not available")
+			return
+		}
+		status, err := deps.Updates.Rollback()
+		if err != nil {
+			recordAudit(deps, r, "update.rollback", "last-backup", false, err.Error(), nil)
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		recordAudit(deps, r, "update.rollback", status.LastBackupDir, true, "", nil)
+		writeJSON(w, http.StatusOK, status)
+	}
+}
+
+func decodeOptionalJSON(r *http.Request, target any) error {
+	if r == nil || r.Body == nil {
+		return nil
+	}
+	defer r.Body.Close()
+	err := json.NewDecoder(r.Body).Decode(target)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
 }
 
 func auditHandler(deps Deps) http.HandlerFunc {
@@ -714,6 +848,15 @@ func numericStatusValue(value any) (any, bool) {
 	default:
 		return nil, false
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func writeConfigToolUnavailablePreview(err error) *ConfigPreviewResponse {
