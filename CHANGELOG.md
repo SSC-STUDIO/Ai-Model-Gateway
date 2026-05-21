@@ -6,6 +6,13 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-05-21
+
+### Fixed
+
+- Hardened update archive extraction with per-entry and total extracted-size limits before copying files.
+- Fixed updater state-file permissions and release-update lint issues caught by CI.
+
 ## [1.4.2] - 2026-05-21
 
 ### Added

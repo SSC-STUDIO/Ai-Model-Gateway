@@ -28,6 +28,9 @@ const (
 	DefaultRepository = "SSC-STUDIO/Ai-Model-Gateway"
 	DefaultAPIBaseURL = "https://api.github.com"
 	stateFileName     = "update-status.json"
+
+	maxArchiveEntryBytes int64 = 256 << 20
+	maxArchiveTotalBytes int64 = 768 << 20
 )
 
 // Options controls release discovery and local update paths.
@@ -502,8 +505,8 @@ func NormalizeVersion(value string) string {
 
 // IsReleaseVersion reports whether value looks like a SemVer release.
 func IsReleaseVersion(value string) bool {
-	parsed, ok := parseVersion(value)
-	return ok && len(parsed.nums) == 3
+	_, ok := parseVersion(value)
+	return ok
 }
 
 // CompareVersions compares SemVer-ish versions. It returns -1, 0, or 1.
@@ -691,6 +694,7 @@ func extractZip(archivePath string, dst string) error {
 		return err
 	}
 	defer reader.Close()
+	var total int64
 	for _, file := range reader.File {
 		target, err := safeArchivePath(dst, file.Name)
 		if err != nil {
@@ -705,6 +709,13 @@ func extractZip(archivePath string, dst string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
 		}
+		remaining := maxArchiveTotalBytes - total
+		if remaining <= 0 {
+			return fmt.Errorf("archive exceeds maximum extracted size of %d bytes", maxArchiveTotalBytes)
+		}
+		if file.UncompressedSize64 > uint64(maxArchiveEntryBytes) || file.UncompressedSize64 > uint64(remaining) {
+			return fmt.Errorf("archive entry %q exceeds maximum extracted size", file.Name)
+		}
 		in, err := file.Open()
 		if err != nil {
 			return err
@@ -718,7 +729,7 @@ func extractZip(archivePath string, dst string) error {
 			_ = in.Close()
 			return err
 		}
-		_, copyErr := io.Copy(out, in)
+		copied, copyErr := copyArchiveEntry(out, in, minInt64(maxArchiveEntryBytes, remaining))
 		closeErr := out.Close()
 		_ = in.Close()
 		if copyErr != nil {
@@ -727,6 +738,7 @@ func extractZip(archivePath string, dst string) error {
 		if closeErr != nil {
 			return closeErr
 		}
+		total += copied
 	}
 	return nil
 }
@@ -743,6 +755,7 @@ func extractTarGz(archivePath string, dst string) error {
 	}
 	defer gz.Close()
 	reader := tar.NewReader(gz)
+	var total int64
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
@@ -760,28 +773,68 @@ func extractTarGz(archivePath string, dst string) error {
 			if err := os.MkdirAll(target, 0755); err != nil {
 				return err
 			}
-		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-				return err
-			}
-			mode := os.FileMode(header.Mode).Perm()
-			if mode == 0 {
-				mode = 0644
-			}
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+		case tar.TypeReg:
+			copied, err := extractTarFile(reader, header, target, maxArchiveTotalBytes-total)
 			if err != nil {
 				return err
 			}
-			_, copyErr := io.Copy(out, reader)
-			closeErr := out.Close()
-			if copyErr != nil {
-				return copyErr
-			}
-			if closeErr != nil {
-				return closeErr
-			}
+			total += copied
 		}
 	}
+}
+
+func extractTarFile(reader io.Reader, header *tar.Header, target string, remaining int64) (int64, error) {
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		return 0, err
+	}
+	if header.Size < 0 {
+		return 0, fmt.Errorf("archive entry %q has negative size", header.Name)
+	}
+	if remaining <= 0 || header.Size > maxArchiveEntryBytes || header.Size > remaining {
+		return 0, fmt.Errorf("archive entry %q exceeds maximum extracted size", header.Name)
+	}
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, archiveFileMode(header.Mode))
+	if err != nil {
+		return 0, err
+	}
+	copied, copyErr := copyArchiveEntry(out, reader, minInt64(maxArchiveEntryBytes, remaining))
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copied, copyErr
+	}
+	if closeErr != nil {
+		return copied, closeErr
+	}
+	return copied, nil
+}
+
+func copyArchiveEntry(dst io.Writer, src io.Reader, limit int64) (int64, error) {
+	if limit <= 0 {
+		return 0, fmt.Errorf("archive entry exceeds maximum extracted size")
+	}
+	limited := &io.LimitedReader{R: src, N: limit + 1}
+	copied, err := io.Copy(dst, limited)
+	if err != nil {
+		return copied, err
+	}
+	if copied > limit {
+		return copied, fmt.Errorf("archive entry exceeds maximum extracted size of %d bytes", limit)
+	}
+	return copied, nil
+}
+
+func archiveFileMode(raw int64) os.FileMode {
+	if raw&0o111 != 0 {
+		return 0755
+	}
+	return 0644
+}
+
+func minInt64(left int64, right int64) int64 {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func safeArchivePath(root string, name string) (string, error) {
@@ -1065,7 +1118,7 @@ func saveStatus(stateDir string, status *Status) error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(filepath.Join(stateDir, stateFileName), data, 0644)
+	return os.WriteFile(filepath.Join(stateDir, stateFileName), data, 0600)
 }
 
 func safeFileName(value string) string {

@@ -21,7 +21,10 @@ func writeBundleBinary(t *testing.T, binDir, name string, contents []byte) {
 	if runtime.GOOS == "windows" {
 		path += ".exe"
 	}
-	if err := os.WriteFile(path, contents, 0755); err != nil {
+	if err := os.WriteFile(path, contents, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -40,7 +43,7 @@ func createBundle(t *testing.T, version string) string {
 	if err := os.MkdirAll(adminDist, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(adminDist, "index.html"), []byte(version), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(adminDist, "index.html"), []byte(version), 0600); err != nil {
 		t.Fatal(err)
 	}
 	manifest, err := release.BuildManifest(release.BuildOptions{Root: root, ProductVersion: version})
@@ -80,7 +83,7 @@ func zipBundle(t *testing.T, bundleRoot string, archivePath string) {
 		if err != nil {
 			return err
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(filepath.Join(bundleRoot, rel))
 		if err != nil {
 			return err
 		}
