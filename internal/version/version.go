@@ -2,7 +2,7 @@
 //
 // ProductVersion can be overridden at build time via ldflags:
 //
-//	go build -ldflags "-X ai-model-gateway/internal/version.ProductVersion=v1.4.0"
+//	go build -ldflags "-X ai-model-gateway/internal/version.ProductVersion=$(cat VERSION)"
 package version
 
 // ProductVersion is the SemVer product release shared by every shipped binary.

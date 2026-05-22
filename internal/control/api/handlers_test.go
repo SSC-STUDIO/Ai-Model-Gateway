@@ -864,7 +864,7 @@ func TestAdminFrontendPlaceholderHandlers(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "AI-Model-Gateway Admin") {
+	if !strings.Contains(rec.Body.String(), "AI Model Gateway Admin") {
 		t.Errorf("expected placeholder HTML, got %s", rec.Body.String())
 	}
 

@@ -52,7 +52,7 @@ body:
       options:
         - routing
         - proxy compatibility
-        - pricing / telemetry
+        - monitoring / pricing
         - admin UI
         - config management
         - scripts / packaging

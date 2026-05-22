@@ -384,7 +384,7 @@ type ProviderStatus struct {
 	LastError     string   `json:"last_error,omitempty"`
 }
 
-// GetRuntimeStatus fetches v1.3 runtime status.
+// GetRuntimeStatus fetches control-plane runtime status.
 func (c *ControlPlaneClient) GetRuntimeStatus(ctx context.Context) (map[string]interface{}, error) {
 	var resp map[string]interface{}
 	if err := c.doRequest(ctx, http.MethodGet, "/api/admin/runtime/status", nil, &resp); err != nil {
@@ -393,7 +393,7 @@ func (c *ControlPlaneClient) GetRuntimeStatus(ctx context.Context) (map[string]i
 	return resp, nil
 }
 
-// RuntimePreflight runs v1.3 runtime preflight checks.
+// RuntimePreflight runs control-plane runtime preflight checks.
 func (c *ControlPlaneClient) RuntimePreflight(ctx context.Context) (map[string]interface{}, error) {
 	var resp map[string]interface{}
 	if err := c.doRequest(ctx, http.MethodPost, "/api/admin/runtime/preflight", map[string]interface{}{}, &resp); err != nil {

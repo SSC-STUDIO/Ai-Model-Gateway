@@ -76,7 +76,7 @@ export function MonitoringTab({
             {t('header.telemetry')}: {status?.telemetry_status ?? t('header.statusUnknown')}
           </span>
           {typeof status?.active_requests === 'number' ? (
-            <span class="status-badge neutral">Active: {status.active_requests}</span>
+            <span class="status-badge neutral">{t('ops.activeRequests')}: {status.active_requests}</span>
           ) : null}
         </div>
       </div>

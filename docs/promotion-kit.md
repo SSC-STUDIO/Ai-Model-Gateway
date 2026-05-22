@@ -1,12 +1,12 @@
-# AI Model Gateway v1.4.1 Promotion Kit
+# AI Model Gateway Promotion Kit
 
 Use this document as copy-ready launch material for GitHub, Chinese developer communities, and English developer communities.
 
-Replace placeholders before posting:
+Current links:
 
-- `GITHUB_URL`: `https://github.com/SSC-STUDIO/ai-model-gateway`
-- `RELEASE_URL`: the final GitHub release URL
-- `DOCS_URL`: `https://github.com/SSC-STUDIO/ai-model-gateway/tree/main/docs`
+- GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
+- Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
+- Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
 
 Recommended images:
 
@@ -23,7 +23,7 @@ Generated videos:
 - `output/promotion/ai-model-gateway-bilibili-1080p.mp4`
 - `output/promotion/ai-model-gateway-bilibili-cover.jpg`
 
-Published release video URLs:
+Published v1.4.1 release video URLs:
 
 - Chinese 16:9: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.1/ai-model-gateway-upstream-zh-16x9.mp4`
 - Chinese 9:16: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.1/ai-model-gateway-upstream-zh-9x16.mp4`
@@ -68,11 +68,11 @@ It is not a hosted model marketplace and not just a pretty dashboard. The produc
 
 核心目标是：把 LLM 网关从“能转发请求”推进到“能稳定运维”。
 
-GitHub：GITHUB_URL
+GitHub：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## GitHub Release Notes
 
-### AI Model Gateway v1.4.1
+### AI Model Gateway v1.4.4
 
 This release focuses on making AI Model Gateway feel more like a practical operations tool for self-hosted LLM infrastructure.
 
@@ -86,29 +86,29 @@ Highlights:
 
 AI Model Gateway is for teams that want local control over provider keys, routing policy, telemetry, and day-2 operations instead of handing everything to a hosted broker.
 
-Try it: GITHUB_URL
+Try it: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## X / Twitter
 
 ### English
 
-AI Model Gateway v1.4.1 is out.
+AI Model Gateway v1.4.4 is out.
 
 A self-hosted LLM operations gateway for teams that want routing, telemetry, benchmarks, config publishing, diagnostics, and update/rollback workflows in one local runtime.
 
 Not a hosted model marketplace. Not just a dashboard.
 
-GITHUB_URL
+https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ### Chinese
 
-AI Model Gateway v1.4.1 更新了。
+AI Model Gateway v1.4.4 更新了。
 
 一个自托管 LLM 运维网关：路由、监控、Benchmark、配置发布、诊断、更新和回滚都在本地控制面完成。
 
 不是模型市场，也不是装饰型 dashboard，目标是把 LLM 网关做成能长期运维的工具。
 
-GITHUB_URL
+https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## Hacker News
 
@@ -126,7 +126,7 @@ The latest work adds a safer in-product update workflow: check GitHub releases, 
 
 I am trying to make it useful for teams that want to keep provider keys, routing policy, telemetry, and operational controls inside their own environment.
 
-Repo: GITHUB_URL
+Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## Reddit
 
@@ -152,7 +152,7 @@ The focus is not provider count or marketplace UX. It is more operational:
 
 The use case is running an internal LLM gateway where keys, telemetry, and routing policy stay under your control.
 
-Repo: GITHUB_URL
+Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 I would appreciate feedback from people running self-hosted or team-internal LLM infrastructure.
 
@@ -181,7 +181,7 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 
 我想解决的问题是：很多 LLM proxy 能把请求转出去，但真正上线后需要的是 provider 健康、配置变更记录、回滚、审计、成本和 benchmark 这些运维闭环。
 
-GitHub：GITHUB_URL
+GitHub：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 欢迎大家提建议，尤其是已经在自托管 LLM gateway / proxy 的场景里踩过坑的朋友。
 
@@ -218,11 +218,11 @@ GitHub：GITHUB_URL
 
 第五，Benchmark 不只做展示，而是为了辅助路由决策。它支持 exact、judge、JSON、tool、stream 等评分方式，把正确性、延迟和成本放在一起看。
 
-v1.4.1 里，我又补了一条运维闭环：内置更新能力。现在可以从 Admin 或 CLI 检查 GitHub release，下载当前平台的 bundle，验证 manifest，dry-run apply，应用更新，并保留本地回滚路径。
+v1.4.x 这一轮又补了一条运维闭环：内置更新能力。现在可以从 Admin 或 CLI 检查 GitHub release，下载当前平台的 bundle，验证 manifest，dry-run apply，应用更新，并保留本地回滚路径。
 
 如果你在维护团队内部的 LLM proxy/gateway，希望把它从“能转发请求”变成“能稳定运维”，欢迎试试：
 
-GITHUB_URL
+https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## LinkedIn
 
@@ -241,7 +241,7 @@ The latest release improves the Admin UI and adds an in-product update workflow:
 
 The goal is to move beyond "LLM proxy that forwards requests" toward an operational control plane for production LLM usage.
 
-Repo: GITHUB_URL
+Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## Product Hunt
 
@@ -297,7 +297,7 @@ I would like feedback from people running internal LLM gateways or proxy layers:
 - What benchmark signals would you trust before routing traffic to a model?
 - How should update/restart workflows behave in production?
 
-Repo: GITHUB_URL
+Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## Posting Checklist
 

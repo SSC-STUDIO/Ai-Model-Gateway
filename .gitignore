@@ -26,7 +26,9 @@ logs/
 # Test artifacts
 coverage
 *.test
-output/playwright/
+/output/
+__pycache__/
+*.pyc
 
 # OS
 Thumbs.db
@@ -67,6 +69,7 @@ kimi_test*.json
 /telemetryd
 /gateway-cli
 /dist/
+/dist-live/
 .playwright-mcp/
 
 # IDE

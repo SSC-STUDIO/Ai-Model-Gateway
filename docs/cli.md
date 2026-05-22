@@ -1,6 +1,6 @@
 # CLI Guide
 
-AI Model Gateway v1.3 has two supported operator-facing CLIs:
+AI Model Gateway has two supported operator-facing CLIs:
 
 - `aigw`
   本机运维入口。负责统一启动、健康检查、日志、备份、bundle 校验、升级和回滚。
@@ -189,7 +189,7 @@ manifest 包含产品版本、git commit、构建时间、平台、binary hash�
 
 ## Admin API
 
-v1.3 补齐的主要 admin/ops API：
+当前主要 admin/ops API：
 
 - `GET /api/admin/runtime/status`
 - `POST /api/admin/runtime/preflight`

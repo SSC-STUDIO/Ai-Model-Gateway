@@ -124,7 +124,7 @@ func BuildManifest(opts BuildOptions) (Manifest, error) {
 		Migration: MigrationManifest{
 			MinVersion: "1.2.0",
 			Required:   false,
-			Notes:      "v1.3 bundles must be applied as one aigw-managed payload.",
+			Notes:      "Bundles must be applied as one aigw-managed payload.",
 		},
 	}
 

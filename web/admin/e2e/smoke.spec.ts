@@ -586,7 +586,7 @@ test.describe('Admin UI Smoke Tests', () => {
 
   test('overview page loads with navigation and data panels', async ({ page }) => {
     // Verify page title
-    await expect(page).toHaveTitle(/AI-Model-Gateway Admin/)
+    await expect(page).toHaveTitle(/AI Model Gateway Admin/)
 
     // Verify top navigation tabs exist
     await expect(page.locator('.tabbar')).toBeVisible()

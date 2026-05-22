@@ -72,6 +72,10 @@ function getString(obj: unknown, path: string): string {
   return typeof current === 'string' ? current : path
 }
 
+function cleanLocalizedString(value: string): string {
+  return value.startsWith('UNTRANSLATED ') ? value.slice('UNTRANSLATED '.length) : value
+}
+
 export function I18nProvider({ children }: { children: preact.ComponentChildren }) {
   const [locale, setLocaleState] = useState<LocaleKey>(() => getInitialLocale())
 
@@ -97,9 +101,9 @@ export function I18nProvider({ children }: { children: preact.ComponentChildren 
     return (key: string) => {
       const localized = getString(locales[locale], key)
       if (localized !== key) {
-        return localized
+        return cleanLocalizedString(localized)
       }
-      return getString(locales.en, key)
+      return cleanLocalizedString(getString(locales.en, key))
     }
   }, [locale])
 

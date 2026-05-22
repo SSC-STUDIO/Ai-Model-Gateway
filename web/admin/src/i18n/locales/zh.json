@@ -17,6 +17,7 @@
     "subtitle": "AI 模型路由网关管理面板",
     "gateway": "网关",
     "telemetry": "遥测",
+    "loadingWorkspace": "正在加载管理工作区",
     "statusUnknown": "未知"
   },
   "overview": {

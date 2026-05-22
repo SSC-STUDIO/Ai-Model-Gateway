@@ -11,7 +11,7 @@ const locales = { en, zh, ja, ko, es, fr, de }
 
 function collectPlaceholderPaths(value: unknown, path = ''): string[] {
   if (typeof value === 'string') {
-    return /\?{3,}/.test(value) ? [path] : []
+    return /\?{3,}|UNTRANSLATED/.test(value) ? [path] : []
   }
   if (!value || typeof value !== 'object') return []
   return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => (
@@ -20,7 +20,7 @@ function collectPlaceholderPaths(value: unknown, path = ''): string[] {
 }
 
 describe('locale dictionaries', () => {
-  it('does not ship unresolved question-mark placeholders', () => {
+  it('does not ship unresolved placeholder markers', () => {
     const unresolved = Object.entries(locales).flatMap(([locale, dictionary]) => (
       collectPlaceholderPaths(dictionary).map((key) => `${locale}:${key}`)
     ))

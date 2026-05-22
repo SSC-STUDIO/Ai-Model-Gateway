@@ -6,6 +6,17 @@ The format is based on Keep a Changelog, with a lightweight structure suitable f
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-05-23
+
+### Changed
+
+- Aligned repository metadata, issue templates, public docs, promotion material, and release-facing version references.
+- Standardized Admin UI branding and locale fallback behavior so shipped screens no longer expose unresolved placeholders.
+
+### Removed
+
+- Removed obsolete CLI i18n dead code and stale generated/local artifacts from version control.
+
 ## [1.4.3] - 2026-05-21
 
 ### Fixed

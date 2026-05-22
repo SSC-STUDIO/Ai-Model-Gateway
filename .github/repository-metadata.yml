@@ -3,16 +3,19 @@
 # GitHub topics are managed in the repository settings or through the GitHub API.
 # Keep this file in sync with the public README, release notes, and project scope.
 name: ai-model-gateway
-description: OpenAI-compatible AI model gateway with routing, telemetry, pricing, and an admin console.
+description: Self-hosted LLM operations gateway with routing, fallback, telemetry, benchmarks, diagnostics, and rollback.
 homepage: ""
 topics:
   - ai-gateway
   - llm
+  - llmops
+  - self-hosted
   - openai-compatible
   - model-routing
+  - fallback
+  - benchmark
   - reverse-proxy
   - telemetry
-  - pricing
   - golang
   - preact
   - observability
@@ -25,9 +28,9 @@ areas:
     - configs
   admin-ui:
     - web/admin
-  telemetry-pricing:
+  monitoring-pricing:
     - internal/telemetry
-    - internal/pricing
+    - internal/infra
   packaging:
     - cmd/aigw
     - internal/release

@@ -191,6 +191,8 @@ function isTelemetryConnectionError(message: string): boolean {
 }
 
 function AppLoading() {
+  const { t } = useI18n()
+
   return (
     <main class="app-shell login-shell">
       <div class="app-loading" role="status" aria-live="polite" aria-label="Loading AI Model Gateway">
@@ -200,7 +202,7 @@ function AppLoading() {
           </div>
           <div class="app-loading-copy">
             <strong>AI Model Gateway</strong>
-            <span>Loading admin workspace</span>
+            <span>{t('header.loadingWorkspace')}</span>
           </div>
         </div>
         <div class="app-loading-skeleton" aria-hidden="true">
@@ -388,7 +390,7 @@ export function App() {
     const title = canAccessAdmin
       ? navItems.find((item) => item.key === getPrimaryTab(tab))?.label ?? t('header.title')
       : t('auth.title')
-    document.title = `${title} - AI-Model-Gateway Admin`
+    document.title = `${title} - AI Model Gateway Admin`
   }, [canAccessAdmin, tab, navItems, t])
 
   useEffect(() => {

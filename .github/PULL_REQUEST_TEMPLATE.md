@@ -17,7 +17,7 @@
 
 - Protocol compatibility impact:
 - Routing / retry impact:
-- Telemetry / pricing impact:
+- Monitoring / pricing / ops impact:
 
 ## Notes
 

@@ -17,6 +17,7 @@
     "subtitle": "AI Model Routing Gateway Admin Panel",
     "gateway": "Gateway",
     "telemetry": "Telemetry",
+    "loadingWorkspace": "Loading admin workspace",
     "statusUnknown": "unknown"
   },
   "overview": {

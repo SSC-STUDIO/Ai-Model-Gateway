@@ -433,7 +433,7 @@ func (d *Daemon) adminLoginPageHandler(w http.ResponseWriter, r *http.Request) {
 func (d *Daemon) renderAdminLoginPage(w http.ResponseWriter, status int, message, next string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = w.Write([]byte(`<!DOCTYPE html><html><body><h1>AI-Model-Gateway Admin Login</h1>`))
+	_, _ = w.Write([]byte(`<!DOCTYPE html><html><body><h1>AI Model Gateway Admin Login</h1>`))
 	if strings.TrimSpace(message) != "" {
 		_, _ = w.Write([]byte(`<p style="color:#b91c1c;">` + html.EscapeString(message) + `</p>`))
 	}

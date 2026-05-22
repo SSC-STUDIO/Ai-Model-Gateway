@@ -1,6 +1,6 @@
-[![CI](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/SSC-STUDIO/ai-model-gateway/actions/workflows/ci.yml)
+[![CI](https://github.com/SSC-STUDIO/Ai-Model-Gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/SSC-STUDIO/Ai-Model-Gateway/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.4.3-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.4.4-blue.svg)](VERSION)
 
 # AI Model Gateway
 
@@ -8,7 +8,7 @@ AI Model Gateway is a self-hosted LLM gateway for teams that want provider routi
 
 It is not trying to be another hosted model marketplace. The project is optimized for local control: one supervisor command, separate data/control/telemetry planes, OpenAI-compatible client entry points, provider health visibility, safe config rollout, and an admin UI that behaves like an operations console.
 
-[Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit-v1.4.1.md)
+[Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md)
 
 ## Why This Exists
 
