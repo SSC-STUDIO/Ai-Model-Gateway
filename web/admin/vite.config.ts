@@ -15,8 +15,9 @@ export default defineConfig(({ mode }) => {
       cssMinify: true,
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ['preact', 'preact/hooks', 'preact/compat'],
+          manualChunks: (id) => {
+            if (id.includes('preact')) return 'preact'
+            return 'vendor'
           },
         },
       },
