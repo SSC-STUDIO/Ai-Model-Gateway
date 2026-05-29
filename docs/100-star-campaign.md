@@ -182,3 +182,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Added reviewer-evidence links to seven open external discovery submissions so maintainers can inspect CI, smoke checks, feature proof points, and capability boundaries before deciding. |
 | 2026-05-30 | 2 | 0 | 0 | Cleaned `SECURITY.md` and added `docs/security-trust-model.md` so self-hosted evaluators can review admin auth, same-origin writes, secrets, SSRF, telemetry, local files, and update trust boundaries. |
 | 2026-05-30 | 2 | 0 | 0 | Cleaned the historical `docs/release-v1.4.0.md` notes and added `docs/release-v1.4.4.md` so the docs index points visitors to readable current-release information. |
+| 2026-05-30 | 2 | 0 | 0 | Added quality evidence, security trust model, and current release summary links to the Pages homepage and `llms.txt` so search and AI-crawler visitors see review evidence earlier. |

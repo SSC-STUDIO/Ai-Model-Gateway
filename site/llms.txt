@@ -14,6 +14,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - LLM gateway comparison page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
 - GitHub repository: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 - Latest release: https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4
+- Current release summary: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/release-v1.4.4.md
 - Documentation index: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs
 - Maintainer discussion: https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25
 
@@ -27,6 +28,8 @@ It is not a hosted model marketplace. The project is built for local control ove
 - LLM gateway comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 - LLM gateway comparison landing page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
 - OpenAI Anthropic gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
+- Quality evidence: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md
+- Security and trust model: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/security-trust-model.md
 
 ## Technical Proof Points
 

@@ -178,6 +178,12 @@ h3 {
   gap: 14px;
 }
 
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .comparison-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -185,6 +191,7 @@ h3 {
 }
 
 .capability-grid article,
+.evidence-grid article,
 .comparison-grid article,
 .steps li {
   border: 1px solid var(--line);
@@ -194,6 +201,7 @@ h3 {
 }
 
 .capability-grid p,
+.evidence-grid p,
 .comparison-grid li,
 .proof-copy p,
 .steps span,
@@ -343,6 +351,7 @@ footer a {
   }
 
   .capability-grid,
+  .evidence-grid,
   .comparison-grid,
   .proof-section,
   .cta-section,
