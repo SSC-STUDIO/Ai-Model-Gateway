@@ -27,6 +27,7 @@ Recommended images:
 - `docs/assets/admin-monitoring.png`
 - `docs/assets/admin-ops-mobile.png`
 - `docs/assets/admin-benchmark-mobile.png`
+- `docs/assets/social-card.png`
 
 Generated videos:
 

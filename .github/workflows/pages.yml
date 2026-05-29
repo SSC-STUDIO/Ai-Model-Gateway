@@ -34,6 +34,7 @@ jobs:
           set -euo pipefail
           mkdir -p site/assets
           cp docs/assets/icon.svg site/assets/icon.svg
+          cp docs/assets/social-card.png site/assets/social-card.png
           cp docs/assets/admin-overview.png site/assets/admin-overview.png
           cp docs/assets/admin-monitoring.png site/assets/admin-monitoring.png
           cp docs/assets/admin-ops-mobile.png site/assets/admin-ops-mobile.png
