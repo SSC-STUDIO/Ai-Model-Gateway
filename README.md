@@ -8,7 +8,7 @@ AI Model Gateway is a self-hosted LLM gateway for teams that want provider routi
 
 It is not trying to be another hosted model marketplace. The project is optimized for local control: one supervisor command, separate data/control/telemetry planes, OpenAI-compatible client entry points, provider health visibility, safe config rollout, and an admin UI that behaves like an operations console.
 
-[Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+[Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
 Start with the [15-minute evaluation path](docs/evaluate-in-15-minutes.md) or the [provider fallback demo](examples/provider-fallback/). If the project matches your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
@@ -54,6 +54,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Understand project direction | [Project roadmap](docs/roadmap.md) |
 | Compare LLM gateway options | [LLM gateway comparison guide](docs/llm-gateway-comparison.md) |
 | Start from an OpenAI-compatible gateway search page | [OpenAI-compatible LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) |
+| Start from a provider fallback search page | [LLM provider fallback gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) |
 | Understand config publish and rollback | [Config publish and rollback](docs/config-publish-rollback.md) |
 | Operate provider fallback and health | [Provider fallback and health operations](docs/provider-fallback-health.md) |
 | Run a provider fallback proof | [Provider fallback demo](examples/provider-fallback/) |

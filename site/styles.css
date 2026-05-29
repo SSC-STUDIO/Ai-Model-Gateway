@@ -235,6 +235,11 @@ code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
+pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .proof-image,
 .screens img {
   width: 100%;

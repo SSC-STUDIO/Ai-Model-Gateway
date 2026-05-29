@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LLM Provider Fallback Gateway | AI Model Gateway</title>
+    <meta name="description" content="Self-hosted LLM provider fallback gateway for OpenAI-compatible traffic, health-aware routing, cooldowns, provider probes, telemetry, config publishing, and rollback.">
+    <meta property="og:title" content="LLM Provider Fallback Gateway">
+    <meta property="og:description" content="Run provider fallback and failover for OpenAI-compatible LLM traffic while keeping routing policy, keys, telemetry, and rollback local.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html">
+    <meta property="og:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="LLM Provider Fallback Gateway">
+    <meta name="twitter:description" content="Self-hosted LLM provider fallback, failover, health checks, telemetry, and config rollback for OpenAI-compatible traffic.">
+    <meta name="twitter:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta name="twitter:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <link rel="canonical" href="https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="sitemap" type="application/xml" href="sitemap.xml">
+    <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "LLM Provider Fallback Gateway",
+        "url": "https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html",
+        "isPartOf": {
+          "@type": "SoftwareSourceCode",
+          "name": "AI Model Gateway",
+          "codeRepository": "https://github.com/SSC-STUDIO/Ai-Model-Gateway",
+          "programmingLanguage": "Go",
+          "license": "https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/LICENSE"
+        },
+        "description": "Self-hosted LLM provider fallback gateway for OpenAI-compatible traffic, health-aware routing, cooldowns, provider probes, telemetry, config publishing, and rollback.",
+        "keywords": [
+          "LLM provider fallback",
+          "LLM failover gateway",
+          "OpenAI-compatible fallback",
+          "LLM gateway failover",
+          "provider health checks",
+          "self-hosted LLM gateway",
+          "AI gateway fallback",
+          "model routing",
+          "provider cooldown",
+          "config rollback"
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="hero search-hero">
+      <div class="hero-copy">
+        <a class="repo-mark" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway" aria-label="AI Model Gateway GitHub repository">
+          <img src="assets/icon.svg" alt="">
+          <span>SSC-STUDIO / Ai-Model-Gateway</span>
+        </a>
+        <h1>LLM Provider Fallback Gateway</h1>
+        <p class="lead">Route OpenAI-compatible LLM traffic around upstream quota, timeout, and outage signals while keeping provider keys, fallback policy, telemetry, config publishing, and rollback inside your own environment.</p>
+        <div class="hero-actions" aria-label="Primary links">
+          <a class="primary" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">View on GitHub</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md">Read fallback operations guide</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback">Run fallback demo</a>
+        </div>
+        <p class="star-note">If this solves a real self-hosted provider failover workflow, star the repository after evaluation.</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Failure modes</p>
+          <h2>Provider fallback is an operations problem, not just a retry loop.</h2>
+          <p>LLM upstreams fail through quota exhaustion, <code>429</code> bursts, slow endpoints, transient <code>5xx</code> responses, model-level outages, and bad routing changes. AI Model Gateway keeps those decisions observable and reversible in the gateway layer.</p>
+        </div>
+        <div class="capability-grid">
+          <article>
+            <h3>Health-aware routing</h3>
+            <p>Use provider health and routing policy to avoid unhealthy upstreams while preserving one local gateway endpoint.</p>
+          </article>
+          <article>
+            <h3>Fallback telemetry</h3>
+            <p>Record route mode and provider behavior so operators can see when traffic used a fallback path.</p>
+          </article>
+          <article>
+            <h3>Cooldown state</h3>
+            <p>Keep degraded providers out of rotation long enough for incidents and quota windows to clear.</p>
+          </article>
+          <article>
+            <h3>Config rollback</h3>
+            <p>Preview, diff, publish, audit, and roll back routing changes when a fallback policy behaves badly.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="proof-section">
+        <div class="proof-copy">
+          <p class="eyebrow">Executable proof</p>
+          <h2>Verify failover locally before wiring real providers.</h2>
+          <p>The provider fallback demo starts two fake OpenAI-compatible upstreams. The primary returns <code>429</code>, the gateway serves the request through a fallback provider, rewrites the forwarded model, and records <code>route_mode=model_fallback</code>.</p>
+          <pre><code>go test ./examples/provider-fallback -run TestProviderFallbackDemo -v</code></pre>
+          <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback">Open the fallback demo</a>
+        </div>
+        <img class="proof-image" src="assets/admin-monitoring.png" alt="AI Model Gateway monitoring workspace showing provider and traffic telemetry">
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Runbook shape</p>
+          <h2>A fallback gateway should support the whole incident loop.</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>Detect.</strong>
+            <span>Use provider health, latency, error, cost, and request telemetry to spot degraded upstreams.</span>
+          </li>
+          <li>
+            <strong>Route.</strong>
+            <span>Send traffic through fallback policy without changing every OpenAI-compatible client.</span>
+          </li>
+          <li>
+            <strong>Inspect.</strong>
+            <span>Review probes, diagnostics, request logs, route mode, and provider behavior in the Admin UI.</span>
+          </li>
+          <li>
+            <strong>Recover.</strong>
+            <span>Publish safer config, audit the change, and roll back quickly if the policy is wrong.</span>
+          </li>
+        </ol>
+        <div class="link-row">
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md">Provider fallback and health guide</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md">Config publish and rollback</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md">15-minute evaluation</a>
+          <a href="openai-compatible-llm-gateway.html">OpenAI-compatible gateway page</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Fit check</p>
+          <h2>Use it when failover policy needs local ownership.</h2>
+        </div>
+        <div class="comparison-grid">
+          <article>
+            <h3>Good fit</h3>
+            <ul>
+              <li>You need fallback across multiple upstream LLM providers.</li>
+              <li>OpenAI-compatible clients should keep one stable gateway URL.</li>
+              <li>Provider keys, routing policy, telemetry, and audit records must stay local.</li>
+              <li>Operators need probes, diagnostics, config publish, and rollback during incidents.</li>
+            </ul>
+          </article>
+          <article>
+            <h3>Less ideal</h3>
+            <ul>
+              <li>You only need client-side retry code inside one application.</li>
+              <li>You want a hosted model marketplace to own routing and billing.</li>
+              <li>You do not need provider health, request telemetry, or audit logs.</li>
+              <li>You do not want to operate a local gateway runtime.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta-section">
+        <div>
+          <p class="eyebrow">Next step</p>
+          <h2>Test the fallback path, then decide whether it earns a star.</h2>
+          <p>Start with the executable demo and operations guide. If the project matches your self-hosted LLM failover needs, starring the repository helps other operators find it.</p>
+        </div>
+        <div class="link-row">
+          <a class="primary-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">Star on GitHub</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25">Leave feedback</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MIT licensed. Built for self-hosted LLM operations.</span>
+      <a href="index.html">Back to AI Model Gateway</a>
+    </footer>
+  </body>
+</html>

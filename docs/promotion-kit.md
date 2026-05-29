@@ -7,6 +7,7 @@ Current links:
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
+- LLM provider fallback gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
 - AI crawler summary: `https://ssc-studio.github.io/Ai-Model-Gateway/llms.txt`
 - Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
@@ -38,6 +39,7 @@ Search and crawler assets:
 - `site/llms.txt`
 - Pages JSON-LD metadata in `site/index.html`
 - Search landing page: `site/openai-compatible-llm-gateway.html`
+- Provider fallback search landing page: `site/llm-provider-fallback-gateway.html`
 
 Generated videos:
 
@@ -80,6 +82,10 @@ Publication log, 2026-05-29:
 - Awesome AI Gateways: opened `12britz/awesome-ai-gateways#7` to add AI Model Gateway to the open-source AI gateway section.
 - Awesome LLM Routing: opened `dstripelis/Awesome-LLM-Routing#1` to add AI Model Gateway to the routing resources table.
 - Search landing page: added `site/openai-compatible-llm-gateway.html` and linked it from the website, sitemap, AI crawler summary, README, and docs index.
+
+Publication log, 2026-05-30:
+
+- Provider fallback search landing page: added `site/llm-provider-fallback-gateway.html` for high-intent LLM provider fallback, failover gateway, provider health, and OpenAI-compatible fallback queries.
 
 ## Core Message
 

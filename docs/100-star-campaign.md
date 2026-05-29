@@ -165,3 +165,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-29 | 2 | 0 | 0 | Opened `12britz/awesome-ai-gateways#7` to add AI Model Gateway to a vertical AI gateway discovery list. |
 | 2026-05-29 | 2 | 0 | 0 | Opened `dstripelis/Awesome-LLM-Routing#1` to add AI Model Gateway to an LLM/model routing resources list. |
 | 2026-05-29 | 2 | 0 | 0 | Added `site/openai-compatible-llm-gateway.html` as a search landing page for high-intent OpenAI-compatible gateway queries and linked it from sitemap, llms.txt, README, and docs. |
+| 2026-05-30 | 2 | 0 | 0 | Added `site/llm-provider-fallback-gateway.html` / `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html` as a search landing page for LLM provider fallback, failover gateway, provider health, and OpenAI-compatible fallback queries. |

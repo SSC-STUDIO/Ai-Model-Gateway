@@ -13,6 +13,12 @@
     <priority>0.95</priority>
   </url>
   <url>
+    <loc>https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html</loc>
+    <lastmod>2026-05-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.94</priority>
+  </url>
+  <url>
     <loc>https://github.com/SSC-STUDIO/Ai-Model-Gateway</loc>
     <lastmod>2026-05-29</lastmod>
     <changefreq>weekly</changefreq>
