@@ -6,6 +6,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
+- Website review evidence: `https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence`
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
 - OpenAI Anthropic gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html`
@@ -96,6 +97,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Security and trust model: cleaned `SECURITY.md` and added `docs/security-trust-model.md` covering admin auth, same-origin writes, secrets, SSRF, telemetry, local files, and update trust boundaries.
 - Release summaries: cleaned the historical `docs/release-v1.4.0.md` notes and added `docs/release-v1.4.4.md` so the docs index has readable current-release information.
 - Release archive install path: added direct Linux and Windows release-archive commands to `docs/installation.md` so high-intent visitors can try the packaged runtime without rebuilding from source.
+- Landing page evidence links: added release-archive install, quality evidence, and security trust links to every search landing page and anchored the website review-evidence section.
 
 ## Core Message
 
