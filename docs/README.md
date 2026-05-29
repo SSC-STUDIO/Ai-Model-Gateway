@@ -55,7 +55,8 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 
 | Goal | Document |
 | --- | --- |
-| Review the v1.4.0 positioning release | [v1.4.0 release notes](release-v1.4.0.md) |
+| Review the current public release | [v1.4.4 release summary](release-v1.4.4.md) |
+| Review the original v1.4 positioning release | [v1.4.0 release notes](release-v1.4.0.md) |
 | Reuse launch copy and media links | [Promotion kit](promotion-kit.md) |
 | Share current project direction | [Project roadmap](roadmap.md) |
 | Track the legitimate 100-star growth plan | [100-star campaign](100-star-campaign.md) |

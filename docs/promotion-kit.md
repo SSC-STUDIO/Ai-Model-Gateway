@@ -12,6 +12,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - LLM provider fallback gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html`
 - LLM gateway comparison page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
+- Current release summary: `docs/release-v1.4.4.md`
 - AI crawler summary: `https://ssc-studio.github.io/Ai-Model-Gateway/llms.txt`
 - Docs index: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
 - Architecture guide: `docs/architecture.md`
@@ -92,6 +93,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Quality evidence: added `docs/quality-evidence.md` with current CI, local reproduction, runtime smoke, feature proof, and capability-boundary evidence.
 - External reviewer evidence: updated the open Awesome LLMOps, InftyAI Awesome LLMOps, Awesome AI Gateways, Awesome LLM Routing, Awesome LLM Gateways, Awesome AI API Proxy, and KennethanCeyer Awesome LLMOps submissions with links to the quality evidence page and CI workflow.
 - Security and trust model: cleaned `SECURITY.md` and added `docs/security-trust-model.md` covering admin auth, same-origin writes, secrets, SSRF, telemetry, local files, and update trust boundaries.
+- Release summaries: cleaned the historical `docs/release-v1.4.0.md` notes and added `docs/release-v1.4.4.md` so the docs index has readable current-release information.
 
 ## Core Message
 
@@ -136,6 +138,7 @@ Highlights:
 Start links:
 
 - Website: https://ssc-studio.github.io/Ai-Model-Gateway/
+- Current release summary: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/release-v1.4.4.md
 - Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Architecture: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/architecture.md
 - Quality evidence: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md
