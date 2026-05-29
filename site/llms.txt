@@ -12,6 +12,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - OpenAI Anthropic gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 - LLM provider fallback gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html
 - Self-hosted LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html
+- Chinese self-hosted LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html
 - LLM gateway comparison page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
 - Share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html
 - Chinese share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html
@@ -40,6 +41,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - Provider fallback and health operations: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - Provider fallback gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html
 - Self-hosted LLM gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html
+- Chinese self-hosted LLM gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html
 - OpenAI Anthropic gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 - Executable provider fallback demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
 - Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md

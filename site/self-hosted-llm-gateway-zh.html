@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>自托管 LLM 网关 | AI Model Gateway</title>
+    <meta name="description" content="AI Model Gateway 是面向团队内部 LLM 流量的自托管运维网关，支持 OpenAI/Anthropic 兼容入口、路由、故障转移、遥测、基准测试、配置发布和回滚。">
+    <meta property="og:title" content="自托管 LLM 网关 | AI Model Gateway">
+    <meta property="og:description" content="在自己的环境里运行 LLM 运维网关，保留密钥、路由策略、遥测、配置发布、诊断和回滚控制。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html">
+    <meta property="og:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="AI Model Gateway 社交预览图，展示 Admin UI 和自托管 LLM 网关定位">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="自托管 LLM 网关 | AI Model Gateway">
+    <meta name="twitter:description" content="面向中文开发者的 AI Model Gateway 评估页：路由、故障转移、遥测、配置发布和回滚。">
+    <meta name="twitter:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta name="twitter:image:alt" content="AI Model Gateway 社交预览图，展示 Admin UI 和自托管 LLM 网关定位">
+    <link rel="canonical" href="https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html">
+    <link rel="alternate" hreflang="en" href="https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html">
+    <link rel="alternate" hreflang="zh-CN" href="https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="sitemap" type="application/xml" href="sitemap.xml">
+    <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "自托管 LLM 网关 | AI Model Gateway",
+        "url": "https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html",
+        "inLanguage": "zh-CN",
+        "isPartOf": {
+          "@type": "SoftwareSourceCode",
+          "name": "AI Model Gateway",
+          "codeRepository": "https://github.com/SSC-STUDIO/Ai-Model-Gateway",
+          "programmingLanguage": "Go",
+          "license": "https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/LICENSE"
+        },
+        "description": "AI Model Gateway 是面向团队内部 LLM 流量的自托管运维网关，支持 OpenAI/Anthropic 兼容入口、路由、故障转移、遥测、基准测试、配置发布和回滚。",
+        "keywords": [
+          "自托管 LLM 网关",
+          "LLM 运维网关",
+          "OpenAI 兼容网关",
+          "Anthropic 兼容网关",
+          "模型路由",
+          "故障转移",
+          "LLM 遥测",
+          "配置发布回滚"
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="hero search-hero">
+      <div class="hero-copy">
+        <a class="repo-mark" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway" aria-label="AI Model Gateway GitHub repository">
+          <img src="assets/icon.svg" alt="">
+          <span>SSC-STUDIO / Ai-Model-Gateway</span>
+        </a>
+        <h1>自托管 LLM 网关</h1>
+        <p class="lead">AI Model Gateway 面向需要本地控制的团队：把 OpenAI/Anthropic 兼容入口、提供商路由、故障转移、遥测、基准测试、配置发布和回滚放在自己的运行环境里。</p>
+        <div class="hero-actions" aria-label="主要链接">
+          <a class="primary" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">打开 GitHub 仓库</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway#try-it-quickly">快速试用</a>
+          <a href="https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence">评估证据</a>
+          <a href="share-kit-zh.html">中文分享包</a>
+        </div>
+        <p class="star-note">如果它确实符合你的内部 LLM 网关、模型路由或自托管运维场景，再 Star 仓库帮助更多同类团队发现。</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">适用场景</p>
+          <h2>把 LLM 控制面留在自己的环境里。</h2>
+          <p>AI Model Gateway 不是托管模型市场，也不只是请求转发代理。它更适合需要本地密钥、本地路由策略、本地遥测、可审计配置变更和回滚能力的团队。</p>
+        </div>
+        <div class="capability-grid">
+          <article>
+            <h3>本地密钥控制</h3>
+            <p>提供商 API key、客户端 token、路由策略和审计记录留在自己的运行环境中。</p>
+          </article>
+          <article>
+            <h3>模型路由与故障转移</h3>
+            <p>用一个本地入口管理 OpenAI/Anthropic 兼容流量、提供商健康和 fallback 策略。</p>
+          </article>
+          <article>
+            <h3>运维遥测</h3>
+            <p>在 Admin UI 中查看流量、延迟、成本信号、请求日志、提供商健康、诊断和 replay。</p>
+          </article>
+          <article>
+            <h3>安全变更流程</h3>
+            <p>配置变更先预览、diff、验证、发布、审计，再按修订记录回滚。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="proof-section">
+        <div class="proof-copy">
+          <p class="eyebrow">最短验证</p>
+          <h2>先用假上游验证故障转移路径。</h2>
+          <p>仓库里的 provider fallback demo 会启动两个假的 OpenAI 兼容上游：主提供商返回 <code>429</code>，网关把请求转到 fallback provider，并记录 <code>route_mode=model_fallback</code>。</p>
+          <pre><code>go test ./examples/provider-fallback -run TestProviderFallbackDemo -v</code></pre>
+          <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback">打开 provider fallback demo</a>
+        </div>
+        <img class="proof-image" src="assets/admin-monitoring.png" alt="AI Model Gateway Monitoring 工作区，展示流量和运维指标">
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">评估路径</p>
+          <h2>按基础设施的方式评估，而不是只看代理转发。</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>判断匹配度。</strong>
+            <span>确认自托管、本地密钥、本地遥测和配置审计是否是团队约束。</span>
+          </li>
+          <li>
+            <strong>启动运行时。</strong>
+            <span>使用 release 包或源码构建，启动 supervisor、data/control/telemetry 平面。</span>
+          </li>
+          <li>
+            <strong>验证 fallback。</strong>
+            <span>先对假上游跑故障转移 demo，再考虑真实 provider 策略。</span>
+          </li>
+          <li>
+            <strong>检查运维面。</strong>
+            <span>看配置发布、回滚、provider probe、诊断、日志和更新流程。</span>
+          </li>
+        </ol>
+        <div class="link-row">
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md">15 分钟评估路径</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md#install-from-a-release-archive">Release 包安装</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/chinese-models-integration.md">中文模型集成</a>
+          <a href="llm-gateway-comparison.html">网关对比</a>
+          <a href="self-hosted-llm-gateway.html">English page</a>
+        </div>
+      </section>
+
+      <section class="section" id="review-evidence">
+        <div class="section-heading">
+          <p class="eyebrow">采用前检查</p>
+          <h2>先看安装、质量和安全证据。</h2>
+        </div>
+        <div class="evidence-grid">
+          <article>
+            <h3>Release 包安装</h3>
+            <p>使用 v1.4.4 预构建包、校验和、本地配置、运行目录和 supervised startup 命令快速试用。</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md#install-from-a-release-archive">打开安装路径</a>
+          </article>
+          <article>
+            <h3>质量证据</h3>
+            <p>查看 CI gates、本地复现命令、运行时 smoke、功能证明点和当前能力边界。</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md">打开质量证据</a>
+          </article>
+          <article>
+            <h3>安全信任模型</h3>
+            <p>检查 admin auth、同源写保护、provider key、SSRF 防护、遥测敏感性和更新信任边界。</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/security-trust-model.md">打开安全模型</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta-section">
+        <div>
+          <p class="eyebrow">支持发现</p>
+          <h2>确认适合后，再给项目一个 Star。</h2>
+          <p>如果 AI Model Gateway 能解决你的自托管 LLM 路由、故障转移、遥测或配置回滚问题，GitHub Star 会帮助更多正在做类似基础设施的人看到它。</p>
+        </div>
+        <div class="link-row">
+          <a class="primary-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">在 GitHub Star</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25">留下反馈</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MIT licensed. Built for self-hosted LLM operations.</span>
+      <a href="index.html">Back to AI Model Gateway</a>
+    </footer>
+  </body>
+</html>

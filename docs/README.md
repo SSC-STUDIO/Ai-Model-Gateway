@@ -11,6 +11,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Share a visual overview | [Project website](https://ssc-studio.github.io/Ai-Model-Gateway/) |
 | Share copy-ready links and short posts | [Share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html) |
 | Share with Chinese developer communities | [Chinese share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) |
+| Evaluate from a Chinese landing page | [Chinese self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
 | Review installability, quality, and security in one place | [Website review evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) |
 | Try the packaged runtime without rebuilding | [Release archive install path](installation.md#install-from-a-release-archive) |
 | Decide quickly whether to spend more time | [15-minute evaluation path](evaluate-in-15-minutes.md) |
@@ -22,6 +23,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Compare LLM gateway and observability options | [LLM gateway comparison guide](llm-gateway-comparison.md) |
 | Start from a gateway comparison search page | [LLM gateway comparison page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) |
 | Start from a self-hosted gateway search page | [Self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) |
+| Start from a Chinese self-hosted gateway page | [Chinese self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
 | Start from an OpenAI-compatible gateway search page | [OpenAI-compatible LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) |
 | Start from an OpenAI and Anthropic gateway search page | [OpenAI Anthropic gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) |
 | Start from a provider fallback search page | [LLM provider fallback gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) |

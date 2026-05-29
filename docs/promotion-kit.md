@@ -9,6 +9,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Website review evidence: `https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence`
 - Share kit: `https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html`
 - Chinese share kit: `https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html`
+- Chinese self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html`
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
 - OpenAI Anthropic gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html`
@@ -51,6 +52,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - `site/llms.txt`
 - Pages JSON-LD metadata in `site/index.html`
 - Self-hosted search landing page: `site/self-hosted-llm-gateway.html`
+- Chinese self-hosted search landing page: `site/self-hosted-llm-gateway-zh.html`
 - LLM gateway comparison landing page: `site/llm-gateway-comparison.html`
 - OpenAI-compatible search landing page: `site/openai-compatible-llm-gateway.html`
 - OpenAI Anthropic search landing page: `site/openai-anthropic-gateway.html`
@@ -105,6 +107,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - README first-run path: moved the fastest packaged-runtime trial, checksum verification, review evidence, and conditional star CTA into the README top section for repository-overview visitors.
 - Share kit page: added `site/share-kit.html` with copy-ready links, short post blocks, feedback framing, and the social preview card for compliant sharing.
 - Chinese share kit page: added `site/share-kit-zh.html` with localized copy blocks and Chinese-community links for Zhihu, V2EX, Juejin, Bilibili, and WeChat-style sharing.
+- Chinese self-hosted landing page: added `site/self-hosted-llm-gateway-zh.html` with localized product positioning, evaluation path, provider-fallback proof, evidence links, and conditional star CTA.
 
 ## Core Message
 

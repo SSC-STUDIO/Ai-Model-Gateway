@@ -25,6 +25,12 @@
     <priority>0.93</priority>
   </url>
   <url>
+    <loc>https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html</loc>
+    <lastmod>2026-05-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.925</priority>
+  </url>
+  <url>
     <loc>https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html</loc>
     <lastmod>2026-05-30</lastmod>
     <changefreq>weekly</changefreq>
