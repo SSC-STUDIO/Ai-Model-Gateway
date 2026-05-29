@@ -17,6 +17,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Start from a gateway comparison search page | [LLM gateway comparison page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) |
 | Start from a self-hosted gateway search page | [Self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) |
 | Start from an OpenAI-compatible gateway search page | [OpenAI-compatible LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) |
+| Start from an OpenAI and Anthropic gateway search page | [OpenAI Anthropic gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) |
 | Start from a provider fallback search page | [LLM provider fallback gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) |
 | Understand config publish and rollback | [Config publish and rollback](config-publish-rollback.md) |
 | Evaluate provider fallback and health behavior | [Provider fallback and health operations](provider-fallback-health.md) |

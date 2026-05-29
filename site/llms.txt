@@ -8,6 +8,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 
 - Website: https://ssc-studio.github.io/Ai-Model-Gateway/
 - OpenAI-compatible LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html
+- OpenAI Anthropic gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 - LLM provider fallback gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html
 - Self-hosted LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html
 - LLM gateway comparison page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
@@ -25,12 +26,14 @@ It is not a hosted model marketplace. The project is built for local control ove
 - Troubleshooting guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
 - LLM gateway comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 - LLM gateway comparison landing page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
+- OpenAI Anthropic gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 
 ## Technical Proof Points
 
 - Provider fallback and health operations: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - Provider fallback gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html
 - Self-hosted LLM gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html
+- OpenAI Anthropic gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 - Executable provider fallback demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
 - Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
 - Project roadmap: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/roadmap.md

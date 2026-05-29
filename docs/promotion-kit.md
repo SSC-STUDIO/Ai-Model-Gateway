@@ -8,6 +8,7 @@ Current links:
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
+- OpenAI Anthropic gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html`
 - LLM provider fallback gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html`
 - LLM gateway comparison page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
@@ -43,6 +44,7 @@ Search and crawler assets:
 - Self-hosted search landing page: `site/self-hosted-llm-gateway.html`
 - LLM gateway comparison landing page: `site/llm-gateway-comparison.html`
 - Search landing page: `site/openai-compatible-llm-gateway.html`
+- OpenAI Anthropic search landing page: `site/openai-anthropic-gateway.html`
 - Provider fallback search landing page: `site/llm-provider-fallback-gateway.html`
 
 Generated videos:
@@ -96,6 +98,7 @@ Publication log, 2026-05-30:
 - Brandon Himpfen Awesome LLMOps: opened `brandonhimpfen/awesome-llmops#14` to add AI Model Gateway to the Serving & Inference section.
 - Awesome AI API Proxy: opened `howardpen9/awesome-ai-api-proxy#4` to add AI Model Gateway to the self-hosted gateway alternatives data source.
 - KennethanCeyer Awesome LLMOps: opened `KennethanCeyer/awesome-llmops#16` to add AI Model Gateway to the Tools (GitHub) section.
+- OpenAI Anthropic search landing page: added `site/openai-anthropic-gateway.html` for high-intent mixed OpenAI, Anthropic Messages, Claude API gateway, and Responses-compatible gateway queries.
 
 ## Core Message
 
