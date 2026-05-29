@@ -169,3 +169,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Opened `wauputr4/awesome-llm-gateways#2` to add AI Model Gateway to a dedicated open-source LLM and AI gateway comparison list. |
 | 2026-05-30 | 2 | 0 | 0 | Added `site/self-hosted-llm-gateway.html` / `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html` as a search landing page for self-hosted LLM gateway, local AI gateway, LLM operations gateway, and config rollback queries. |
 | 2026-05-30 | 2 | 0 | 0 | Added `site/llm-gateway-comparison.html` / `https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html` as a search landing page for LLM gateway comparison, LiteLLM alternative, Portkey alternative, Helicone alternative, and self-hosted gateway evaluation queries. |
+| 2026-05-30 | 2 | 0 | 0 | Opened `brandonhimpfen/awesome-llmops#14` to add AI Model Gateway to another curated LLMOps Serving & Inference section. |
