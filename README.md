@@ -8,7 +8,7 @@ AI Model Gateway is a self-hosted LLM gateway for teams that want provider routi
 
 It is not trying to be another hosted model marketplace. The project is optimized for local control: one supervisor command, separate data/control/telemetry planes, OpenAI-compatible client entry points, provider health visibility, safe config rollout, and an admin UI that behaves like an operations console.
 
-[Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+[Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
 If this project matches your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
@@ -49,6 +49,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Try the runtime locally | [Installation guide](docs/installation.md) |
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |
+| Understand project direction | [Project roadmap](docs/roadmap.md) |
 | Compare LLM gateway options | [LLM gateway comparison guide](docs/llm-gateway-comparison.md) |
 | Understand config publish and rollback | [Config publish and rollback](docs/config-publish-rollback.md) |
 | Operate provider fallback and health | [Provider fallback and health operations](docs/provider-fallback-health.md) |
@@ -296,6 +297,7 @@ npm --prefix web/admin run test:e2e
 ## Documentation
 
 - [Differentiation](docs/differentiation.md)
+- [Project Roadmap](docs/roadmap.md)
 - [LLM Gateway Comparison Guide](docs/llm-gateway-comparison.md)
 - [Self-Hosted LLM Gateway Checklist](docs/self-hosted-llm-gateway-checklist.md)
 - [Config Publish and Rollback](docs/config-publish-rollback.md)
