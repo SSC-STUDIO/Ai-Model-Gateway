@@ -75,7 +75,7 @@ jobs:
           fi
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.out
@@ -196,7 +196,7 @@ jobs:
           dist/bin/aigw bundle verify -root dist -manifest dist/aigw-manifest.json
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ai-model-gateway-linux-amd64
           path: dist/
@@ -234,7 +234,7 @@ jobs:
           .\dist\bin\aigw.exe bundle verify -root dist -manifest dist\aigw-manifest.json
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ai-model-gateway-windows-amd64
           path: dist/
