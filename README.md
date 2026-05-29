@@ -47,7 +47,8 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Goal | Start here |
 | --- | --- |
 | Share a visual overview | [Project website](https://ssc-studio.github.io/Ai-Model-Gateway/) |
-| Try the runtime locally | [Installation guide](docs/installation.md) |
+| Try the packaged runtime | [Release archive install path](docs/installation.md#install-from-a-release-archive) |
+| Build from source locally | [Installation guide](docs/installation.md#build-from-source) |
 | Decide quickly whether to spend more time | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |

@@ -12,7 +12,7 @@ The old `gateway` / `gateway.exe` launcher is no longer shipped. The default loc
 
 | Path | Best for | Start with |
 | --- | --- | --- |
-| Release archive | Trying the latest packaged runtime without rebuilding | [Latest release](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/latest) |
+| Release archive | Trying the latest packaged runtime without rebuilding | [Install From A Release Archive](#install-from-a-release-archive) |
 | Source build | Development, auditing code, or changing the runtime | This guide |
 | Service deployment | Running a long-lived local or server process | [Deployment guide](deployment.md) |
 
@@ -27,6 +27,95 @@ For a source build:
 - One free control-plane port, normally `127.0.0.1:18081`
 
 Local development note: if another service already owns `127.0.0.1:18080`, stop it first or move one runtime to different ports. Running two local gateways on the same listener will fail.
+
+## Install From A Release Archive
+
+Use this path when you want to try the packaged runtime without cloning or rebuilding the repository.
+
+Choose the archive for your platform from the [latest release](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/latest):
+
+- Windows x64: `ai-model-gateway-windows-amd64.zip`
+- Linux x64: `ai-model-gateway-linux-amd64.tar.gz`
+- Linux arm64: `ai-model-gateway-linux-arm64.tar.gz`
+- macOS arm64: `ai-model-gateway-darwin-arm64.tar.gz`
+- Checksums: `SHA256SUMS.txt`
+
+Linux x64 example:
+
+```bash
+version=v1.4.4
+base="https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/${version}"
+curl -LO "${base}/ai-model-gateway-linux-amd64.tar.gz"
+curl -LO "${base}/SHA256SUMS.txt"
+grep "ai-model-gateway-linux-amd64.tar.gz" SHA256SUMS.txt | sha256sum -c -
+mkdir -p ai-model-gateway
+tar -xzf ai-model-gateway-linux-amd64.tar.gz -C ai-model-gateway
+cd ai-model-gateway
+```
+
+Windows PowerShell example:
+
+```powershell
+$version = "v1.4.4"
+$base = "https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/$version"
+Invoke-WebRequest "$base/ai-model-gateway-windows-amd64.zip" -OutFile ai-model-gateway-windows-amd64.zip
+Invoke-WebRequest "$base/SHA256SUMS.txt" -OutFile SHA256SUMS.txt
+Select-String "ai-model-gateway-windows-amd64.zip" SHA256SUMS.txt
+Get-FileHash .\ai-model-gateway-windows-amd64.zip -Algorithm SHA256
+Expand-Archive .\ai-model-gateway-windows-amd64.zip -DestinationPath .\ai-model-gateway -Force
+Set-Location .\ai-model-gateway
+```
+
+Compare the `Get-FileHash` value with the matching line in `SHA256SUMS.txt`.
+
+Then create a local authoring config and runtime root:
+
+```bash
+cp configs/config.example.yaml configs/config.yaml
+mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
+```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .\configs\config.example.yaml .\configs\config.yaml
+New-Item -ItemType Directory -Force -Path `
+  .\.gateway-runtime\telemetry, `
+  .\.gateway-runtime\gateway, `
+  .\.gateway-runtime\control | Out-Null
+```
+
+Set temporary local secrets before starting:
+
+```bash
+export ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum
+export COOKIE_SIGNING_KEY=change-me-32-characters-minimum
+export ADMIN_TOKEN=change-me-admin-token
+export VIEWER_TOKEN=change-me-viewer-token
+```
+
+Windows PowerShell:
+
+```powershell
+$env:ADMIN_BOOTSTRAP_TOKEN = "change-me-32-characters-minimum"
+$env:COOKIE_SIGNING_KEY = "change-me-32-characters-minimum"
+$env:ADMIN_TOKEN = "change-me-admin-token"
+$env:VIEWER_TOKEN = "change-me-viewer-token"
+```
+
+Start the packaged runtime:
+
+```bash
+bin/aigw supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir bin -manifest aigw-manifest.json -strict-manifest=true
+```
+
+Windows PowerShell:
+
+```powershell
+.\bin\aigw.exe supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir .\bin -manifest .\aigw-manifest.json -strict-manifest=true
+```
+
+Then open `http://127.0.0.1:18080/admin` and check `http://127.0.0.1:18080/-/health`.
 
 ## Build From Source
 
@@ -178,6 +267,8 @@ Windows users can also run the repository smoke script:
 
 ## Next Steps
 
+- [15-minute evaluation path](evaluate-in-15-minutes.md)
+- [Current release summary](release-v1.4.4.md)
 - [Deployment guide](deployment.md)
 - [CLI guide](cli.md)
 - [Troubleshooting](troubleshooting.md)

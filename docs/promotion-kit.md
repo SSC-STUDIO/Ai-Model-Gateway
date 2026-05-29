@@ -21,6 +21,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Roadmap: `docs/roadmap.md`
 - 15-minute evaluation path: `docs/evaluate-in-15-minutes.md`
 - Installation guide: `docs/installation.md`
+- Release archive install path: `docs/installation.md#install-from-a-release-archive`
 - Deployment guide: `docs/deployment.md`
 - Troubleshooting guide: `docs/troubleshooting.md`
 - Config publish and rollback: `docs/config-publish-rollback.md`
@@ -94,6 +95,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - External reviewer evidence: updated the open Awesome LLMOps, InftyAI Awesome LLMOps, Awesome AI Gateways, Awesome LLM Routing, Awesome LLM Gateways, Awesome AI API Proxy, and KennethanCeyer Awesome LLMOps submissions with links to the quality evidence page and CI workflow.
 - Security and trust model: cleaned `SECURITY.md` and added `docs/security-trust-model.md` covering admin auth, same-origin writes, secrets, SSRF, telemetry, local files, and update trust boundaries.
 - Release summaries: cleaned the historical `docs/release-v1.4.0.md` notes and added `docs/release-v1.4.4.md` so the docs index has readable current-release information.
+- Release archive install path: added direct Linux and Windows release-archive commands to `docs/installation.md` so high-intent visitors can try the packaged runtime without rebuilding from source.
 
 ## Core Message
 
@@ -140,6 +142,7 @@ Start links:
 - Website: https://ssc-studio.github.io/Ai-Model-Gateway/
 - Current release summary: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/release-v1.4.4.md
 - Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
+- Release archive install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md#install-from-a-release-archive
 - Architecture: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/architecture.md
 - Quality evidence: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md
 - Security and trust model: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/security-trust-model.md
