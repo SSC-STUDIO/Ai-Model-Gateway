@@ -1,25 +1,67 @@
-# 故障排查指南
+# Troubleshooting Guide
 
-当前运行模型默认是 `aigw supervise`，内部仍包含三个 daemon。排障时先检查 `aigw`，再分别检查：
+AI Model Gateway normally runs through `aigw supervise`. Start every incident
+from the supervisor, then drill into the internal daemons only when needed:
 
 - `aigw`
 - `gatewayd`
 - `controld`
 - `telemetryd`
 
-本机特别注意：如果 `127.0.0.1:18080` 已经由 live legacy monolith 服务占用，开发三面 runtime 的 `gatewayd` 不会正常绑定该端口。先确认当前服务归属，再决定停止 live 服务、改端口，或只做离线构建测试。
+If you are running a local development copy, first confirm that another gateway
+or legacy monolith is not already bound to `127.0.0.1:18080`. A port conflict
+can make the data plane look broken even when the bundle is otherwise healthy.
 
-## 1. 数据面健康检查失败
+## Fast Triage
 
-症状：
+Check the public health endpoints:
+
+```bash
+curl http://127.0.0.1:18080/-/health
+curl http://127.0.0.1:18081/-/health
+```
+
+Check the supervisor's view of the runtime:
+
+```bash
+aigw status \
+  -gateway-url http://127.0.0.1:18080 \
+  -control-url http://127.0.0.1:18081 \
+  -token "$ADMIN_TOKEN"
+
+aigw doctor \
+  -runtime-root .gateway-runtime \
+  -config-dir configs \
+  -manifest aigw-manifest.json
+
+aigw logs -runtime-root .gateway-runtime -n 120
+```
+
+For systemd deployments:
+
+```bash
+systemctl status aigw --no-pager
+journalctl -u aigw -n 200 --no-pager
+```
+
+For Docker Compose deployments:
+
+```bash
+docker compose -f deploy/docker-compose.yaml ps
+docker compose -f deploy/docker-compose.yaml logs --tail=200
+```
+
+## Data Plane Health Fails
+
+Symptom:
 
 ```bash
 curl http://127.0.0.1:18080/-/health
 ```
 
-返回非 200 或持续 `starting`。
+returns a non-2xx response, stays in `starting`, or cannot connect.
 
-排查：
+Process and port checks:
 
 ```bash
 # Linux
@@ -32,26 +74,42 @@ tasklist | findstr gatewayd
 netstat -ano | findstr 18080
 ```
 
-常见原因：
+Common causes:
 
-- `gatewayd -listen` 与预期端口不一致
-- live legacy monolith 已占用 `127.0.0.1:18080`
-- `controld` 没有成功连接 `gatewayd`
-- 还没有 active snapshot 被发布到 `gatewayd`
-- `aigw supervise` 因 manifest 或 daemon 版本混装拒绝启动
+- `gatewayd -listen` does not match the address you are probing.
+- Another process already owns `127.0.0.1:18080`.
+- `controld` cannot connect to `gatewayd`.
+- No active snapshot has been published to `gatewayd` yet.
+- `aigw supervise` rejected a mixed or invalid bundle.
+- The runtime directory is not writable by the service account.
 
-## 2. 控制面无法访问
+Next checks:
 
-症状：
+```bash
+aigw logs -runtime-root .gateway-runtime gatewayd
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://127.0.0.1:18081/api/admin/runtime/status
+```
+
+If the bundle was recently updated, verify that all binaries and the manifest
+come from the same release:
+
+```bash
+aigw bundle verify -root /opt/ai-model-gateway -manifest /opt/ai-model-gateway/aigw-manifest.json
+```
+
+## Control Plane Or Admin UI Is Unreachable
+
+Symptoms:
 
 ```bash
 curl http://127.0.0.1:18081/-/health
 curl http://127.0.0.1:18081/admin
 ```
 
-无法访问或返回错误。
+cannot connect or return an error.
 
-排查：
+Process and port checks:
 
 ```bash
 # Linux
@@ -63,19 +121,33 @@ tasklist | findstr controld
 netstat -ano | findstr 18081
 ```
 
-还需要检查：
+Check:
 
-- `-authoring-config` 是否指向正确的 `config.yaml`
-- `controld -gateway` / `-telemetry` 是否和另外两个 daemon 使用同一组 IPC 名称
+- The `controld.json` file exists in the active `-config-dir`.
+- `controld` can read the authoring config, usually `config.yaml`.
+- `controld -gateway` points at the same control socket or named pipe used by
+  `gatewayd`.
+- `controld -telemetry` points at the same telemetry query socket or named pipe
+  used by `telemetryd`.
+- The service account can read the admin frontend files if you are serving the
+  packaged `web/admin/dist` assets.
 
-## 3. Telemetry 数据缺失
+Useful commands:
 
-症状：
+```bash
+aigw logs -runtime-root .gateway-runtime controld
+aigw doctor -runtime-root .gateway-runtime -config-dir configs -manifest aigw-manifest.json
+```
 
-- `/admin` 中 overview / telemetry / timeseries / benchmark 没有数据
-- `/api/admin/runtime/status` 中 `telemetry_status` 不是 `connected`
+## Telemetry Is Missing
 
-排查：
+Symptoms:
+
+- Admin overview, telemetry, timeseries, or benchmark views show no data.
+- `/api/admin/runtime/status` reports telemetry as disconnected.
+- Request logs are present but pricing or usage metrics are incomplete.
+
+Process checks:
 
 ```bash
 # Linux
@@ -85,95 +157,174 @@ ps aux | grep telemetryd
 tasklist | findstr telemetryd
 ```
 
-检查：
+Check:
 
-- `telemetryd -ingest` 与 `gatewayd -telemetry` 是否一致
-- `telemetryd -query` 与 `controld -telemetry` 是否一致
-- telemetry `-data-dir` 是否可写
+- `telemetryd -ingest` matches `gatewayd -telemetry`.
+- `telemetryd -query` matches `controld -telemetry`.
+- The telemetry data directory is writable.
+- The runtime root has enough disk space.
+- Traffic has actually passed through the gateway after startup.
 
-## 4. 配置修改没有生效
+Useful commands:
 
-症状：
+```bash
+aigw logs -runtime-root .gateway-runtime telemetryd
+curl -H "Authorization: Bearer $ADMIN_TOKEN" \
+  http://127.0.0.1:18081/api/admin/runtime/status
+```
 
-- 编辑了 `config.yaml`
-- 重启后 `/api/admin/config/history` 看不到新的 revision
+## Config Changes Do Not Apply
 
-原因：
+Symptoms:
 
-- `controld` 有 `publisher-state.db` 时会优先恢复持久化 revision/history
-- 它不会因为 YAML 改了就自动重种一条新 revision
+- You edited `config.yaml`.
+- After restart, `/api/admin/config/history` does not show a new revision.
+- The gateway still serves the previous routing or provider policy.
 
-处理方式：
+Expected behavior:
 
-- 使用 Admin API 的 publish/rollback 流程管理 revision
-- 或者在你明确要重新 seed 的前提下，备份并删除控制面数据目录里的 `publisher-state.db`，然后重启 `controld`
+`controld` owns revision, publish, history, and rollback state. When
+`publisher-state.db` exists, `controld` restores persisted revision history
+instead of automatically seeding a new revision from YAML on every restart.
 
-## 5. Provider 连接失败
+Preferred fixes:
 
-症状：
+- Use the Admin UI or Admin API publish flow to preview, diff, publish, and
+  audit config changes.
+- Use `gateway-cli config preview` and `gateway-cli config diff` before
+  publishing.
+- Use rollback if a published revision is wrong.
 
-- 请求返回 502/503
-- `/api/admin/status` 中 provider health 异常
+Reset-only option:
 
-排查：
+If you explicitly want to seed from YAML again, stop the service, back up the
+control data directory, remove `publisher-state.db`, and restart. Do this only
+when you understand that it resets persisted publish history for that runtime.
+
+## Provider Calls Fail
+
+Symptoms:
+
+- Client requests return `502`, `503`, or upstream timeout errors.
+- Admin provider health is degraded.
+- Model probes fail.
+
+Check provider status:
 
 ```bash
 curl -H "Authorization: Bearer $ADMIN_TOKEN" \
   http://127.0.0.1:18081/api/admin/status
 ```
 
-检查：
+Check:
 
-- `config.yaml` 中 `base_url` 和 `api_key` 是否正确
-- provider 是否可达
-- 配额是否耗尽
+- Provider `base_url` is correct and reachable from the gateway host.
+- Provider API keys are present in the environment or config source used by the
+  running service.
+- The configured public model name maps to the intended upstream model.
+- Provider quota or rate limits are not exhausted.
+- Corporate proxy, firewall, DNS, or TLS inspection settings are not blocking
+  outbound traffic.
 
-## 6. 日志与运行目录
+Run a focused probe from the CLI:
 
-`aigw supervise` 会把内部 daemon 日志统一写到运行目录：
+```bash
+gateway-cli provider list
+gateway-cli provider test <provider-id>
+gateway-cli probe model <model> <provider-id>
+```
 
-如果你采用共享运行目录，至少应检查：
+## Logs And Runtime Files
+
+`aigw supervise` writes internal daemon logs under the runtime root:
 
 ```text
 .gateway-runtime/
-├── telemetry/
-├── gateway/
-├── control/
-└── logs/
+|-- telemetry/
+|-- gateway/
+|-- control/
+`-- logs/
+    |-- telemetryd.log
+    |-- gatewayd.log
+    `-- controld.log
 ```
 
-重点文件：
+Important files:
 
 - `control/publisher-state.db`
-- telemetry 数据目录中的 SQLite 文件
-- `logs/gatewayd.log`、`logs/controld.log`、`logs/telemetryd.log`
-- `aigw` 自身输出通常在 systemd journal、Windows service wrapper 日志或 `deploy/start.sh` 的 `logs/aigw.log`
+- telemetry SQLite files under the telemetry data directory
+- `logs/gatewayd.log`
+- `logs/controld.log`
+- `logs/telemetryd.log`
 
-## 7. Windows 服务
+`aigw` supervisor output usually lives in the host service manager:
 
-仓库默认提供一个 `aigw.service`，只包装 `aigw supervise`。Windows 请使用：
+- systemd journal for Linux services
+- Docker Compose logs for containers
+- NSSM, Windows Service Wrapper, or Task Scheduler logs for Windows services
+- `deploy/start.sh` logs when using the helper script directly
 
-- NSSM
-- 自定义 Windows Service Wrapper
-- Task Scheduler
-- 容器/虚拟机编排
+## Service Wrapper Problems
 
-包装 `aigw.exe supervise`。分别管理 `gatewayd.exe`、`controld.exe`、`telemetryd.exe` 只建议用于高级调试。
+The repository provides one default Linux systemd unit for `aigw supervise`:
 
-## 8. 自动恢复与进程外重启
+```text
+deploy/aigw.service
+```
 
-**控制面**：`controld` 在到 `gatewayd` 的 RPC 断线后会重连并自动重新发布当前 revision；若 RPC 正常但 `gatewayd` 长期处于非 `ready` 就绪状态（例如尚未应用 snapshot），会按 `gateway_readiness_republish_min_interval_sec`（默认 15 秒）节流重试发布，直到数据面就绪。
+Production service managers should normally wrap only this command shape:
 
-**数据面**：`gatewayd` 在启动时会尝试从 `data_dir` 下的磁盘缓存恢复最后一次成功应用的 snapshot；多 API key 的 provider 在收到 401/403 时会递增失败计数并切换到其他 key，健康探针周期内还会对长期失败的 key 做冷却恢复（`TryRecover`）。`/api/admin/runtime/status` 与 gateway 的 `GetStatus` 可查看 `last_auto_remediation_reason` / `last_auto_remediation_at`（以及扁平字段 `gateway_last_auto_remediation_*`）了解最近一次自动纠偏。
+```bash
+aigw supervise \
+  -runtime-root <runtime-root> \
+  -config-dir <config-dir> \
+  -bin-dir <bin-dir> \
+  -strict-manifest=true \
+  -manifest <manifest-path>
+```
 
-**进程外**：生产环境建议用 systemd、supervisor 或 Windows 服务包装 `aigw supervise`（或三面进程），并配置 `Restart=on-failure`（或等价策略）。仓库中的 `ensure-gateway-running.ps1` 用于本机 WSL 场景下拉起与连通性自检，可与上述机制配合使用。
+Run `gatewayd`, `controld`, and `telemetryd` directly only for advanced
+debugging. Managing those daemons as separate production services makes updates
+and rollback easier to get wrong.
 
-## 获取帮助
+For Windows, wrap `aigw.exe supervise` with NSSM, Windows Service Wrapper, Task
+Scheduler, or an equivalent host management tool.
 
-提交问题时请附上：
+## Automatic Recovery Behavior
 
-- `aigw supervise` 的启动命令
-- `aigw logs` 输出或 `.gateway-runtime/logs/` 内容
-- `config.yaml`（隐藏敏感信息）
-- `publisher-state.db` 是否存在
-- 使用的 socket / named pipe 名称
+Control plane:
+
+- `controld` reconnects to `gatewayd` after RPC disconnects.
+- When gateway RPC is reachable but the data plane is not ready, `controld`
+  retries publishing the current revision with throttling.
+- The default readiness republish interval is controlled by
+  `gateway_readiness_republish_min_interval_sec`.
+
+Data plane:
+
+- `gatewayd` attempts to restore the last successfully applied snapshot from
+  disk on startup.
+- Providers with multiple API keys can move away from keys that return
+  authentication failures and later try cooled-down keys again.
+- Runtime status exposes recent auto-remediation details, including
+  `last_auto_remediation_reason` and `last_auto_remediation_at`.
+
+Process supervision:
+
+- Use systemd, Docker, a supervisor, or a Windows service wrapper with an
+  on-failure restart policy.
+- The repository's `ensure-gateway-running.ps1` is intended for local WSL
+  helper workflows, not as the primary production service manager.
+
+## Information To Include In A GitHub Issue
+
+When opening an issue, include:
+
+- The `aigw supervise` command or service unit.
+- Output from `aigw doctor`.
+- Output from `aigw status`.
+- Relevant `.gateway-runtime/logs/` files.
+- Redacted `config.yaml`.
+- Whether `control/publisher-state.db` exists.
+- OS, architecture, deployment mode, and release version or commit SHA.
+- Any custom socket, named pipe, port, proxy, or container settings.
