@@ -37,6 +37,12 @@
     <priority>0.91</priority>
   </url>
   <url>
+    <loc>https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html</loc>
+    <lastmod>2026-05-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.88</priority>
+  </url>
+  <url>
     <loc>https://github.com/SSC-STUDIO/Ai-Model-Gateway</loc>
     <lastmod>2026-05-29</lastmod>
     <changefreq>weekly</changefreq>

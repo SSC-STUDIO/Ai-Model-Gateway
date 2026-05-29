@@ -186,3 +186,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Added a release-archive install path with Linux and Windows commands so visitors from the installation page can try the packaged runtime without rebuilding from source. |
 | 2026-05-30 | 2 | 0 | 0 | Added release-archive install, quality evidence, and security trust links to every search landing page and anchored the website review-evidence section for direct release/discussion links. |
 | 2026-05-30 | 2 | 0 | 0 | Moved the packaged release-archive trial path, checksum link, review evidence, and conditional star CTA into the README top section for repository-overview visitors. |
+| 2026-05-30 | 2 | 0 | 0 | Added `site/share-kit.html` / `https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html` with copy-ready links, short posts, feedback framing, and the social preview card for compliant sharing. |

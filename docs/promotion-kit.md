@@ -7,6 +7,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
 - Website review evidence: `https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence`
+- Share kit: `https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html`
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
 - OpenAI Anthropic gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html`
@@ -53,6 +54,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - OpenAI-compatible search landing page: `site/openai-compatible-llm-gateway.html`
 - OpenAI Anthropic search landing page: `site/openai-anthropic-gateway.html`
 - Provider fallback search landing page: `site/llm-provider-fallback-gateway.html`
+- Copy-ready share page: `site/share-kit.html`
 
 ## Publication Log
 
@@ -99,6 +101,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Release archive install path: added direct Linux and Windows release-archive commands to `docs/installation.md` so high-intent visitors can try the packaged runtime without rebuilding from source.
 - Landing page evidence links: added release-archive install, quality evidence, and security trust links to every search landing page and anchored the website review-evidence section.
 - README first-run path: moved the fastest packaged-runtime trial, checksum verification, review evidence, and conditional star CTA into the README top section for repository-overview visitors.
+- Share kit page: added `site/share-kit.html` with copy-ready links, short post blocks, feedback framing, and the social preview card for compliant sharing.
 
 ## Core Message
 
