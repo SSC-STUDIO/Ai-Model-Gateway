@@ -12,6 +12,36 @@ It is not trying to be another hosted model marketplace. The project is optimize
 
 If this project matches your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
+## Who Should Use It
+
+AI Model Gateway is most useful when you are running LLM traffic for a team and need operational control rather than a hosted model marketplace:
+
+- You want OpenAI, Anthropic, and Responses-compatible clients to enter through one local gateway.
+- You need provider routing, fallback, rate limiting, and cache behavior that you can inspect and change.
+- You want config changes to go through preview, diff, publish, audit, and rollback instead of editing a live proxy file.
+- You need request logs, latency, cost, provider health, benchmarks, diagnostics, and replay in one admin surface.
+- You want updates and rollback to use manifest-verified bundles instead of replacing binaries by hand.
+
+## Try It Quickly
+
+```bash
+git clone https://github.com/SSC-STUDIO/Ai-Model-Gateway.git
+cd Ai-Model-Gateway
+go build -o ./dist/aigw ./cmd/aigw
+go build -o ./dist/gatewayd ./cmd/gatewayd
+go build -o ./dist/controld ./cmd/controld
+go build -o ./dist/telemetryd ./cmd/telemetryd
+cp configs/config.example.yaml configs/config.yaml
+mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
+ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum \
+COOKIE_SIGNING_KEY=change-me-32-characters-minimum \
+ADMIN_TOKEN=change-me-admin-token \
+VIEWER_TOKEN=change-me-viewer-token \
+./dist/aigw supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir ./dist
+```
+
+Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/health`.
+
 ## Why This Exists
 
 The AI gateway space already has strong projects:
