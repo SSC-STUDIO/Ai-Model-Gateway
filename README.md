@@ -8,7 +8,7 @@ AI Model Gateway is a self-hosted LLM gateway for teams that want provider routi
 
 It is not trying to be another hosted model marketplace. The project is optimized for local control: one supervisor command, separate data/control/telemetry planes, OpenAI-compatible client entry points, provider health visibility, safe config rollout, and an admin UI that behaves like an operations console.
 
-[Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+[Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
 Start with the [15-minute evaluation path](docs/evaluate-in-15-minutes.md) or the [provider fallback demo](examples/provider-fallback/). If the project matches your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
@@ -52,6 +52,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |
 | Review CI, tests, runtime smoke, and maturity evidence | [Quality evidence](docs/quality-evidence.md) |
+| Review auth, secret, SSRF, telemetry, and deployment trust boundaries | [Security and trust model](docs/security-trust-model.md) |
 | Understand project direction | [Project roadmap](docs/roadmap.md) |
 | Compare LLM gateway options | [LLM gateway comparison guide](docs/llm-gateway-comparison.md) |
 | Start from a gateway comparison search page | [LLM gateway comparison page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) |

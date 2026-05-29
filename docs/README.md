@@ -13,6 +13,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Match the project to real workflows | [Use cases](use-cases.md) |
 | Decide whether self-hosting is the right path | [Self-hosted LLM gateway checklist](self-hosted-llm-gateway-checklist.md) |
 | Review CI, tests, runtime smoke, and maturity evidence | [Quality evidence](quality-evidence.md) |
+| Review auth, secrets, SSRF, telemetry, and deployment trust boundaries | [Security and trust model](security-trust-model.md) |
 | Understand current project direction | [Project roadmap](roadmap.md) |
 | Compare LLM gateway and observability options | [LLM gateway comparison guide](llm-gateway-comparison.md) |
 | Start from a gateway comparison search page | [LLM gateway comparison page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) |
@@ -36,6 +37,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Debug startup, routing, admin, and telemetry problems | [Troubleshooting](troubleshooting.md) |
 | Reproduce CI checks locally | [Local CI guide](ci-local.md) |
 | Review current public quality signals | [Quality evidence](quality-evidence.md) |
+| Review security and deployment trust boundaries | [Security and trust model](security-trust-model.md) |
 
 ## Operate The Gateway
 
@@ -47,6 +49,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Verify fallback behavior with fake upstreams | [Provider fallback demo](../examples/provider-fallback/) |
 | Use the Anthropic Messages-compatible endpoint | [Messages endpoint](api-messages-endpoint.md) |
 | Connect Chinese model providers and local AI tools | [Chinese model integration](chinese-models-integration.md) |
+| Report or evaluate security-sensitive behavior | [Security policy](../SECURITY.md) and [security trust model](security-trust-model.md) |
 
 ## Releases And Promotion
 

@@ -16,6 +16,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Docs index: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
 - Architecture guide: `docs/architecture.md`
 - Quality evidence: `docs/quality-evidence.md`
+- Security and trust model: `docs/security-trust-model.md`
 - Roadmap: `docs/roadmap.md`
 - 15-minute evaluation path: `docs/evaluate-in-15-minutes.md`
 - Installation guide: `docs/installation.md`
@@ -90,6 +91,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Promotion kit cleanup: rewrote this file as a clean ASCII-first source for copy-ready outreach material.
 - Quality evidence: added `docs/quality-evidence.md` with current CI, local reproduction, runtime smoke, feature proof, and capability-boundary evidence.
 - External reviewer evidence: updated the open Awesome LLMOps, InftyAI Awesome LLMOps, Awesome AI Gateways, Awesome LLM Routing, Awesome LLM Gateways, Awesome AI API Proxy, and KennethanCeyer Awesome LLMOps submissions with links to the quality evidence page and CI workflow.
+- Security and trust model: cleaned `SECURITY.md` and added `docs/security-trust-model.md` covering admin auth, same-origin writes, secrets, SSRF, telemetry, local files, and update trust boundaries.
 
 ## Core Message
 
@@ -129,6 +131,7 @@ Highlights:
 - Search landing pages for OpenAI-compatible, OpenAI/Anthropic, self-hosted, provider fallback, and gateway-comparison queries.
 - Clean architecture guide covering the supervisor, data/control/telemetry planes, IPC, routes, state, and publish model.
 - Quality evidence page covering CI gates, local reproduction, runtime smoke checks, feature proof points, and capability boundaries.
+- Security and trust model for self-hosted operators evaluating key handling, admin access, SSRF controls, telemetry sensitivity, and update trust.
 
 Start links:
 
@@ -136,6 +139,7 @@ Start links:
 - Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Architecture: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/architecture.md
 - Quality evidence: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md
+- Security and trust model: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/security-trust-model.md
 - Evaluate in 15 minutes: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md
 - Provider fallback and health: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - Provider fallback demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback

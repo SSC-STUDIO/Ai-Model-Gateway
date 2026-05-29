@@ -97,6 +97,7 @@ These are the most useful entry points for validating that the repository is mor
 | Executable fallback proof | [Provider fallback demo](../examples/provider-fallback/) proves a primary `429` can be served through a fallback provider |
 | Protocol entry points | [Messages endpoint guide](api-messages-endpoint.md) documents the Anthropic Messages-compatible route and limits |
 | Operator CLI | [CLI guide](cli.md) covers `aigw`, `gateway-cli`, config workflows, runtime checks, update flows, and direct daemon flags |
+| Security model | [Security and trust model](security-trust-model.md) covers admin auth, same-origin writes, secrets, SSRF, telemetry, local files, and update trust |
 | Evaluation path | [15-minute evaluation path](evaluate-in-15-minutes.md) gives a short fit check and runtime trial sequence |
 | Roadmap | [Project roadmap](roadmap.md) lists the current focus and contribution areas |
 
@@ -117,7 +118,8 @@ For curated-list maintainers or reviewers, a practical review sequence is:
 
 1. Check the latest [CI workflow](https://github.com/SSC-STUDIO/Ai-Model-Gateway/actions/workflows/ci.yml).
 2. Read the [Architecture guide](architecture.md) to confirm the project scope.
-3. Run the [15-minute evaluation path](evaluate-in-15-minutes.md) if a local trial is needed.
-4. Run the [provider fallback demo](../examples/provider-fallback/) to verify one differentiating behavior.
-5. Check [Capability Boundaries](#capability-boundaries) before approving broad compatibility wording.
-6. Use [Discussion #25](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25) for questions about scope, maturity, or roadmap direction.
+3. Read the [Security and trust model](security-trust-model.md) to confirm auth, secret, SSRF, telemetry, and deployment boundaries.
+4. Run the [15-minute evaluation path](evaluate-in-15-minutes.md) if a local trial is needed.
+5. Run the [provider fallback demo](../examples/provider-fallback/) to verify one differentiating behavior.
+6. Check [Capability Boundaries](#capability-boundaries) before approving broad compatibility wording.
+7. Use [Discussion #25](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25) for questions about scope, maturity, or roadmap direction.
