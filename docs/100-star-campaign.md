@@ -143,3 +143,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | Date | Stars | Open PRs | Open Issues | Action |
 | --- | ---: | ---: | ---: | --- |
 | 2026-05-29 | 2 | 0 | 0 | Cleared Dependabot PR backlog and created this campaign plan. |
+| 2026-05-29 | 2 | 0 | 0 | Added README setup links, use cases, and self-hosted gateway evaluation checklist to improve visitor conversion. |
