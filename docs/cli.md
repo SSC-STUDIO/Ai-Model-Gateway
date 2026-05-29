@@ -1,37 +1,35 @@
 # CLI Guide
 
-AI Model Gateway has two supported operator-facing CLIs:
+AI Model Gateway has two operator-facing command line tools:
 
-- `aigw`
-  本机运维入口。负责统一启动、健康检查、日志、备份、bundle 校验、升级和回滚。
-- `gateway-cli`
-  远程/admin CLI。通过 `controld` 的 Admin API 做配置、审计、探测、replay、runtime 查询等操作。
+- `aigw` is the local operations entrypoint. Use it to supervise the three daemons, inspect local runtime state, read logs, build and verify release manifests, back up state, apply updates, and generate client configuration snippets.
+- `gateway-cli` is the remote control-plane CLI. It talks to `controld` over the Admin API and is used for config inspection, config preview/diff, health checks, audit logs, probes, replay, diagnostics, provider checks, telemetry, publish history, rollback, and verification benchmarks.
 
-`gatewayd`、`controld`、`telemetryd` 仍然存在，但只作为 `aigw supervise` 管理的内部 daemon。直接运行 daemon 只建议用于高级调试，不是正常部署、升级或回滚路径。
+`gatewayd`, `controld`, and `telemetryd` still exist as standalone binaries, but they are daemon internals. Normal deployments should wrap `aigw supervise` with a service manager instead of running each daemon by hand.
 
-## 总原则
+## Operating Model
 
-- 默认生产入口是 `aigw supervise`，service manager 只包装这一条命令。
-- 三个 daemon 必须来自同一个 bundle、同一个 manifest、同一个产品版本。
-- `aigw supervise` 启动顺序固定为 `telemetryd -> gatewayd -> controld`。
-- `-config` 仍表示 daemon 自己的 bootstrap JSON，不是 `config.yaml`。
-- `controld -authoring-config` 才是人类可编辑 YAML 的入口。
-- `gatewayd` 不读取 YAML，只执行 `controld` 发布的 snapshot。
-- 默认 bootstrap JSON 是 `configs/gatewayd.json`、`configs/controld.json`、`configs/telemetryd.json`。
-- `telemetryd` bootstrap JSON 字段是 `ingest_socket` / `query_socket`，不是 `ingest` / `query`。
-- 推荐把 IPC 名称、数据目录、备份和日志都放进同一个运行目录，例如 `.gateway-runtime/`。
+- Use `aigw supervise` as the production service command.
+- Keep `aigw`, `gatewayd`, `controld`, and `telemetryd` from the same release bundle.
+- `aigw supervise` starts daemons in this order: `telemetryd`, `gatewayd`, then `controld`.
+- The `-config` flag on daemon binaries points to bootstrap JSON such as `configs/gatewayd.json`. It is not the authoring YAML.
+- `controld -authoring-config` points to the human-authored YAML, usually `configs/config.yaml`.
+- `gatewayd` does not read YAML directly. It serves snapshots published by `controld`.
+- The default local runtime directory is `.gateway-runtime/`.
+- The default local control plane URL is `http://127.0.0.1:18081`.
+- The default local data plane URL is `http://127.0.0.1:18080`.
 
-## aigw
+## `aigw`
 
-### version
+### Version
 
 ```bash
 ./dist/aigw version
 ```
 
-打印本地运维入口版本和平台。
+Prints the local operations binary version and platform.
 
-### supervise
+### Supervise
 
 ```bash
 ./dist/aigw supervise \
@@ -41,27 +39,18 @@ AI Model Gateway has two supported operator-facing CLIs:
   -manifest aigw-manifest.json
 ```
 
-常用 flags：
+Common flags:
 
-- `-runtime-root`
-  运行目录，默认 `.gateway-runtime`
-- `-config-dir`
-  daemon bootstrap JSON 目录，默认 `configs`
-- `-bin-dir`
-  `gatewayd`、`controld`、`telemetryd` 所在目录
-- `-manifest`
-  bundle manifest 路径，默认 `aigw-manifest.json`
-- `-strict-manifest`
-  manifest 缺失时也失败
-- `-startup-timeout`
-  启动健康检查超时，默认 `30s`
+- `-runtime-root`: runtime state root, default `.gateway-runtime`.
+- `-config-dir`: directory containing `gatewayd.json`, `controld.json`, `telemetryd.json`, and usually `config.yaml`; default `configs`.
+- `-bin-dir`: directory containing `gatewayd`, `controld`, and `telemetryd`. If omitted, `aigw` checks its own directory, then `bin/`, then `PATH`.
+- `-manifest`: release manifest path, default `aigw-manifest.json`.
+- `-strict-manifest`: fail when the manifest is missing.
+- `-startup-timeout`: startup health timeout, default `30s`.
 
-`supervise` 会在启动前做两类拒绝检查：
+Before starting daemons, `aigw supervise` verifies the bundle manifest when available and checks that each daemon reports the same product version as `aigw`.
 
-- 校验 manifest 中的 daemon hash、产品版本、RPC contract、snapshot schema 和平台。
-- 执行每个 daemon 的 `-version`，发现任意 daemon 与 `aigw` 版本不同就拒绝启动。
-
-日志写入：
+Daemon logs are written to:
 
 ```text
 .gateway-runtime/logs/telemetryd.log
@@ -69,25 +58,29 @@ AI Model Gateway has two supported operator-facing CLIs:
 .gateway-runtime/logs/controld.log
 ```
 
-### doctor
+### Doctor
 
 ```bash
 ./dist/aigw doctor -runtime-root .gateway-runtime -config-dir configs -manifest aigw-manifest.json
 ./dist/aigw doctor -format json
 ```
 
-检查本地 bootstrap JSON、manifest 和运行目录 socket 状态。适合在启动或升级前做本机预检。
+Checks local bootstrap JSON files, the release manifest, and expected IPC socket files. Use this before service startup, bundle swaps, or support handoff.
 
-### status
+### Status
 
 ```bash
 ./dist/aigw status
-./dist/aigw status -control-url http://127.0.0.1:18081 -gateway-url http://127.0.0.1:18080 -token "$ADMIN_TOKEN" -format json
+./dist/aigw status \
+  -control-url http://127.0.0.1:18081 \
+  -gateway-url http://127.0.0.1:18080 \
+  -token "$ADMIN_TOKEN" \
+  -format json
 ```
 
-查询本机 control plane runtime 状态和 gateway health。`-token` 默认读取 `ADMIN_TOKEN`，用于访问启用了认证的 runtime status API。
+Queries control-plane runtime status and data-plane health. `-token` defaults to `ADMIN_TOKEN`.
 
-### logs
+### Logs
 
 ```bash
 ./dist/aigw logs
@@ -95,63 +88,88 @@ AI Model Gateway has two supported operator-facing CLIs:
 ./dist/aigw logs -runtime-root .gateway-runtime telemetryd controld
 ```
 
-读取统一日志目录下的 daemon 日志。未指定 daemon 时默认输出 `telemetryd`、`gatewayd`、`controld`。
+Reads daemon logs from `.gateway-runtime/logs`. If no daemon names are supplied, it prints `telemetryd`, `gatewayd`, and `controld` logs.
 
-### backup
+### Backup
 
 ```bash
 ./dist/aigw backup -runtime-root .gateway-runtime -config-dir configs
 ./dist/aigw backup -out .gateway-runtime/backups/manual-001
 ```
 
-备份配置、control/gateway/telemetry 状态、迁移后的 telemetry 数据目录和 manifest。未指定 `-out` 时写入 `.gateway-runtime/backups/<utc timestamp>`。
+Backs up config files, control/gateway/telemetry runtime state, migrated telemetry state, and the release manifest when those paths exist. Without `-out`, backups are written under `.gateway-runtime/backups/<utc timestamp>`.
 
-### bundle
+### Bundle
 
 ```bash
 ./dist/aigw bundle build -root . -out aigw-manifest.json
+./dist/aigw bundle build -root . -out aigw-manifest.json -git-commit "$GIT_SHA"
 ./dist/aigw bundle verify -root . -manifest aigw-manifest.json
 ./dist/aigw bundle verify -format json
 ```
 
-manifest 包含产品版本、git commit、构建时间、平台、binary hash、admin dist hash、snapshot schema、RPC contract、迁移要求和默认配置路径。
+The manifest records release identity and bundle integrity, including product version, git commit, platform, binary hashes, Admin UI dist hash, snapshot schema, IPC contracts, migration requirements, and default config paths.
 
-### update
+### Update
 
 ```bash
+./dist/aigw update check
+./dist/aigw update check -repo SSC-STUDIO/Ai-Model-Gateway -format json
+./dist/aigw update fetch -out .gateway-runtime/update/downloads
 ./dist/aigw update apply -bundle /path/to/bundle -install-dir /opt/ai-model-gateway
 ./dist/aigw update apply -bundle /path/to/bundle -install-dir /opt/ai-model-gateway -dry-run
 ./dist/aigw update rollback -install-dir /opt/ai-model-gateway
 ```
 
-`update apply` 会先校验目标 bundle manifest，再备份当前 payload，然后复制新 payload。复制失败会尝试恢复刚创建的备份。危险主机操作仍应只在本机执行。
+`update check` and `update fetch` use GitHub releases. `update apply` verifies the target bundle, backs up the existing install payload, then copies the new payload. Rollback restores the latest recorded update backup.
 
-### service
+### Service
 
 ```bash
 ./dist/aigw service print
 ```
 
-打印默认 systemd unit 模板。Linux 默认只安装一个 `aigw.service`；Windows 请用 NSSM 或 Windows Service Wrapper 包装 `aigw.exe supervise`。
+Prints the default systemd unit. On Windows, wrap `aigw.exe supervise` with NSSM, Windows Service Wrapper, or your normal service runner.
 
-## gateway-cli
+### Clients
 
-`gateway-cli` 通过 `controld` Admin API 工作，默认连接 `http://127.0.0.1:18081`。
+```bash
+./dist/aigw clients print
+./dist/aigw clients print -gateway-url http://127.0.0.1:18080 -tools codex,claude-code
+./dist/aigw clients apply -tools codex,claude-code,openclaw -api-key "$GATEWAY_API_KEY" -dry-run
+./dist/aigw clients apply -tools all -openclaw-model gpt-4o
+```
 
-通用选项：
+`clients print` shows shell snippets and planned file changes. `clients apply` can update local Codex, Claude Code, and OpenClaw configuration files, with backups enabled by default.
 
-- `-server url`
-  控制面 URL，默认 `http://127.0.0.1:18081`
-- `-token token`
-  Admin token，默认读取 `ADMIN_TOKEN`
-- `-format text|json|csv`
-  输出格式。默认 text，`json` 输出结构化 JSON；CSV 仅支持 benchmark telemetry、telemetry-summary、target-summary。其他命令传入无效格式会返回错误。
+Supported client flags:
 
-常用命令：
+- `-config-dir`: directory containing `gatewayd.json`, default `configs`.
+- `-gateway-url`: explicit data-plane base URL. This overrides `gatewayd.json`.
+- `-tools`: comma-separated `codex`, `claude-code`, `openclaw`, or `all`.
+- `-api-key`: gateway API key. If omitted, the command checks `GATEWAY_CLIENT_API_KEY`, `GATEWAY_API_KEY`, then `OPENAI_API_KEY`.
+- `-backup`: back up existing files before writes, default `true`.
+- `-dry-run`: with `apply`, print actions without writing files.
+- `-openclaw-model`: public model id for OpenClaw, default `gpt-4o`.
+- `-openclaw-set-primary`: set the OpenClaw default primary model, default `true`.
+
+## `gateway-cli`
+
+`gateway-cli` talks to `controld` over the Admin API.
+
+Global options:
+
+- `-server url`: control-plane URL, default `http://127.0.0.1:18081`.
+- `-token token`: Admin API token, default `ADMIN_TOKEN`.
+- `-format text|json|csv`: output format, default `text`. CSV is only supported for benchmark telemetry commands.
+
+Examples:
 
 ```bash
 ./dist/gateway-cli health
+./dist/gateway-cli health quick
 ./dist/gateway-cli status
+./dist/gateway-cli status watch 10s
 ./dist/gateway-cli validate configs/config.yaml
 ./dist/gateway-cli reload
 
@@ -163,8 +181,8 @@ manifest 包含产品版本、git commit、构建时间、平台、binary hash�
 ./dist/gateway-cli runtime status
 ./dist/gateway-cli runtime preflight
 ./dist/gateway-cli audit 100
-./dist/gateway-cli probe provider openai-demo gpt-4
-./dist/gateway-cli probe model gpt-4 openai-demo
+./dist/gateway-cli probe provider openai-demo gpt-4o
+./dist/gateway-cli probe model gpt-4o openai-demo
 ./dist/gateway-cli replay list
 ./dist/gateway-cli replay <request-id>
 ./dist/gateway-cli diagnostics
@@ -175,25 +193,116 @@ manifest 包含产品版本、git commit、构建时间、平台、binary hash�
 ./dist/gateway-cli telemetry events
 ./dist/gateway-cli publish history
 ./dist/gateway-cli publish rollback rev-001
+
+./dist/gateway-cli benchmark baseline import public_standard baselines/openai.json OpenAI https://platform.openai.com/docs/models
 ./dist/gateway-cli benchmark baselines
-./dist/gateway-cli benchmark run --all-active --public-snapshot <id>
+./dist/gateway-cli benchmark run --all-active --public-snapshot <snapshot-id>
+./dist/gateway-cli benchmark run --provider openai --model gpt-4o --public-snapshot <snapshot-id>
+./dist/gateway-cli benchmark runs
+./dist/gateway-cli benchmark show <run-id>
+./dist/gateway-cli -format csv benchmark telemetry <run-id> --limit 200
+./dist/gateway-cli -format csv benchmark telemetry-summary <run-id>
+./dist/gateway-cli -format csv benchmark target-summary <run-id> --sort severity
+
 ./dist/gateway-cli test convert
 ./dist/gateway-cli version
 ```
 
-权限约定：
+### Health And Status
 
-- viewer token 只应访问只读状态、审计、日志、diagnostics 等查询能力。
-- admin token 才能执行配置发布、rollback、probe、replay 和 runtime preflight。
-- API、CLI、UI、日志都不得输出明文密钥。
+- `health` queries control-plane status and returns an error when gateway or telemetry is not healthy.
+- `health quick` discovers the gateway listener from control-plane status, then probes the data-plane `/-/health` endpoint directly.
+- `status` prints gateway readiness, active requests, listener, active snapshot id, and provider health when available.
+- `status watch [duration]` repeats a compact status line. The default interval is `5s`.
 
-## Admin API
+### Config Workflow
 
-当前主要 admin/ops API：
+Use `validate` for local YAML checks before publishing. Use `config preview` and `config diff` against the running control plane to inspect what will change.
+
+```bash
+./dist/gateway-cli validate configs/config.yaml
+./dist/gateway-cli config preview configs/config.yaml
+./dist/gateway-cli config diff --file configs/config.yaml
+```
+
+`config diff` requires either `--to <revision>` or `--file <config.yaml>`. `--from <revision>` is optional.
+
+### Runtime Operations
+
+```bash
+./dist/gateway-cli -format json runtime status
+./dist/gateway-cli runtime preflight
+./dist/gateway-cli audit 50
+./dist/gateway-cli diagnostics
+./dist/gateway-cli secrets check
+```
+
+These commands are intended for scripts, support capture, and release checks. Diagnostics and secret checks are designed to avoid printing plaintext provider keys.
+
+### Probes And Replay
+
+```bash
+./dist/gateway-cli probe provider <provider-id> [model]
+./dist/gateway-cli probe model <public-model> [provider-id]
+./dist/gateway-cli replay list
+./dist/gateway-cli replay <request-id>
+```
+
+Provider and model probes exercise the control-plane probe APIs. Replay asks the control plane to fetch or replay captured request data according to the configured audit/replay support.
+
+### Publish History
+
+```bash
+./dist/gateway-cli publish history
+./dist/gateway-cli publish rollback <revision-id>
+```
+
+Rollback publishes an older revision through the control plane. Confirm the target revision with `publish history` and `config diff` first.
+
+### Verification Benchmarks
+
+Verification benchmark commands compare configured provider/model routes against imported public or vendor baselines.
+
+```bash
+./dist/gateway-cli benchmark baseline import public_standard baselines/openai.json
+./dist/gateway-cli benchmark baselines
+./dist/gateway-cli benchmark run --all-active --public-snapshot <snapshot-id>
+./dist/gateway-cli benchmark runs
+./dist/gateway-cli benchmark show <run-id>
+./dist/gateway-cli benchmark target-summary <run-id> --sort severity
+```
+
+`benchmark run` requires either:
+
+- `--all-active` plus at least one baseline snapshot; or
+- `--provider <provider>` and `--model <public-model>` plus at least one baseline snapshot.
+
+Supported optional filters for telemetry commands include:
+
+- `--target <target-id>`
+- `--case <case-id>`
+- `--provider <provider-id>`
+- `--model <public-model>`
+- `--hours <hours>`
+- `--limit <limit>`
+- `--offset <offset>`
+
+CSV output is supported for:
+
+```bash
+./dist/gateway-cli -format csv benchmark telemetry <run-id>
+./dist/gateway-cli -format csv benchmark telemetry-summary <run-id>
+./dist/gateway-cli -format csv benchmark target-summary <run-id>
+```
+
+## Admin API Endpoints
+
+The CLI uses these primary Admin API routes:
 
 - `GET /api/admin/runtime/status`
 - `POST /api/admin/runtime/preflight`
 - `GET /api/admin/audit`
+- `GET /api/admin/config`
 - `POST /api/admin/config/preview`
 - `POST /api/admin/config/diff`
 - `POST /api/admin/probe/provider`
@@ -203,78 +312,66 @@ manifest 包含产品版本、git commit、构建时间、平台、binary hash�
 - `GET /api/admin/secrets/status`
 - `GET /metrics`
 
-## Daemon CLI
+## Direct Daemon Commands
 
-直接运行 daemon 只用于高级调试。正常部署、服务管理、升级和回滚请使用 `aigw`。
+Use direct daemon commands only for advanced debugging or custom process managers. For normal operations, prefer `aigw supervise`.
 
-### gatewayd
-
-```text
-gatewayd -listen <addr> -control <socket-or-pipe> -telemetry <socket-or-pipe> -data-dir <dir>
-```
-
-可用 flags：
-
-- `-config`
-  读取 `gatewayd` bootstrap JSON
-- `-listen`
-  数据面 HTTP 监听地址
-- `-control`
-  控制面 RPC socket / named pipe
-- `-telemetry`
-  telemetry ingest socket / named pipe
-- `-data-dir`
-  数据面运行数据目录
-- `-version`
-  打印版本
-
-### controld
+### `gatewayd`
 
 ```text
-controld -listen <addr> -gateway <socket-or-pipe> -telemetry <socket-or-pipe> -data-dir <dir> -authoring-config <config.yaml>
+gatewayd -config configs/gatewayd.json
+gatewayd -listen 127.0.0.1:18080 -control .gateway-runtime/gateway-control.sock -telemetry .gateway-runtime/telemetry-ingest.sock -data-dir .gateway-runtime/gateway
+gatewayd -version
 ```
 
-可用 flags：
+Available flags:
 
-- `-config`
-  读取 `controld` bootstrap JSON
-- `-listen`
-  控制面 HTTP 监听地址
-- `-gateway`
-  `gatewayd` 控制 RPC socket / named pipe
-- `-telemetry`
-  `telemetryd` query RPC socket / named pipe
-- `-data-dir`
-  控制面数据目录，包含 `publisher-state.db`
-- `-authoring-config`
-  人类可编辑 YAML 配置文件路径
-- `-version`
-  打印版本
+- `-config`: bootstrap JSON path.
+- `-listen`: data-plane HTTP listen address.
+- `-control`: control-plane IPC socket or named pipe.
+- `-telemetry`: telemetry ingest IPC socket or named pipe.
+- `-data-dir`: gateway runtime data directory.
+- `-version`: print daemon version.
 
-当 `publisher-state.db` 不存在时，`controld` 会从 `-authoring-config` 种出初始 revision。当 `publisher-state.db` 已存在时，`controld` 会优先恢复持久化 revision/history。
-
-### telemetryd
+### `controld`
 
 ```text
-telemetryd -ingest <socket-or-pipe> -query <socket-or-pipe> -data-dir <dir>
+controld -config configs/controld.json
+controld -listen 127.0.0.1:18081 -gateway .gateway-runtime/gateway-control.sock -telemetry .gateway-runtime/telemetry-query.sock -data-dir .gateway-runtime/control -authoring-config configs/config.yaml
+controld -version
 ```
 
-可用 flags：
+Available flags:
 
-- `-config`
-  读取 `telemetryd` bootstrap JSON
-- `-ingest`
-  接收 `gatewayd` 事件写入的 ingest socket / named pipe
-- `-query`
-  接收 `controld` 查询请求的 query socket / named pipe
-- `-data-dir`
-  telemetry 数据目录
-- `-version`
-  打印版本
+- `-config`: bootstrap JSON path.
+- `-listen`: control-plane HTTP listen address.
+- `-gateway`: `gatewayd` control IPC socket or named pipe.
+- `-telemetry`: `telemetryd` query IPC socket or named pipe.
+- `-data-dir`: control-plane state directory, including `publisher-state.db`.
+- `-authoring-config`: operator-authored YAML config path.
+- `-version`: print daemon version.
 
-## 高级调试启动
+When `publisher-state.db` does not exist, `controld` seeds the initial revision from `-authoring-config`. When it already exists, persisted revision history takes precedence.
 
-只在需要绕过 `aigw supervise` 做问题定位时使用。
+### `telemetryd`
+
+```text
+telemetryd -config configs/telemetryd.json
+telemetryd -ingest .gateway-runtime/telemetry-ingest.sock -query .gateway-runtime/telemetry-query.sock -data-dir .gateway-runtime/telemetry
+telemetryd -version
+```
+
+Available flags:
+
+- `-config`: bootstrap JSON path.
+- `-ingest`: ingest IPC socket or named pipe for events from `gatewayd`.
+- `-query`: query IPC socket or named pipe for reads from `controld`.
+- `-data-dir`: telemetry data directory.
+- `-version`: print daemon version.
+
+## Manual Debug Startup
+
+Only use this when you need to bypass `aigw supervise` while debugging startup.
 
 Linux/macOS:
 
@@ -286,29 +383,36 @@ mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/co
 ./dist/controld -config configs/controld.json
 ```
 
-Windows:
+Windows PowerShell:
 
 ```powershell
+New-Item -ItemType Directory -Force .gateway-runtime\telemetry, .gateway-runtime\gateway, .gateway-runtime\control
+
 .\dist\telemetryd.exe -config .\configs\telemetryd.json
 .\dist\gatewayd.exe -config .\configs\gatewayd.json
 .\dist\controld.exe -config .\configs\controld.json
 ```
 
-## 健康检查
+## Health URLs
 
-- 数据面:
-  - `http://127.0.0.1:18080/-/health`
-  - `http://127.0.0.1:18080/v1/models`
-- 控制面:
-  - `http://127.0.0.1:18081/-/health`
-  - `http://127.0.0.1:18081/admin`
-  - `http://127.0.0.1:18081/api/admin/runtime/status`（需要 admin/viewer token）
-- Prometheus:
-  - `http://127.0.0.1:18081/metrics`
+Data plane:
 
-## 已移除接口
+- `http://127.0.0.1:18080/-/health`
+- `http://127.0.0.1:18080/v1/models`
 
-下列旧 `gateway` 单一入口命令已经移除：
+Control plane:
+
+- `http://127.0.0.1:18081/-/health`
+- `http://127.0.0.1:18081/admin`
+- `http://127.0.0.1:18081/api/admin/runtime/status`
+
+Prometheus:
+
+- `http://127.0.0.1:18081/metrics`
+
+## Removed Legacy Commands
+
+The old single-entry `gateway` operator commands are not the supported operations path:
 
 - `gateway validate`
 - `gateway health`
@@ -319,3 +423,5 @@ Windows:
 - `gateway service-stop`
 - `gateway service-status`
 - `gateway version`
+
+Use `aigw` for local operations and `gateway-cli` for control-plane operations.

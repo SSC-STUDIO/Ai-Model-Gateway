@@ -168,4 +168,4 @@ compat:
 
 ## 参考
 
-- [默认配置示例](../../configs/config.example.yaml)
+- [默认配置示例](../configs/config.example.yaml)
