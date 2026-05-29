@@ -301,6 +301,7 @@ npm --prefix web/admin run test:e2e
 - [Chinese Model Integration](docs/chinese-models-integration.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md)
 
 ## License

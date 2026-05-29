@@ -43,5 +43,6 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 - [README](../README.md)
 - [Changelog](../CHANGELOG.md)
 - [Contributing](../CONTRIBUTING.md)
+- [Code of Conduct](../CODE_OF_CONDUCT.md)
 - [Security policy](../SECURITY.md)
 - [Maintainer discussion](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25)
