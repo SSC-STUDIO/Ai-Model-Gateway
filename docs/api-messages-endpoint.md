@@ -1,106 +1,116 @@
-# `/v1/messages` Anthropic Messages API 端点
+# Anthropic Messages Endpoint
 
-## 概述
+AI Model Gateway exposes `POST /v1/messages` for Anthropic Messages-style clients. Use it when Claude-oriented tools need to enter the same self-hosted gateway that already owns provider routing, fallback, telemetry, config publishing, and rollback.
 
-AI Model Gateway 支持 Anthropic Messages API 格式的请求，允许与原生 Anthropic API 服务商集成。
+This endpoint is part of the gateway's supported data-plane routes alongside:
 
-## 端点
+- `POST /v1/chat/completions` for OpenAI Chat Completions-style clients
+- `POST /v1/responses` for OpenAI Responses-style clients bridged through Chat Completions-compatible upstreams
 
-```
+## Endpoint
+
+```text
 POST /v1/messages
 ```
 
-## 功能
+## What It Supports
 
-- 支持 Anthropic Messages API 格式
-- 自动添加 `anthropic-version: 2023-06-01` header
-- 支持流式和非流式响应
-- 完全兼容 Anthropic SDK
+- Anthropic Messages-shaped request and response bodies.
+- Streaming and non-streaming requests.
+- Anthropic provider routing through providers configured with `anthropic_base_url` or `protocol_adapter: anthropic_messages`.
+- OpenAI-to-Anthropic and Anthropic-to-OpenAI bridge paths when the selected provider uses the opposite upstream protocol.
+- Usage accounting translation for request telemetry, including cached input token fields where upstream responses provide them.
+- Fallback routing and route telemetry when a primary upstream returns a recoverable failure.
 
-## 配置
+This is not a promise of full Anthropic product API coverage. Test the exact request shapes, model features, tool behavior, streaming behavior, and usage fields your client depends on before promoting traffic.
 
-在 `config.yaml` 中配置支持 Anthropic API 的服务商：
+## Provider Configuration
+
+Configure a provider with an Anthropic-compatible upstream URL:
 
 ```yaml
 providers:
-  - name: anthropic-provider
-    base_url: https://api.anthropic.com
-    anthropic_base_url: https://api.anthropic.com  # Anthropic Messages API 端点
-    api_key: 'your-api-key'
+  - provider_id: anthropic-primary
+    anthropic_base_url: https://api.anthropic.com
+    protocol_adapter: anthropic_messages
+    auth:
+      header_name: x-api-key
+      value: ${ANTHROPIC_API_KEY}
     models:
-      - claude-sonnet-4-6
-      - claude-opus-4-7
+      - public_model: claude-sonnet-4-6
+        upstream_model: claude-sonnet-4-6
 ```
 
-### 配置说明
+Notes:
 
-- `base_url`: OpenAI Chat Completions 格式的 base URL（可选）
-- `anthropic_base_url`: Anthropic Messages API 的 base URL
-- `api_key`: API 密钥
+- `anthropic_base_url` is used for `/v1/messages` upstream requests.
+- `protocol_adapter: anthropic_messages` marks the provider as Anthropic Messages-compatible.
+- Anthropic upstream auth normally uses `x-api-key`, not `Authorization: Bearer`.
+- If both OpenAI-style and Anthropic-style upstream URLs are present in a broader config, verify the compiled snapshot before publishing.
 
-当设置了 `anthropic_base_url` 时：
-- `/v1/messages` 请求会使用此 URL
-- 认证使用 `x-api-key` header 而非 `Authorization: Bearer`
-- 自动添加 `anthropic-version` header
-
-## 请求示例
-
-### 非流式请求
+## Non-Streaming Request
 
 ```bash
-curl -X POST http://localhost:18080/v1/messages \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-api-key" \
+curl -sS http://localhost:18080/v1/messages \
+  -H "content-type: application/json" \
+  -H "x-api-key: local-gateway-client-key" \
   -d '{
     "model": "claude-sonnet-4-6",
     "messages": [
-      {"role": "user", "content": "Hello, Claude!"}
+      {"role": "user", "content": "Reply with one short sentence."}
     ],
-    "max_tokens": 1024
+    "max_tokens": 128
   }'
 ```
 
-### 流式请求
+## Streaming Request
 
 ```bash
-curl -X POST http://localhost:18080/v1/messages \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: your-api-key" \
+curl -N http://localhost:18080/v1/messages \
+  -H "content-type: application/json" \
+  -H "x-api-key: local-gateway-client-key" \
   -d '{
     "model": "claude-sonnet-4-6",
     "messages": [
-      {"role": "user", "content": "Hello, Claude!"}
+      {"role": "user", "content": "Stream a two-item checklist."}
     ],
-    "max_tokens": 1024,
+    "max_tokens": 128,
     "stream": true
   }'
 ```
 
-## 与 OpenAI Chat Completions 的区别
+## Bridge Behavior
 
-| 特性 | `/v1/chat/completions` | `/v1/messages` |
-|------|------------------------|----------------|
-| API 格式 | OpenAI | Anthropic |
-| 认证 Header | `Authorization: Bearer` | `x-api-key` |
-| 版本 Header | 无 | `anthropic-version: 2023-06-01` |
-| 流式字段 | `stream: true/false` | `stream: true/false` |
+The gateway chooses a provider from the compiled snapshot, then builds a compatibility plan for the client request and selected upstream:
 
-## 路由逻辑
+| Client request | Selected upstream | Gateway behavior |
+| --- | --- | --- |
+| Anthropic Messages | Anthropic Messages | Forward to `/v1/messages` with Anthropic-compatible auth and response shape |
+| Anthropic Messages | OpenAI Chat Completions | Convert the request to Chat Completions, forward to `/v1/chat/completions`, and adapt the response back to Messages |
+| OpenAI Chat Completions | Anthropic Messages | Convert the request to Messages, forward to `/v1/messages`, and adapt the response back to Chat Completions |
+| OpenAI Responses | Chat Completions-compatible path | Convert Responses-style input to Chat Completions-compatible upstream traffic and adapt the response back |
 
-1. Gateway 接收 `/v1/messages` 请求
-2. 查找配置了 `anthropic_base_url` 的 provider
-3. 使用 `anthropic_base_url` + `/v1/messages` 作为上游 URL
-4. 添加 `x-api-key` 和 `anthropic-version` headers
-5. 透传请求到上游服务
+Fallback behavior still applies. For example, if a primary Anthropic upstream returns a recoverable `429`, the gateway can try a fallback provider and record route telemetry such as bridged or fallback route mode.
 
-## 错误处理
+## Verify Before Publishing
 
-- 如果 provider 未配置 `anthropic_base_url`，请求会回退到 `base_url`
-- URL 验证失败会返回配置错误
-- 上游错误会透传给客户端
+Run local checks before wiring real provider keys:
 
-## 兼容性
+```bash
+go test ./internal/gateway/api -run 'TestHandleMessages|TestHandleChatCompletionBridge|TestHandleResponses' -count=1
+go test ./cmd/gatewayd -run TestGatewaydBridgeAnthropicE2EWithLocalUpstreams -count=1
+```
 
-- 完全兼容 Anthropic Python SDK
-- 完全兼容 Anthropic TypeScript SDK
-- 支持所有 Anthropic 模型特性（工具调用、视觉等）
+For a shorter visitor-facing trial, start with:
+
+- [15-minute evaluation path](evaluate-in-15-minutes.md)
+- [OpenAI Anthropic gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html)
+- [Architecture notes](architecture.md)
+- [Provider fallback and health operations](provider-fallback-health.md)
+
+## Limitations
+
+- The gateway does not claim full coverage of every OpenAI or Anthropic product API.
+- Unsupported OpenAI-family routes such as embeddings, image/audio APIs, Assistants, Batch, and Realtime WebSocket proxying are outside the current data-plane route set.
+- Multimodal, tool, and streaming behavior should be verified against the exact upstream provider and client SDK version you plan to use.
+- For production changes, use config preview, diff, publish history, and rollback rather than editing a live runtime file.
