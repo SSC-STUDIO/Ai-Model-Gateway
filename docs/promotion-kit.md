@@ -6,6 +6,7 @@ Current links:
 
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
+- Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
 - LLM provider fallback gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
@@ -38,6 +39,7 @@ Search and crawler assets:
 - `site/sitemap.xml`
 - `site/llms.txt`
 - Pages JSON-LD metadata in `site/index.html`
+- Self-hosted search landing page: `site/self-hosted-llm-gateway.html`
 - Search landing page: `site/openai-compatible-llm-gateway.html`
 - Provider fallback search landing page: `site/llm-provider-fallback-gateway.html`
 
@@ -87,6 +89,7 @@ Publication log, 2026-05-30:
 
 - Provider fallback search landing page: added `site/llm-provider-fallback-gateway.html` for high-intent LLM provider fallback, failover gateway, provider health, and OpenAI-compatible fallback queries.
 - Awesome LLM Gateways: opened `wauputr4/awesome-llm-gateways#2` to add AI Model Gateway to a dedicated open-source LLM and AI gateway comparison list.
+- Self-hosted search landing page: added `site/self-hosted-llm-gateway.html` for high-intent self-hosted LLM gateway, local AI gateway, LLM operations gateway, and config rollback queries.
 
 ## Core Message
 

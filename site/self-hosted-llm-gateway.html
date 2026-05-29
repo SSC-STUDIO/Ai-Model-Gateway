@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Self-Hosted LLM Gateway | AI Model Gateway</title>
+    <meta name="description" content="Self-hosted LLM gateway for OpenAI-compatible clients, local provider keys, routing policy, telemetry, config publishing, diagnostics, updates, and rollback.">
+    <meta property="og:title" content="Self-Hosted LLM Gateway">
+    <meta property="og:description" content="Run an LLM gateway inside your own environment with provider fallback, telemetry, config publishing, diagnostics, and rollback under local control.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html">
+    <meta property="og:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Self-Hosted LLM Gateway">
+    <meta name="twitter:description" content="Self-hosted LLM gateway for local keys, routing policy, telemetry, fallback, config publishing, and rollback.">
+    <meta name="twitter:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta name="twitter:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <link rel="canonical" href="https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="sitemap" type="application/xml" href="sitemap.xml">
+    <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Self-Hosted LLM Gateway",
+        "url": "https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html",
+        "isPartOf": {
+          "@type": "SoftwareSourceCode",
+          "name": "AI Model Gateway",
+          "codeRepository": "https://github.com/SSC-STUDIO/Ai-Model-Gateway",
+          "programmingLanguage": "Go",
+          "license": "https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/LICENSE"
+        },
+        "description": "Self-hosted LLM gateway for OpenAI-compatible clients, local provider keys, routing policy, telemetry, config publishing, diagnostics, updates, and rollback.",
+        "keywords": [
+          "Self-hosted LLM gateway",
+          "self-hosted AI gateway",
+          "local LLM gateway",
+          "LLM operations gateway",
+          "OpenAI-compatible gateway",
+          "provider fallback",
+          "LLM observability",
+          "model routing",
+          "config rollback"
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="hero search-hero">
+      <div class="hero-copy">
+        <a class="repo-mark" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway" aria-label="AI Model Gateway GitHub repository">
+          <img src="assets/icon.svg" alt="">
+          <span>SSC-STUDIO / Ai-Model-Gateway</span>
+        </a>
+        <h1>Self-Hosted LLM Gateway</h1>
+        <p class="lead">Run model traffic through a local gateway layer that keeps provider keys, routing policy, telemetry, config changes, diagnostics, updates, and rollback inside your own environment.</p>
+        <div class="hero-actions" aria-label="Primary links">
+          <a class="primary" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">View on GitHub</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/self-hosted-llm-gateway-checklist.md">Self-hosted checklist</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md">Evaluate in 15 minutes</a>
+        </div>
+        <p class="star-note">If this fits your internal LLM gateway workflow, star the repository after evaluation so other operators can find it.</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Why self-host</p>
+          <h2>Keep the LLM control plane close to the systems it protects.</h2>
+          <p>A hosted broker can be useful for quick model access. AI Model Gateway is for teams that need the gateway itself to be part of operations: owned keys, explicit routing policy, visible provider health, auditable config changes, and a rollback path.</p>
+        </div>
+        <div class="capability-grid">
+          <article>
+            <h3>Local key control</h3>
+            <p>Keep provider credentials and client-facing gateway tokens under your own runtime and deployment controls.</p>
+          </article>
+          <article>
+            <h3>Routing policy</h3>
+            <p>Use one local entry point for OpenAI-compatible clients while managing provider routing and fallback centrally.</p>
+          </article>
+          <article>
+            <h3>Operational telemetry</h3>
+            <p>Inspect traffic, latency, cost signals, request logs, provider health, diagnostics, and replay from the Admin UI.</p>
+          </article>
+          <article>
+            <h3>Safe change flow</h3>
+            <p>Preview, diff, validate, publish, audit, and roll back config changes instead of editing a live proxy file.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="proof-section">
+        <div class="proof-copy">
+          <p class="eyebrow">Shortest proof</p>
+          <h2>Verify the operational path before wiring real providers.</h2>
+          <p>The 15-minute evaluation path starts with fit checks, local runtime startup, the provider fallback demo, and the key operations docs. The demo forces a primary OpenAI-compatible upstream to return <code>429</code> and verifies the request is served through a fallback provider.</p>
+          <pre><code>go test ./examples/provider-fallback -run TestProviderFallbackDemo -v</code></pre>
+          <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md">Open the 15-minute evaluation path</a>
+        </div>
+        <img class="proof-image" src="assets/admin-overview.png" alt="AI Model Gateway overview workspace showing local gateway health and operations status">
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Evaluation path</p>
+          <h2>Assess the gateway as infrastructure, not just a proxy.</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>Fit.</strong>
+            <span>Check whether self-hosting, local keys, and local telemetry match your team constraints.</span>
+          </li>
+          <li>
+            <strong>Run.</strong>
+            <span>Build the compact Go runtime, start the supervised planes, and open the Admin UI.</span>
+          </li>
+          <li>
+            <strong>Fail over.</strong>
+            <span>Run the fallback demo against fake upstreams before trusting real provider policy.</span>
+          </li>
+          <li>
+            <strong>Operate.</strong>
+            <span>Review config publishing, provider health, diagnostics, updates, and rollback workflows.</span>
+          </li>
+        </ol>
+        <div class="link-row">
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/self-hosted-llm-gateway-checklist.md">Self-hosted checklist</a>
+          <a href="openai-compatible-llm-gateway.html">OpenAI-compatible gateway page</a>
+          <a href="llm-provider-fallback-gateway.html">Provider fallback gateway page</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md">Config publish and rollback</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Fit check</p>
+          <h2>Use it when self-hosting is a control requirement.</h2>
+        </div>
+        <div class="comparison-grid">
+          <article>
+            <h3>Good fit</h3>
+            <ul>
+              <li>Provider keys, routing policy, telemetry, and audit records need to stay local.</li>
+              <li>Multiple OpenAI-compatible clients should use one stable internal gateway URL.</li>
+              <li>Operators need provider probes, request logs, config publish, and rollback.</li>
+              <li>The team wants a smaller Go runtime instead of a full gateway platform stack.</li>
+            </ul>
+          </article>
+          <article>
+            <h3>Less ideal</h3>
+            <ul>
+              <li>You want a hosted model marketplace to own routing, billing, and provider access.</li>
+              <li>You only need a client SDK wrapper inside one application.</li>
+              <li>You do not need local operations workflows or a gateway Admin UI.</li>
+              <li>You do not want to operate any runtime in your own environment.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta-section">
+        <div>
+          <p class="eyebrow">Next step</p>
+          <h2>Run the local evaluation, then decide whether it earns a star.</h2>
+          <p>Start with the checklist and executable fallback demo. If the project matches your self-hosted LLM gateway needs, starring the repository helps more operators discover it.</p>
+        </div>
+        <div class="link-row">
+          <a class="primary-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">Star on GitHub</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25">Leave feedback</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MIT licensed. Built for self-hosted LLM operations.</span>
+      <a href="index.html">Back to AI Model Gateway</a>
+    </footer>
+  </body>
+</html>
