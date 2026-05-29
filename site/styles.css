@@ -50,6 +50,10 @@ a {
   background: rgba(7, 8, 8, 0.76);
 }
 
+.search-hero::before {
+  background: rgba(7, 8, 8, 0.72);
+}
+
 .hero-copy {
   position: relative;
   width: min(780px, 100%);
@@ -174,7 +178,14 @@ h3 {
   gap: 14px;
 }
 
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .capability-grid article,
+.comparison-grid article,
 .steps li {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -183,10 +194,20 @@ h3 {
 }
 
 .capability-grid p,
+.comparison-grid li,
 .proof-copy p,
 .steps span,
 footer {
   color: var(--muted);
+}
+
+.comparison-grid ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.comparison-grid li + li {
+  margin-top: 8px;
 }
 
 .proof-section {
@@ -317,6 +338,7 @@ footer a {
   }
 
   .capability-grid,
+  .comparison-grid,
   .proof-section,
   .cta-section,
   .steps,

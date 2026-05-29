@@ -7,6 +7,12 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html</loc>
+    <lastmod>2026-05-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>
+  <url>
     <loc>https://github.com/SSC-STUDIO/Ai-Model-Gateway</loc>
     <lastmod>2026-05-29</lastmod>
     <changefreq>weekly</changefreq>
