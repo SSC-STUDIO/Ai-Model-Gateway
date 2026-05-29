@@ -14,6 +14,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - Self-hosted LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html
 - LLM gateway comparison page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
 - Share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html
+- Chinese share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html
 - GitHub repository: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 - Latest release: https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4
 - Current release summary: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/release-v1.4.4.md
@@ -44,6 +45,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
 - Project roadmap: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/roadmap.md
 - Copy-ready share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html
+- Copy-ready Chinese share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html
 
 ## Capabilities
 

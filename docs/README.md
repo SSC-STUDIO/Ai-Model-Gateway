@@ -10,6 +10,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | --- | --- |
 | Share a visual overview | [Project website](https://ssc-studio.github.io/Ai-Model-Gateway/) |
 | Share copy-ready links and short posts | [Share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html) |
+| Share with Chinese developer communities | [Chinese share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) |
 | Review installability, quality, and security in one place | [Website review evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) |
 | Try the packaged runtime without rebuilding | [Release archive install path](installation.md#install-from-a-release-archive) |
 | Decide quickly whether to spend more time | [15-minute evaluation path](evaluate-in-15-minutes.md) |
@@ -63,6 +64,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Review the original v1.4 positioning release | [v1.4.0 release notes](release-v1.4.0.md) |
 | Reuse launch copy and media links | [Promotion kit](promotion-kit.md) |
 | Share copy-ready public links and short posts | [Share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html) |
+| Share Chinese copy-ready public links and short posts | [Chinese share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) |
 | Share current project direction | [Project roadmap](roadmap.md) |
 | Track the legitimate 100-star growth plan | [100-star campaign](100-star-campaign.md) |
 
