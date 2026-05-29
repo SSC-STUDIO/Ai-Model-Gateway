@@ -78,10 +78,10 @@ Use this document as copy-ready launch material for GitHub, English developer co
 ### 2026-05-30
 
 - Provider fallback search landing page: added `site/llm-provider-fallback-gateway.html`.
-- Awesome LLM Gateways: opened `wauputr4/awesome-llm-gateways#2`.
+- Awesome LLM Gateways: opened `wauputr4/awesome-llm-gateways#2`; updated after automated review feedback to clarify OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses compatibility.
 - Self-hosted search landing page: added `site/self-hosted-llm-gateway.html`.
 - LLM gateway comparison landing page: added `site/llm-gateway-comparison.html`.
-- Brandon Himpfen Awesome LLMOps: opened `brandonhimpfen/awesome-llmops#14`.
+- Brandon Himpfen Awesome LLMOps: opened `brandonhimpfen/awesome-llmops#14`; closed without merge on 2026-05-29.
 - Awesome AI API Proxy: opened `howardpen9/awesome-ai-api-proxy#4`.
 - KennethanCeyer Awesome LLMOps: opened `KennethanCeyer/awesome-llmops#16`.
 - OpenAI Anthropic search landing page: added `site/openai-anthropic-gateway.html`.
