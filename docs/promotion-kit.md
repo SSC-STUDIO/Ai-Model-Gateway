@@ -12,6 +12,7 @@ Current links:
 - Troubleshooting guide: `docs/troubleshooting.md`
 - Config publish and rollback: `docs/config-publish-rollback.md`
 - Provider fallback and health operations: `docs/provider-fallback-health.md`
+- Provider fallback demo: `examples/provider-fallback/`
 - Self-hosted LLM gateway checklist: `docs/self-hosted-llm-gateway-checklist.md`
 - LLM gateway comparison guide: `docs/llm-gateway-comparison.md`
 - Maintainer discussion: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25`
@@ -129,9 +130,12 @@ Upstream LLM providers fail in boring but expensive ways: 429s, timeouts, 5xx bu
 
 I added a focused operations guide for AI Model Gateway covering health-aware weighted routing, provider probes, cooldown state, runtime status, config publish, and rollback.
 
+There is also a tiny executable fallback demo: it starts two fake OpenAI-compatible upstreams, forces the primary provider to return 429, and verifies the gateway serves the request through the fallback provider with route_mode=model_fallback.
+
 It is written for teams evaluating self-hosted LLM routing where provider keys, policy, telemetry, and incident response stay inside their own environment.
 
 Guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
+Demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
 Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ### Chinese
@@ -155,7 +159,10 @@ https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 我给 AI Model Gateway 补了一份 provider fallback 和 health 运维指南，面向自托管 LLM 网关评估场景。
 
+还补了一个可执行 demo：两个本地 fake upstream，primary 返回 429，gateway 自动走 fallback provider，并在 telemetry 里记录 route_mode=model_fallback。
+
 指南：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
+Demo：https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
 项目：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## Hacker News

@@ -2,6 +2,8 @@
 
 Use this guide when you are evaluating AI Model Gateway for upstream provider reliability. The goal is to show how the gateway detects degraded providers, routes around unhealthy upstreams, and gives operators enough evidence to decide whether to publish a config change or roll back.
 
+For a small executable proof, run the [provider fallback demo](../examples/provider-fallback/). It starts two fake upstreams, forces the primary provider to return `429`, and verifies that the gateway serves the request through the fallback provider with `route_mode=model_fallback`.
+
 AI Model Gateway treats provider reliability as part of the runtime lifecycle:
 
 - `gatewayd` handles live inference traffic, provider routing, retries, health probes, and provider cooldown state.
@@ -161,6 +163,7 @@ Operational fixes usually include restoring credentials, network egress, provide
 ## Related Docs
 
 - [Config publish and rollback](config-publish-rollback.md)
+- [Provider fallback demo](../examples/provider-fallback/)
 - [Troubleshooting](troubleshooting.md)
 - [CLI guide](cli.md)
 - [Deployment guide](deployment.md)

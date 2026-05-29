@@ -21,6 +21,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Goal | Document |
 | --- | --- |
 | Build and start a local runtime | [Installation guide](installation.md) |
+| Run a provider fallback proof | [Provider fallback demo](../examples/provider-fallback/) |
 | Run it as an operations service | [Deployment guide](deployment.md) |
 | Debug startup, routing, admin, and telemetry problems | [Troubleshooting](troubleshooting.md) |
 | Reproduce CI checks locally | [Local CI guide](ci-local.md) |
@@ -32,6 +33,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Control the runtime from scripts or terminals | [CLI guide](cli.md) |
 | Review the config publish and rollback workflow | [Config publish and rollback](config-publish-rollback.md) |
 | Operate degraded providers and fallback routes | [Provider fallback and health operations](provider-fallback-health.md) |
+| Verify fallback behavior with fake upstreams | [Provider fallback demo](../examples/provider-fallback/) |
 | Use the Anthropic Messages-compatible endpoint | [Messages endpoint](api-messages-endpoint.md) |
 | Connect Chinese model providers and local AI tools | [Chinese model integration](chinese-models-integration.md) |
 

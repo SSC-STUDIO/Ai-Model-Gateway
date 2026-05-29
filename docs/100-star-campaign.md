@@ -153,3 +153,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-29 | 2 | 0 | 0 | Updated GitHub Release `v1.4.4`, Discussion #25, and the promotion kit with direct install/deploy/troubleshooting/comparison links for high-intent visitors. |
 | 2026-05-29 | 2 | 0 | 0 | Added `docs/config-publish-rollback.md` to explain the revision, publish, audit, and rollback workflow as a technical proof point for operators. |
 | 2026-05-29 | 2 | 0 | 0 | Added `docs/provider-fallback-health.md` and social copy for the provider reliability, fallback, probe, cooldown, publish, and rollback evaluation path. |
+| 2026-05-29 | 2 | 0 | 0 | Added `examples/provider-fallback/` as an executable proof that a primary `429` can be served through a fallback provider with `route_mode=model_fallback`. |

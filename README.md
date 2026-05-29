@@ -52,6 +52,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Compare LLM gateway options | [LLM gateway comparison guide](docs/llm-gateway-comparison.md) |
 | Understand config publish and rollback | [Config publish and rollback](docs/config-publish-rollback.md) |
 | Operate provider fallback and health | [Provider fallback and health operations](docs/provider-fallback-health.md) |
+| Run a provider fallback proof | [Provider fallback demo](examples/provider-fallback/) |
 | Run it as an operations service | [Deployment guide](docs/deployment.md) |
 | Control it from scripts or terminals | [CLI guide](docs/cli.md) |
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
