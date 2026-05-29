@@ -112,6 +112,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - README Start Here path: replaced the dense top link row with a scan-friendly Start Here table for release install, 15-minute evaluation, fallback proof, review evidence, comparison, website, Chinese landing page, and share kits.
 - Awesome Self-Hosted AI: opened `frechdi/awesome-self-hosted-ai#2` to add AI Model Gateway to the AI Observability & Ops section with explicit self-submission disclosure and a bring-your-own-provider limitation.
 - Awesome Generative AI APIs: opened `foss42/awesome-generative-ai-apis#391` and follow-up PR `foss42/awesome-generative-ai-apis#392` to add AI Model Gateway to the AI Gateway/Aggregator section.
+- Historical release conversion: updated GitHub Release `v1.4.0` so visitors from older release traffic are directed to `v1.4.4`, README Start Here, and the release archive install path.
 
 ## Core Message
 
