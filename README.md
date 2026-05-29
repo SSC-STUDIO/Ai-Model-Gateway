@@ -92,6 +92,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Understand config publish and rollback | [Config publish and rollback](docs/config-publish-rollback.md) |
 | Operate provider fallback and health | [Provider fallback and health operations](docs/provider-fallback-health.md) |
 | Run a provider fallback proof | [Provider fallback demo](examples/provider-fallback/) |
+| Connect an OpenAI-compatible upstream | [OpenAI-compatible upstreams](docs/openai-compatible-upstreams.md) |
 | Run it as an operations service | [Deployment guide](docs/deployment.md) |
 | Control it from scripts or terminals | [CLI guide](docs/cli.md) |
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
@@ -100,7 +101,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 
 ## More Links
 
-[Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison Page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+[Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI-Compatible Upstreams](docs/openai-compatible-upstreams.md) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison Page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
 ## Why This Exists
 

@@ -55,6 +55,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Review the config publish and rollback workflow | [Config publish and rollback](config-publish-rollback.md) |
 | Operate degraded providers and fallback routes | [Provider fallback and health operations](provider-fallback-health.md) |
 | Verify fallback behavior with fake upstreams | [Provider fallback demo](../examples/provider-fallback/) |
+| Connect hosted aggregators or internal OpenAI-compatible proxies | [OpenAI-compatible upstreams](openai-compatible-upstreams.md) |
 | Use the Anthropic Messages-compatible endpoint | [Messages endpoint](api-messages-endpoint.md) |
 | Connect Chinese model providers and local AI tools | [Chinese model integration](chinese-models-integration.md) |
 | Report or evaluate security-sensitive behavior | [Security policy](../SECURITY.md) and [security trust model](security-trust-model.md) |

@@ -45,6 +45,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - OpenAI Anthropic gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 - Executable provider fallback demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
 - Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
+- OpenAI-compatible upstreams: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/openai-compatible-upstreams.md
 - Project roadmap: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/roadmap.md
 - Copy-ready share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html
 - Copy-ready Chinese share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html

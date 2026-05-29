@@ -32,6 +32,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Config publish and rollback: `docs/config-publish-rollback.md`
 - Provider fallback and health operations: `docs/provider-fallback-health.md`
 - Provider fallback demo: `examples/provider-fallback/`
+- OpenAI-compatible upstreams: `docs/openai-compatible-upstreams.md`
 - Self-hosted LLM gateway checklist: `docs/self-hosted-llm-gateway-checklist.md`
 - LLM gateway comparison guide: `docs/llm-gateway-comparison.md`
 - Anthropic Messages endpoint: `docs/api-messages-endpoint.md`
@@ -113,6 +114,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Awesome Self-Hosted AI: opened `frechdi/awesome-self-hosted-ai#2` to add AI Model Gateway to the AI Observability & Ops section with explicit self-submission disclosure and a bring-your-own-provider limitation.
 - Awesome Generative AI APIs: opened `foss42/awesome-generative-ai-apis#391` and follow-up PR `foss42/awesome-generative-ai-apis#392` to add AI Model Gateway to the AI Gateway/Aggregator section.
 - Historical release conversion: updated GitHub Release `v1.4.0` so visitors from older release traffic are directed to `v1.4.4`, README Start Here, and the release archive install path.
+- OpenAI-compatible upstreams: added `docs/openai-compatible-upstreams.md` with AIgateway.sh, internal proxy, LiteLLM-style upstream, fallback, and verification examples for teams that want AI Model Gateway's local operations layer in front of another compatible endpoint.
 
 ## Core Message
 
