@@ -76,6 +76,7 @@ Publication log, 2026-05-29:
 - Awesome LLMOps: opened `tensorchord/Awesome-LLMOps#529` to add AI Model Gateway to the LLMOps section with DCO passing.
 - InftyAI Awesome LLMOps: opened `InftyAI/Awesome-LLMOps#440` using the maintainer-recommended project request workflow for the `Inference / LLM Router` category.
 - Awesome AI Gateways: opened `12britz/awesome-ai-gateways#7` to add AI Model Gateway to the open-source AI gateway section.
+- Awesome LLM Routing: opened `dstripelis/Awesome-LLM-Routing#1` to add AI Model Gateway to the routing resources table.
 
 ## Core Message
 
