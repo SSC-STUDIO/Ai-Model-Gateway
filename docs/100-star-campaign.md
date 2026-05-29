@@ -178,3 +178,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Refreshed `docs/cli.md` against the current `aigw` and `gateway-cli` implementations, including update, clients, benchmark, daemon, and global format behavior; fixed the Chinese model integration guide's config-example link. |
 | 2026-05-30 | 2 | 0 | 0 | Updated `wauputr4/awesome-llm-gateways#2` after review feedback to clarify OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses compatibility and remove redundant rollback wording. |
 | 2026-05-30 | 2 | 0 | 0 | Marked `brandonhimpfen/awesome-llmops#14` as closed without merge in campaign notes so promotion records stay accurate. |
+| 2026-05-30 | 2 | 0 | 0 | Added `docs/quality-evidence.md` to make CI gates, local reproduction, runtime smoke checks, feature proof points, capability boundaries, and current maturity signals easier for maintainers to review. |

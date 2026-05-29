@@ -15,6 +15,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - AI crawler summary: `https://ssc-studio.github.io/Ai-Model-Gateway/llms.txt`
 - Docs index: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
 - Architecture guide: `docs/architecture.md`
+- Quality evidence: `docs/quality-evidence.md`
 - Roadmap: `docs/roadmap.md`
 - 15-minute evaluation path: `docs/evaluate-in-15-minutes.md`
 - Installation guide: `docs/installation.md`
@@ -87,6 +88,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - OpenAI Anthropic search landing page: added `site/openai-anthropic-gateway.html`.
 - Architecture guide: rewrote `docs/architecture.md` as an English-first guide covering `aigw`, `gatewayd`, `controld`, `telemetryd`, routes, RPC contracts, config publishing, state files, startup order, and operational boundaries.
 - Promotion kit cleanup: rewrote this file as a clean ASCII-first source for copy-ready outreach material.
+- Quality evidence: added `docs/quality-evidence.md` with current CI, local reproduction, runtime smoke, feature proof, and capability-boundary evidence.
 
 ## Core Message
 
@@ -125,12 +127,14 @@ Highlights:
 - Provider fallback demo that proves a primary `429` can route through a fallback provider.
 - Search landing pages for OpenAI-compatible, OpenAI/Anthropic, self-hosted, provider fallback, and gateway-comparison queries.
 - Clean architecture guide covering the supervisor, data/control/telemetry planes, IPC, routes, state, and publish model.
+- Quality evidence page covering CI gates, local reproduction, runtime smoke checks, feature proof points, and capability boundaries.
 
 Start links:
 
 - Website: https://ssc-studio.github.io/Ai-Model-Gateway/
 - Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Architecture: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/architecture.md
+- Quality evidence: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md
 - Evaluate in 15 minutes: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md
 - Provider fallback and health: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - Provider fallback demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback

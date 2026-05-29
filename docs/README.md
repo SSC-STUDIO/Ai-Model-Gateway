@@ -12,6 +12,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Decide quickly whether to spend more time | [15-minute evaluation path](evaluate-in-15-minutes.md) |
 | Match the project to real workflows | [Use cases](use-cases.md) |
 | Decide whether self-hosting is the right path | [Self-hosted LLM gateway checklist](self-hosted-llm-gateway-checklist.md) |
+| Review CI, tests, runtime smoke, and maturity evidence | [Quality evidence](quality-evidence.md) |
 | Understand current project direction | [Project roadmap](roadmap.md) |
 | Compare LLM gateway and observability options | [LLM gateway comparison guide](llm-gateway-comparison.md) |
 | Start from a gateway comparison search page | [LLM gateway comparison page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) |
@@ -34,6 +35,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Run it as an operations service | [Deployment guide](deployment.md) |
 | Debug startup, routing, admin, and telemetry problems | [Troubleshooting](troubleshooting.md) |
 | Reproduce CI checks locally | [Local CI guide](ci-local.md) |
+| Review current public quality signals | [Quality evidence](quality-evidence.md) |
 
 ## Operate The Gateway
 
