@@ -42,6 +42,17 @@ VIEWER_TOKEN=change-me-viewer-token \
 
 Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/health`.
 
+## Choose A Setup Path
+
+| Goal | Start here |
+| --- | --- |
+| Try the runtime locally | [Installation guide](docs/installation.md) |
+| Run it as an operations service | [Deployment guide](docs/deployment.md) |
+| Control it from scripts or terminals | [CLI guide](docs/cli.md) |
+| Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
+| Debug startup, routing, or admin access | [Troubleshooting](docs/troubleshooting.md) |
+| Ask what to improve next | [Maintainer discussion](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25) |
+
 ## Why This Exists
 
 The AI gateway space already has strong projects:
