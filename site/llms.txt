@@ -10,6 +10,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - OpenAI-compatible LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html
 - LLM provider fallback gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html
 - Self-hosted LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html
+- LLM gateway comparison page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
 - GitHub repository: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 - Latest release: https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4
 - Documentation index: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs
@@ -23,6 +24,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - Deployment guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
 - Troubleshooting guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
 - LLM gateway comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
+- LLM gateway comparison landing page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html
 
 ## Technical Proof Points
 
