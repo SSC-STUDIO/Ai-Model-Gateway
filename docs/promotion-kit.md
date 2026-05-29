@@ -11,6 +11,7 @@ Current links:
 - Deployment guide: `docs/deployment.md`
 - Troubleshooting guide: `docs/troubleshooting.md`
 - Config publish and rollback: `docs/config-publish-rollback.md`
+- Provider fallback and health operations: `docs/provider-fallback-health.md`
 - Self-hosted LLM gateway checklist: `docs/self-hosted-llm-gateway-checklist.md`
 - LLM gateway comparison guide: `docs/llm-gateway-comparison.md`
 - Maintainer discussion: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25`
@@ -107,6 +108,7 @@ Start links:
 - Deployment: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
 - Troubleshooting: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
 - Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
+- Provider fallback and health: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - Comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## X / Twitter
@@ -121,6 +123,17 @@ Not a hosted model marketplace. Not just a dashboard.
 
 https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
+### Provider Fallback / Health Thread
+
+Upstream LLM providers fail in boring but expensive ways: 429s, timeouts, 5xx bursts, quota exhaustion, and slow model endpoints.
+
+I added a focused operations guide for AI Model Gateway covering health-aware weighted routing, provider probes, cooldown state, runtime status, config publish, and rollback.
+
+It is written for teams evaluating self-hosted LLM routing where provider keys, policy, telemetry, and incident response stay inside their own environment.
+
+Guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
+Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
+
 ### Chinese
 
 AI Model Gateway v1.4.4 更新了。
@@ -130,6 +143,20 @@ AI Model Gateway v1.4.4 更新了。
 不是模型市场，也不是装饰型 dashboard，目标是把 LLM 网关做成能长期运维的工具。
 
 https://github.com/SSC-STUDIO/Ai-Model-Gateway
+
+### Provider Fallback / Health 中文短帖
+
+上游大模型 provider 不稳定时，团队真正需要看的不是“有没有转发出去”，而是：
+
+- 哪个 provider 在失败或冷却
+- 429、408、5xx、超时怎么影响路由
+- probe 能不能绕过正常 fallback 单独验证一条上游
+- 配置变更如何 preview / diff / publish / rollback
+
+我给 AI Model Gateway 补了一份 provider fallback 和 health 运维指南，面向自托管 LLM 网关评估场景。
+
+指南：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
+项目：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## Hacker News
 
@@ -182,6 +209,7 @@ Start here if you want to evaluate it:
 - Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Deploy: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
 - Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
+- Provider fallback and health: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - Compare options: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## V2EX
@@ -219,6 +247,7 @@ GitHub：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 - 部署：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
 - 排障：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
 - 配置发布与回滚：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
+- Provider fallback 与健康检查：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - 对比：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## 知乎 / 掘金 Long Post

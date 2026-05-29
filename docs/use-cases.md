@@ -52,6 +52,8 @@ Evaluate first:
 - expected timeout and retry behavior for streaming and non-streaming traffic
 - whether fallback should optimize for reliability, latency, cost, or model quality
 
+Start with the [provider fallback and health operations guide](provider-fallback-health.md) if this is the primary reason you are evaluating the project.
+
 ## 4. LLM Cost, Latency, And Usage Visibility
 
 Use AI Model Gateway when teams need cost and latency visibility near the gateway, not only inside application logs.
@@ -119,5 +121,6 @@ For those cases, compare dedicated hosted routers, broad LLM gateway products, g
 - Start with the [README quick trial](../README.md#try-it-quickly).
 - Choose a path from the [setup table](../README.md#choose-a-setup-path).
 - Review [config publish and rollback](config-publish-rollback.md) if you are evaluating operational rollout safety.
+- Review [provider fallback and health operations](provider-fallback-health.md) if upstream reliability is the main concern.
 - Read the [differentiation notes](differentiation.md) if you are comparing alternatives.
 - Open a question in [Discussion #25](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25) if a use case is missing.

@@ -51,6 +51,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |
 | Compare LLM gateway options | [LLM gateway comparison guide](docs/llm-gateway-comparison.md) |
 | Understand config publish and rollback | [Config publish and rollback](docs/config-publish-rollback.md) |
+| Operate provider fallback and health | [Provider fallback and health operations](docs/provider-fallback-health.md) |
 | Run it as an operations service | [Deployment guide](docs/deployment.md) |
 | Control it from scripts or terminals | [CLI guide](docs/cli.md) |
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
@@ -80,6 +81,7 @@ See [docs/differentiation.md](docs/differentiation.md) for positioning notes and
 | Request cache | In-memory LRU cache with configurable TTL and item count |
 | SSRF protection | DNS pinning, private IP detection, and allowlist support |
 | Config publishing | Authoring YAML -> compiled snapshot -> zero-interruption publish and rollback |
+| Provider health operations | Health-aware weighted routing, probes, cooldown state, and incident checks |
 | Telemetry plane | Async event ingestion, cost aggregation, timeseries projections, and query APIs |
 | Audit log | Searchable control-plane operation history |
 | Admin UI | Overview, Monitoring, Benchmark, Ops, Config, and Logs workspaces |
