@@ -80,6 +80,8 @@ AI Model Gateway is a self-hosted LLM operations gateway. It is built for teams 
 
 It is not a hosted model marketplace and not just a pretty dashboard. The product direction is local control: keep provider keys, routing policy, telemetry, and operational decisions inside your own environment.
 
+Use a conditional star CTA only after the evaluation links: if the project fits a self-hosted LLM infrastructure workflow, star the repository so more operators can find it.
+
 ## Short Chinese Pitch
 
 我做了一个自托管 LLM 运维网关：AI Model Gateway。

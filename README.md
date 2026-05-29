@@ -10,7 +10,7 @@ It is not trying to be another hosted model marketplace. The project is optimize
 
 [Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
-If this project matches your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
+Start with the [15-minute evaluation path](docs/evaluate-in-15-minutes.md) or the [provider fallback demo](examples/provider-fallback/). If the project matches your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
 ## Who Should Use It
 

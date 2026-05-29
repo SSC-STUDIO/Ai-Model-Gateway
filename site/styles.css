@@ -92,6 +92,13 @@ h1 {
   font-size: 1.75rem;
 }
 
+.star-note {
+  max-width: 620px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
 .hero-actions,
 .link-row {
   display: flex;
@@ -117,6 +124,12 @@ h1 {
 }
 
 .hero-actions .primary {
+  border-color: transparent;
+  background: var(--teal);
+  color: #071010;
+}
+
+.link-row a.primary-link {
   border-color: transparent;
   background: var(--teal);
   color: #071010;
@@ -253,6 +266,19 @@ code {
   align-items: start;
 }
 
+.cta-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 36px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.cta-section > div:first-child {
+  max-width: 760px;
+}
+
 footer {
   border-top: 1px solid var(--line);
   padding: 28px 72px;
@@ -292,9 +318,14 @@ footer a {
 
   .capability-grid,
   .proof-section,
+  .cta-section,
   .steps,
   .screens {
     grid-template-columns: 1fr;
+  }
+
+  .cta-section {
+    display: block;
   }
 
   .proof-copy,

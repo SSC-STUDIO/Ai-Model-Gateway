@@ -159,3 +159,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-29 | 2 | 0 | 0 | Added `site/` plus a GitHub Pages workflow to create a shareable visual landing page backed by real Admin UI screenshots. |
 | 2026-05-29 | 2 | 0 | 0 | Added `docs/assets/social-card.png` and pointed the Pages Open Graph/Twitter metadata at it for cleaner external previews. |
 | 2026-05-29 | 2 | 0 | 0 | Added Pages discovery assets: canonical link, sitemap, robots.txt, llms.txt, and JSON-LD metadata for search and AI crawlers. |
+| 2026-05-29 | 2 | 0 | 0 | Added clearer conditional star CTAs to the website and README while keeping evaluation and feedback links first. |
