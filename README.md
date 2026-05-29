@@ -47,6 +47,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Goal | Start here |
 | --- | --- |
 | Try the runtime locally | [Installation guide](docs/installation.md) |
+| Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Run it as an operations service | [Deployment guide](docs/deployment.md) |
 | Control it from scripts or terminals | [CLI guide](docs/cli.md) |
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
