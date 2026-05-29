@@ -115,6 +115,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Awesome Generative AI APIs: opened `foss42/awesome-generative-ai-apis#391` and follow-up PR `foss42/awesome-generative-ai-apis#392` to add AI Model Gateway to the AI Gateway/Aggregator section.
 - Historical release conversion: updated GitHub Release `v1.4.0` so visitors from older release traffic are directed to `v1.4.4`, README Start Here, and the release archive install path.
 - OpenAI-compatible upstreams: added `docs/openai-compatible-upstreams.md` with AIgateway.sh, internal proxy, LiteLLM-style upstream, fallback, and verification examples for teams that want AI Model Gateway's local operations layer in front of another compatible endpoint.
+- Awesome AIgateway: opened `aigateway-sh/awesome-ai-gateway#1` after adding the AIgateway.sh upstream integration guide, with self-submission disclosure and one-line entry wording.
 
 ## Core Message
 
