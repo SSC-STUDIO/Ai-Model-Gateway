@@ -7,6 +7,7 @@ Current links:
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
 - Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
+- 100-star campaign plan: `docs/100-star-campaign.md`
 
 Recommended images:
 
