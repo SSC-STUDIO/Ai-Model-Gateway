@@ -49,6 +49,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Try the runtime locally | [Installation guide](docs/installation.md) |
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |
+| Compare LLM gateway options | [LLM gateway comparison guide](docs/llm-gateway-comparison.md) |
 | Run it as an operations service | [Deployment guide](docs/deployment.md) |
 | Control it from scripts or terminals | [CLI guide](docs/cli.md) |
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
@@ -66,7 +67,7 @@ The AI gateway space already has strong projects:
 | [OpenRouter](https://openrouter.ai/)-style hosted routers | Fast access to many public models through a hosted broker | Keeps routing, keys, telemetry, and policy inside the user's own environment |
 | Kong / [Envoy AI Gateway](https://github.com/envoyproxy/ai-gateway) stacks | Enterprise gateway ecosystem, plugins, Kubernetes-native traffic policy | Focuses on LLM-specific operations with fewer moving parts and a small self-hosted binary set |
 
-See [docs/differentiation.md](docs/differentiation.md) for the full positioning notes and roadmap guardrails.
+See [docs/differentiation.md](docs/differentiation.md) for positioning notes and [docs/llm-gateway-comparison.md](docs/llm-gateway-comparison.md) for a practical selection guide.
 
 ## Core Capabilities
 
@@ -291,6 +292,7 @@ npm --prefix web/admin run test:e2e
 ## Documentation
 
 - [Differentiation](docs/differentiation.md)
+- [LLM Gateway Comparison Guide](docs/llm-gateway-comparison.md)
 - [Self-Hosted LLM Gateway Checklist](docs/self-hosted-llm-gateway-checklist.md)
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)

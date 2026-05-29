@@ -146,3 +146,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-29 | 2 | 0 | 0 | Added README setup links, use cases, and self-hosted gateway evaluation checklist to improve visitor conversion. |
 | 2026-05-29 | 2 | 0 | 0 | Added `docs/README.md` so the README Docs link opens a navigable documentation index instead of a plain directory listing. |
 | 2026-05-29 | 2 | 0 | 0 | Added `CODE_OF_CONDUCT.md` to close a visible GitHub community-profile trust gap. |
+| 2026-05-29 | 2 | 0 | 0 | Added `docs/llm-gateway-comparison.md` to capture search traffic from teams comparing LiteLLM, Portkey, Helicone, hosted routers, Envoy, and Kong-style options. |

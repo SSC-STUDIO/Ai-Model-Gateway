@@ -10,6 +10,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | --- | --- |
 | Match the project to real workflows | [Use cases](use-cases.md) |
 | Decide whether self-hosting is the right path | [Self-hosted LLM gateway checklist](self-hosted-llm-gateway-checklist.md) |
+| Compare LLM gateway and observability options | [LLM gateway comparison guide](llm-gateway-comparison.md) |
 | Compare the project against adjacent gateway and observability tools | [Differentiation notes](differentiation.md) |
 | Understand the runtime shape | [Architecture](architecture.md) |
 

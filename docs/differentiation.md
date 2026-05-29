@@ -2,6 +2,8 @@
 
 This document captures the public-market comparison used to position AI Model Gateway. It is intentionally practical: the goal is to decide what this project should emphasize, what it should avoid copying, and where the README/admin UI should make the value clear.
 
+For a visitor-facing selection guide, see [LLM gateway comparison guide](llm-gateway-comparison.md).
+
 ## Research Snapshot
 
 Checked with `gh` on 2026-05-20. Star counts and descriptions will change, but the market shape is useful:
