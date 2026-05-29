@@ -40,6 +40,7 @@ web/admin/node_modules/
 web/admin/dist/
 web/admin/test-results/
 web/admin/tmp-*.png
+site/assets/
 
 # Root-level embedded dist (auto-generated)
 /embedded_admin_dist/

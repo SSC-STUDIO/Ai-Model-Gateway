@@ -5,6 +5,7 @@ Use this document as copy-ready launch material for GitHub, Chinese developer co
 Current links:
 
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
+- Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
 - Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
 - Roadmap: `docs/roadmap.md`
