@@ -4,7 +4,7 @@
 # Keep this file in sync with the public README, release notes, and project scope.
 name: ai-model-gateway
 description: Self-hosted LLM operations gateway with routing, fallback, telemetry, benchmarks, diagnostics, and rollback.
-homepage: ""
+homepage: "https://ssc-studio.github.io/Ai-Model-Gateway/"
 topics:
   - ai
   - ai-gateway
