@@ -89,6 +89,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Architecture guide: rewrote `docs/architecture.md` as an English-first guide covering `aigw`, `gatewayd`, `controld`, `telemetryd`, routes, RPC contracts, config publishing, state files, startup order, and operational boundaries.
 - Promotion kit cleanup: rewrote this file as a clean ASCII-first source for copy-ready outreach material.
 - Quality evidence: added `docs/quality-evidence.md` with current CI, local reproduction, runtime smoke, feature proof, and capability-boundary evidence.
+- External reviewer evidence: updated the open Awesome LLMOps, InftyAI Awesome LLMOps, Awesome AI Gateways, Awesome LLM Routing, Awesome LLM Gateways, Awesome AI API Proxy, and KennethanCeyer Awesome LLMOps submissions with links to the quality evidence page and CI workflow.
 
 ## Core Message
 
