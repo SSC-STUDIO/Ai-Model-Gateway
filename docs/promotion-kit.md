@@ -98,6 +98,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Release summaries: cleaned the historical `docs/release-v1.4.0.md` notes and added `docs/release-v1.4.4.md` so the docs index has readable current-release information.
 - Release archive install path: added direct Linux and Windows release-archive commands to `docs/installation.md` so high-intent visitors can try the packaged runtime without rebuilding from source.
 - Landing page evidence links: added release-archive install, quality evidence, and security trust links to every search landing page and anchored the website review-evidence section.
+- README first-run path: moved the fastest packaged-runtime trial, checksum verification, review evidence, and conditional star CTA into the README top section for repository-overview visitors.
 
 ## Core Message
 

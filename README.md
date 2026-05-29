@@ -8,9 +8,9 @@ AI Model Gateway is a self-hosted LLM gateway for teams that want provider routi
 
 It is not trying to be another hosted model marketplace. The project is optimized for local control: one supervisor command, separate data/control/telemetry planes, OpenAI-compatible client entry points, provider health visibility, safe config rollout, and an admin UI that behaves like an operations console.
 
-[Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+[Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [Review Evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) | [Release Archive Install](docs/installation.md#install-from-a-release-archive) | [Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
-Start with the [15-minute evaluation path](docs/evaluate-in-15-minutes.md) or the [provider fallback demo](examples/provider-fallback/). If the project matches your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
+Fastest trial: download the packaged runtime from the [release archive install path](docs/installation.md#install-from-a-release-archive), then run the [15-minute evaluation path](docs/evaluate-in-15-minutes.md) or the [provider fallback demo](examples/provider-fallback/). Review [quality evidence](docs/quality-evidence.md) and the [security trust model](docs/security-trust-model.md) before adoption. If it fits your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
 ## Who Should Use It
 
@@ -23,6 +23,20 @@ AI Model Gateway is most useful when you are running LLM traffic for a team and 
 - You want updates and rollback to use manifest-verified bundles instead of replacing binaries by hand.
 
 ## Try It Quickly
+
+The fastest path is the packaged release archive. It avoids rebuilding the runtime and verifies the download with `SHA256SUMS.txt`.
+
+| Platform | Archive |
+| --- | --- |
+| Linux x64 | [`ai-model-gateway-linux-amd64.tar.gz`](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.4/ai-model-gateway-linux-amd64.tar.gz) |
+| Linux arm64 | [`ai-model-gateway-linux-arm64.tar.gz`](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.4/ai-model-gateway-linux-arm64.tar.gz) |
+| Windows x64 | [`ai-model-gateway-windows-amd64.zip`](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.4/ai-model-gateway-windows-amd64.zip) |
+| macOS arm64 | [`ai-model-gateway-darwin-arm64.tar.gz`](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.4/ai-model-gateway-darwin-arm64.tar.gz) |
+| Checksums | [`SHA256SUMS.txt`](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.4/SHA256SUMS.txt) |
+
+Follow the [release archive install path](docs/installation.md#install-from-a-release-archive) for checksum verification, local config setup, runtime directories, temporary local tokens, and `aigw supervise` startup.
+
+If you prefer to audit or modify the code before running it, build from source:
 
 ```bash
 git clone https://github.com/SSC-STUDIO/Ai-Model-Gateway.git
