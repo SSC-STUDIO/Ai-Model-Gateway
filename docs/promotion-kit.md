@@ -86,6 +86,7 @@ Publication log, 2026-05-29:
 Publication log, 2026-05-30:
 
 - Provider fallback search landing page: added `site/llm-provider-fallback-gateway.html` for high-intent LLM provider fallback, failover gateway, provider health, and OpenAI-compatible fallback queries.
+- Awesome LLM Gateways: opened `wauputr4/awesome-llm-gateways#2` to add AI Model Gateway to a dedicated open-source LLM and AI gateway comparison list.
 
 ## Core Message
 
