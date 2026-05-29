@@ -73,6 +73,7 @@ Publication log, 2026-05-29:
 
 - GitHub Release `v1.4.4`: updated notes with direct links to README, installation, deployment, troubleshooting, use cases, self-hosted gateway checklist, comparison guide, docs index, and Discussion #25.
 - GitHub Discussion #25: added a maintenance update linking the high-intent install/deploy/troubleshooting/comparison docs and confirming PRs/issues remain clean.
+- Awesome LLMOps: opened `tensorchord/Awesome-LLMOps#529` to add AI Model Gateway to the LLMOps section with DCO passing.
 
 ## Core Message
 
