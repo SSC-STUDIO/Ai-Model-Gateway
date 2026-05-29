@@ -5,6 +5,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 ## Current Links
 
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
+- README Start Here: `https://github.com/SSC-STUDIO/Ai-Model-Gateway#start-here`
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
 - Website review evidence: `https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence`
 - Share kit: `https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html`
@@ -108,6 +109,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Share kit page: added `site/share-kit.html` with copy-ready links, short post blocks, feedback framing, and the social preview card for compliant sharing.
 - Chinese share kit page: added `site/share-kit-zh.html` with localized copy blocks and Chinese-community links for Zhihu, V2EX, Juejin, Bilibili, and WeChat-style sharing.
 - Chinese self-hosted landing page: added `site/self-hosted-llm-gateway-zh.html` with localized product positioning, evaluation path, provider-fallback proof, evidence links, and conditional star CTA.
+- README Start Here path: replaced the dense top link row with a scan-friendly Start Here table for release install, 15-minute evaluation, fallback proof, review evidence, comparison, website, Chinese landing page, and share kits.
 
 ## Core Message
 

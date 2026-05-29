@@ -9,6 +9,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Goal | Document |
 | --- | --- |
 | Share a visual overview | [Project website](https://ssc-studio.github.io/Ai-Model-Gateway/) |
+| Start from the GitHub overview conversion path | [README Start Here](../README.md#start-here) |
 | Share copy-ready links and short posts | [Share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html) |
 | Share with Chinese developer communities | [Chinese share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) |
 | Evaluate from a Chinese landing page | [Chinese self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |

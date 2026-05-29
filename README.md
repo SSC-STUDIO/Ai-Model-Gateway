@@ -8,9 +8,20 @@ AI Model Gateway is a self-hosted LLM gateway for teams that want provider routi
 
 It is not trying to be another hosted model marketplace. The project is optimized for local control: one supervisor command, separate data/control/telemetry planes, OpenAI-compatible client entry points, provider health visibility, safe config rollout, and an admin UI that behaves like an operations console.
 
-[Website](https://ssc-studio.github.io/Ai-Model-Gateway/) | [Review Evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) | [Release Archive Install](docs/installation.md#install-from-a-release-archive) | [Share Kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html) | [Chinese Share Kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) | [Chinese Self-Hosted Page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) | [Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Changelog](CHANGELOG.md) | [Contributing](CONTRIBUTING.md) | [Security](SECURITY.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Differentiation](docs/differentiation.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+## Start Here
 
-Fastest trial: download the packaged runtime from the [release archive install path](docs/installation.md#install-from-a-release-archive), then run the [15-minute evaluation path](docs/evaluate-in-15-minutes.md) or the [provider fallback demo](examples/provider-fallback/). Review [quality evidence](docs/quality-evidence.md) and the [security trust model](docs/security-trust-model.md) before adoption. If it fits your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
+| Need | Link |
+| --- | --- |
+| Try the packaged runtime first | [Release archive install](docs/installation.md#install-from-a-release-archive) |
+| Decide in one short pass | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
+| Verify fallback behavior | [Provider fallback demo](examples/provider-fallback/) |
+| Review quality and security before adoption | [Review evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) |
+| Compare gateway options | [LLM gateway comparison](docs/llm-gateway-comparison.md) |
+| Read the product page | [Website](https://ssc-studio.github.io/Ai-Model-Gateway/) |
+| 中文评估入口 | [自托管 LLM 网关中文页](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
+| Share with a relevant community | [Share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html) / [中文分享包](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) |
+
+Fastest trial: download the packaged runtime, verify `SHA256SUMS.txt`, then run the 15-minute path or fallback demo. If it fits your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
 ## Who Should Use It
 
@@ -86,6 +97,10 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
 | Debug startup, routing, or admin access | [Troubleshooting](docs/troubleshooting.md) |
 | Ask what to improve next | [Maintainer discussion](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25) |
+
+## More Links
+
+[Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison Page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
 ## Why This Exists
 
