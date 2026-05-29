@@ -47,6 +47,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Goal | Start here |
 | --- | --- |
 | Try the runtime locally | [Installation guide](docs/installation.md) |
+| Decide quickly whether to spend more time | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |
 | Understand project direction | [Project roadmap](docs/roadmap.md) |
@@ -298,6 +299,7 @@ npm --prefix web/admin run test:e2e
 
 - [Differentiation](docs/differentiation.md)
 - [Project Roadmap](docs/roadmap.md)
+- [Evaluate In 15 Minutes](docs/evaluate-in-15-minutes.md)
 - [LLM Gateway Comparison Guide](docs/llm-gateway-comparison.md)
 - [Self-Hosted LLM Gateway Checklist](docs/self-hosted-llm-gateway-checklist.md)
 - [Config Publish and Rollback](docs/config-publish-rollback.md)

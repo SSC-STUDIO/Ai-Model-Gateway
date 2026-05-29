@@ -8,6 +8,7 @@ Current links:
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
 - Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
 - Roadmap: `docs/roadmap.md`
+- 15-minute evaluation path: `docs/evaluate-in-15-minutes.md`
 - Installation guide: `docs/installation.md`
 - Deployment guide: `docs/deployment.md`
 - Troubleshooting guide: `docs/troubleshooting.md`

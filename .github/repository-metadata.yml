@@ -6,19 +6,26 @@ name: ai-model-gateway
 description: Self-hosted LLM operations gateway with routing, fallback, telemetry, benchmarks, diagnostics, and rollback.
 homepage: ""
 topics:
+  - ai
   - ai-gateway
+  - anthropic
+  - anthropic-api
+  - benchmark
+  - config-management
+  - fallback
+  - gateway
+  - golang
   - llm
+  - llm-gateway
   - llmops
   - self-hosted
   - openai-compatible
   - model-routing
-  - fallback
-  - benchmark
-  - reverse-proxy
-  - telemetry
-  - golang
-  - preact
   - observability
+  - openai
+  - proxy
+  - rate-limiting
+  - telemetry
 visibility: public
 primary_language: Go
 areas:
