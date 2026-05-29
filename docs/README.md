@@ -11,6 +11,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Match the project to real workflows | [Use cases](use-cases.md) |
 | Decide whether self-hosting is the right path | [Self-hosted LLM gateway checklist](self-hosted-llm-gateway-checklist.md) |
 | Compare LLM gateway and observability options | [LLM gateway comparison guide](llm-gateway-comparison.md) |
+| Understand config publish and rollback | [Config publish and rollback](config-publish-rollback.md) |
 | Compare the project against adjacent gateway and observability tools | [Differentiation notes](differentiation.md) |
 | Understand the runtime shape | [Architecture](architecture.md) |
 
@@ -28,6 +29,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Goal | Document |
 | --- | --- |
 | Control the runtime from scripts or terminals | [CLI guide](cli.md) |
+| Review the config publish and rollback workflow | [Config publish and rollback](config-publish-rollback.md) |
 | Use the Anthropic Messages-compatible endpoint | [Messages endpoint](api-messages-endpoint.md) |
 | Connect Chinese model providers and local AI tools | [Chinese model integration](chinese-models-integration.md) |
 

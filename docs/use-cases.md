@@ -118,5 +118,6 @@ For those cases, compare dedicated hosted routers, broad LLM gateway products, g
 
 - Start with the [README quick trial](../README.md#try-it-quickly).
 - Choose a path from the [setup table](../README.md#choose-a-setup-path).
+- Review [config publish and rollback](config-publish-rollback.md) if you are evaluating operational rollout safety.
 - Read the [differentiation notes](differentiation.md) if you are comparing alternatives.
 - Open a question in [Discussion #25](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25) if a use case is missing.

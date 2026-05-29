@@ -10,6 +10,7 @@ Current links:
 - Installation guide: `docs/installation.md`
 - Deployment guide: `docs/deployment.md`
 - Troubleshooting guide: `docs/troubleshooting.md`
+- Config publish and rollback: `docs/config-publish-rollback.md`
 - Self-hosted LLM gateway checklist: `docs/self-hosted-llm-gateway-checklist.md`
 - LLM gateway comparison guide: `docs/llm-gateway-comparison.md`
 - Maintainer discussion: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25`
@@ -105,6 +106,7 @@ Start links:
 - Installation: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Deployment: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
 - Troubleshooting: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
+- Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
 - Comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## X / Twitter
@@ -179,6 +181,7 @@ Start here if you want to evaluate it:
 
 - Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Deploy: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
+- Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
 - Compare options: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## V2EX
@@ -215,6 +218,7 @@ GitHub：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 - 安装：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - 部署：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
 - 排障：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
+- 配置发布与回滚：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
 - 对比：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## 知乎 / 掘金 Long Post
@@ -280,6 +284,7 @@ Evaluation links:
 - Installation: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Deployment: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
 - Troubleshooting: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
+- Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
 - Comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## Product Hunt

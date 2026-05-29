@@ -151,3 +151,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-29 | 2 | 0 | 0 | Reworked `docs/deployment.md` into an English-first service deployment guide covering release layout, systemd, Windows wrappers, Docker Compose, health checks, and rollback. |
 | 2026-05-29 | 2 | 0 | 0 | Reworked `docs/troubleshooting.md` into an English-first incident runbook covering health checks, logs, config publish behavior, providers, service wrappers, and recovery behavior. |
 | 2026-05-29 | 2 | 0 | 0 | Updated GitHub Release `v1.4.4`, Discussion #25, and the promotion kit with direct install/deploy/troubleshooting/comparison links for high-intent visitors. |
+| 2026-05-29 | 2 | 0 | 0 | Added `docs/config-publish-rollback.md` to explain the revision, publish, audit, and rollback workflow as a technical proof point for operators. |

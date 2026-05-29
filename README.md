@@ -50,6 +50,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |
 | Compare LLM gateway options | [LLM gateway comparison guide](docs/llm-gateway-comparison.md) |
+| Understand config publish and rollback | [Config publish and rollback](docs/config-publish-rollback.md) |
 | Run it as an operations service | [Deployment guide](docs/deployment.md) |
 | Control it from scripts or terminals | [CLI guide](docs/cli.md) |
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
@@ -294,6 +295,7 @@ npm --prefix web/admin run test:e2e
 - [Differentiation](docs/differentiation.md)
 - [LLM Gateway Comparison Guide](docs/llm-gateway-comparison.md)
 - [Self-Hosted LLM Gateway Checklist](docs/self-hosted-llm-gateway-checklist.md)
+- [Config Publish and Rollback](docs/config-publish-rollback.md)
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)
 - [Deployment](docs/deployment.md)
