@@ -7,6 +7,7 @@ Current links:
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
+- AI crawler summary: `https://ssc-studio.github.io/Ai-Model-Gateway/llms.txt`
 - Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
 - Roadmap: `docs/roadmap.md`
 - 15-minute evaluation path: `docs/evaluate-in-15-minutes.md`
@@ -28,6 +29,13 @@ Recommended images:
 - `docs/assets/admin-ops-mobile.png`
 - `docs/assets/admin-benchmark-mobile.png`
 - `docs/assets/social-card.png`
+
+Search and crawler assets:
+
+- `site/robots.txt`
+- `site/sitemap.xml`
+- `site/llms.txt`
+- Pages JSON-LD metadata in `site/index.html`
 
 Generated videos:
 

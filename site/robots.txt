@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ssc-studio.github.io/Ai-Model-Gateway/sitemap.xml

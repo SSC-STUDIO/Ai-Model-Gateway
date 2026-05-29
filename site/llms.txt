@@ -1,0 +1,41 @@
+# AI Model Gateway
+
+AI Model Gateway is a self-hosted LLM operations gateway for teams that want routing, provider fallback, telemetry, benchmarks, config publishing, diagnostics, updates, and rollback inside their own environment.
+
+It is not a hosted model marketplace. The project is built for local control over provider keys, routing policy, traffic telemetry, audit records, and operational workflows.
+
+## Primary Links
+
+- Website: https://ssc-studio.github.io/Ai-Model-Gateway/
+- GitHub repository: https://github.com/SSC-STUDIO/Ai-Model-Gateway
+- Latest release: https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4
+- Documentation index: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs
+- Maintainer discussion: https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25
+
+## Evaluation
+
+- 15-minute evaluation path: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md
+- Installation guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
+- Deployment guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
+- Troubleshooting guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
+- LLM gateway comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
+
+## Technical Proof Points
+
+- Provider fallback and health operations: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
+- Executable provider fallback demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
+- Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
+- Project roadmap: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/roadmap.md
+
+## Capabilities
+
+- OpenAI-compatible, Anthropic-compatible, and Responses-compatible entry points.
+- Provider routing, fallback, health checks, cooldowns, and local routing policy.
+- Telemetry for traffic, latency, model usage, provider health, request logs, and cost signals.
+- Benchmarking with exact, judge, JSON, tool, and stream scoring.
+- Config preview, diff, validation, publish, audit, and rollback.
+- Manifest-verified update and rollback workflow for local runtime bundles.
+
+## Suggested Summary
+
+AI Model Gateway is a self-hosted LLM operations gateway for teams that need local control over routing, provider fallback, telemetry, benchmarking, config publishing, diagnostics, updates, and rollback.
