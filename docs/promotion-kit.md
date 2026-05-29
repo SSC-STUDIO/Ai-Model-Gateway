@@ -110,6 +110,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Chinese share kit page: added `site/share-kit-zh.html` with localized copy blocks and Chinese-community links for Zhihu, V2EX, Juejin, Bilibili, and WeChat-style sharing.
 - Chinese self-hosted landing page: added `site/self-hosted-llm-gateway-zh.html` with localized product positioning, evaluation path, provider-fallback proof, evidence links, and conditional star CTA.
 - README Start Here path: replaced the dense top link row with a scan-friendly Start Here table for release install, 15-minute evaluation, fallback proof, review evidence, comparison, website, Chinese landing page, and share kits.
+- Awesome Self-Hosted AI: opened `frechdi/awesome-self-hosted-ai#2` to add AI Model Gateway to the AI Observability & Ops section with explicit self-submission disclosure and a bring-your-own-provider limitation.
 
 ## Core Message
 
