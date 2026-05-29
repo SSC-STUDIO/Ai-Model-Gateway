@@ -161,3 +161,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-29 | 2 | 0 | 0 | Added Pages discovery assets: canonical link, sitemap, robots.txt, llms.txt, and JSON-LD metadata for search and AI crawlers. |
 | 2026-05-29 | 2 | 0 | 0 | Added clearer conditional star CTAs to the website and README while keeping evaluation and feedback links first. |
 | 2026-05-29 | 2 | 0 | 0 | Opened `tensorchord/Awesome-LLMOps#529` to add AI Model Gateway to a relevant LLMOps discovery list; DCO check passed. |
+| 2026-05-29 | 2 | 0 | 0 | Opened `InftyAI/Awesome-LLMOps#440` using its project-request workflow for the `Inference / LLM Router` category. |
