@@ -1,139 +1,251 @@
-# AI Model Gateway 架构设计文档
+# AI Model Gateway Architecture
 
-## 概述
+AI Model Gateway is a local, self-hosted LLM operations gateway. The runtime is organized as one operator entry point and three internal planes:
 
-AI Model Gateway 当前采用单入口运维、三面内部架构：
+- `aigw`: local operations entry point and supervisor.
+- `gatewayd`: data plane for model traffic.
+- `controld`: control plane for Admin UI, Admin API, config lifecycle, probes, benchmarks, diagnostics, and updates.
+- `telemetryd`: telemetry plane for event ingestion, projection, and read-side query data.
 
-- 运维入口：`aigw`
-- 数据面：`gatewayd`
-- 控制面：`controld`
-- Telemetry 面：`telemetryd`
+The default production shape is `aigw supervise`. Running individual daemons is useful for advanced debugging, but normal deployments should supervise the full bundle together.
 
-`gateway` launcher 已移除。外部 supervisor、service manager 或容器编排默认只启动 `aigw supervise`，由它按 `telemetryd -> gatewayd -> controld` 拉起内部 daemon。
-
-## 架构图
+## Runtime Topology
 
 ```text
-            ┌──────────────────────────────────────┐
-            │ 外部运维层 / Supervisor / Orchestrator │
-            │ systemd / NSSM / Compose / k8s 等     │
-            └───────────────────┬──────────────────┘
-                                │
-                         ┌──────▼──────┐
-                         │    aigw     │
-                         │  supervise  │
-                         └──────┬──────┘
-                                │
-              ┌────────────▼──┐  ┌───────▼──────┐
-              │   数据面       │  │   控制面      │
-              │   gatewayd    │  │   controld   │
-              │   :18080      │  │   :18081     │
-              └───────┬───────┘  └───────┬──────┘
-                      │                  │
-                      │                  │
-                      │        ┌─────────▼─────────┐
-                      │        │  Telemetry 面      │
-                      └───────►│  telemetryd        │
-                               │  IPC only          │
-                               └────────────────────┘
+external supervisor, service manager, container, or terminal
+                         |
+                         v
+                  +--------------+
+                  | aigw         |
+                  | supervise    |
+                  +------+-------+
+                         |
+         +---------------+---------------+
+         |                               |
+         v                               v
+  +-------------+                 +-------------+
+  | gatewayd    |<-- control RPC--| controld    |
+  | data plane  |                 | control     |
+  | :18080      |                 | plane :18081|
+  +------+------+                 +------+------+
+         |                               |
+         | telemetry ingest RPC          | telemetry query RPC
+         v                               v
+  +---------------------------------------------+
+  | telemetryd                                  |
+  | event log, projection worker, query store   |
+  | IPC only                                    |
+  +---------------------------------------------+
 ```
 
-## 三面职责
+The default bootstrap files wire those processes together:
 
-### 数据面 `gatewayd`
+| Daemon | Default listen or IPC | Main data directory |
+| --- | --- | --- |
+| `gatewayd` | HTTP `127.0.0.1:18080`, control IPC `.gateway-runtime/gateway-control.sock`, telemetry ingest IPC `.gateway-runtime/telemetry-ingest.sock` | `.gateway-runtime/gateway` |
+| `controld` | HTTP `127.0.0.1:18081`, gateway IPC `.gateway-runtime/gateway-control.sock`, telemetry query IPC `.gateway-runtime/telemetry-query.sock` | `.gateway-runtime/control` |
+| `telemetryd` | telemetry ingest IPC `.gateway-runtime/telemetry-ingest.sock`, telemetry query IPC `.gateway-runtime/telemetry-query.sock` | `.gateway-runtime/telemetry-migrated` |
 
-- 处理客户端推理流量
-- 暴露：
-  - `GET /-/health`
-  - `GET /v1/models`
-  - `POST /v1/chat/completions`（OpenAI Chat Completions 形态）
-  - `POST /v1/messages`（Anthropic Messages 形态）
-  - `POST /v1/responses`（OpenAI Responses 形态；对上游以 Chat Completions 桥接，见 `internal/gateway/api/compat.go`）
-- **未实现**的 OpenAI 系子 API（若客户端按「全量 OpenAI」集成会 404），例如：`/v1/embeddings`、图像/音频、Assistants、Batch 等；也不包含 Realtime WebSocket 代理（`cmd/gatewayd` 未挂载 `internal/gateway/websocket`）。
-- 仅执行来自 `controld` 的已编译 snapshot
-- 不直接读取 `config.yaml`
-- 向 `telemetryd` 异步写入事件
+On Linux and macOS, IPC uses Unix domain sockets. On Windows, the same transport abstraction uses named pipes.
 
-#### RunBenchmarkCase 协议字符串（control ↔ gatewayd RPC）
+## `aigw` Supervisor
 
-合成基准通过 RPC 走与 HTTP 相同的入口，支持的 `protocol` 值为：`openai_chat_completions`、`anthropic_messages`，以及 `openai_responses`（与常量 `BenchmarkProtocolOpenAIResponses` 对应，定义见 `internal/core/config.go`）。
+`aigw` is the local operations command. It provides:
 
-### 控制面 `controld`
+- `aigw supervise` to start `telemetryd`, `gatewayd`, and `controld`.
+- `aigw doctor` for local config, manifest, and runtime checks.
+- `aigw status` for gateway/control health probes.
+- `aigw logs` for daemon log tailing.
+- `aigw backup` for config and runtime-state backups.
+- `aigw bundle build|verify` for release manifest workflows.
+- `aigw update check|fetch|apply|rollback` for manifest-verified update flows.
+- `aigw service print` for a systemd unit template.
+- `aigw clients print|apply` for pointing local AI tools at the gateway.
 
-- 持有 authoring config、revision history、publish ledger
-- 提供：
-  - `GET /admin`
-  - `GET /api/admin/overview`
-  - `GET /api/admin/config`
-  - `GET /api/admin/config/history`
-  - `POST /api/admin/config/publish`
-  - `POST /api/admin/config/rollback`
-  - `GET /api/admin/telemetry`
-  - `GET /api/admin/timeseries`
-  - `GET /api/admin/benchmark`
-  - `GET /api/admin/status`
-  - `GET /api/admin/runtime/status`
-  - `POST /api/admin/runtime/preflight`
-  - `GET /api/admin/audit`
-  - `POST /api/admin/config/preview`
-  - `POST /api/admin/config/diff`
-  - `POST /api/admin/probe/provider`
-  - `POST /api/admin/probe/model`
-  - `GET|POST /api/admin/replay`
-  - `GET /api/admin/diagnostics`
-  - `GET /api/admin/secrets/status`
-  - `GET /metrics`
-  - `POST /api/admin/login`
-  - `POST /api/admin/logout`
-  - `GET /api/admin/session`
-- 通过 `-authoring-config` 读取 YAML
-- 编译 config 并通过 RPC 发布 snapshot 到 `gatewayd`
+Before supervision, `aigw` verifies that daemon binaries report the same product version. In strict manifest mode it also verifies the release manifest so deployments do not mix binaries from different bundles.
 
-### Telemetry 面 `telemetryd`
+## Data Plane: `gatewayd`
 
-- 接收 `gatewayd` 上报的 telemetry 事件
-- 维护 event log、projection、query store
-- 通过 query RPC 为 `controld` 提供 overview / telemetry / timeseries / benchmark
-- 不暴露用户 HTTP 端口
+`gatewayd` serves model traffic. It does not read `configs/config.yaml` directly. Instead, it executes compiled snapshots that `controld` applies over the gateway control RPC.
 
-## 面间通信
+Public data-plane routes:
 
-平台相关 IPC：
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/-/health` | Data-plane health and optional provider detail |
+| `GET` | `/v1/models` | OpenAI-compatible model list built from the active snapshot |
+| `POST` | `/v1/chat/completions` | OpenAI Chat Completions-style traffic |
+| `POST` | `/v1/messages` | Anthropic Messages-style traffic |
+| `POST` | `/v1/responses` | OpenAI Responses-style traffic bridged through the runtime pipeline |
 
-- Linux/macOS：Unix domain socket
-- Windows：Named pipe
+When `admin_proxy_url` is configured, `gatewayd` also proxies `/admin`, `/api/admin`, and admin static assets to `controld`. This preserves a single-port operator experience while keeping the control plane separate.
 
-契约：
+The data plane owns request execution concerns:
+
+- model and provider selection from the active snapshot
+- retries, fallback, and cooldown-aware routing
+- request cache behavior
+- provider health probes
+- OpenAI, Anthropic Messages, and Responses-style bridge paths
+- active request accounting
+- telemetry event emission to `telemetryd`
+- live pricing catalog refresh state
+
+`gatewayd` is not a full clone of every OpenAI or Anthropic product API. Routes such as embeddings, images, audio, Assistants, Batch, and Realtime WebSocket are not data-plane promises unless implemented and documented separately.
+
+## Control Plane: `controld`
+
+`controld` owns the operator-facing API and the configuration lifecycle. It reads the authoring config, compiles it into runtime snapshots, publishes snapshots to `gatewayd`, stores revision history, records audit events, and exposes operational workflows to the Admin UI and CLI.
+
+Common control-plane routes:
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/-/health` | Control-plane health |
+| `GET` | `/admin` | Admin UI shell |
+| `GET` | `/api/admin/status` | Combined control, gateway, and telemetry status |
+| `GET` | `/api/admin/runtime/status` | Runtime status with configured paths |
+| `POST` | `/api/admin/runtime/preflight` | Gateway, snapshot, and telemetry preflight checks |
+| `GET` | `/api/admin/config` | Current config view |
+| `GET` | `/api/admin/config/history` | Config revision history |
+| `POST` | `/api/admin/config/validate` | Validate draft config |
+| `POST` | `/api/admin/config/preview` | Compile and summarize draft config |
+| `POST` | `/api/admin/config/diff` | Diff revisions or draft config |
+| `POST` | `/api/admin/config/update` | Store an updated config revision |
+| `POST` | `/api/admin/config/reload` | Reload the authoring source and publish |
+| `POST` | `/api/admin/config/publish` | Publish a selected revision |
+| `POST` | `/api/admin/config/rollback` | Publish an older revision as rollback |
+| `GET` | `/api/admin/overview` | Dashboard overview metrics from telemetry |
+| `GET` | `/api/admin/telemetry` | Recent request events |
+| `GET` | `/api/admin/timeseries` | Time-bucketed metrics |
+| `GET` | `/api/admin/benchmark` | Model benchmark metrics |
+| `GET` | `/api/admin/benchmark/runs` | Benchmark run list |
+| `POST` | `/api/admin/benchmark/runs` | Start a benchmark run |
+| `POST` | `/api/admin/probe/provider` | Diagnostic probe for one provider branch |
+| `POST` | `/api/admin/probe/model` | Diagnostic probe for one model/provider path |
+| `GET` | `/api/admin/audit` | Audit log tail |
+| `GET` | `/api/admin/diagnostics` | Redacted diagnostics bundle |
+| `GET` | `/api/admin/secrets/status` | Redacted secret presence checks |
+| `GET` | `/api/admin/pricing/status` | Data-plane pricing catalog status |
+| `POST` | `/api/admin/pricing/refresh` | Force a pricing refresh |
+| `GET` | `/api/admin/update/status` | Local update status |
+| `POST` | `/api/admin/update/check` | Check GitHub releases |
+| `POST` | `/api/admin/update/fetch` | Download and verify a release bundle |
+| `POST` | `/api/admin/update/apply` | Apply or dry-run a verified bundle |
+| `POST` | `/api/admin/update/rollback` | Roll back the last local update |
+| `GET` | `/metrics` | Small Prometheus-style control metrics surface |
+
+Admin API requests use bearer-token or signed-cookie authentication when admin auth is configured. Viewer credentials are read-only. Browser write requests require same-origin validation; bearer-token automation can call write endpoints directly.
+
+## Telemetry Plane: `telemetryd`
+
+`telemetryd` receives events from `gatewayd`, persists an append-only event log, runs a projection worker, and serves read-side telemetry queries to `controld`.
+
+Telemetry surfaces include:
+
+- windowed request, success, failure, latency, and token metrics
+- request event search and filters
+- time-series buckets
+- per-model and per-upstream distributions
+- benchmark-specific synthetic traffic filters
+- pricing economics summaries
+
+The telemetry plane does not expose a user-facing HTTP server. `controld` is the query gateway for the Admin UI and CLI.
+
+## Cross-Plane RPC
+
+The internal RPC contracts are deliberately narrow:
+
+| Direction | Contract | Main calls |
+| --- | --- | --- |
+| `controld -> gatewayd` | gateway control RPC | `ApplySnapshot`, `GetStatus`, `Drain`, `GetPricingStatus`, `RefreshPricing`, `RunBenchmarkCase` |
+| `gatewayd -> telemetryd` | telemetry ingest RPC | `AppendBatch`, `Flush`, `Ping` |
+| `controld -> telemetryd` | telemetry query RPC | `GetOverview`, `GetTelemetry`, `GetTimeSeries`, `GetModelBenchmark`, `Ping` |
+
+`RunBenchmarkCase` uses the live gateway request pipeline with synthetic execution options. It supports `openai_chat_completions`, `anthropic_messages`, and `openai_responses` protocol values.
+
+## Config Publish Model
+
+The runtime separates authoring config from live execution:
 
 ```text
-controld ──ApplySnapshot/GetStatus/Drain──► gatewayd
-gatewayd ──AppendBatch/Flush/Ping──────────► telemetryd
-controld ──GetOverview/GetTelemetry/
-            GetTimeSeries/GetModelBenchmark ─► telemetryd
+configs/config.yaml
+        |
+        v
+controld revision state
+        |
+        v
+compiled runtime snapshot
+        |
+        v
+gatewayd ApplySnapshot
+        |
+        v
+live data-plane routing
 ```
 
-## 数据与状态
+Key rules:
 
-- authoring config：`configs/config.yaml`
-- 控制面状态：`publisher-state.db`
-- telemetry 状态：event log + query store
-- 建议共享运行目录：`.gateway-runtime/`
+- `controld` is the owner of authoring config, revision state, publish records, rollback, and audit.
+- `gatewayd` executes only the current compiled snapshot.
+- `gatewayd` restores the last applied snapshot from its runtime data when available, but `controld` remains the source of revision truth and republishes after reconnects.
+- rollback is implemented as a normal publish of an older revision, not as an out-of-band file copy.
 
-推荐目录：
+See [Config Publish And Rollback](config-publish-rollback.md) for the operator workflow.
+
+## State And Files
+
+Typical local layout:
 
 ```text
+configs/
+  config.yaml
+  gatewayd.json
+  controld.json
+  telemetryd.json
+
 .gateway-runtime/
-├── telemetry/
-├── gateway/
-└── control/
+  gateway/
+  control/
+    audit.jsonl
+    benchmark.db
+    publisher-state.db
+  telemetry-migrated/
+    events.db
+    query.db
+  update/
+  logs/
+    gatewayd.log
+    controld.log
+    telemetryd.log
 ```
 
-## 关键原则
+The exact telemetry directory name depends on the bootstrap config. The default repository config currently uses `.gateway-runtime/telemetry-migrated`.
 
-1. `controld` 是唯一配置 owner。
-2. `gatewayd` 只执行已编译 snapshot。
-3. 所有配置文件通过 `config.yaml` 管理，不暴露敏感信息。
-4. 遥测面专注于数据采集和分析，不处理配置变更。
-3. `telemetryd` 是唯一 telemetry owner。
-4. `aigw` 是默认生命周期、日志、bundle 和升级入口。
-5. 单独替换任意 daemon 不是正常升级路径，manifest 校验应拒绝混装运行。
+## Startup Sequence
+
+`aigw supervise` starts daemons in this order:
+
+1. `telemetryd`
+2. `gatewayd`
+3. `controld`
+
+`controld` connects to both internal RPC surfaces, restores or seeds publisher state, and publishes the current revision to `gatewayd`. If startup ordering or transient RPC timing leaves `gatewayd` without a snapshot, `controld` keeps trying to republish during the bootstrap window and after later reconnects.
+
+## Operational Boundaries
+
+- Ship `aigw`, `gatewayd`, `controld`, `telemetryd`, and `gateway-cli` as one manifest-verified bundle.
+- Do not replace a single daemon binary during normal upgrades.
+- Use `gateway-cli` or the Admin UI for config preview, diff, publish, rollback, probes, diagnostics, and benchmark workflows.
+- Expose `gatewayd` to clients. Restrict `controld` to trusted operators.
+- Treat `telemetryd` IPC paths and runtime databases as internal implementation details.
+
+## Related Docs
+
+- [Installation guide](installation.md)
+- [Deployment guide](deployment.md)
+- [Config publish and rollback](config-publish-rollback.md)
+- [Provider fallback and health operations](provider-fallback-health.md)
+- [Anthropic Messages endpoint](api-messages-endpoint.md)
+- [CLI guide](cli.md)
+- [Troubleshooting guide](troubleshooting.md)

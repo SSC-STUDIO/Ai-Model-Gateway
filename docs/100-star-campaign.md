@@ -173,3 +173,5 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Opened `howardpen9/awesome-ai-api-proxy#4` to add AI Model Gateway to a curated AI API relay/proxy list's self-hosted gateway alternatives data source. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `KennethanCeyer/awesome-llmops#16` to add AI Model Gateway to an LLMOps Tools (GitHub) list. |
 | 2026-05-30 | 2 | 0 | 0 | Added `site/openai-anthropic-gateway.html` / `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html` as a search landing page for OpenAI, Anthropic Messages, Claude API gateway, and Responses-compatible gateway queries. |
+| 2026-05-30 | 2 | 0 | 0 | Rewrote `docs/architecture.md` as an English-first architecture guide for the supervisor, data/control/telemetry planes, HTTP routes, RPC contracts, config publish flow, state files, and operational boundaries. |
+| 2026-05-30 | 2 | 0 | 0 | Rewrote `docs/promotion-kit.md` as an ASCII-first outreach source with current links, publication records, release copy, and community-specific post drafts. |

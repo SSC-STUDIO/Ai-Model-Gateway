@@ -1,8 +1,8 @@
 # AI Model Gateway Promotion Kit
 
-Use this document as copy-ready launch material for GitHub, Chinese developer communities, and English developer communities.
+Use this document as copy-ready launch material for GitHub, English developer communities, and localized technical posts. Keep the canonical copy here ASCII-first; generate localized posts from this source when publishing so old encoding damage does not spread into public channels.
 
-Current links:
+## Current Links
 
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Website: `https://ssc-studio.github.io/Ai-Model-Gateway/`
@@ -13,7 +13,8 @@ Current links:
 - LLM gateway comparison page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
 - AI crawler summary: `https://ssc-studio.github.io/Ai-Model-Gateway/llms.txt`
-- Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
+- Docs index: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
+- Architecture guide: `docs/architecture.md`
 - Roadmap: `docs/roadmap.md`
 - 15-minute evaluation path: `docs/evaluate-in-15-minutes.md`
 - Installation guide: `docs/installation.md`
@@ -24,10 +25,11 @@ Current links:
 - Provider fallback demo: `examples/provider-fallback/`
 - Self-hosted LLM gateway checklist: `docs/self-hosted-llm-gateway-checklist.md`
 - LLM gateway comparison guide: `docs/llm-gateway-comparison.md`
+- Anthropic Messages endpoint: `docs/api-messages-endpoint.md`
 - Maintainer discussion: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25`
 - 100-star campaign plan: `docs/100-star-campaign.md`
 
-Recommended images:
+## Visual Assets
 
 - `docs/assets/admin-overview.png`
 - `docs/assets/admin-monitoring.png`
@@ -35,7 +37,7 @@ Recommended images:
 - `docs/assets/admin-benchmark-mobile.png`
 - `docs/assets/social-card.png`
 
-Search and crawler assets:
+## Search And Crawler Assets
 
 - `site/robots.txt`
 - `site/sitemap.xml`
@@ -43,167 +45,120 @@ Search and crawler assets:
 - Pages JSON-LD metadata in `site/index.html`
 - Self-hosted search landing page: `site/self-hosted-llm-gateway.html`
 - LLM gateway comparison landing page: `site/llm-gateway-comparison.html`
-- Search landing page: `site/openai-compatible-llm-gateway.html`
+- OpenAI-compatible search landing page: `site/openai-compatible-llm-gateway.html`
 - OpenAI Anthropic search landing page: `site/openai-anthropic-gateway.html`
 - Provider fallback search landing page: `site/llm-provider-fallback-gateway.html`
 
-Generated videos:
+## Publication Log
 
-- `output/promotion/ai-model-gateway-upstream-zh-16x9.mp4`
-- `output/promotion/ai-model-gateway-upstream-zh-9x16.mp4`
-- `output/promotion/ai-model-gateway-upstream-en-16x9.mp4`
-- `output/promotion/ai-model-gateway-bilibili-1080p.mp4`
-- `output/promotion/ai-model-gateway-bilibili-cover.jpg`
+### 2026-05-20
 
-Published v1.4.1 release video URLs:
-
-- Chinese 16:9: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.1/ai-model-gateway-upstream-zh-16x9.mp4`
-- Chinese 9:16: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.1/ai-model-gateway-upstream-zh-9x16.mp4`
-- English 16:9: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/download/v1.4.1/ai-model-gateway-upstream-en-16x9.mp4`
-
-Publication log, 2026-05-20:
-
-- GitHub Release: published and attached the three promo videos at `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.1`
-- Zhihu: published at `https://zhuanlan.zhihu.com/p/2040580684746581877`
+- GitHub Release: published and attached three promo videos at `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.1`.
+- Zhihu: published at `https://zhuanlan.zhihu.com/p/2040580684746581877`.
 - Juejin: not published because the editor returned `must bind phone`.
-- X, Reddit, V2EX, Hacker News: not published because the current network timed out.
+- X, Reddit, V2EX, Hacker News: not published because the network timed out.
 - LinkedIn: not published because browser navigation returned an HTTP response failure.
-- Bilibili: published at `https://www.bilibili.com/video/BV134Lb6GEbV/` on 2026-05-21. The upload manager showed the item under `已通过`.
+- Bilibili: published at `https://www.bilibili.com/video/BV134Lb6GEbV/` on 2026-05-21.
 
-Publication log, 2026-05-21:
+### 2026-05-21
 
 - Bilibili: published the optimized 1080p Chinese video at `https://www.bilibili.com/video/BV134Lb6GEbV/`.
 - Bilibili assets: `output/promotion/ai-model-gateway-bilibili-1080p.mp4`, `output/promotion/ai-model-gateway-bilibili-cover.jpg`.
-- Bilibili title: `上游大模型不稳定，业务怎么扛住？AI Model Gateway 开源实战`.
-- Bilibili category: `人工智能`.
-- Bilibili tags: `AI`, `大模型`, `LLM`, `开源项目`, `运维`, `网关`.
-- Bilibili disclosure: selected `含AI生成内容` and stated that the narration uses AI voice in the description.
 
-Publication log, 2026-05-29:
+### 2026-05-29
 
 - GitHub Release `v1.4.4`: updated notes with direct links to README, installation, deployment, troubleshooting, use cases, self-hosted gateway checklist, comparison guide, docs index, and Discussion #25.
 - GitHub Discussion #25: added a maintenance update linking the high-intent install/deploy/troubleshooting/comparison docs and confirming PRs/issues remain clean.
-- Awesome LLMOps: opened `tensorchord/Awesome-LLMOps#529` to add AI Model Gateway to the LLMOps section with DCO passing.
-- InftyAI Awesome LLMOps: opened `InftyAI/Awesome-LLMOps#440` using the maintainer-recommended project request workflow for the `Inference / LLM Router` category.
-- Awesome AI Gateways: opened `12britz/awesome-ai-gateways#7` to add AI Model Gateway to the open-source AI gateway section.
-- Awesome LLM Routing: opened `dstripelis/Awesome-LLM-Routing#1` to add AI Model Gateway to the routing resources table.
-- Search landing page: added `site/openai-compatible-llm-gateway.html` and linked it from the website, sitemap, AI crawler summary, README, and docs index.
+- Awesome LLMOps: opened `tensorchord/Awesome-LLMOps#529`.
+- InftyAI Awesome LLMOps: opened `InftyAI/Awesome-LLMOps#440`.
+- Awesome AI Gateways: opened `12britz/awesome-ai-gateways#7`.
+- Awesome LLM Routing: opened `dstripelis/Awesome-LLM-Routing#1`.
+- OpenAI-compatible search landing page: added `site/openai-compatible-llm-gateway.html`.
 
-Publication log, 2026-05-30:
+### 2026-05-30
 
-- Provider fallback search landing page: added `site/llm-provider-fallback-gateway.html` for high-intent LLM provider fallback, failover gateway, provider health, and OpenAI-compatible fallback queries.
-- Awesome LLM Gateways: opened `wauputr4/awesome-llm-gateways#2` to add AI Model Gateway to a dedicated open-source LLM and AI gateway comparison list.
-- Self-hosted search landing page: added `site/self-hosted-llm-gateway.html` for high-intent self-hosted LLM gateway, local AI gateway, LLM operations gateway, and config rollback queries.
-- LLM gateway comparison landing page: added `site/llm-gateway-comparison.html` for high-intent LLM gateway comparison, LiteLLM alternative, Portkey alternative, Helicone alternative, and self-hosted gateway evaluation queries.
-- Brandon Himpfen Awesome LLMOps: opened `brandonhimpfen/awesome-llmops#14` to add AI Model Gateway to the Serving & Inference section.
-- Awesome AI API Proxy: opened `howardpen9/awesome-ai-api-proxy#4` to add AI Model Gateway to the self-hosted gateway alternatives data source.
-- KennethanCeyer Awesome LLMOps: opened `KennethanCeyer/awesome-llmops#16` to add AI Model Gateway to the Tools (GitHub) section.
-- OpenAI Anthropic search landing page: added `site/openai-anthropic-gateway.html` for high-intent mixed OpenAI, Anthropic Messages, Claude API gateway, and Responses-compatible gateway queries.
+- Provider fallback search landing page: added `site/llm-provider-fallback-gateway.html`.
+- Awesome LLM Gateways: opened `wauputr4/awesome-llm-gateways#2`.
+- Self-hosted search landing page: added `site/self-hosted-llm-gateway.html`.
+- LLM gateway comparison landing page: added `site/llm-gateway-comparison.html`.
+- Brandon Himpfen Awesome LLMOps: opened `brandonhimpfen/awesome-llmops#14`.
+- Awesome AI API Proxy: opened `howardpen9/awesome-ai-api-proxy#4`.
+- KennethanCeyer Awesome LLMOps: opened `KennethanCeyer/awesome-llmops#16`.
+- OpenAI Anthropic search landing page: added `site/openai-anthropic-gateway.html`.
+- Architecture guide: rewrote `docs/architecture.md` as an English-first guide covering `aigw`, `gatewayd`, `controld`, `telemetryd`, routes, RPC contracts, config publishing, state files, startup order, and operational boundaries.
+- Promotion kit cleanup: rewrote this file as a clean ASCII-first source for copy-ready outreach material.
 
 ## Core Message
 
-AI Model Gateway is a self-hosted LLM operations gateway. It is built for teams that want model routing, config publishing, telemetry, benchmarks, diagnostics, and update/rollback workflows in one local runtime.
+AI Model Gateway is a self-hosted LLM operations gateway. It is built for teams that want model routing, config publishing, telemetry, benchmarks, diagnostics, provider health, and update/rollback workflows in one local runtime.
 
-It is not a hosted model marketplace and not just a pretty dashboard. The product direction is local control: keep provider keys, routing policy, telemetry, and operational decisions inside your own environment.
+It is not a hosted model marketplace and not just a dashboard. The product direction is local control: keep provider keys, routing policy, telemetry, and operational decisions inside your own environment.
 
 Use a conditional star CTA only after the evaluation links: if the project fits a self-hosted LLM infrastructure workflow, star the repository so more operators can find it.
 
-## Short Chinese Pitch
+## One-Line Positioning
 
-我做了一个自托管 LLM 运维网关：AI Model Gateway。
+Self-hosted LLM operations gateway for OpenAI/Anthropic-compatible routing, provider fallback, telemetry, benchmarks, config publishing, and rollback.
 
-它不是模型市场，也不是只看图表的 dashboard，而是偏生产运维工具：
+## Short Pitch
 
-- OpenAI / Anthropic / Responses API 兼容入口
-- 多 provider 路由、fallback、限流、缓存
-- 配置发布、diff、审计、回滚
-- 请求日志、成本、延迟和 provider 健康监控
-- 内置模型 Benchmark，用结果辅助路由决策
-- Admin UI 里支持检查更新、下载验证 bundle、dry-run、应用和回滚
+AI Model Gateway is a Go-based self-hosted LLM gateway for teams that need operational control over model traffic.
 
-核心目标是：把 LLM 网关从“能转发请求”推进到“能稳定运维”。
+It combines OpenAI Chat Completions, Anthropic Messages, and Responses-style entry points with provider routing, fallback, rate limiting, request cache, telemetry, benchmarks, config publish history, diagnostics, and manifest-verified update/rollback workflows.
 
-GitHub：https://github.com/SSC-STUDIO/Ai-Model-Gateway
+The useful part is the operating model: config changes go through preview, diff, publish, audit, and rollback; provider health and request telemetry are visible; and the Admin UI is built as an operations console rather than a marketing dashboard.
 
-## GitHub Release Notes
+Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
+
+## Release Notes Copy
 
 ### AI Model Gateway v1.4.4
 
-This release focuses on making AI Model Gateway feel more like a practical operations tool for self-hosted LLM infrastructure.
+This release focuses on making AI Model Gateway more practical for self-hosted LLM operations.
 
 Highlights:
 
-- Professional Admin UI polish: quieter loading states, clearer workspaces, reduced visual noise, and more operations-focused layout.
-- Stronger Operations workspace: runtime status, provider probes, audit, diagnostics, replay, and now update workflows live in one place.
-- In-product update workflow: check the latest release, download a verified platform bundle, dry-run apply, apply locally, and roll back from Admin or CLI.
-- Model benchmarking improvements: compare upstream behavior with exact, judge, JSON, tool, and stream scoring modes.
-- Safer local lifecycle: manifest-verified bundles, config publish history, rollback, and audit logging.
-
-AI Model Gateway is for teams that want local control over provider keys, routing policy, telemetry, and day-2 operations instead of handing everything to a hosted broker.
-
-Try it: https://github.com/SSC-STUDIO/Ai-Model-Gateway
+- Operations-focused Admin UI for health, telemetry, config, benchmark, and diagnostics workflows.
+- OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses-style entry points.
+- Provider fallback and health operations with probes, cooldown state, and incident checks.
+- Config publishing with preview, diff, audit, revision history, and rollback.
+- Provider fallback demo that proves a primary `429` can route through a fallback provider.
+- Search landing pages for OpenAI-compatible, OpenAI/Anthropic, self-hosted, provider fallback, and gateway-comparison queries.
+- Clean architecture guide covering the supervisor, data/control/telemetry planes, IPC, routes, state, and publish model.
 
 Start links:
 
-- Installation: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
-- Deployment: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
-- Troubleshooting: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
-- Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
+- Website: https://ssc-studio.github.io/Ai-Model-Gateway/
+- Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
+- Architecture: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/architecture.md
+- Evaluate in 15 minutes: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md
 - Provider fallback and health: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
+- Provider fallback demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
 - Comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
+- Maintainer discussion: https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25
 
 ## X / Twitter
 
-### English
+AI Model Gateway is a self-hosted LLM operations gateway in Go.
 
-AI Model Gateway v1.4.4 is out.
-
-A self-hosted LLM operations gateway for teams that want routing, telemetry, benchmarks, config publishing, diagnostics, and update/rollback workflows in one local runtime.
+It is built for teams that want routing, provider fallback, telemetry, benchmarks, config publish/rollback, diagnostics, and local update workflows in one runtime.
 
 Not a hosted model marketplace. Not just a dashboard.
 
-https://github.com/SSC-STUDIO/Ai-Model-Gateway
+Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
+Start: https://ssc-studio.github.io/Ai-Model-Gateway/
 
-### Provider Fallback / Health Thread
+## X / Twitter Thread: Provider Fallback
 
-Upstream LLM providers fail in boring but expensive ways: 429s, timeouts, 5xx bursts, quota exhaustion, and slow model endpoints.
+Upstream LLM providers fail in ordinary but expensive ways: 429s, timeouts, 5xx bursts, quota exhaustion, and slow endpoints.
 
-I added a focused operations guide for AI Model Gateway covering health-aware weighted routing, provider probes, cooldown state, runtime status, config publish, and rollback.
+AI Model Gateway is built around that operational reality. It supports provider health, cooldown state, fallback routing, diagnostic probes, telemetry, config publishing, and rollback.
 
-There is also a tiny executable fallback demo: it starts two fake OpenAI-compatible upstreams, forces the primary provider to return 429, and verifies the gateway serves the request through the fallback provider with route_mode=model_fallback.
-
-It is written for teams evaluating self-hosted LLM routing where provider keys, policy, telemetry, and incident response stay inside their own environment.
+There is also a small executable fallback demo: two fake upstreams, primary returns `429`, fallback serves the request, telemetry records `route_mode=model_fallback`.
 
 Guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 Demo: https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
 Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
-
-### Chinese
-
-AI Model Gateway v1.4.4 更新了。
-
-一个自托管 LLM 运维网关：路由、监控、Benchmark、配置发布、诊断、更新和回滚都在本地控制面完成。
-
-不是模型市场，也不是装饰型 dashboard，目标是把 LLM 网关做成能长期运维的工具。
-
-https://github.com/SSC-STUDIO/Ai-Model-Gateway
-
-### Provider Fallback / Health 中文短帖
-
-上游大模型 provider 不稳定时，团队真正需要看的不是“有没有转发出去”，而是：
-
-- 哪个 provider 在失败或冷却
-- 429、408、5xx、超时怎么影响路由
-- probe 能不能绕过正常 fallback 单独验证一条上游
-- 配置变更如何 preview / diff / publish / rollback
-
-我给 AI Model Gateway 补了一份 provider fallback 和 health 运维指南，面向自托管 LLM 网关评估场景。
-
-还补了一个可执行 demo：两个本地 fake upstream，primary 返回 429，gateway 自动走 fallback provider，并在 telemetry 里记录 route_mode=model_fallback。
-
-指南：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
-Demo：https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback
-项目：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## Hacker News
 
@@ -215,9 +170,9 @@ Post:
 
 I built AI Model Gateway, a self-hosted LLM gateway focused on day-2 operations rather than hosted model brokerage.
 
-The project combines OpenAI/Anthropic/Responses-compatible entry points with provider routing, config publishing, telemetry, benchmarks, diagnostics, audit logs, and an Admin UI. The runtime is split into data, control, and telemetry planes, all supervised through a compact Go entry point.
+The project combines OpenAI Chat Completions, Anthropic Messages, and Responses-style entry points with provider routing, fallback, config publishing, telemetry, benchmarks, diagnostics, audit logs, and an Admin UI. The runtime is split into data, control, and telemetry planes, all supervised through a compact Go entry point.
 
-The latest work adds a safer in-product update workflow: check GitHub releases, download the matching platform bundle, verify it, dry-run apply, apply locally, and roll back.
+The operating model is the main focus: config changes go through preview, diff, publish, audit, and rollback; provider health is visible; and benchmark/probe workflows use the same gateway pipeline that serves real traffic.
 
 I am trying to make it useful for teams that want to keep provider keys, routing policy, telemetry, and operational controls inside their own environment.
 
@@ -235,9 +190,9 @@ Post:
 
 I have been working on AI Model Gateway, a self-hosted LLM gateway written in Go.
 
-The focus is not provider count or marketplace UX. It is more operational:
+The focus is operational control:
 
-- OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses compatibility
+- OpenAI Chat Completions, Anthropic Messages, and OpenAI Responses-style entry points
 - provider routing, fallback, rate limiting, and request cache
 - local config publishing with preview, diff, audit, and rollback
 - telemetry for traffic, latency, cost, model usage, and provider health
@@ -254,87 +209,10 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 Start here if you want to evaluate it:
 
 - Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
-- Deploy: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
+- Architecture: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/architecture.md
 - Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
 - Provider fallback and health: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
 - Compare options: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
-
-## V2EX
-
-标题：
-
-分享一个自托管 LLM 运维网关：AI Model Gateway
-
-正文：
-
-最近在打磨一个项目：AI Model Gateway。
-
-它的定位不是“再做一个模型市场”，也不是“只展示漂亮图表的面板”，而是一个可以长期运维的自托管 LLM 网关。
-
-目前主要能力：
-
-- OpenAI Chat Completions / Anthropic Messages / OpenAI Responses 兼容入口
-- 多 provider 路由、fallback、限流、请求缓存
-- 配置发布流程：预览、diff、validate、publish、audit、rollback
-- Telemetry：请求量、延迟、成本、模型使用、provider 健康
-- Logs：请求搜索、错误过滤、CSV 导出
-- Benchmark：按 exact/judge/JSON/tool/stream 等方式比较模型表现
-- Ops：provider probe、diagnostics、audit、replay
-- 新增内置更新：检查 release、下载验证 bundle、dry-run、应用、回滚
-
-我想解决的问题是：很多 LLM proxy 能把请求转出去，但真正上线后需要的是 provider 健康、配置变更记录、回滚、审计、成本和 benchmark 这些运维闭环。
-
-GitHub：https://github.com/SSC-STUDIO/Ai-Model-Gateway
-
-欢迎大家提建议，尤其是已经在自托管 LLM gateway / proxy 的场景里踩过坑的朋友。
-
-快速看项目：
-
-- 安装：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
-- 部署：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
-- 排障：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
-- 配置发布与回滚：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
-- Provider fallback 与健康检查：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/provider-fallback-health.md
-- 对比：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
-
-## 知乎 / 掘金 Long Post
-
-标题：
-
-我为什么做一个自托管 LLM 运维网关，而不是另一个模型聚合平台
-
-正文：
-
-过去一年，LLM API 的接入方式越来越多：OpenAI 兼容接口、Claude Messages、Responses API、各种国内外 provider、企业内网模型，以及越来越多的代理和聚合产品。
-
-但真正落到团队内部使用时，问题往往不是“能不能调用模型”，而是：
-
-- provider 挂了之后怎么切？
-- 配置改坏了怎么回滚？
-- 哪一次发布引入了问题？
-- 请求量、成本、延迟怎么追踪？
-- 某个模型到底适不适合进入路由？
-- 网关本身怎么升级，升级失败怎么恢复？
-
-所以我做了 AI Model Gateway。它的目标不是模型市场，而是一个自托管 LLM operations gateway。
-
-核心设计有几个取舍：
-
-第一，控制面留在本地。provider key、路由策略、telemetry、审计和配置发布记录不需要交给 hosted broker。
-
-第二，运行时拆成 data/control/telemetry 三个平面。`gatewayd` 负责推理流量，`controld` 负责配置、Admin API、审计、诊断和 benchmark，`telemetryd` 负责事件摄取和聚合。
-
-第三，配置不是直接改完就生效，而是走 authoring config -> compiled snapshot -> publish ledger 的流程。这样可以做 preview、diff、validate、publish、audit 和 rollback。
-
-第四，Admin UI 不是营销 dashboard，而是运维控制台。首屏关注健康状态、关键指标和可执行动作：probe、diagnose、replay、publish、rollback、export。
-
-第五，Benchmark 不只做展示，而是为了辅助路由决策。它支持 exact、judge、JSON、tool、stream 等评分方式，把正确性、延迟和成本放在一起看。
-
-v1.4.x 这一轮又补了一条运维闭环：内置更新能力。现在可以从 Admin 或 CLI 检查 GitHub release，下载当前平台的 bundle，验证 manifest，dry-run apply，应用更新，并保留本地回滚路径。
-
-如果你在维护团队内部的 LLM proxy/gateway，希望把它从“能转发请求”变成“能稳定运维”，欢迎试试：
-
-https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 ## LinkedIn
 
@@ -342,26 +220,17 @@ I have been working on AI Model Gateway, a self-hosted LLM operations gateway.
 
 The project is built for teams that want to keep model routing, provider keys, telemetry, config publishing, benchmarks, diagnostics, and update/rollback workflows inside their own environment.
 
-The latest release improves the Admin UI and adds an in-product update workflow:
+The latest work improves the public evaluation path:
 
-- check the latest GitHub release
-- download the matching platform bundle
-- verify the bundle before applying
-- dry-run updates
-- apply locally
-- roll back the last update
+- architecture guide for the data/control/telemetry runtime
+- search pages for self-hosted, OpenAI-compatible, OpenAI/Anthropic, provider fallback, and comparison queries
+- provider fallback demo
+- config publish and rollback guide
+- 15-minute evaluation path
 
 The goal is to move beyond "LLM proxy that forwards requests" toward an operational control plane for production LLM usage.
 
 Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
-
-Evaluation links:
-
-- Installation: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
-- Deployment: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
-- Troubleshooting: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
-- Config publish and rollback: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md
-- Comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## Product Hunt
 
@@ -375,31 +244,31 @@ Self-hosted LLM operations gateway for routing, telemetry, benchmarks, and rollb
 
 Description:
 
-AI Model Gateway is a compact self-hosted LLM gateway for teams that want local control over provider routing, keys, telemetry, config publishing, diagnostics, benchmarking, and update/rollback workflows. It supports OpenAI, Anthropic, and Responses-compatible entry points, with an Admin UI built as an operations console rather than a marketing dashboard.
+AI Model Gateway is a compact self-hosted LLM gateway for teams that want local control over provider routing, keys, telemetry, config publishing, diagnostics, benchmarking, and update/rollback workflows. It supports OpenAI Chat Completions, Anthropic Messages, and Responses-style entry points, with an Admin UI built as an operations console rather than a marketing dashboard.
 
-## Bilibili / Short Video Script
+## Short Video Script
 
-开场：
+Opening:
 
-“很多 LLM proxy 只能解决一个问题：把请求转出去。但真正上线以后，你还要知道 provider 健不健康、成本多少、配置谁改了、改坏了怎么回滚、哪个模型适合进路由。”
+Many LLM proxies solve one problem: forwarding a request. Production teams also need to know which provider is unhealthy, how much traffic costs, who changed config, how to roll back, and which model should be trusted for a route.
 
-中段：
+Middle:
 
-“这是 AI Model Gateway，一个自托管 LLM 运维网关。它支持 OpenAI、Anthropic、Responses 兼容入口，有多 provider 路由、限流、缓存、请求日志、成本和延迟监控，还有内置 Benchmark。”
+AI Model Gateway is a self-hosted LLM operations gateway. It supports OpenAI Chat Completions, Anthropic Messages, and Responses-style entry points, multi-provider routing, fallback, rate limits, cache, request logs, cost and latency telemetry, and built-in benchmarks.
 
-演示顺序：
+Demo order:
 
-1. 打开 Overview，看网关健康状态。
-2. 进入 Monitoring，看请求量、延迟和成本。
-3. 进入 Benchmark，对比模型输出质量。
-4. 进入 Ops，看 provider probe、diagnostics、audit。
-5. 进入 Updates，演示检查更新、下载验证、dry-run、回滚入口。
+1. Open Overview for gateway and provider health.
+2. Open Monitoring for traffic, latency, and cost.
+3. Open Benchmark to compare model behavior.
+4. Open Ops for provider probes, diagnostics, audit, and replay.
+5. Open Config for preview, diff, publish, and rollback.
 
-结尾：
+Closing:
 
-“如果你想把团队内部 LLM 网关从‘能用’推进到‘能运维’，可以看看这个项目。GitHub 链接放在简介。”
+If you are trying to turn an internal LLM gateway from "it forwards requests" into "it can be operated safely," evaluate AI Model Gateway on GitHub.
 
-## Pinned GitHub Issue / Discussion
+## Pinned GitHub Discussion
 
 Title:
 
@@ -407,7 +276,7 @@ What should AI Model Gateway improve next for real-world LLM operations?
 
 Body:
 
-AI Model Gateway is currently focused on self-hosted LLM operations: routing, config publishing, telemetry, benchmarks, diagnostics, audit, and local update/rollback workflows.
+AI Model Gateway is currently focused on self-hosted LLM operations: routing, config publishing, telemetry, benchmarks, diagnostics, audit, provider health, and local update/rollback workflows.
 
 I would like feedback from people running internal LLM gateways or proxy layers:
 
@@ -422,9 +291,11 @@ Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 ## Posting Checklist
 
 - Use the Overview screenshot for broad posts.
-- Use Monitoring when talking about telemetry/cost.
+- Use Monitoring when talking about telemetry and cost.
 - Use Benchmark when talking about model comparison.
 - Use Ops mobile when talking about operations and diagnostics.
 - Do not claim hosted marketplace behavior.
-- Emphasize local control, config publishing, telemetry, benchmark, diagnostics, update, and rollback.
-- Ask for specific operational feedback instead of generic stars.
+- Do not claim complete OpenAI or Anthropic product API coverage.
+- Emphasize local control, config publishing, telemetry, benchmarks, diagnostics, update, and rollback.
+- Ask for specific operational feedback before asking for a star.
+- Keep posts tailored to the community; do not repost identical copy across many channels.
