@@ -94,6 +94,7 @@ Publication log, 2026-05-30:
 - Self-hosted search landing page: added `site/self-hosted-llm-gateway.html` for high-intent self-hosted LLM gateway, local AI gateway, LLM operations gateway, and config rollback queries.
 - LLM gateway comparison landing page: added `site/llm-gateway-comparison.html` for high-intent LLM gateway comparison, LiteLLM alternative, Portkey alternative, Helicone alternative, and self-hosted gateway evaluation queries.
 - Brandon Himpfen Awesome LLMOps: opened `brandonhimpfen/awesome-llmops#14` to add AI Model Gateway to the Serving & Inference section.
+- Awesome AI API Proxy: opened `howardpen9/awesome-ai-api-proxy#4` to add AI Model Gateway to the self-hosted gateway alternatives data source.
 
 ## Core Message
 
