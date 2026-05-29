@@ -162,3 +162,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-29 | 2 | 0 | 0 | Added clearer conditional star CTAs to the website and README while keeping evaluation and feedback links first. |
 | 2026-05-29 | 2 | 0 | 0 | Opened `tensorchord/Awesome-LLMOps#529` to add AI Model Gateway to a relevant LLMOps discovery list; DCO check passed. |
 | 2026-05-29 | 2 | 0 | 0 | Opened `InftyAI/Awesome-LLMOps#440` using its project-request workflow for the `Inference / LLM Router` category. |
+| 2026-05-29 | 2 | 0 | 0 | Opened `12britz/awesome-ai-gateways#7` to add AI Model Gateway to a vertical AI gateway discovery list. |
