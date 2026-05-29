@@ -7,8 +7,12 @@ Current links:
 - GitHub: `https://github.com/SSC-STUDIO/Ai-Model-Gateway`
 - Latest release: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4`
 - Docs: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/docs`
+- Installation guide: `docs/installation.md`
+- Deployment guide: `docs/deployment.md`
+- Troubleshooting guide: `docs/troubleshooting.md`
 - Self-hosted LLM gateway checklist: `docs/self-hosted-llm-gateway-checklist.md`
 - LLM gateway comparison guide: `docs/llm-gateway-comparison.md`
+- Maintainer discussion: `https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25`
 - 100-star campaign plan: `docs/100-star-campaign.md`
 
 Recommended images:
@@ -50,6 +54,11 @@ Publication log, 2026-05-21:
 - Bilibili tags: `AI`, `大模型`, `LLM`, `开源项目`, `运维`, `网关`.
 - Bilibili disclosure: selected `含AI生成内容` and stated that the narration uses AI voice in the description.
 
+Publication log, 2026-05-29:
+
+- GitHub Release `v1.4.4`: updated notes with direct links to README, installation, deployment, troubleshooting, use cases, self-hosted gateway checklist, comparison guide, docs index, and Discussion #25.
+- GitHub Discussion #25: added a maintenance update linking the high-intent install/deploy/troubleshooting/comparison docs and confirming PRs/issues remain clean.
+
 ## Core Message
 
 AI Model Gateway is a self-hosted LLM operations gateway. It is built for teams that want model routing, config publishing, telemetry, benchmarks, diagnostics, and update/rollback workflows in one local runtime.
@@ -90,6 +99,13 @@ Highlights:
 AI Model Gateway is for teams that want local control over provider keys, routing policy, telemetry, and day-2 operations instead of handing everything to a hosted broker.
 
 Try it: https://github.com/SSC-STUDIO/Ai-Model-Gateway
+
+Start links:
+
+- Installation: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
+- Deployment: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
+- Troubleshooting: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
+- Comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## X / Twitter
 
@@ -159,6 +175,12 @@ Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 I would appreciate feedback from people running self-hosted or team-internal LLM infrastructure.
 
+Start here if you want to evaluate it:
+
+- Install: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
+- Deploy: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
+- Compare options: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
+
 ## V2EX
 
 标题：
@@ -187,6 +209,13 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 GitHub：https://github.com/SSC-STUDIO/Ai-Model-Gateway
 
 欢迎大家提建议，尤其是已经在自托管 LLM gateway / proxy 的场景里踩过坑的朋友。
+
+快速看项目：
+
+- 安装：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
+- 部署：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
+- 排障：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
+- 对比：https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## 知乎 / 掘金 Long Post
 
@@ -245,6 +274,13 @@ The latest release improves the Admin UI and adds an in-product update workflow:
 The goal is to move beyond "LLM proxy that forwards requests" toward an operational control plane for production LLM usage.
 
 Repo: https://github.com/SSC-STUDIO/Ai-Model-Gateway
+
+Evaluation links:
+
+- Installation: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
+- Deployment: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
+- Troubleshooting: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md
+- Comparison guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/llm-gateway-comparison.md
 
 ## Product Hunt
 
