@@ -95,6 +95,7 @@ Publication log, 2026-05-30:
 - LLM gateway comparison landing page: added `site/llm-gateway-comparison.html` for high-intent LLM gateway comparison, LiteLLM alternative, Portkey alternative, Helicone alternative, and self-hosted gateway evaluation queries.
 - Brandon Himpfen Awesome LLMOps: opened `brandonhimpfen/awesome-llmops#14` to add AI Model Gateway to the Serving & Inference section.
 - Awesome AI API Proxy: opened `howardpen9/awesome-ai-api-proxy#4` to add AI Model Gateway to the self-hosted gateway alternatives data source.
+- KennethanCeyer Awesome LLMOps: opened `KennethanCeyer/awesome-llmops#16` to add AI Model Gateway to the Tools (GitHub) section.
 
 ## Core Message
 
