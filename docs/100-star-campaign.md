@@ -195,3 +195,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Updated GitHub Release `v1.4.0` with a current-release notice linking `v1.4.4`, README Start Here, and the release archive install path because traffic still shows visits to the historical release page. |
 | 2026-05-30 | 2 | 0 | 0 | Added `docs/openai-compatible-upstreams.md` to document AIgateway.sh, internal proxy, LiteLLM-style upstream, fallback, and verification examples before pursuing brand-ecosystem discovery submissions. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `aigateway-sh/awesome-ai-gateway#1` with a one-line integration entry that links to the new AIgateway.sh upstream guide and discloses self-submission in the PR body. |
+| 2026-05-30 | 2 | 0 | 0 | Opened `dr-saad-la/awesome-llm-tools#9` to add AI Model Gateway under LLM Gateway & Operations with neutral wording, a conservative rating, required fields, and disclosed maintainer submission. |
