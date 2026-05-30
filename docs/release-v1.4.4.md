@@ -25,6 +25,7 @@ This release keeps the public project surface consistent across repository metad
 - [Docker Compose trial path](deployment.md#docker-compose)
 - [LLM client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html)
 - [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html)
+- [LangGPT Awesome Claude Code submission](https://github.com/LangGPT/awesome-claude-code/pull/81)
 - [Quality evidence](quality-evidence.md)
 - [Security and trust model](security-trust-model.md)
 - [Architecture guide](architecture.md)
