@@ -23,6 +23,7 @@ This release keeps the public project surface consistent across repository metad
 - [GitHub release](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4)
 - [15-minute evaluation path](evaluate-in-15-minutes.md)
 - [Docker Compose trial path](deployment.md#docker-compose)
+- [LLM gateway adoption checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html)
 - [LLM client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html)
 - [Codex CLI gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html)
 - [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html)

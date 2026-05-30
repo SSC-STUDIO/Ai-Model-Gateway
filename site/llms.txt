@@ -12,6 +12,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - LLM client integrations page: https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html
 - Codex CLI gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html
 - Claude Code gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html
+- LLM gateway adoption checklist: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html
 - OpenAI Anthropic gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 - LLM provider fallback gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html
 - Self-hosted LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html
@@ -29,6 +30,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 
 - 15-minute evaluation path: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md
 - Self-hosted LLM gateway checklist: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/self-hosted-llm-gateway-checklist.md
+- LLM gateway adoption checklist: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html
 - Installation guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md
 - Release archive install path: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md#install-from-a-release-archive
 - Deployment guide: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md
@@ -53,6 +55,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - LLM client integrations landing page: https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html
 - Codex CLI gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html
 - Claude Code gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html
+- LLM gateway adoption checklist landing page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html
 - Project roadmap: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/roadmap.md
 - Copy-ready share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html
 - Copy-ready Chinese share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html

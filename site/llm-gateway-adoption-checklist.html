@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LLM Gateway Adoption Checklist | AI Model Gateway</title>
+    <meta name="description" content="LLM gateway adoption checklist for teams evaluating self-hosted provider keys, routing policy, client compatibility, provider fallback, config publish, rollback, quality evidence, and security.">
+    <meta property="og:title" content="LLM Gateway Adoption Checklist">
+    <meta property="og:description" content="Use this checklist before adopting a self-hosted LLM gateway for provider keys, routing policy, fallback, telemetry, config publish, rollback, and security.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html">
+    <meta property="og:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="LLM Gateway Adoption Checklist">
+    <meta name="twitter:description" content="Evaluate provider keys, routing policy, client compatibility, fallback, telemetry, config publish, rollback, quality evidence, and security.">
+    <meta name="twitter:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta name="twitter:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <link rel="canonical" href="https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="sitemap" type="application/xml" href="sitemap.xml">
+    <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "LLM Gateway Adoption Checklist",
+        "url": "https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html",
+        "isPartOf": {
+          "@type": "SoftwareSourceCode",
+          "name": "AI Model Gateway",
+          "codeRepository": "https://github.com/SSC-STUDIO/Ai-Model-Gateway",
+          "programmingLanguage": "Go",
+          "license": "https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/LICENSE"
+        },
+        "description": "LLM gateway adoption checklist for teams evaluating self-hosted provider keys, routing policy, client compatibility, provider fallback, config publish, rollback, quality evidence, and security.",
+        "keywords": [
+          "LLM gateway adoption checklist",
+          "self-hosted LLM gateway checklist",
+          "provider keys",
+          "routing policy",
+          "Codex CLI gateway",
+          "Claude Code gateway",
+          "provider fallback",
+          "config publish",
+          "config rollback",
+          "LLM gateway security"
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="hero search-hero">
+      <div class="hero-copy">
+        <a class="repo-mark" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway" aria-label="AI Model Gateway GitHub repository">
+          <img src="assets/icon.svg" alt="">
+          <span>SSC-STUDIO / Ai-Model-Gateway</span>
+        </a>
+        <h1>LLM Gateway Adoption Checklist</h1>
+        <p class="lead">Use this checklist before adopting a self-hosted LLM gateway for provider keys, routing policy, telemetry, provider fallback, config publish, rollback, client compatibility, quality evidence, and security.</p>
+        <div class="hero-actions" aria-label="Primary links">
+          <a class="primary" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/evaluate-in-15-minutes.md">Evaluate in 15 minutes</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">View on GitHub</a>
+          <a href="client-integrations.html">Client integrations</a>
+          <a href="llm-provider-fallback-gateway.html">Provider fallback page</a>
+        </div>
+        <p class="star-note">If the checklist confirms a fit for your self-hosted LLM operations workflow, star the repository after evaluation so more operators can find it.</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Adoption fit</p>
+          <h2>Start with the operational controls your team actually needs.</h2>
+          <p>AI Model Gateway is useful when the gateway is part of your infrastructure boundary. It keeps provider keys, routing policy, request telemetry, audit records, diagnostics, and rollback workflows inside your environment instead of outsourcing the control plane to a hosted broker.</p>
+        </div>
+        <div class="capability-grid">
+          <article>
+            <h3>Local provider keys</h3>
+            <p>Keep upstream provider credentials in gateway config while clients use gateway-facing tokens.</p>
+          </article>
+          <article>
+            <h3>Routing policy</h3>
+            <p>Centralize model routing, fallback preferences, health checks, and cooldown behavior in one local runtime.</p>
+          </article>
+          <article>
+            <h3>Operational telemetry</h3>
+            <p>Review traffic, latency, request logs, provider health, diagnostics, and cost signals from the Admin UI.</p>
+          </article>
+          <article>
+            <h3>Change safety</h3>
+            <p>Preview, diff, validate, config publish, audit, and rollback gateway changes before they affect traffic.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="proof-section">
+        <div class="proof-copy">
+          <p class="eyebrow">Shortest proof</p>
+          <h2>Prove fallback behavior before routing real traffic.</h2>
+          <p>The executable provider fallback demo starts fake OpenAI-compatible upstreams. The primary returns <code>429</code>, the gateway serves the fallback provider, rewrites the forwarded model, and records the fallback route mode.</p>
+          <pre><code>go test ./examples/provider-fallback -run TestProviderFallbackDemo -v</code></pre>
+          <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/tree/main/examples/provider-fallback">Open the provider fallback demo</a>
+        </div>
+        <img class="proof-image" src="assets/admin-overview.png" alt="AI Model Gateway overview workspace showing local gateway health and operations status">
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Checklist</p>
+          <h2>Walk through the adoption decision in one pass.</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>Fit.</strong>
+            <span>Confirm local control over provider keys, routing policy, telemetry, audit records, and admin access is a requirement.</span>
+          </li>
+          <li>
+            <strong>Run.</strong>
+            <span>Start from the release archive, Docker Compose path, or source build, then open the Admin UI and health endpoints.</span>
+          </li>
+          <li>
+            <strong>Connect.</strong>
+            <span>Point Codex CLI, Claude Code, OpenClaw, OpenAI SDK clients, or curl smoke tests at the gateway endpoint.</span>
+          </li>
+          <li>
+            <strong>Operate.</strong>
+            <span>Test provider fallback, request logs, provider probes, config publish, rollback, diagnostics, and update recovery.</span>
+          </li>
+        </ol>
+        <div class="link-row">
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md#install-from-a-release-archive">Release archive install</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/deployment.md#docker-compose">Docker Compose trial</a>
+          <a href="client-integrations.html">Client integrations page</a>
+          <a href="codex-cli-gateway.html">Codex CLI gateway page</a>
+          <a href="claude-code-gateway.html">Claude Code gateway page</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/config-publish-rollback.md">Config publish and rollback</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Scope</p>
+          <h2>Use it for local operations control, not as a hosted model marketplace.</h2>
+          <p>The gateway supports OpenAI-compatible, Anthropic-compatible, and Responses-style entry points, but each client and upstream should be smoke-tested before production use. It does not claim to replace every hosted platform feature, account workflow, or provider-specific capability.</p>
+        </div>
+        <div class="comparison-grid">
+          <article>
+            <h3>Adopt when</h3>
+            <ul>
+              <li>Provider keys, routing policy, telemetry, logs, and audit records need to stay local.</li>
+              <li>Multiple clients should use one internal gateway URL and gateway client keys.</li>
+              <li>Operators need provider fallback, health probes, diagnostics, and replay evidence.</li>
+              <li>Config changes need preview, diff, publish history, rollback, and reviewable operations traces.</li>
+            </ul>
+          </article>
+          <article>
+            <h3>Check alternatives when</h3>
+            <ul>
+              <li>You want a hosted model marketplace to manage provider access, billing, and routing.</li>
+              <li>You only need a small SDK wrapper inside one application.</li>
+              <li>You require exact provider-specific platform behavior without compatibility testing.</li>
+              <li>You do not want to operate a gateway runtime or Admin UI in your environment.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="review-evidence">
+        <div class="section-heading">
+          <p class="eyebrow">Review evidence</p>
+          <h2>Check installability, quality evidence, and security before adopting it.</h2>
+        </div>
+        <div class="evidence-grid">
+          <article>
+            <h3>Quality evidence</h3>
+            <p>Review CI gates, local reproduction commands, runtime smoke checks, feature proof points, and current capability boundaries.</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md">Open quality evidence</a>
+          </article>
+          <article>
+            <h3>Security and trust model</h3>
+            <p>Inspect admin auth, same-origin browser writes, provider-key handling, SSRF defenses, telemetry sensitivity, local files, and update trust.</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/security-trust-model.md">Open security model</a>
+          </article>
+          <article>
+            <h3>Comparison guide</h3>
+            <p>Compare the project against broader gateway, observability, and hosted routing options before committing operational ownership.</p>
+            <a class="text-link" href="llm-gateway-comparison.html">Open gateway comparison</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta-section">
+        <div>
+          <p class="eyebrow">Decision</p>
+          <h2>Run the checklist, then decide whether it earns a star.</h2>
+          <p>Start with one non-production request, the fallback demo, and the review evidence. If AI Model Gateway fits your self-hosted LLM gateway workflow, Star on GitHub so similar operators can discover it.</p>
+        </div>
+        <div class="link-row">
+          <a class="primary-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">Star on GitHub</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25">Leave adoption feedback</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MIT licensed. Built for self-hosted LLM operations.</span>
+      <a href="index.html">Back to AI Model Gateway</a>
+    </footer>
+  </body>
+</html>

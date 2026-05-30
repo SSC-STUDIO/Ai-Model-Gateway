@@ -15,6 +15,7 @@ It is not trying to be another hosted model marketplace. The project is optimize
 | Try the packaged runtime first | [Release archive install](docs/installation.md#install-from-a-release-archive) |
 | Try with Docker Compose | [Docker Compose deployment](docs/deployment.md#docker-compose) |
 | Decide in one short pass | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
+| Check adoption fit before wiring clients | [LLM gateway adoption checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html) |
 | Point local tools at the gateway | [Client integrations](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
 | Route Codex CLI traffic | [Codex CLI gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html) |
 | Route Claude Code traffic | [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) |
@@ -107,6 +108,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Decide quickly whether to spend more time | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |
 | Evaluate whether self-hosting fits | [Self-hosted LLM gateway checklist](docs/self-hosted-llm-gateway-checklist.md) |
+| Check adoption fit from a shareable page | [LLM gateway adoption checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html) |
 | Review CI, tests, runtime smoke, and maturity evidence | [Quality evidence](docs/quality-evidence.md) |
 | Review auth, secret, SSRF, telemetry, and deployment trust boundaries | [Security and trust model](docs/security-trust-model.md) |
 | Understand project direction | [Project roadmap](docs/roadmap.md) |
@@ -115,6 +117,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Start from a self-hosted gateway search page | [Self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) |
 | Start from an OpenAI-compatible gateway search page | [OpenAI-compatible LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) |
 | Start from a client integration search page | [LLM client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
+| Start from an adoption checklist search page | [LLM gateway adoption checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html) |
 | Start from a Codex CLI gateway search page | [Codex CLI gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html) |
 | Start from a Claude Code gateway search page | [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) |
 | Start from an OpenAI and Anthropic gateway search page | [OpenAI Anthropic gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) |
@@ -132,7 +135,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 
 ## More Links
 
-[Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [Client Integrations](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) | [Codex CLI Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html) | [Claude Code Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) | [OpenAI-Compatible Upstreams](docs/openai-compatible-upstreams.md) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison Page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+[Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [Adoption Checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html) | [Client Integrations](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) | [Codex CLI Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html) | [Claude Code Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) | [OpenAI-Compatible Upstreams](docs/openai-compatible-upstreams.md) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison Page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
 ## Why This Exists
 
@@ -375,6 +378,7 @@ npm --prefix web/admin run test:e2e
 - [Evaluate In 15 Minutes](docs/evaluate-in-15-minutes.md)
 - [LLM Gateway Comparison Guide](docs/llm-gateway-comparison.md)
 - [Self-Hosted LLM Gateway Checklist](docs/self-hosted-llm-gateway-checklist.md)
+- [LLM Gateway Adoption Checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html)
 - [Config Publish and Rollback](docs/config-publish-rollback.md)
 - [Architecture](docs/architecture.md)
 - [Installation](docs/installation.md)

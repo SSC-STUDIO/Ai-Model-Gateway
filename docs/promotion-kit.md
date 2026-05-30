@@ -12,6 +12,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Chinese share kit: `https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html`
 - Chinese self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html`
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
+- LLM gateway adoption checklist: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
 - LLM client integrations page: `https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html`
 - Codex CLI gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html`
@@ -58,6 +59,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Pages JSON-LD metadata in `site/index.html`
 - Self-hosted search landing page: `site/self-hosted-llm-gateway.html`
 - Chinese self-hosted search landing page: `site/self-hosted-llm-gateway-zh.html`
+- LLM gateway adoption checklist landing page: `site/llm-gateway-adoption-checklist.html`
 - LLM gateway comparison landing page: `site/llm-gateway-comparison.html`
 - OpenAI-compatible search landing page: `site/openai-compatible-llm-gateway.html`
 - LLM client integrations landing page: `site/client-integrations.html`
@@ -137,6 +139,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Claude Code gateway landing page: added `site/claude-code-gateway.html` for Claude Code, `ANTHROPIC_BASE_URL`, Anthropic Messages-style traffic, fallback, telemetry, and rollback-safe config discovery.
 - LangGPT Awesome Claude Code: opened `LangGPT/awesome-claude-code#81` to add AI Model Gateway to the Proxy & API Tools section in both English and Chinese READMEs, with maintainer self-submission disclosure.
 - Repository topics: added `claude-code` and `codex-cli` to the public GitHub topic set after publishing dedicated Claude Code and Codex CLI gateway pages, replacing broader `ai` and `proxy` terms to stay within the 20-topic limit.
+- Adoption checklist landing page: added `site/llm-gateway-adoption-checklist.html` so high-intent evaluators can check fit, install paths, client compatibility, fallback proof, config publish, rollback, quality evidence, and security before deciding whether to star.
 
 ## Core Message
 

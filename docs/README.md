@@ -17,6 +17,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Try the packaged runtime without rebuilding | [Release archive install path](installation.md#install-from-a-release-archive) |
 | Try with Docker Compose | [Docker Compose deployment](deployment.md#docker-compose) |
 | Decide quickly whether to spend more time | [15-minute evaluation path](evaluate-in-15-minutes.md) |
+| Check adoption fit before wiring clients | [LLM gateway adoption checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html) |
 | Point local tools and SDKs at the gateway | [Client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
 | Route Codex CLI traffic through the gateway | [Codex CLI gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html) |
 | Route Claude Code traffic through the gateway | [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) |
@@ -31,6 +32,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Start from a Chinese self-hosted gateway page | [Chinese self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
 | Start from an OpenAI-compatible gateway search page | [OpenAI-compatible LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) |
 | Start from a client integration search page | [LLM client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
+| Start from an adoption checklist search page | [LLM gateway adoption checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html) |
 | Start from a Codex CLI gateway search page | [Codex CLI gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html) |
 | Start from a Claude Code gateway search page | [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) |
 | Start from an OpenAI and Anthropic gateway search page | [OpenAI Anthropic gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) |

@@ -268,6 +268,7 @@ Windows users can also run the repository smoke script:
 ## Next Steps
 
 - [15-minute evaluation path](evaluate-in-15-minutes.md)
+- [LLM gateway adoption checklist](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-adoption-checklist.html)
 - [Current release summary](release-v1.4.4.md)
 - [Deployment guide](deployment.md)
 - [CLI guide](cli.md)
