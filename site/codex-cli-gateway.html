@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Codex CLI Gateway | AI Model Gateway</title>
+    <meta name="description" content="Route Codex CLI and OpenAI-compatible coding-agent traffic through a self-hosted AI Model Gateway endpoint with provider fallback, telemetry, and rollback-safe config.">
+    <meta property="og:title" content="Codex CLI Gateway">
+    <meta property="og:description" content="Use Codex openai_base_url with a self-hosted OpenAI-compatible gateway for provider fallback, telemetry, request logs, and config rollback.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html">
+    <meta property="og:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Codex CLI Gateway">
+    <meta name="twitter:description" content="Route Codex CLI through a self-hosted OpenAI-compatible gateway with fallback, telemetry, and rollback-safe config.">
+    <meta name="twitter:image" content="https://ssc-studio.github.io/Ai-Model-Gateway/assets/social-card.png">
+    <meta name="twitter:image:alt" content="AI Model Gateway social preview showing the Admin UI and self-hosted LLM gateway positioning">
+    <link rel="canonical" href="https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="sitemap" type="application/xml" href="sitemap.xml">
+    <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Codex CLI Gateway",
+        "url": "https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html",
+        "isPartOf": {
+          "@type": "SoftwareSourceCode",
+          "name": "AI Model Gateway",
+          "codeRepository": "https://github.com/SSC-STUDIO/Ai-Model-Gateway",
+          "programmingLanguage": "Go",
+          "license": "https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/LICENSE"
+        },
+        "description": "Route Codex CLI and OpenAI-compatible coding-agent traffic through a self-hosted AI Model Gateway endpoint with provider fallback, telemetry, and rollback-safe config.",
+        "keywords": [
+          "Codex CLI gateway",
+          "Codex openai_base_url",
+          "OpenAI-compatible coding agent gateway",
+          "OPENAI_BASE_URL",
+          "self-hosted LLM gateway",
+          "provider fallback",
+          "request telemetry",
+          "config rollback"
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <header class="hero search-hero">
+      <div class="hero-copy">
+        <a class="repo-mark" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway" aria-label="AI Model Gateway GitHub repository">
+          <img src="assets/icon.svg" alt="">
+          <span>SSC-STUDIO / Ai-Model-Gateway</span>
+        </a>
+        <h1>Codex CLI Gateway</h1>
+        <p class="lead">Route Codex CLI and OpenAI-compatible coding-agent traffic through one self-hosted gateway with provider fallback, telemetry, request logs, config publishing, and rollback.</p>
+        <div class="hero-actions" aria-label="Primary links">
+          <a class="primary" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/client-integrations.md#codex-cli">Set openai_base_url</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">View on GitHub</a>
+          <a href="client-integrations.html">All client integrations</a>
+          <a href="openai-compatible-llm-gateway.html">OpenAI-compatible gateway</a>
+        </div>
+        <p class="star-note">If this fits your Codex routing workflow, star the repository after evaluation so other operators can find it.</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Codex entry point</p>
+          <h2>Use AI Model Gateway where Codex expects an OpenAI-compatible endpoint.</h2>
+          <p>AI Model Gateway keeps upstream provider keys in local gateway config. Codex uses a gateway client key and sends OpenAI-compatible requests to the data-plane listener.</p>
+        </div>
+        <div class="capability-grid">
+          <article>
+            <h3>Codex config</h3>
+            <p>Set <code>openai_base_url</code> in <code>~/.codex/config.toml</code> to the gateway origin plus <code>/v1</code>.</p>
+          </article>
+          <article>
+            <h3>Gateway auth</h3>
+            <p>Use a gateway client key for Codex instead of copying upstream provider keys into local tool config.</p>
+          </article>
+          <article>
+            <h3>OpenAI-compatible route</h3>
+            <p>Route chat-style traffic through <code>/v1/chat/completions</code> and related OpenAI-compatible entry points.</p>
+          </article>
+          <article>
+            <h3>Operations layer</h3>
+            <p>Keep fallback, telemetry, request logs, provider health, and rollback in one self-hosted runtime.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="proof-section">
+        <div class="proof-copy">
+          <p class="eyebrow">Local setup</p>
+          <h2>Point Codex at one self-hosted OpenAI-compatible gateway.</h2>
+          <p>For a default local runtime, use the gateway origin plus <code>/v1</code>. Start with one non-production request, then inspect logs, telemetry, and provider health before routing real work.</p>
+          <pre><code>openai_base_url = "http://127.0.0.1:18080/v1"
+openai_api_key = "$GATEWAY_API_KEY"</code></pre>
+          <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/client-integrations.md#codex-cli">Open Codex setup details</a>
+        </div>
+        <img class="proof-image" src="assets/admin-overview.png" alt="AI Model Gateway overview workspace after routing Codex CLI traffic">
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Scope</p>
+          <h2>Evaluate the exact Codex workflow before relying on it.</h2>
+          <p>The gateway supports OpenAI-compatible client traffic and local operations workflows around routing, fallback, telemetry, and config publishing. It does not claim to replace every OpenAI platform feature, hosted model marketplace, or Codex account workflow.</p>
+        </div>
+        <div class="comparison-grid">
+          <article>
+            <h3>Good fit</h3>
+            <ul>
+              <li>You want Codex CLI to enter a local OpenAI-compatible gateway.</li>
+              <li>You need provider fallback and route telemetry for coding-agent traffic.</li>
+              <li>You want provider keys, routing policy, logs, and audit records to stay local.</li>
+              <li>You need preview, diff, publish history, and rollback for gateway config.</li>
+            </ul>
+          </article>
+          <article>
+            <h3>Check first</h3>
+            <ul>
+              <li>Your workflow depends on a hosted account feature outside OpenAI-compatible API traffic.</li>
+              <li>Your client requires exact streaming, tool, or multimodal behavior from a specific upstream.</li>
+              <li>You need a hosted model marketplace to own provider billing and access.</li>
+              <li>You only need a thin wrapper without admin, telemetry, or rollback workflows.</li>
+            </ul>
+          </article>
+        </div>
+        <div class="link-row">
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/client-integrations.md#codex-cli">Codex setup</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/client-integrations.md">Client integrations</a>
+          <a href="openai-compatible-llm-gateway.html">OpenAI-compatible gateway</a>
+          <a href="client-integrations.html">Client integrations page</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/troubleshooting.md">Troubleshooting</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <p class="eyebrow">Config workflow</p>
+          <h2>Use generated snippets or dry-run local Codex updates.</h2>
+          <p>The CLI can print client snippets or apply supported config updates for local tools. Use dry-run mode first and keep backups enabled unless another system already owns those files.</p>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>Start runtime.</strong>
+            <span>Use the release archive, Docker Compose path, or source build.</span>
+          </li>
+          <li>
+            <strong>Print snippets.</strong>
+            <span>Run <code>aigw clients print</code> and inspect the Codex config values.</span>
+          </li>
+          <li>
+            <strong>Dry run.</strong>
+            <span>Use <code>aigw clients apply -tools codex -dry-run</code> before changing local files.</span>
+          </li>
+          <li>
+            <strong>Smoke test.</strong>
+            <span>Send one request and inspect request logs, provider health, and telemetry.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section" id="review-evidence">
+        <div class="section-heading">
+          <p class="eyebrow">Review evidence</p>
+          <h2>Check installability, quality, and security before adopting it.</h2>
+        </div>
+        <div class="evidence-grid">
+          <article>
+            <h3>Release archive install</h3>
+            <p>Try the packaged v1.4.4 runtime with checksum verification, local config, runtime directories, and supervised startup commands.</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/installation.md#install-from-a-release-archive">Open release install path</a>
+          </article>
+          <article>
+            <h3>Quality evidence</h3>
+            <p>Review CI gates, local reproduction commands, runtime smoke checks, feature proof points, and current capability boundaries.</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/quality-evidence.md">Open quality evidence</a>
+          </article>
+          <article>
+            <h3>Security and trust model</h3>
+            <p>Inspect admin auth, same-origin browser writes, provider-key handling, SSRF defenses, telemetry sensitivity, and update trust.</p>
+            <a class="text-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/security-trust-model.md">Open security model</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="section cta-section">
+        <div>
+          <p class="eyebrow">Next step</p>
+          <h2>Route one Codex request, then decide whether the gateway earns a star.</h2>
+          <p>Use a local gateway and non-production request first. If the project fits your self-hosted coding-agent routing workflow, starring the repository helps similar teams find it.</p>
+        </div>
+        <div class="link-row">
+          <a class="primary-link" href="https://github.com/SSC-STUDIO/Ai-Model-Gateway">Star on GitHub</a>
+          <a href="https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25">Leave feedback</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MIT licensed. Built for self-hosted LLM operations.</span>
+      <a href="index.html">Back to AI Model Gateway</a>
+    </footer>
+  </body>
+</html>

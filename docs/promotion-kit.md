@@ -14,6 +14,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
 - LLM client integrations page: `https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html`
+- Codex CLI gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html`
 - Claude Code gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html`
 - OpenAI Anthropic gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html`
 - LLM provider fallback gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html`
@@ -129,6 +130,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Awesome Production LLM: opened `jihoo-kim/awesome-production-llm#40` to list AI Model Gateway in the LLM Serving / Inference section next to LiteLLM and RouteLLM, with self-submission disclosure and bring-your-own-upstream scope notes.
 - Awesome Open Source AI: opened `alvinreal/awesome-opensource-ai#468` to list AI Model Gateway in the MLOps / LLMOps Monitoring, Evaluation & Observability section next to LiteLLM, Portkey Gateway, TensorZero, and Envoy AI Gateway, with self-submission disclosure.
 - Client integrations landing page: added `site/client-integrations.html` for Codex, Claude Code, OpenClaw, OpenAI SDK, Anthropic base URL, and curl smoke-test discovery.
+- Codex CLI gateway landing page: added `site/codex-cli-gateway.html` for Codex `openai_base_url`, OpenAI-compatible coding-agent traffic, fallback, telemetry, and rollback-safe config discovery.
 - Awesome AI Coding Tools: opened `ai-for-developers/awesome-ai-coding-tools#364` to list AI Model Gateway in the AI Frameworks and SDKs section next to adjacent gateway/proxy resources, with maintainer self-submission disclosure.
 - Awesome Codex CLI: opened `RoggeOhta/awesome-codex-cli#61` to list AI Model Gateway in the Model Providers & Proxies section next to adjacent Codex provider/router resources, with maintainer self-submission disclosure.
 - Awesome Claude Code: opened `jqueryscript/awesome-claude-code#339` to list AI Model Gateway in the Infrastructure & Proxies section next to adjacent Claude Code proxy/provider resources, with maintainer self-submission disclosure.

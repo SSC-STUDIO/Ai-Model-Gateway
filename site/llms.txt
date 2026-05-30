@@ -10,6 +10,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - Website review evidence: https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence
 - OpenAI-compatible LLM gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html
 - LLM client integrations page: https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html
+- Codex CLI gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html
 - Claude Code gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html
 - OpenAI Anthropic gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html
 - LLM provider fallback gateway page: https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html
@@ -50,6 +51,7 @@ It is not a hosted model marketplace. The project is built for local control ove
 - OpenAI-compatible upstreams: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/openai-compatible-upstreams.md
 - Client integrations: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/client-integrations.md
 - LLM client integrations landing page: https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html
+- Codex CLI gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/codex-cli-gateway.html
 - Claude Code gateway landing page: https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html
 - Project roadmap: https://github.com/SSC-STUDIO/Ai-Model-Gateway/blob/main/docs/roadmap.md
 - Copy-ready share kit: https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html
