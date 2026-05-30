@@ -204,3 +204,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Opened `OpenRouterTeam/awesome-openrouter#76` with a valid app directory entry and logo after adding the OpenRouter upstream example. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `jihoo-kim/awesome-production-llm#40` to add AI Model Gateway to the LLM Serving / Inference section next to adjacent LiteLLM and RouteLLM entries, with disclosed maintainer submission. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `alvinreal/awesome-opensource-ai#468` to add AI Model Gateway to the MLOps / LLMOps Monitoring, Evaluation & Observability section next to adjacent LLM gateway entries, with disclosed maintainer submission. |
+| 2026-05-30 | 2 | 0 | 0 | Added `docs/client-integrations.md` so visitors can point Codex, Claude Code, OpenClaw, generic OpenAI SDK clients, and curl smoke tests at the gateway with one focused guide. |

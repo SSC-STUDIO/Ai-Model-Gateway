@@ -26,6 +26,7 @@ This release keeps the public project surface consistent across repository metad
 - [Security and trust model](security-trust-model.md)
 - [Architecture guide](architecture.md)
 - [CLI guide](cli.md)
+- [Client integrations](client-integrations.md)
 - [Provider fallback demo](../examples/provider-fallback/)
 - [100-star campaign log](100-star-campaign.md)
 - [Maintainer discussion](https://github.com/SSC-STUDIO/Ai-Model-Gateway/discussions/25)

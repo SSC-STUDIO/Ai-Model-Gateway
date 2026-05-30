@@ -93,6 +93,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Operate provider fallback and health | [Provider fallback and health operations](docs/provider-fallback-health.md) |
 | Run a provider fallback proof | [Provider fallback demo](examples/provider-fallback/) |
 | Connect an OpenAI-compatible upstream | [OpenAI-compatible upstreams](docs/openai-compatible-upstreams.md) |
+| Point clients at the gateway | [Client integrations](docs/client-integrations.md) |
 | Run it as an operations service | [Deployment guide](docs/deployment.md) |
 | Control it from scripts or terminals | [CLI guide](docs/cli.md) |
 | Point local AI tools at the gateway | [`aigw clients`](#point-local-ai-tools-at-the-gateway) |
@@ -246,7 +247,7 @@ Local development note: if another live service already owns `127.0.0.1:18080`, 
 
 ## Point Local AI Tools At The Gateway
 
-`aigw clients` can print environment snippets or update local tool config for Codex, Claude Code, and OpenClaw:
+`aigw clients` can print environment snippets or update local tool config for Codex, Claude Code, and OpenClaw. See [client integrations](docs/client-integrations.md) for generic OpenAI SDK, curl, and local tool setup notes.
 
 ```bash
 ./dist/aigw clients print -config-dir configs
