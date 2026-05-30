@@ -63,6 +63,33 @@ providers:
 
 Use the model identifiers supported by your AIgateway.sh account. Keep provider keys in environment variables and avoid committing real keys into `configs/config.yaml`.
 
+## OpenRouter Example
+
+OpenRouter exposes an OpenAI-compatible chat completions endpoint at `https://openrouter.ai/api/v1/chat/completions`. Because AI Model Gateway appends `/v1/chat/completions`, keep the `/api` prefix and remove the final `/v1` from the provider `base_url`:
+
+```yaml
+providers:
+  - name: openrouter
+    base_url: https://openrouter.ai/api
+    api_key: "${OPENROUTER_API_KEY}"
+    provider_class: quota_limited
+    models:
+      - openrouter/auto
+      - openai/gpt-4o
+    weight: 1
+    timeout_ms: 180000
+    same_retries: 1
+    enabled: true
+```
+
+With this configuration, an inbound request for `openrouter/auto` is forwarded to:
+
+```text
+https://openrouter.ai/api/v1/chat/completions
+```
+
+Use model identifiers supported by your OpenRouter account. Keep the OpenRouter key in `OPENROUTER_API_KEY`, verify the route with `gateway-cli provider test openrouter`, and review OpenRouter's [API reference](https://openrouter.ai/docs/api-reference/overview) and [chat completions endpoint](https://openrouter.ai/docs/api-reference/chat-completion) before production use.
+
 ## Internal Proxy Or LiteLLM Example
 
 For a local or internal proxy, point `base_url` at the proxy listener:
