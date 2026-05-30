@@ -118,7 +118,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Awesome AIgateway: opened `aigateway-sh/awesome-ai-gateway#1` after adding the AIgateway.sh upstream integration guide, with self-submission disclosure and one-line entry wording.
 - Awesome LLM Tools: opened `dr-saad-la/awesome-llm-tools#9` to add AI Model Gateway to the LLM Gateway & Operations section with conservative rating, full required fields, and self-submission disclosure.
 - Awesome OSS: opened `sereneblue/awesome-oss#86` to list AI Model Gateway in Developer Tools with the required contribution link and self-submission disclosure.
-- Awesome GPT: opened `awesome-gptX/awesome-gpt#189` to list AI Model Gateway in API tools next to adjacent unified API and LLM gateway entries, with self-submission disclosure.
+- Awesome GPT: `awesome-gptX/awesome-gpt#189` was merged on 2026-05-30, listing AI Model Gateway in API tools next to adjacent unified API and LLM gateway entries.
 - Awesome ChatGPT: opened `eon01/awesome-chatgpt#104` to list AI Model Gateway in the Golang developer API section, with self-submission disclosure.
 - Humanloop Awesome ChatGPT: opened `humanloop/awesome-chatgpt#259` to list AI Model Gateway in API tools next to existing ChatGPT/Golang API entries, with self-submission disclosure.
 - Awesome OpenRouter: opened `OpenRouterTeam/awesome-openrouter#76` after adding an OpenRouter upstream example, with a valid app directory entry, logo, and self-submission disclosure.

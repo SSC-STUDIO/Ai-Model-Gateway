@@ -209,3 +209,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Added a README `See It First` section near the top with the real Admin UI overview screenshot and direct links to the 15-minute evaluation path, review evidence, and release archive install path for repository-overview visitors. |
 | 2026-05-30 | 2 | 0 | 0 | Added a top-level Docker Compose trial path to the README, deployment guide, and website homepage so self-hosted evaluators can start the runtime with fewer decisions. |
 | 2026-05-30 | 2 | 0 | 0 | Updated the 15-minute evaluation path and docs index to expose release archive, Docker Compose, and source-build trial options, and fixed copied secret placeholders to meet the documented 32-character minimum. |
+| 2026-05-30 | 2 | 0 | 0 | Verified `awesome-gptX/awesome-gpt#189` was merged, adding AI Model Gateway to a public API tools discovery list. |
