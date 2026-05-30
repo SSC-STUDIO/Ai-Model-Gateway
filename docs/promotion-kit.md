@@ -129,6 +129,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Client integrations landing page: added `site/client-integrations.html` for Codex, Claude Code, OpenClaw, OpenAI SDK, Anthropic base URL, and curl smoke-test discovery.
 - Awesome AI Coding Tools: opened `ai-for-developers/awesome-ai-coding-tools#364` to list AI Model Gateway in the AI Frameworks and SDKs section next to adjacent gateway/proxy resources, with maintainer self-submission disclosure.
 - Awesome Codex CLI: opened `RoggeOhta/awesome-codex-cli#61` to list AI Model Gateway in the Model Providers & Proxies section next to adjacent Codex provider/router resources, with maintainer self-submission disclosure.
+- Awesome Claude Code: opened `jqueryscript/awesome-claude-code#339` to list AI Model Gateway in the Infrastructure & Proxies section next to adjacent Claude Code proxy/provider resources, with maintainer self-submission disclosure.
 
 ## Core Message
 
