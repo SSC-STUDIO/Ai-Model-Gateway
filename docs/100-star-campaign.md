@@ -198,3 +198,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Opened `dr-saad-la/awesome-llm-tools#9` to add AI Model Gateway under LLM Gateway & Operations with neutral wording, a conservative rating, required fields, and disclosed maintainer submission. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `sereneblue/awesome-oss#86` to add AI Model Gateway to Developer Tools next to adjacent LLM gateway tooling, with the required contribution link and disclosed maintainer submission. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `awesome-gptX/awesome-gpt#189` to add AI Model Gateway under API tools next to adjacent unified API and LLM gateway entries, with disclosed maintainer submission. |
+| 2026-05-30 | 2 | 0 | 0 | Opened `eon01/awesome-chatgpt#104` to add AI Model Gateway under the Golang developer API section, with disclosed maintainer submission. |
