@@ -6,11 +6,12 @@ name: ai-model-gateway
 description: Self-hosted LLM operations gateway with routing, fallback, telemetry, benchmarks, diagnostics, and rollback.
 homepage: "https://ssc-studio.github.io/Ai-Model-Gateway/"
 topics:
-  - ai
   - ai-gateway
   - anthropic
   - anthropic-api
   - benchmark
+  - claude-code
+  - codex-cli
   - config-management
   - fallback
   - gateway
@@ -23,7 +24,6 @@ topics:
   - model-routing
   - observability
   - openai
-  - proxy
   - rate-limiting
   - telemetry
 visibility: public

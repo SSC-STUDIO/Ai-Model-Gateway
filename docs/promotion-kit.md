@@ -136,6 +136,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Awesome Claude Code: opened `jqueryscript/awesome-claude-code#339` to list AI Model Gateway in the Infrastructure & Proxies section next to adjacent Claude Code proxy/provider resources, with maintainer self-submission disclosure.
 - Claude Code gateway landing page: added `site/claude-code-gateway.html` for Claude Code, `ANTHROPIC_BASE_URL`, Anthropic Messages-style traffic, fallback, telemetry, and rollback-safe config discovery.
 - LangGPT Awesome Claude Code: opened `LangGPT/awesome-claude-code#81` to add AI Model Gateway to the Proxy & API Tools section in both English and Chinese READMEs, with maintainer self-submission disclosure.
+- Repository topics: added `claude-code` and `codex-cli` to the public GitHub topic set after publishing dedicated Claude Code and Codex CLI gateway pages, replacing broader `ai` and `proxy` terms to stay within the 20-topic limit.
 
 ## Core Message
 

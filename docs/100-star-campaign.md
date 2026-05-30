@@ -39,7 +39,7 @@ Avoid positioning it as:
 Before each promotion push, verify:
 
 - `README.md` starts with the self-hosted operations-gateway value proposition.
-- GitHub topics cover discoverable keywords: `llm`, `ai`, `gateway`, `openai`, `anthropic`, `observability`, `self-hosted`, `proxy`, `golang`, `benchmark`.
+- GitHub topics cover discoverable keywords: `llm`, `gateway`, `openai`, `anthropic`, `claude-code`, `codex-cli`, `observability`, `self-hosted`, `golang`, `benchmark`.
 - Releases include installable assets, checksums, and concise notes.
 - Screenshots show the actual admin UI, not abstract marketing art.
 - Open issues and PRs are triaged so visitors see an actively maintained repository.
@@ -217,3 +217,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Opened `jqueryscript/awesome-claude-code#339` to add AI Model Gateway to the Infrastructure & Proxies section next to adjacent Claude Code proxy/provider resources, with maintainer self-submission disclosure. |
 | 2026-05-30 | 2 | 0 | 0 | Added `site/claude-code-gateway.html` / `https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html` as a search and sharing landing page for Claude Code, `ANTHROPIC_BASE_URL`, Anthropic Messages-style traffic, fallback, telemetry, and rollback-safe config. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `LangGPT/awesome-claude-code#81` to add AI Model Gateway to the Proxy & API Tools section in both English and Chinese READMEs, with maintainer self-submission disclosure. |
+| 2026-05-30 | 2 | 0 | 0 | Updated GitHub repository topics to include `claude-code` and `codex-cli` after publishing dedicated Claude Code and Codex CLI gateway pages, replacing broader `ai` and `proxy` terms while staying within GitHub's 20-topic limit. |
