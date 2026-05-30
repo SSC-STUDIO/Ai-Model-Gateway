@@ -23,6 +23,12 @@ It is not trying to be another hosted model marketplace. The project is optimize
 
 Fastest trial: download the packaged runtime, verify `SHA256SUMS.txt`, then run the 15-minute path or fallback demo. If it fits your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
+## See It First
+
+![AI Model Gateway Admin overview](docs/assets/admin-overview.png)
+
+The Admin UI exposes the operational surface behind the gateway: provider health, routing state, telemetry, benchmark signals, config publishing, diagnostics, request logs, and update/rollback workflows. Start with the [15-minute evaluation path](docs/evaluate-in-15-minutes.md), review the [quality and security evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence), or use the [release archive install](docs/installation.md#install-from-a-release-archive) path if you want the shortest packaged trial.
+
 ## Who Should Use It
 
 AI Model Gateway is most useful when you are running LLM traffic for a team and need operational control rather than a hosted model marketplace:
