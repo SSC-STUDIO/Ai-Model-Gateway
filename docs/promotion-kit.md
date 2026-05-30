@@ -14,6 +14,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
 - LLM client integrations page: `https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html`
+- Claude Code gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html`
 - OpenAI Anthropic gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html`
 - LLM provider fallback gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html`
 - LLM gateway comparison page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html`
@@ -59,6 +60,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - LLM gateway comparison landing page: `site/llm-gateway-comparison.html`
 - OpenAI-compatible search landing page: `site/openai-compatible-llm-gateway.html`
 - LLM client integrations landing page: `site/client-integrations.html`
+- Claude Code gateway landing page: `site/claude-code-gateway.html`
 - OpenAI Anthropic search landing page: `site/openai-anthropic-gateway.html`
 - Provider fallback search landing page: `site/llm-provider-fallback-gateway.html`
 - Copy-ready share page: `site/share-kit.html`
@@ -130,6 +132,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Awesome AI Coding Tools: opened `ai-for-developers/awesome-ai-coding-tools#364` to list AI Model Gateway in the AI Frameworks and SDKs section next to adjacent gateway/proxy resources, with maintainer self-submission disclosure.
 - Awesome Codex CLI: opened `RoggeOhta/awesome-codex-cli#61` to list AI Model Gateway in the Model Providers & Proxies section next to adjacent Codex provider/router resources, with maintainer self-submission disclosure.
 - Awesome Claude Code: opened `jqueryscript/awesome-claude-code#339` to list AI Model Gateway in the Infrastructure & Proxies section next to adjacent Claude Code proxy/provider resources, with maintainer self-submission disclosure.
+- Claude Code gateway landing page: added `site/claude-code-gateway.html` for Claude Code, `ANTHROPIC_BASE_URL`, Anthropic Messages-style traffic, fallback, telemetry, and rollback-safe config discovery.
 
 ## Core Message
 

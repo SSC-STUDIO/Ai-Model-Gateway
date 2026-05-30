@@ -18,6 +18,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Try with Docker Compose | [Docker Compose deployment](deployment.md#docker-compose) |
 | Decide quickly whether to spend more time | [15-minute evaluation path](evaluate-in-15-minutes.md) |
 | Point local tools and SDKs at the gateway | [Client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
+| Route Claude Code traffic through the gateway | [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) |
 | Match the project to real workflows | [Use cases](use-cases.md) |
 | Decide whether self-hosting is the right path | [Self-hosted LLM gateway checklist](self-hosted-llm-gateway-checklist.md) |
 | Review CI, tests, runtime smoke, and maturity evidence | [Quality evidence](quality-evidence.md) |
@@ -29,6 +30,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Start from a Chinese self-hosted gateway page | [Chinese self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
 | Start from an OpenAI-compatible gateway search page | [OpenAI-compatible LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) |
 | Start from a client integration search page | [LLM client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
+| Start from a Claude Code gateway search page | [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html) |
 | Start from an OpenAI and Anthropic gateway search page | [OpenAI Anthropic gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) |
 | Start from a provider fallback search page | [LLM provider fallback gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) |
 | Understand config publish and rollback | [Config publish and rollback](config-publish-rollback.md) |

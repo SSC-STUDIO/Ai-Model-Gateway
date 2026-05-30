@@ -24,6 +24,7 @@ This release keeps the public project surface consistent across repository metad
 - [15-minute evaluation path](evaluate-in-15-minutes.md)
 - [Docker Compose trial path](deployment.md#docker-compose)
 - [LLM client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html)
+- [Claude Code gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/claude-code-gateway.html)
 - [Quality evidence](quality-evidence.md)
 - [Security and trust model](security-trust-model.md)
 - [Architecture guide](architecture.md)
