@@ -13,6 +13,7 @@ It is not trying to be another hosted model marketplace. The project is optimize
 | Need | Link |
 | --- | --- |
 | Try the packaged runtime first | [Release archive install](docs/installation.md#install-from-a-release-archive) |
+| Try with Docker Compose | [Docker Compose deployment](docs/deployment.md#docker-compose) |
 | Decide in one short pass | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
 | Verify fallback behavior | [Provider fallback demo](examples/provider-fallback/) |
 | Review quality and security before adoption | [Review evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) |
@@ -21,7 +22,7 @@ It is not trying to be another hosted model marketplace. The project is optimize
 | 中文评估入口 | [自托管 LLM 网关中文页](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
 | Share with a relevant community | [Share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit.html) / [中文分享包](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) |
 
-Fastest trial: download the packaged runtime, verify `SHA256SUMS.txt`, then run the 15-minute path or fallback demo. If it fits your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
+Fastest trial: download the packaged runtime, verify `SHA256SUMS.txt`, then run the 15-minute path or fallback demo. If you prefer containers, use the Docker Compose path below; CI also builds the runtime image on every main-branch push. If it fits your self-hosted LLM infrastructure needs, star the repository so more operators can find it.
 
 ## See It First
 
@@ -53,6 +54,22 @@ The fastest path is the packaged release archive. It avoids rebuilding the runti
 
 Follow the [release archive install path](docs/installation.md#install-from-a-release-archive) for checksum verification, local config setup, runtime directories, temporary local tokens, and `aigw supervise` startup.
 
+Container trial:
+
+```bash
+cp configs/config.example.yaml configs/config.yaml
+cat > deploy/secrets.env <<'EOF'
+ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum-0
+COOKIE_SIGNING_KEY=change-me-32-characters-minimum-0
+ADMIN_TOKEN=change-me-admin-token
+VIEWER_TOKEN=change-me-viewer-token
+EOF
+docker compose -f deploy/docker-compose.yaml up -d
+curl http://127.0.0.1:18081/-/health
+```
+
+See [Docker Compose deployment](docs/deployment.md#docker-compose) for logs, published ports, and provider-key setup.
+
 If you prefer to audit or modify the code before running it, build from source:
 
 ```bash
@@ -82,6 +99,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Share with Chinese developer communities | [Chinese share kit](https://ssc-studio.github.io/Ai-Model-Gateway/share-kit-zh.html) |
 | Evaluate from a Chinese landing page | [Chinese self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
 | Try the packaged runtime | [Release archive install path](docs/installation.md#install-from-a-release-archive) |
+| Try with Docker Compose | [Docker Compose deployment](docs/deployment.md#docker-compose) |
 | Build from source locally | [Installation guide](docs/installation.md#build-from-source) |
 | Decide quickly whether to spend more time | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
 | Match it to your team's workflow | [Use cases](docs/use-cases.md) |

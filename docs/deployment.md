@@ -223,6 +223,13 @@ The repository includes `deploy/docker-compose.yaml` for local container
 deployment:
 
 ```bash
+cp configs/config.example.yaml configs/config.yaml
+cat > deploy/secrets.env <<'EOF'
+ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum-0
+COOKIE_SIGNING_KEY=change-me-32-characters-minimum-0
+ADMIN_TOKEN=change-me-admin-token
+VIEWER_TOKEN=change-me-viewer-token
+EOF
 docker compose -f deploy/docker-compose.yaml up -d
 docker compose -f deploy/docker-compose.yaml logs -f
 ```
@@ -236,6 +243,18 @@ deploy/secrets.env
 
 Use `configs/docker/*.json` inside containers. Those files are adjusted for
 published ports and container paths.
+
+Add provider keys to `deploy/secrets.env` and reference them from
+`configs/config.yaml` before routing real upstream traffic. Keep
+`deploy/secrets.env` local; it is intentionally not required or committed.
+
+Check the container after startup:
+
+```bash
+docker compose -f deploy/docker-compose.yaml ps
+curl http://127.0.0.1:18080/-/health
+curl http://127.0.0.1:18081/-/health
+```
 
 ## Health Checks
 
