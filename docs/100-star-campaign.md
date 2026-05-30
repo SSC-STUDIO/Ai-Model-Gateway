@@ -202,3 +202,4 @@ I would appreciate feedback from people running self-hosted or team-internal LLM
 | 2026-05-30 | 2 | 0 | 0 | Opened `humanloop/awesome-chatgpt#259` to add AI Model Gateway under API tools next to existing ChatGPT/Golang API entries, with disclosed maintainer submission. |
 | 2026-05-30 | 2 | 0 | 0 | Added an OpenRouter example to `docs/openai-compatible-upstreams.md` before pursuing the OpenRouter app directory, documenting `base_url: https://openrouter.ai/api`, BYO `OPENROUTER_API_KEY`, route verification, and upstream API references. |
 | 2026-05-30 | 2 | 0 | 0 | Opened `OpenRouterTeam/awesome-openrouter#76` with a valid app directory entry and logo after adding the OpenRouter upstream example. |
+| 2026-05-30 | 2 | 0 | 0 | Opened `jihoo-kim/awesome-production-llm#40` to add AI Model Gateway to the LLM Serving / Inference section next to adjacent LiteLLM and RouteLLM entries, with disclosed maintainer submission. |
