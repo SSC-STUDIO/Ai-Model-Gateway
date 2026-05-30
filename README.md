@@ -81,8 +81,8 @@ go build -o ./dist/controld ./cmd/controld
 go build -o ./dist/telemetryd ./cmd/telemetryd
 cp configs/config.example.yaml configs/config.yaml
 mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
-ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum \
-COOKIE_SIGNING_KEY=change-me-32-characters-minimum \
+ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum-0 \
+COOKIE_SIGNING_KEY=change-me-32-characters-minimum-0 \
 ADMIN_TOKEN=change-me-admin-token \
 VIEWER_TOKEN=change-me-viewer-token \
 ./dist/aigw supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir ./dist

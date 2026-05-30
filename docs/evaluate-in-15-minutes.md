@@ -21,7 +21,42 @@ If you mainly want a hosted model marketplace, the largest provider catalog, or 
 
 ## 2. Start The Runtime
 
-For a source-based trial:
+Use the shortest path that matches how you normally evaluate infrastructure.
+
+### Release Archive
+
+Use this path when you want the latest packaged runtime without rebuilding:
+
+- [Install from a release archive](installation.md#install-from-a-release-archive)
+
+That path covers archive download, checksum verification, local config, runtime
+directories, temporary local tokens, manifest verification, and `aigw supervise`
+startup.
+
+### Docker Compose
+
+Use this path when you prefer a local container trial:
+
+```bash
+git clone https://github.com/SSC-STUDIO/Ai-Model-Gateway.git
+cd Ai-Model-Gateway
+cp configs/config.example.yaml configs/config.yaml
+cat > deploy/secrets.env <<'EOF'
+ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum-0
+COOKIE_SIGNING_KEY=change-me-32-characters-minimum-0
+ADMIN_TOKEN=change-me-admin-token
+VIEWER_TOKEN=change-me-viewer-token
+EOF
+docker compose -f deploy/docker-compose.yaml up -d
+curl http://127.0.0.1:18081/-/health
+```
+
+See [Docker Compose deployment](deployment.md#docker-compose) for logs,
+published ports, and provider-key setup.
+
+### Source Build
+
+Use this path when you want to inspect or change the code before running it:
 
 ```bash
 git clone https://github.com/SSC-STUDIO/Ai-Model-Gateway.git
@@ -32,8 +67,8 @@ go build -o ./dist/controld ./cmd/controld
 go build -o ./dist/telemetryd ./cmd/telemetryd
 cp configs/config.example.yaml configs/config.yaml
 mkdir -p .gateway-runtime/telemetry .gateway-runtime/gateway .gateway-runtime/control
-ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum \
-COOKIE_SIGNING_KEY=change-me-32-characters-minimum \
+ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum-0 \
+COOKIE_SIGNING_KEY=change-me-32-characters-minimum-0 \
 ADMIN_TOKEN=change-me-admin-token \
 VIEWER_TOKEN=change-me-viewer-token \
 ./dist/aigw supervise -runtime-root .gateway-runtime -config-dir configs -bin-dir ./dist
@@ -44,7 +79,7 @@ Then open:
 - Admin UI: `http://localhost:18080/admin`
 - Gateway health: `http://localhost:18080/-/health`
 
-For release archives or service deployment, use the [installation guide](installation.md) and [deployment guide](deployment.md).
+For service deployment, use the [deployment guide](deployment.md).
 
 ## 3. Verify One Differentiating Behavior
 

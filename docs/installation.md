@@ -88,8 +88,8 @@ New-Item -ItemType Directory -Force -Path `
 Set temporary local secrets before starting:
 
 ```bash
-export ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum
-export COOKIE_SIGNING_KEY=change-me-32-characters-minimum
+export ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum-0
+export COOKIE_SIGNING_KEY=change-me-32-characters-minimum-0
 export ADMIN_TOKEN=change-me-admin-token
 export VIEWER_TOKEN=change-me-viewer-token
 ```
@@ -97,8 +97,8 @@ export VIEWER_TOKEN=change-me-viewer-token
 Windows PowerShell:
 
 ```powershell
-$env:ADMIN_BOOTSTRAP_TOKEN = "change-me-32-characters-minimum"
-$env:COOKIE_SIGNING_KEY = "change-me-32-characters-minimum"
+$env:ADMIN_BOOTSTRAP_TOKEN = "change-me-32-characters-minimum-0"
+$env:COOKIE_SIGNING_KEY = "change-me-32-characters-minimum-0"
 $env:ADMIN_TOKEN = "change-me-admin-token"
 $env:VIEWER_TOKEN = "change-me-viewer-token"
 ```
@@ -161,8 +161,8 @@ Copy-Item .\configs\config.example.yaml .\configs\config.yaml
 Set local secrets for the admin session and API access. Use your own values for real deployments.
 
 ```powershell
-$env:ADMIN_BOOTSTRAP_TOKEN = "change-me-32-characters-minimum"
-$env:COOKIE_SIGNING_KEY = "change-me-32-characters-minimum"
+$env:ADMIN_BOOTSTRAP_TOKEN = "change-me-32-characters-minimum-0"
+$env:COOKIE_SIGNING_KEY = "change-me-32-characters-minimum-0"
 $env:ADMIN_TOKEN = "change-me-admin-token"
 $env:VIEWER_TOKEN = "change-me-viewer-token"
 ```
@@ -171,8 +171,8 @@ Linux/macOS:
 
 ```bash
 cp configs/config.example.yaml configs/config.yaml
-export ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum
-export COOKIE_SIGNING_KEY=change-me-32-characters-minimum
+export ADMIN_BOOTSTRAP_TOKEN=change-me-32-characters-minimum-0
+export COOKIE_SIGNING_KEY=change-me-32-characters-minimum-0
 export ADMIN_TOKEN=change-me-admin-token
 export VIEWER_TOKEN=change-me-viewer-token
 ```

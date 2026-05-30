@@ -15,6 +15,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Evaluate from a Chinese landing page | [Chinese self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html) |
 | Review installability, quality, and security in one place | [Website review evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) |
 | Try the packaged runtime without rebuilding | [Release archive install path](installation.md#install-from-a-release-archive) |
+| Try with Docker Compose | [Docker Compose deployment](deployment.md#docker-compose) |
 | Decide quickly whether to spend more time | [15-minute evaluation path](evaluate-in-15-minutes.md) |
 | Match the project to real workflows | [Use cases](use-cases.md) |
 | Decide whether self-hosting is the right path | [Self-hosted LLM gateway checklist](self-hosted-llm-gateway-checklist.md) |
@@ -38,6 +39,7 @@ AI Model Gateway is a self-hosted LLM operations gateway for teams that want loc
 | Goal | Document |
 | --- | --- |
 | Try the packaged runtime without rebuilding | [Release archive install path](installation.md#install-from-a-release-archive) |
+| Try with Docker Compose | [Docker Compose deployment](deployment.md#docker-compose) |
 | Build and start a local runtime | [Installation guide](installation.md) |
 | Verify the shortest practical trial path | [15-minute evaluation path](evaluate-in-15-minutes.md) |
 | Run a provider fallback proof | [Provider fallback demo](../examples/provider-fallback/) |

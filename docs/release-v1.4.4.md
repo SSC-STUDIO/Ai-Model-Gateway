@@ -22,6 +22,7 @@ This release keeps the public project surface consistent across repository metad
 - [Project website](https://ssc-studio.github.io/Ai-Model-Gateway/)
 - [GitHub release](https://github.com/SSC-STUDIO/Ai-Model-Gateway/releases/tag/v1.4.4)
 - [15-minute evaluation path](evaluate-in-15-minutes.md)
+- [Docker Compose trial path](deployment.md#docker-compose)
 - [Quality evidence](quality-evidence.md)
 - [Security and trust model](security-trust-model.md)
 - [Architecture guide](architecture.md)
