@@ -15,6 +15,7 @@ It is not trying to be another hosted model marketplace. The project is optimize
 | Try the packaged runtime first | [Release archive install](docs/installation.md#install-from-a-release-archive) |
 | Try with Docker Compose | [Docker Compose deployment](docs/deployment.md#docker-compose) |
 | Decide in one short pass | [15-minute evaluation path](docs/evaluate-in-15-minutes.md) |
+| Point local tools at the gateway | [Client integrations](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
 | Verify fallback behavior | [Provider fallback demo](examples/provider-fallback/) |
 | Review quality and security before adoption | [Review evidence](https://ssc-studio.github.io/Ai-Model-Gateway/#review-evidence) |
 | Compare gateway options | [LLM gateway comparison](docs/llm-gateway-comparison.md) |
@@ -111,6 +112,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 | Start from a gateway comparison search page | [LLM gateway comparison page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) |
 | Start from a self-hosted gateway search page | [Self-hosted LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) |
 | Start from an OpenAI-compatible gateway search page | [OpenAI-compatible LLM gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) |
+| Start from a client integration search page | [LLM client integrations page](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) |
 | Start from an OpenAI and Anthropic gateway search page | [OpenAI Anthropic gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) |
 | Start from a provider fallback search page | [LLM provider fallback gateway page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) |
 | Understand config publish and rollback | [Config publish and rollback](docs/config-publish-rollback.md) |
@@ -126,7 +128,7 @@ Then open `http://localhost:18080/admin` and check `http://localhost:18080/-/hea
 
 ## More Links
 
-[Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [OpenAI-Compatible Upstreams](docs/openai-compatible-upstreams.md) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison Page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
+[Self-Hosted Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html) | [OpenAI-Compatible Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html) | [Client Integrations](https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html) | [OpenAI-Compatible Upstreams](docs/openai-compatible-upstreams.md) | [OpenAI Anthropic Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html) | [Provider Fallback Gateway](https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html) | [Gateway Comparison Page](https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html) | [Quality Evidence](docs/quality-evidence.md) | [Security Model](docs/security-trust-model.md) | [Docs](docs/) | [Roadmap](docs/roadmap.md) | [Promotion Kit](docs/promotion-kit.md) | [100-Star Campaign](docs/100-star-campaign.md)
 
 ## Why This Exists
 

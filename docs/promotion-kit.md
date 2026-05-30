@@ -13,6 +13,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Chinese self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway-zh.html`
 - Self-hosted LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/self-hosted-llm-gateway.html`
 - OpenAI-compatible LLM gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-compatible-llm-gateway.html`
+- LLM client integrations page: `https://ssc-studio.github.io/Ai-Model-Gateway/client-integrations.html`
 - OpenAI Anthropic gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/openai-anthropic-gateway.html`
 - LLM provider fallback gateway page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-provider-fallback-gateway.html`
 - LLM gateway comparison page: `https://ssc-studio.github.io/Ai-Model-Gateway/llm-gateway-comparison.html`
@@ -57,6 +58,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Chinese self-hosted search landing page: `site/self-hosted-llm-gateway-zh.html`
 - LLM gateway comparison landing page: `site/llm-gateway-comparison.html`
 - OpenAI-compatible search landing page: `site/openai-compatible-llm-gateway.html`
+- LLM client integrations landing page: `site/client-integrations.html`
 - OpenAI Anthropic search landing page: `site/openai-anthropic-gateway.html`
 - Provider fallback search landing page: `site/llm-provider-fallback-gateway.html`
 - Copy-ready share page: `site/share-kit.html`
@@ -124,6 +126,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Awesome OpenRouter: opened `OpenRouterTeam/awesome-openrouter#76` after adding an OpenRouter upstream example, with a valid app directory entry, logo, and self-submission disclosure.
 - Awesome Production LLM: opened `jihoo-kim/awesome-production-llm#40` to list AI Model Gateway in the LLM Serving / Inference section next to LiteLLM and RouteLLM, with self-submission disclosure and bring-your-own-upstream scope notes.
 - Awesome Open Source AI: opened `alvinreal/awesome-opensource-ai#468` to list AI Model Gateway in the MLOps / LLMOps Monitoring, Evaluation & Observability section next to LiteLLM, Portkey Gateway, TensorZero, and Envoy AI Gateway, with self-submission disclosure.
+- Client integrations landing page: added `site/client-integrations.html` for Codex, Claude Code, OpenClaw, OpenAI SDK, Anthropic base URL, and curl smoke-test discovery.
 
 ## Core Message
 
