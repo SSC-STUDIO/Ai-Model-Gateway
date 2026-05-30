@@ -123,6 +123,7 @@ Use this document as copy-ready launch material for GitHub, English developer co
 - Humanloop Awesome ChatGPT: opened `humanloop/awesome-chatgpt#259` to list AI Model Gateway in API tools next to existing ChatGPT/Golang API entries, with self-submission disclosure.
 - Awesome OpenRouter: opened `OpenRouterTeam/awesome-openrouter#76` after adding an OpenRouter upstream example, with a valid app directory entry, logo, and self-submission disclosure.
 - Awesome Production LLM: opened `jihoo-kim/awesome-production-llm#40` to list AI Model Gateway in the LLM Serving / Inference section next to LiteLLM and RouteLLM, with self-submission disclosure and bring-your-own-upstream scope notes.
+- Awesome Open Source AI: opened `alvinreal/awesome-opensource-ai#468` to list AI Model Gateway in the MLOps / LLMOps Monitoring, Evaluation & Observability section next to LiteLLM, Portkey Gateway, TensorZero, and Envoy AI Gateway, with self-submission disclosure.
 
 ## Core Message
 
