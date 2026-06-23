@@ -28,38 +28,94 @@ type Proxy struct {
 	allowedOrigin func(r *http.Request) bool
 }
 
-// NewProxy creates a new WebSocket proxy.
+// DefaultCheckOrigin returns a CheckOrigin function that validates the Origin
+// header against a configurable allowlist. When allowedOrigins is empty, all
+// cross-origin requests are rejected. Requests with no Origin header (non-browser
+// clients) are allowed through.
+func DefaultCheckOrigin(allowedOrigins []string) func(r *http.Request) bool {
+	// Build a lowercase lookup set for fast matching.
+	allowed := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		o = strings.TrimSpace(strings.ToLower(o))
+		if o != "" {
+			allowed[o] = true
+		}
+	}
+
+	return func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			// Non-browser clients (curl, SDK) don't send Origin — allow.
+			return true
+		}
+
+		// If no origins configured, reject all cross-origin.
+		if len(allowed) == 0 {
+			return false
+		}
+
+		// Normalize: lowercase, strip trailing slash.
+		normalized := strings.ToLower(strings.TrimRight(origin, "/"))
+
+		// Exact match.
+		if allowed[normalized] {
+			return true
+		}
+
+		// Strip scheme prefix for matching (e.g. "https://example.com" → "example.com").
+		for _, prefix := range []string{"https://", "http://"} {
+			if strings.HasPrefix(normalized, prefix) {
+				host := strings.TrimPrefix(normalized, prefix)
+				// Strip port if present.
+				if idx := strings.LastIndex(host, ":"); idx > 0 {
+					host = host[:idx]
+				}
+				if allowed[host] {
+					return true
+				}
+			}
+		}
+
+		return false
+	}
+}
+
+// NewProxy creates a new WebSocket proxy that rejects all cross-origin requests
+// by default. Use NewProxyWithOrigin or SetAllowedOrigin to configure allowed origins.
 func NewProxy() *Proxy {
-	p := &Proxy{
-		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
-			CheckOrigin: func(r *http.Request) bool {
-				return true
-			},
-		},
-		dialer: websocket.Dialer{
-			HandshakeTimeout: 10 * time.Second,
-		},
-		ssrfChecker: proxy.NewSSRFChecker(),
-	}
-
-	// Apply DNS-pinning dialer to prevent DNS rebinding attacks.
-	if s, ok := p.ssrfChecker.(*proxy.SSRFChecker); ok {
-		p.dialer = s.NewSafeDialer(p.dialer)
-	}
-
-	return p
+	return NewProxyWithOrigin(nil, nil)
 }
 
 // NewProxyWithSSRFChecker creates a new WebSocket proxy with a custom SSRF checker.
 func NewProxyWithSSRFChecker(checker SSRFChecker) *Proxy {
-	p := NewProxy()
-	p.ssrfChecker = checker
+	p := NewProxyWithOrigin(checker, nil)
+	return p
+}
 
-	// Apply DNS-pinning dialer only if the checker is a real SSRFChecker.
-	// Custom/unit-test checkers may have different URL validation semantics.
-	if s, ok := checker.(*proxy.SSRFChecker); ok {
+// NewProxyWithOrigin creates a new WebSocket proxy with a custom SSRF checker
+// and an origin validation function. When fn is non-nil, it replaces the default
+// (reject-all) CheckOrigin.
+func NewProxyWithOrigin(checker SSRFChecker, fn func(*http.Request) bool) *Proxy {
+	p := &Proxy{
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			// Default: reject all cross-origin. SetAllowedOrigin or fn overrides.
+			CheckOrigin: fn,
+		},
+		dialer: websocket.Dialer{
+			HandshakeTimeout: 10 * time.Second,
+		},
+		ssrfChecker:   checker,
+		allowedOrigin: fn,
+	}
+
+	if p.ssrfChecker == nil {
+		p.ssrfChecker = proxy.NewSSRFChecker()
+	}
+
+	// Apply DNS-pinning dialer to prevent DNS rebinding attacks.
+	if s, ok := p.ssrfChecker.(*proxy.SSRFChecker); ok {
 		p.dialer = s.NewSafeDialer(p.dialer)
 	} else {
 		// Reset to non-pinned dialer for custom checkers (e.g. test mocks).
@@ -71,19 +127,8 @@ func NewProxyWithSSRFChecker(checker SSRFChecker) *Proxy {
 	return p
 }
 
-// NewProxyWithOrigin creates a new WebSocket proxy with a custom SSRF checker
-// and an origin validation function. When fn is non-nil, it replaces the default
-// permissive CheckOrigin.
-func NewProxyWithOrigin(checker SSRFChecker, fn func(*http.Request) bool) *Proxy {
-	p := NewProxyWithSSRFChecker(checker)
-	if fn != nil {
-		p.SetAllowedOrigin(fn)
-	}
-	return p
-}
-
 // SetAllowedOrigin sets the origin validation function for the WebSocket upgrader.
-// When fn is nil, CheckOrigin falls back to allowing all origins.
+// When fn is nil, CheckOrigin rejects all cross-origin requests.
 func (p *Proxy) SetAllowedOrigin(fn func(r *http.Request) bool) {
 	p.allowedOrigin = fn
 	p.upgrader.CheckOrigin = fn
