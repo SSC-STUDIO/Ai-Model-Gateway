@@ -111,6 +111,13 @@ func (r *GatewayControlRPC) Drain(req gatewaycontrol.DrainRequest, resp *gateway
 	}
 
 	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	ctx := r.daemon.runCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	// Wait for active requests to drain
 	for {
@@ -139,7 +146,15 @@ func (r *GatewayControlRPC) Drain(req gatewaycontrol.DrainRequest, resp *gateway
 			return nil
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			resp.RemainingRequests = int(r.daemon.activeReqs.Load())
+			resp.Success = false
+			resp.DrainedAt = timeNow()
+			resp.Error = fmt.Sprintf("context cancelled: %d requests still active", resp.RemainingRequests)
+			return nil
+		}
 	}
 }
 
