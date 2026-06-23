@@ -350,6 +350,7 @@ func (d *Daemon) connectTelemetry(ctx context.Context) error {
 		d.telClient = telemetry.NewClient(rpcClient, telConfig)
 		return nil
 	}
+	initialConn.Close()
 	d.telClient = telClient
 
 	return nil
@@ -688,6 +689,8 @@ func (d *Daemon) GetStatus() gatewaycontrol.GetStatusResponse {
 
 // GetPricingStatus returns the live pricing catalog status.
 func (d *Daemon) GetPricingStatus() gatewaycontrol.GetPricingStatusResponse {
+	d.snapshotMu.RLock()
+	defer d.snapshotMu.RUnlock()
 	if d.pricingCatalog == nil {
 		snapshot := pricinginfra.NewCatalog(core.PricingConfig{}).Snapshot()
 		return pricingStatusFromSnapshot(snapshot)
@@ -697,6 +700,8 @@ func (d *Daemon) GetPricingStatus() gatewaycontrol.GetPricingStatusResponse {
 
 // RefreshPricing forces a live pricing refresh.
 func (d *Daemon) RefreshPricing(ctx context.Context) gatewaycontrol.RefreshPricingResponse {
+	d.snapshotMu.Lock()
+	defer d.snapshotMu.Unlock()
 	if d.pricingCatalog == nil {
 		d.pricingCatalog = pricinginfra.NewCatalog(core.PricingConfig{})
 		if d.runCtx != nil {
