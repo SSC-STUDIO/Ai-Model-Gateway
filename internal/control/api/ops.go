@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -314,6 +315,18 @@ func updateApplyHandler(deps Deps) http.HandlerFunc {
 		if err := decodeOptionalJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
+		}
+		if req.BundleDir != "" {
+			cleaned := filepath.Clean(req.BundleDir)
+			if strings.Contains(cleaned, "..") {
+				writeError(w, http.StatusBadRequest, "bundle_dir must not contain path traversal sequences")
+				return
+			}
+			if cleaned == "." || cleaned == "" {
+				writeError(w, http.StatusBadRequest, "bundle_dir must be a valid directory path")
+				return
+			}
+			req.BundleDir = cleaned
 		}
 		status, err := deps.Updates.Apply(r.Context(), req.BundleDir, req.Download, req.DryRun, req.Force)
 		if err != nil {
