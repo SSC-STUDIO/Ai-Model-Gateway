@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -158,6 +159,14 @@ func (d *Daemon) probeProviderHealth(
 	timeout := time.Duration(healthCfg.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 2 * time.Second
+	}
+
+	// Reject health probes to non-HTTPS providers to prevent API key leakage.
+	if !strings.HasPrefix(strings.TrimSpace(provider.BaseURL), "https://") {
+		return 0, 0, fmt.Errorf(
+			"health probe refused: provider %s BaseURL must use HTTPS, got %q",
+			provider.ProviderID, provider.BaseURL,
+		)
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
