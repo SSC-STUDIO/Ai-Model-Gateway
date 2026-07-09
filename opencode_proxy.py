@@ -558,6 +558,7 @@ class H(BaseHTTPRequestHandler):
         req_model = None
         _body_json = None
         is_streaming = False
+        _usage_search_exhausted = False
         if body:
             try:
                 _body_json = json.loads(body.decode('utf-8'))
@@ -685,7 +686,7 @@ class H(BaseHTTPRequestHandler):
                             # {"usage":{...}} when stream_options.include_usage is set.
                             # Stop buffering once we've captured usage to avoid
                             # unbounded memory growth on long streaming responses.
-                            if resp_tokens is None:
+                            if resp_tokens is None and not _usage_search_exhausted:
                                 _stream_buf += chunk
                                 # Cap buffer at 256 KB to bound memory usage on
                                 # long streams where upstream never sends usage.
@@ -693,6 +694,7 @@ class H(BaseHTTPRequestHandler):
                                 # SSE data, it's not coming — stop buffering.
                                 if len(_stream_buf) > 262144:
                                     _stream_buf = b''
+                                    _usage_search_exhausted = True
                                 # Process complete SSE lines (delimited by \n)
                                 while b'\n' in _stream_buf:
                                     line, _stream_buf = _stream_buf.split(b'\n', 1)

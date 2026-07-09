@@ -42,9 +42,9 @@ compat:
         enabled: false
         models: {}
 pricing:
-    cache_path: configs\configs\configs\data\pricing-cache.json
+    cache_path: configs\\data\\pricing-cache.json
     fx:
-        cache_path: configs\configs\configs\data\pricing-fx-cache.json
+        cache_path: configs\\data\\pricing-fx-cache.json
         enabled: true
         refresh_interval_minutes: 1440
     manual_prices: []
@@ -162,7 +162,7 @@ providers:
     - anthropic_base_url: ""
       api_key: tp-c7gby7omhsrano8iewhx042mg8bfmlegeqqvrfnlodk36bdf
       base_url: https://token-plan-cn.xiaomimimo.com
-      enabled: false
+      enabled: true
       fallback_models: []
       headers: {}
       model_aliases: {}
@@ -262,4 +262,4 @@ telemetry:
     aggregation_sec: 60
     cache_ttl_sec: 5
     retention_days: 30
-    sqlite_path: configs\configs\configs\data\telemetry.db
+    sqlite_path: configs\\data\\telemetry.db
