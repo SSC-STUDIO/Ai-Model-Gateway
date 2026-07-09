@@ -1,8 +1,11 @@
 # AI Model Gateway - unified Docker Compose runtime
 #
 # Usage:
-#   docker compose -f deploy/docker-compose.yaml up -d
-#   docker compose -f deploy/docker-compose.yaml logs -f
+#   1. Copy secrets:  cp deploy/secrets.env.example deploy/secrets.env
+#   2. Edit secrets:  vim deploy/secrets.env   (fill in API keys and admin tokens)
+#   3. Start:         docker compose -f deploy/docker-compose.yaml up -d
+#   4. Check health:  docker compose -f deploy/docker-compose.yaml ps
+#   5. Tail logs:     docker compose -f deploy/docker-compose.yaml logs -f
 
 services:
   aigw:

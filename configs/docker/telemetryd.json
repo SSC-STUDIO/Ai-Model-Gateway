@@ -1,0 +1,6 @@
+{
+  "ingest_socket": ".gateway-runtime/telemetry-ingest-v2.sock",
+  "query_socket": ".gateway-runtime/telemetry-query-v2.sock",
+  "data_dir": ".gateway-runtime/telemetry-migrated",
+  "log_level": "info"
+}

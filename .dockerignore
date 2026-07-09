@@ -1,0 +1,53 @@
+# Docker build context exclusions
+# Keep the build context minimal — only ship what the Dockerfile needs.
+
+# Runtime state (mounted as volume at runtime)
+.gateway-runtime/
+
+# Windows binaries (Docker builds for Linux; binaries come from GitHub releases)
+bin/*.exe
+bin/*.exe~
+
+# Logs and temp files
+*.log
+*.stats.json
+*.err
+*.out
+logs/
+
+# Python caches and scripts
+__pycache__/
+*.pyc
+*.py
+!configs/
+
+# Config runtime copies (nested dirs from config publishing)
+configs/configs/
+configs/data/
+
+# Test artifacts
+codex-test/out/
+
+# OS junk
+Thumbs.db
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI prompt/guide docs (not needed in container)
+ai/
+
+# Deploy scripts (not needed inside container)
+deploy/*.service
+deploy/*.sh
+
+# PowerShell launchers (Windows only)
+*.ps1
