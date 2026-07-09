@@ -77,8 +77,11 @@ BLACKLIST_HEADERS = frozenset({
     'host', 'content-length', 'connection', 'accept-encoding',
 })
 
-# Streaming detection — these response content types are SSE / streaming
-_STREAM_CT_PREFIXES = ('text/event-stream', 'text/plain',)
+# Streaming detection — only text/event-stream is truly streaming by content-type.
+# text/plain is NOT included: non-streaming endpoints (error messages, plain text
+# responses) commonly use it. When a provider sends SSE over text/plain and the
+# client requested stream=true, the is_streaming flag covers that case.
+_STREAM_CT_PREFIXES = ('text/event-stream',)
 
 # ---------------------------------------------------------------------------
 # Accumulated proxy statistics (thread-safe)
