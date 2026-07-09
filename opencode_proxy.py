@@ -524,6 +524,7 @@ class H(BaseHTTPRequestHandler):
                         self.wfile.write(f'{len(chunk):X}\r\n'.encode())
                         self.wfile.write(chunk)
                         self.wfile.write(b'\r\n')
+                        self.wfile.flush()  # ensure immediate delivery for real-time SSE
                         bytes_sent += len(chunk)
                 # Final chunk
                 self.wfile.write(b'0\r\n\r\n')
