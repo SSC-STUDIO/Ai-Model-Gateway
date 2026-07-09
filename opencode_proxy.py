@@ -28,6 +28,8 @@ CORS_ORIGIN = os.environ.get(
 # Upstream request timeouts (seconds): connect timeout and read timeout.
 CONNECT_TIMEOUT = int(os.environ.get('OPENCODE_PROXY_CONNECT_TIMEOUT', '10'))
 READ_TIMEOUT = int(os.environ.get('OPENCODE_PROXY_READ_TIMEOUT', '300'))
+# Interval (seconds) for periodic stats auto-save to prevent data loss on crash.
+STATS_SAVE_INTERVAL = int(os.environ.get('OPENCODE_PROXY_STATS_SAVE_INTERVAL', '60'))
 
 _LEVEL_MAP = {
     'DEBUG': logging.DEBUG,
@@ -144,6 +146,21 @@ def _save_stats():
         STATS_FILE.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), 'utf-8')
     except Exception as exc:
         logger.warning('could not save stats to %s: %s', STATS_FILE.name, exc)
+
+# ---------------------------------------------------------------------------
+# Periodic auto-save: background thread that persists stats at a configurable
+# interval so cumulative totals survive a hard crash (SIGKILL, OOM, power loss)
+# where the graceful shutdown handler never runs.
+# ---------------------------------------------------------------------------
+_stats_saver_stop = threading.Event()
+
+
+def _stats_auto_save_loop():
+    """Daemon thread: wake every STATS_SAVE_INTERVAL seconds and persist stats."""
+    while not _stats_saver_stop.wait(STATS_SAVE_INTERVAL):
+        _save_stats()
+    # Final save on thread exit
+    _save_stats()
 
 # ---------------------------------------------------------------------------
 # Active request tracking for graceful drain on shutdown
@@ -509,6 +526,8 @@ def _shutdown(sig, frame):
                      sig, uptime, _stats['total_requests'], active)
         print(f'shutting down (signal={sig}, uptime={uptime}s, '
               f'requests={_stats["total_requests"]}, active={active})', flush=True)
+        # Stop periodic auto-save first so it doesn't race with the final save
+        _stats_saver_stop.set()
         # Stop accepting new connections
         _server.shutdown()
         # Drain in-flight requests: wait up to 30s for active threads to finish
@@ -546,6 +565,11 @@ if __name__ == '__main__':
     _start_time = time.monotonic()
     _stats['started_at'] = time.time()
     _load_stats()
+    # Start periodic stats auto-save daemon (protects against crash data loss)
+    if STATS_SAVE_INTERVAL > 0:
+        _saver = threading.Thread(target=_stats_auto_save_loop, daemon=True)
+        _saver.start()
+        logger.info('stats auto-save enabled (interval=%ds)', STATS_SAVE_INTERVAL)
     logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB, cors=%s)',
                 port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024), CORS_ORIGIN)
     print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN} '
