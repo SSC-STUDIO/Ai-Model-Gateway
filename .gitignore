@@ -1,0 +1,21 @@
+# Runtime data
+.gateway-runtime/
+logs/
+*.log
+*.err
+*.out
+
+# Binaries
+bin/
+
+# Runtime state
+configs/data/
+configs/configs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS files
+Thumbs.db
+.DS_Store
