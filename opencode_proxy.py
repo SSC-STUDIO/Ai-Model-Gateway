@@ -30,6 +30,13 @@ CONNECT_TIMEOUT = int(os.environ.get('OPENCODE_PROXY_CONNECT_TIMEOUT', '10'))
 READ_TIMEOUT = int(os.environ.get('OPENCODE_PROXY_READ_TIMEOUT', '300'))
 # Interval (seconds) for periodic stats auto-save to prevent data loss on crash.
 STATS_SAVE_INTERVAL = int(os.environ.get('OPENCODE_PROXY_STATS_SAVE_INTERVAL', '60'))
+# Upstream retry: max attempts (including the initial one).
+# When > 1, transient failures (429, 502–504) are retried with exponential backoff.
+UPSTREAM_MAX_RETRIES = int(os.environ.get('OPENCODE_PROXY_UPSTREAM_MAX_RETRIES', '2'))
+# Exponential backoff base (seconds): actual wait = backoff_base * 2^attempt.
+UPSTREAM_RETRY_BACKOFF_BASE = float(
+    os.environ.get('OPENCODE_PROXY_UPSTREAM_RETRY_BACKOFF', '1.0')
+)
 
 _LEVEL_MAP = {
     'DEBUG': logging.DEBUG,
@@ -86,6 +93,8 @@ HEALTH_PATHS = frozenset({'/health', '/healthz', '/-/health'})
 BLACKLIST_HEADERS = frozenset({
     'host', 'content-length', 'connection', 'accept-encoding',
 })
+# HTTP status codes considered retryable for transient upstream failures
+_RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 # Streaming detection — only text/event-stream is truly streaming by content-type.
 # text/plain is NOT included: non-streaming endpoints (error messages, plain text
@@ -108,6 +117,7 @@ _stats = {
     'total_errors': 0,
     'total_bytes_sent': 0,
     'total_latency_ms': 0,
+    'total_upstream_retries': 0,
     'status_codes': {},   # {200: N, 502: N, ...}
     'errors': {},         # {'timeout': N, 'connection_error': N, ...}
 }
@@ -125,6 +135,7 @@ def _load_stats():
             _stats['total_errors'] += saved.get('total_errors', 0)
             _stats['total_bytes_sent'] += saved.get('total_bytes_sent', 0)
             _stats['total_latency_ms'] += saved.get('total_latency_ms', 0)
+            _stats['total_upstream_retries'] += saved.get('total_upstream_retries', 0)
             for sc, n in saved.get('status_codes', {}).items():
                 _stats['status_codes'][sc] = _stats['status_codes'].get(sc, 0) + n
             for err, n in saved.get('errors', {}).items():
@@ -200,11 +211,12 @@ class GracefulHTTPServer(ThreadingHTTPServer):
                 _active_requests.discard(t)
 
 
-def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None):
+def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None, retries=0):
     with _stats_lock:
         _stats['total_requests'] += 1
         _stats['total_bytes_sent'] += bytes_sent
         _stats['total_latency_ms'] += elapsed_ms
+        _stats['total_upstream_retries'] += retries
         sc = str(status_code)
         _stats['status_codes'][sc] = _stats['status_codes'].get(sc, 0) + 1
         if error_type:
@@ -252,6 +264,7 @@ class H(BaseHTTPRequestHandler):
                 'total_requests': total,
                 'total_errors': _stats['total_errors'],
                 'total_bytes_sent': _stats['total_bytes_sent'],
+                'total_upstream_retries': _stats['total_upstream_retries'],
                 'avg_latency_ms': avg_lat,
                 'status_codes': _stats['status_codes'],
                 'errors': _stats['errors'],
@@ -332,6 +345,7 @@ class H(BaseHTTPRequestHandler):
         t0 = time.monotonic()
         elapsed = 0
         error_type = None
+        retries = 0
 
         try:
             if body:
@@ -344,13 +358,40 @@ class H(BaseHTTPRequestHandler):
                 except Exception:
                     rec['request_body'] = body[:5000].decode('utf-8', 'replace')
 
-            resp = _upstream_session.request(
-                self.command, target,
-                headers=headers, data=body,
-                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT), stream=True,
-            )
+            # ---- Upstream request with retry for transient failures ----
+            resp = None
+            for _attempt in range(UPSTREAM_MAX_RETRIES):
+                resp = _upstream_session.request(
+                    self.command, target,
+                    headers=headers, data=body,
+                    timeout=(CONNECT_TIMEOUT, READ_TIMEOUT), stream=True,
+                )
+                # Retry on transient upstream errors (429, 500–504)
+                if (resp.status_code in _RETRYABLE_STATUSES
+                        and _attempt < UPSTREAM_MAX_RETRIES - 1):
+                    retries += 1
+                    # Respect Retry-After header for 429 rate-limiting
+                    retry_after = resp.headers.get('Retry-After')
+                    if retry_after:
+                        try:
+                            wait = min(float(retry_after), 30)
+                        except ValueError:
+                            wait = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                    else:
+                        wait = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                    logger.info(
+                        '[%s] upstream retry %d/%d after %.1fs (status=%d, path=%s)',
+                        request_id, retries, UPSTREAM_MAX_RETRIES - 1, wait,
+                        resp.status_code, self.path,
+                    )
+                    resp.close()
+                    time.sleep(wait)
+                    continue
+                break  # Non-retryable status or last attempt
             rec['status_code'] = resp.status_code
             rec['response_headers'] = dict(resp.headers.items())
+            if retries:
+                rec['retries'] = retries
 
             # Determine if upstream is actually streaming
             ct = resp.headers.get('content-type', '')
@@ -477,20 +518,22 @@ class H(BaseHTTPRequestHandler):
         finally:
             elapsed_ms = rec.get('elapsed_ms', round((time.monotonic() - t0) * 1000))
             stream_tag = ' [streaming]' if upstream_streaming else ''
+            retry_tag = f' [retried {retries}x]' if retries else ''
             # Structured log line (human-readable in rotated log)
             log_line = (
                 f"[{request_id}] "
                 f"{self.command} {self.path} -> "
                 f"{rec.get('status_code', 'ERR')} "
                 f"{bytes_sent}B {elapsed_ms}ms"
-                f"{stream_tag}"
+                f"{retry_tag}{stream_tag}"
                 f" ({rec.get('proxy_error', 'ok')})"
             )
             if rec.get('proxy_error'):
                 logger.warning(log_line)
             else:
                 logger.info(log_line)
-            _record_stats(rec.get('status_code', 0), bytes_sent, elapsed_ms, error_type)
+            _record_stats(rec.get('status_code', 0), bytes_sent, elapsed_ms,
+                          error_type, retries)
 
     # ---- Dispatchers ----
     def do_GET(self):     self._dispatch()
@@ -570,9 +613,11 @@ if __name__ == '__main__':
         _saver = threading.Thread(target=_stats_auto_save_loop, daemon=True)
         _saver.start()
         logger.info('stats auto-save enabled (interval=%ds)', STATS_SAVE_INTERVAL)
-    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB, cors=%s)',
-                port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024), CORS_ORIGIN)
+    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB, cors=%s, retry=%d)',
+                port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024), CORS_ORIGIN,
+                UPSTREAM_MAX_RETRIES)
     print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN} '
-          f'(max_body={MAX_BODY_BYTES // (1024 * 1024)}MB, cors={CORS_ORIGIN})', flush=True)
+          f'(max_body={MAX_BODY_BYTES // (1024 * 1024)}MB, cors={CORS_ORIGIN}, '
+          f'retry={UPSTREAM_MAX_RETRIES})', flush=True)
     _server = GracefulHTTPServer(('127.0.0.1', port), H)
     _server.serve_forever()
