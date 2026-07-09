@@ -115,7 +115,7 @@ providers:
     - anthropic_base_url: ""
       api_key: sk-Z5FYBb0BM1AyhEUIc0ZoM9bmkUKNHEd5G2fn5fZ6wT5p5TgFWBMIlLUDc15CRXgh
       base_url: https://opencode.ai/zen/go
-      enabled: true
+      enabled: false
       fallback_models: []
       headers: {}
       model_aliases:
@@ -141,9 +141,9 @@ providers:
       fallback_models: []
       headers: {}
       model_aliases:
-        mimo-v2.5: glm-5.2
-        deepseek-v4-pro: glm-5.2
         deepseek-v4-flash: glm-5.2
+        deepseek-v4-pro: glm-5.2
+        mimo-v2.5: glm-5.2
       models:
         - minimax-m3
         - deepseek-v4-flash
@@ -198,7 +198,16 @@ routing:
         interval_sec: 30
         path: /v1/models
         timeout_ms: 5000
-    intercepts: []
+    intercepts:
+        - action: retry
+          enabled: true
+          message_keywords:
+            - no provider available
+          name: ""
+          paths: []
+          status_code_min: null
+          status_codes:
+            - 502
     key_rotation:
         enabled: false
     max_retries: 3
@@ -211,7 +220,7 @@ routing:
         requests_per_second: 0
     retry:
         all_errors: false
-        infinite_on_error: false
+        infinite_on_error: true
         message_keywords:
             - too many requests
             - rate limit

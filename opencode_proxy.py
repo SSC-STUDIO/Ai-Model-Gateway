@@ -522,6 +522,33 @@ class H(BaseHTTPRequestHandler):
             headers['X-Forwarded-User-Agent'] = ua
         # Tell upstream the original protocol so it can build correct redirect URLs.
         headers['X-Forwarded-Proto'] = 'http'
+
+        # Parse the request body once to: (1) inject stream_options.include_usage
+        # for streaming requests so upstream sends token usage in the final SSE
+        # chunk (OpenAI-compatible convention), (2) extract the model name for
+        # per-model statistics, and (3) detect streaming.  Without usage injection
+        # streaming responses carry zero token usage and stats undercount.
+        _injected_usage_opt = False
+        req_model = None
+        _body_json = None
+        is_streaming = False
+        if body:
+            try:
+                _body_json = json.loads(body.decode('utf-8'))
+            except Exception:
+                _body_json = None
+            if isinstance(_body_json, dict):
+                req_model = _body_json.get('model')
+                is_streaming = bool(_body_json.get('stream'))
+                if is_streaming:
+                    so = _body_json.get('stream_options')
+                    if not isinstance(so, dict) or not so.get('include_usage'):
+                        _body_json.setdefault('stream_options', {})['include_usage'] = True
+                        body = json.dumps(_body_json, ensure_ascii=False).encode('utf-8')
+                        headers['Content-Length'] = str(len(body))
+                        _injected_usage_opt = True
+                        logger.info('[%s] injected stream_options.include_usage for model=%s',
+                                    request_id, req_model)
         rec = {
             'request_id': request_id,
             'ts': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -534,29 +561,21 @@ class H(BaseHTTPRequestHandler):
             },
         }
         bytes_sent = 0
-        is_streaming = False
         upstream_streaming = False
         _headers_sent = False
         t0 = time.monotonic()
         elapsed = 0
         error_type = None
         retries = 0
-        req_model = None
         resp_tokens = None  # {prompt_tokens, completion_tokens, total_tokens}
 
         try:
-            if body:
-                try:
-                    rec['request_json'] = json.loads(body.decode('utf-8'))
-                    # Detect streaming request from body
-                    req_json = rec['request_json']
-                    if isinstance(req_json, dict) and req_json.get('stream'):
-                        is_streaming = True
-                    # Extract model name for per-model statistics
-                    if isinstance(req_json, dict):
-                        req_model = req_json.get('model')
-                except Exception:
-                    rec['request_body'] = body[:5000].decode('utf-8', 'replace')
+            # Body was already parsed above for stream_options injection;
+            # populate rec for logging without re-parsing.
+            if _body_json is not None:
+                rec['request_json'] = _body_json
+            elif body:
+                rec['request_body'] = body[:5000].decode('utf-8', 'replace')
 
             # ---- Upstream request with retry for transient failures ----
             resp = None
@@ -626,6 +645,7 @@ class H(BaseHTTPRequestHandler):
                 # Forward chunks as they arrive, catching client disconnects
                 # so we can close the upstream connection immediately instead
                 # of letting it hang open until timeout.
+                _stream_buf = b''
                 try:
                     for chunk in resp.iter_content(chunk_size=8192):
                         if chunk:
@@ -634,6 +654,30 @@ class H(BaseHTTPRequestHandler):
                             self.wfile.write(b'\r\n')
                             self.wfile.flush()  # ensure immediate delivery for real-time SSE
                             bytes_sent += len(chunk)
+                            # Accumulate to parse the final usage SSE chunk.
+                            # OpenAI convention: the last data: line carries
+                            # {"usage":{...}} when stream_options.include_usage is set.
+                            # Stop buffering once we've captured usage to avoid
+                            # unbounded memory growth on long streaming responses.
+                            if resp_tokens is None:
+                                _stream_buf += chunk
+                                # Process complete SSE lines (delimited by \n)
+                                while b'\n' in _stream_buf:
+                                    line, _stream_buf = _stream_buf.split(b'\n', 1)
+                                    line = line.strip()
+                                    if line.startswith(b'data: '):
+                                        payload = line[6:]
+                                        if payload == b'[DONE]':
+                                            continue
+                                        try:
+                                            sj = json.loads(payload)
+                                            if isinstance(sj, dict) and 'usage' in sj:
+                                                resp_tokens = sj['usage']
+                                                _stream_buf = b''  # free memory
+                                                if not req_model:
+                                                    req_model = sj.get('model')
+                                        except Exception:
+                                            pass
                 except (BrokenPipeError, ConnectionResetError):
                     error_type = 'client_disconnect'
                     logger.info(
