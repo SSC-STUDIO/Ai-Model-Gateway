@@ -116,6 +116,7 @@ METRICS_PATHS = frozenset({'/metrics', '/-/metrics', '/prometheus'})
 MODELS_PATHS = frozenset({'/v1/models', '/-/models'})
 BLACKLIST_HEADERS = frozenset({
     'host', 'content-length', 'connection', 'accept-encoding',
+    'transfer-encoding',
 })
 # HTTP status codes considered retryable for transient upstream failures
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
@@ -726,11 +727,130 @@ class H(BaseHTTPRequestHandler):
         self.send_header('Content-Length', '0')
         self.end_headers()
 
+    # ---- Read chunked request body (Transfer-Encoding: chunked) ----
+    def _read_chunked_body(self):
+        """Read an HTTP/1.1 chunked request body from self.rfile.
+
+        Returns the decoded body as bytes, or None if the chunked stream
+        is malformed (in which case a 400 response has already been sent).
+        """
+        chunks = []
+        total = 0
+        try:
+            while True:
+                line = self.rfile.readline()
+                if not line:
+                    break
+                # Chunk size line: hex digits, optionally followed by ;ext
+                line = line.strip()
+                if not line:
+                    continue
+                semi = line.find(b';')
+                size_str = line[:semi] if semi >= 0 else line
+                try:
+                    chunk_size = int(size_str, 16)
+                except ValueError:
+                    logger.warning('malformed chunk size: %r', line)
+                    out = json.dumps({
+                        'error': 'bad_request',
+                        'detail': 'malformed chunked transfer encoding',
+                    }).encode('utf-8')
+                    self.send_response(400)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(out)))
+                    self._send_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(out)
+                    return None
+                if chunk_size == 0:
+                    # Last chunk: read trailing CRLF (or trailer headers)
+                    while True:
+                        trailer = self.rfile.readline()
+                        if trailer in (b'\r\n', b'\n', b''):
+                            break
+                    break
+                # Read chunk data + trailing CRLF
+                chunk_data = self.rfile.read(chunk_size)
+                if len(chunk_data) < chunk_size:
+                    logger.warning('chunked body truncated at chunk size %d', chunk_size)
+                    out = json.dumps({
+                        'error': 'bad_request',
+                        'detail': 'chunked body truncated',
+                    }).encode('utf-8')
+                    self.send_response(400)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(out)))
+                    self._send_cors_headers()
+                    self.end_headers()
+                    self.wfile.write(out)
+                    return None
+                self.rfile.read(2)  # consume trailing \r\n
+                chunks.append(chunk_data)
+                total += chunk_size
+            return b''.join(chunks)
+        except Exception as exc:
+            logger.warning('error reading chunked body: %s', exc)
+            out = json.dumps({
+                'error': 'bad_request',
+                'detail': 'error reading chunked request body',
+            }).encode('utf-8')
+            try:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(out)
+            except Exception:
+                pass
+            return None
+
     # ---- Actual proxy logic ----
     def _proxy(self):
         request_id = uuid.uuid4().hex[:12]
         client_ip = self.client_address[0] if self.client_address else None
-        n = int(self.headers.get('content-length') or 0)
+
+        # Parse Content-Length defensively: a malformed or negative value
+        # must produce a clean 400 Bad Request, not a 502 from the generic
+        # exception handler.  Clients sending "abc", "-1", or "0x10" would
+        # otherwise crash int() → ValueError → 502 "proxy_error".
+        _raw_cl = self.headers.get('content-length')
+        n = 0
+        if _raw_cl:
+            try:
+                n = int(_raw_cl.strip())
+            except ValueError:
+                logger.warning('[%s] malformed Content-Length: %r', request_id, _raw_cl)
+                out = json.dumps({
+                    'error': 'bad_request',
+                    'detail': 'Content-Length header is not a valid integer',
+                    'request_id': request_id,
+                }).encode('utf-8')
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self.send_header('X-Request-Id', request_id)
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(out)
+                _record_stats(400, 0, 0, 'bad_content_length')
+                return
+            if n < 0:
+                logger.warning('[%s] negative Content-Length: %d', request_id, n)
+                out = json.dumps({
+                    'error': 'bad_request',
+                    'detail': 'Content-Length must be non-negative',
+                    'request_id': request_id,
+                }).encode('utf-8')
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self.send_header('X-Request-Id', request_id)
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(out)
+                _record_stats(400, 0, 0, 'bad_content_length')
+                return
 
         # Per-IP concurrency throttle: protect the proxy from a single
         # client monopolising the connection pool.
@@ -779,7 +899,45 @@ class H(BaseHTTPRequestHandler):
             _record_stats(413, 0, 0, 'request_too_large')
             return
 
-        body = self.rfile.read(n) if n else b''
+        # Read the request body.  Two cases:
+        # 1. Content-Length present (n > 0): straightforward read.
+        # 2. Transfer-Encoding: chunked (no Content-Length): the client
+        #    sends a chunked stream.  http.server's BaseHTTPRequestHandler
+        #    does NOT auto-decode chunked request bodies, so we must read
+        #    chunk-by-chunk ourselves.  Without this, clients using chunked
+        #    encoding (curl -T, some HTTP/2 → HTTP/1.1 proxies) would have
+        #    their body silently dropped (n=0 → body=b'').
+        _te = (self.headers.get('Transfer-Encoding') or '').lower()
+        if n > 0:
+            body = self.rfile.read(n)
+        elif 'chunked' in _te:
+            body = self._read_chunked_body()
+            if body is None:
+                # Malformed chunked encoding — _read_chunked_body already
+                # sent a 400 response and logged the error.
+                _release_ip()
+                _record_stats(400, 0, 0, 'bad_chunked_encoding')
+                return
+            # Apply the oversized check to chunked bodies too
+            if len(body) > MAX_BODY_BYTES:
+                logger.warning('[%s] chunked body too large: %d bytes (limit %d)',
+                               request_id, len(body), MAX_BODY_BYTES)
+                out = json.dumps({
+                    'error': 'request_too_large',
+                    'detail': f'Max body size is {MAX_BODY_BYTES} bytes',
+                }).encode('utf-8')
+                self.send_response(413)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self.send_header('X-Request-Id', request_id)
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(out)
+                _record_stats(413, 0, 0, 'request_too_large')
+                _release_ip()
+                return
+        else:
+            body = b''
         target = TARGET_ORIGIN + self.path
 
         # Build forwarded headers: strip hop-by-hop, inject request id for tracing
@@ -787,6 +945,13 @@ class H(BaseHTTPRequestHandler):
             k: v for k, v in self.headers.items()
             if k.lower() not in BLACKLIST_HEADERS
         }
+        # When the client used Transfer-Encoding: chunked and we de-chunked
+        # the body, strip the hop-by-hop header and set the real Content-Length
+        # so the upstream sees a well-formed Content-Length-delimited request.
+        if 'chunked' in _te:
+            headers.pop('Transfer-Encoding', None)
+            headers.pop('transfer-encoding', None)
+            headers['Content-Length'] = str(len(body))
         headers['X-Request-Id'] = request_id
         # Forward the real client IP so upstream can debug, rate-limit, and audit
         # actual clients rather than seeing only the proxy's loopback address.
