@@ -44,6 +44,14 @@ UPSTREAM_MAX_RETRIES = int(os.environ.get('OPENCODE_PROXY_UPSTREAM_MAX_RETRIES',
 UPSTREAM_RETRY_BACKOFF_BASE = float(
     os.environ.get('OPENCODE_PROXY_UPSTREAM_RETRY_BACKOFF', '1.0')
 )
+# Per-IP concurrent request limit.  When a single client IP exceeds this many
+# simultaneous in-flight requests, additional requests get 429 Too Many Requests
+# with a Retry-After header.  This prevents a single client (buggy or malicious)
+# from monopolising the proxy's connection pool and starving other clients.
+# 0 = unlimited (disabled).
+MAX_CONCURRENT_PER_IP = int(os.environ.get('OPENCODE_PROXY_MAX_CONCURRENT_PER_IP', '0'))
+# When a client is throttled, how many seconds to suggest they wait.
+THROTTLE_RETRY_AFTER_SEC = int(os.environ.get('OPENCODE_PROXY_THROTTLE_RETRY_AFTER', '5'))
 
 _LEVEL_MAP = {
     'DEBUG': logging.DEBUG,
@@ -236,6 +244,40 @@ def _stats_auto_save_loop():
 _active_requests = set()
 _active_requests_lock = threading.Lock()
 
+# ---------------------------------------------------------------------------
+# Per-IP concurrent request tracking (DoS protection)
+# ---------------------------------------------------------------------------
+_ip_concurrent = {}          # {ip: count}
+_ip_concurrent_lock = threading.Lock()
+_ip_throttle_count = 0       # total throttle events (for stats)
+
+
+def _ip_request_start(client_ip):
+    """Register a new in-flight request from client_ip.
+    Returns True if allowed, False if per-IP limit exceeded."""
+    global _ip_throttle_count
+    if not client_ip or MAX_CONCURRENT_PER_IP <= 0:
+        return True
+    with _ip_concurrent_lock:
+        count = _ip_concurrent.get(client_ip, 0) + 1
+        if count > MAX_CONCURRENT_PER_IP:
+            _ip_throttle_count += 1
+            return False
+        _ip_concurrent[client_ip] = count
+        return True
+
+
+def _ip_request_end(client_ip):
+    """Deregister a completed request from client_ip."""
+    if not client_ip or MAX_CONCURRENT_PER_IP <= 0:
+        return
+    with _ip_concurrent_lock:
+        count = _ip_concurrent.get(client_ip, 1) - 1
+        if count <= 0:
+            _ip_concurrent.pop(client_ip, None)
+        else:
+            _ip_concurrent[client_ip] = count
+
 
 class GracefulHTTPServer(ThreadingHTTPServer):
     """ThreadingHTTPServer that tracks in-flight request threads so the
@@ -342,12 +384,18 @@ class H(BaseHTTPRequestHandler):
             errors = dict(_stats['errors'])
         with _active_requests_lock:
             active = len(_active_requests)
+        with _ip_concurrent_lock:
+            ip_throttle_total = _ip_throttle_count
+            ip_unique = len(_ip_concurrent)
         body = json.dumps({
             'status': 'ok',
             'proxy': 'opencode',
             'target': TARGET_ORIGIN,
             'uptime_seconds': uptime,
             'active_requests': active,
+            'ip_concurrent_limit': MAX_CONCURRENT_PER_IP,
+            'ip_throttled_total': ip_throttle_total,
+            'ip_unique_active': ip_unique,
             'stats': {
                 'total_requests': total,
                 'total_errors': total_errors,
@@ -446,6 +494,13 @@ class H(BaseHTTPRequestHandler):
         with _active_requests_lock:
             active = len(_active_requests)
         snapshot['active_requests'] = active
+        with _ip_concurrent_lock:
+            snapshot['ip_concurrent_limit'] = MAX_CONCURRENT_PER_IP
+            snapshot['ip_throttled_total'] = _ip_throttle_count
+            snapshot['ip_unique_active'] = len(_ip_concurrent)
+            # Include per-IP breakdown (top 20 by concurrency) for debugging
+            _ip_sorted = sorted(_ip_concurrent.items(), key=lambda x: -x[1])[:20]
+            snapshot['ip_concurrent_detail'] = {ip: cnt for ip, cnt in _ip_sorted}
         body = json.dumps({
             'status': 'ok',
             'proxy': 'opencode',
@@ -485,6 +540,11 @@ class H(BaseHTTPRequestHandler):
         with _active_requests_lock:
             active = len(_active_requests)
         uptime = round(time.time() - started_at)
+        # Snapshot per-IP concurrent data for the throttle gauge
+        with _ip_concurrent_lock:
+            ip_throttle_total = _ip_throttle_count
+            ip_active = sum(_ip_concurrent.values())
+            ip_unique = len(_ip_concurrent)
         lines = [
             '# HELP opencode_proxy_uptime_seconds Time since proxy start',
             '# TYPE opencode_proxy_uptime_seconds gauge',
@@ -492,6 +552,15 @@ class H(BaseHTTPRequestHandler):
             '# HELP opencode_proxy_active_requests Currently in-flight requests',
             '# TYPE opencode_proxy_active_requests gauge',
             f'opencode_proxy_active_requests {active}',
+            '# HELP opencode_proxy_ip_throttled_total Total requests rejected due to per-IP concurrency limit',
+            '# TYPE opencode_proxy_ip_throttled_total counter',
+            f'opencode_proxy_ip_throttled_total {ip_throttle_total}',
+            '# HELP opencode_proxy_ip_active_concurrent Currently in-flight requests grouped by client IP',
+            '# TYPE opencode_proxy_ip_active_concurrent gauge',
+            f'opencode_proxy_ip_active_concurrent {ip_active}',
+            '# HELP opencode_proxy_ip_unique_active Number of unique client IPs with active requests',
+            '# TYPE opencode_proxy_ip_unique_active gauge',
+            f'opencode_proxy_ip_unique_active {ip_unique}',
             '# HELP opencode_proxy_requests_total Total proxied requests',
             '# TYPE opencode_proxy_requests_total counter',
             f'opencode_proxy_requests_total {total_req}',
@@ -618,7 +687,37 @@ class H(BaseHTTPRequestHandler):
     # ---- Actual proxy logic ----
     def _proxy(self):
         request_id = uuid.uuid4().hex[:12]
+        client_ip = self.client_address[0] if self.client_address else None
         n = int(self.headers.get('content-length') or 0)
+
+        # Per-IP concurrency throttle: protect the proxy from a single
+        # client monopolising the connection pool.
+        if not _ip_request_start(client_ip):
+            logger.warning('[%s] per-IP throttle: %s exceeded %d concurrent',
+                           request_id, client_ip, MAX_CONCURRENT_PER_IP)
+            out = json.dumps({
+                'error': 'too_many_concurrent_requests',
+                'detail': f'Your IP has {MAX_CONCURRENT_PER_IP} concurrent requests in flight. '
+                          f'Please retry after {THROTTLE_RETRY_AFTER_SEC}s.',
+                'request_id': request_id,
+            }).encode('utf-8')
+            self.send_response(429)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(out)))
+            self.send_header('Retry-After', str(THROTTLE_RETRY_AFTER_SEC))
+            self.send_header('X-Request-Id', request_id)
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(out)
+            _record_stats(429, 0, 0, 'ip_throttled')
+            return
+
+        _ip_done = False
+        def _release_ip():
+            nonlocal _ip_done
+            if not _ip_done:
+                _ip_request_end(client_ip)
+                _ip_done = True
 
         # Reject oversized requests early
         if n > MAX_BODY_BYTES:
@@ -997,6 +1096,8 @@ class H(BaseHTTPRequestHandler):
                     _resp.close()
                 except Exception:
                     pass
+            # Release the per-IP concurrency slot.
+            _release_ip()
             elapsed_ms = rec.get('elapsed_ms', round((time.monotonic() - t0) * 1000))
             stream_tag = ' [streaming]' if upstream_streaming else ''
             retry_tag = f' [retried {retries}x]' if retries else ''
@@ -1109,11 +1210,11 @@ if __name__ == '__main__':
         _saver = threading.Thread(target=_stats_auto_save_loop, daemon=True)
         _saver.start()
         logger.info('stats auto-save enabled (interval=%ds)', STATS_SAVE_INTERVAL)
-    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB, cors=%s, retry=%d)',
+    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB, cors=%s, retry=%d, ip_limit=%d)',
                 port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024), CORS_ORIGIN,
-                UPSTREAM_MAX_RETRIES)
+                UPSTREAM_MAX_RETRIES, MAX_CONCURRENT_PER_IP)
     print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN} '
           f'(max_body={MAX_BODY_BYTES // (1024 * 1024)}MB, cors={CORS_ORIGIN}, '
-          f'retry={UPSTREAM_MAX_RETRIES})', flush=True)
+          f'retry={UPSTREAM_MAX_RETRIES}, ip_limit={MAX_CONCURRENT_PER_IP})', flush=True)
     _server = GracefulHTTPServer(('127.0.0.1', port), H)
     _server.serve_forever()
