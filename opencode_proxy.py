@@ -97,6 +97,7 @@ logger.addHandler(_stderr_h)
 # Paths that should NOT be proxied (health / internal)
 # ---------------------------------------------------------------------------
 HEALTH_PATHS = frozenset({'/health', '/healthz', '/-/health'})
+READINESS_PATHS = frozenset({'/ready', '/-/ready'})
 # Admin / monitoring paths served by the proxy (not forwarded upstream)
 STATS_PATHS = frozenset({'/stats', '/-/stats'})
 METRICS_PATHS = frozenset({'/metrics', '/-/metrics', '/prometheus'})
@@ -361,6 +362,43 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # ---- Readiness probe (separate from liveness) ----
+    def _ready(self):
+        """Readiness check: returns 200 when the proxy can serve requests,
+        503 when shutting down or unable to reach upstream.
+
+        Docker/K8s readiness probes should use this endpoint instead of
+        /health so that a draining or upstream-disconnected proxy is removed
+        from the load balancer without being restarted.
+        """
+        # Check the shutdown signal — if we're draining, we're not ready.
+        if _stats_saver_stop.is_set():
+            body = json.dumps({
+                'status': 'draining',
+                'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            }).encode()
+            self.send_response(503)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        with _active_requests_lock:
+            active = len(_active_requests)
+        body = json.dumps({
+            'status': 'ready',
+            'active_requests': active,
+            'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
     # ---- Full stats endpoint for operational monitoring ----
     def _stats_endpoint(self):
         """Return full proxy statistics as JSON for operational dashboards."""
@@ -476,9 +514,15 @@ class H(BaseHTTPRequestHandler):
             f'opencode_proxy_tokens_total_total {tokens_total_val}',
         ]
         # Per-status-code counters
+        if sc:
+            lines.append('# HELP opencode_proxy_status_code_total Requests by HTTP status code')
+            lines.append('# TYPE opencode_proxy_status_code_total counter')
         for code, count in sorted(sc.items()):
             lines.append(f'opencode_proxy_status_code_total{{status="{code}"}} {count}')
         # Per-error-type counters
+        if errs:
+            lines.append('# HELP opencode_proxy_error_type_total Errors by type')
+            lines.append('# TYPE opencode_proxy_error_type_total counter')
         for etype, count in sorted(errs.items()):
             lines.append(f'opencode_proxy_error_type_total{{error="{etype}"}} {count}')
         # Per-model counters (uses pre-snapshotted data, no lock needed).
@@ -506,6 +550,14 @@ class H(BaseHTTPRequestHandler):
                 m = per_model_snapshot[model_name]
                 _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
                 lines.append(f'opencode_proxy_model_errors_total{{model="{_mn}"}} {m["errors"]}')
+            # Per-model latency: cumulative ms and average gauge, enabling
+            # latency-over-time dashboards per model in Grafana.
+            lines.append('# HELP opencode_proxy_model_latency_ms_total Cumulative upstream latency per model in ms')
+            lines.append('# TYPE opencode_proxy_model_latency_ms_total counter')
+            for model_name in sorted(per_model_snapshot.keys()):
+                m = per_model_snapshot[model_name]
+                _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'opencode_proxy_model_latency_ms_total{{model="{_mn}"}} {m["total_latency_ms"]}')
         body = '\n'.join(lines).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; version=0.0.4')
@@ -937,6 +989,8 @@ class H(BaseHTTPRequestHandler):
             self._cors_preflight()
         elif self.path in HEALTH_PATHS:
             self._health()
+        elif self.path in READINESS_PATHS:
+            self._ready()
         elif self.path in STATS_PATHS:
             self._stats_endpoint()
         elif self.path in METRICS_PATHS:
