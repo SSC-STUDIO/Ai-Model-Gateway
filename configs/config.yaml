@@ -201,7 +201,7 @@ routing:
     intercepts: []
     key_rotation:
         enabled: false
-    max_retries: 2
+    max_retries: 3
     queue:
         high_priority_pct: 60
         max_concurrent: 100
@@ -211,7 +211,7 @@ routing:
         requests_per_second: 0
     retry:
         all_errors: false
-        infinite_on_error: true
+        infinite_on_error: false
         message_keywords:
             - too many requests
             - rate limit
@@ -226,6 +226,9 @@ routing:
             - overloaded
             - please try again later
             - service unavailable
+            - connection reset
+            - connection refused
+            - gateway error
         status_code_min: 500
         status_codes:
             - 408
