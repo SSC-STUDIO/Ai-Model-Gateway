@@ -1,5 +1,5 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import requests, os, json, time, pathlib, sys, logging
+import requests, os, json, time, pathlib, sys, logging, signal
 from logging.handlers import RotatingFileHandler
 
 LOG = pathlib.Path(os.environ.get(
@@ -34,6 +34,9 @@ HEALTH_PATHS = frozenset({'/health', '/healthz', '/-/health'})
 BLACKLIST_HEADERS = frozenset({
     'host', 'content-length', 'connection', 'accept-encoding',
 })
+
+# Streaming detection — these response content types are SSE / streaming
+_STREAM_CT_PREFIXES = ('text/event-stream', 'text/plain',)
 
 
 class H(BaseHTTPRequestHandler):
@@ -77,22 +80,35 @@ class H(BaseHTTPRequestHandler):
                 for k, v in headers.items()
             },
         }
+        bytes_sent = 0
+        is_streaming = False
+        t0 = time.monotonic()
+
         try:
             if body:
                 try:
                     rec['request_json'] = json.loads(body.decode('utf-8'))
+                    # Detect streaming request from body
+                    req_json = rec['request_json']
+                    if isinstance(req_json, dict) and req_json.get('stream'):
+                        is_streaming = True
                 except Exception:
                     rec['request_body'] = body[:5000].decode('utf-8', 'replace')
 
             resp = requests.request(
                 self.command, target,
-                headers=headers, data=body, timeout=300, stream=False,
+                headers=headers, data=body, timeout=(10, 300), stream=True,
             )
             rec['status_code'] = resp.status_code
             rec['response_headers'] = dict(resp.headers.items())
-            rec['response_text'] = resp.text[:12000]
-            out = resp.content
+            elapsed = time.monotonic() - t0
 
+            # Determine if upstream is actually streaming
+            ct = resp.headers.get('content-type', '')
+            upstream_streaming = ct.startswith(_STREAM_CT_PREFIXES) or is_streaming
+            rec['streaming'] = upstream_streaming
+
+            # Send response headers to client
             self.send_response(resp.status_code)
             for k, v in resp.headers.items():
                 if k.lower() not in (
@@ -100,13 +116,39 @@ class H(BaseHTTPRequestHandler):
                     'connection', 'content-length',
                 ):
                     self.send_header(k, v)
-            self.send_header('Content-Length', str(len(out)))
-            self.end_headers()
-            self.wfile.write(out)
+
+            if upstream_streaming:
+                # Streaming: use Transfer-Encoding: chunked
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.end_headers()
+
+                # Forward chunks as they arrive
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        self.wfile.write(f'{len(chunk):X}\r\n'.encode())
+                        self.wfile.write(chunk)
+                        self.wfile.write(b'\r\n')
+                        bytes_sent += len(chunk)
+                # Final chunk
+                self.wfile.write(b'0\r\n\r\n')
+            else:
+                # Non-streaming: buffer and forward with Content-Length
+                out = resp.content
+                bytes_sent = len(out)
+                rec['response_text'] = resp.text[:12000]
+                self.send_header('Content-Length', str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+
+            elapsed = time.monotonic() - t0
+            rec['bytes_sent'] = bytes_sent
+            rec['elapsed_ms'] = round(elapsed * 1000)
 
         except requests.exceptions.Timeout as e:
             rec['proxy_error'] = repr(e)
-            logger.warning('upstream timeout: %s %s', self.command, self.path)
+            rec['elapsed_ms'] = round((time.monotonic() - t0) * 1000)
+            logger.warning('upstream timeout after %ds: %s %s',
+                           round(elapsed), self.command, self.path)
             out = json.dumps(
                 {'error': 'upstream_timeout', 'detail': repr(e)},
                 ensure_ascii=False,
@@ -119,6 +161,7 @@ class H(BaseHTTPRequestHandler):
 
         except requests.exceptions.ConnectionError as e:
             rec['proxy_error'] = repr(e)
+            rec['elapsed_ms'] = round((time.monotonic() - t0) * 1000)
             logger.error('upstream connection error: %s %s — %s',
                          self.command, self.path, e)
             out = json.dumps(
@@ -133,6 +176,7 @@ class H(BaseHTTPRequestHandler):
 
         except Exception as e:
             rec['proxy_error'] = repr(e)
+            rec['elapsed_ms'] = round((time.monotonic() - t0) * 1000)
             logger.exception('proxy error for %s %s', self.command, self.path)
             out = json.dumps(
                 {'error': 'proxy_error', 'detail': repr(e)},
@@ -145,11 +189,15 @@ class H(BaseHTTPRequestHandler):
             self.wfile.write(out)
 
         finally:
+            elapsed_ms = rec.get('elapsed_ms', round((time.monotonic() - t0) * 1000))
+            stream_tag = ' [streaming]' if is_streaming else ''
             # Structured log line (human-readable in rotated log)
             log_line = (
                 f"{self.command} {self.path} -> "
                 f"{rec.get('status_code', 'ERR')} "
-                f"({rec.get('proxy_error', 'ok')})"
+                f"{bytes_sent}B {elapsed_ms}ms"
+                f"{stream_tag}"
+                f" ({rec.get('proxy_error', 'ok')})"
             )
             if rec.get('proxy_error'):
                 logger.warning(log_line)
@@ -172,8 +220,28 @@ class H(BaseHTTPRequestHandler):
             self._proxy()
 
 
+# ---------------------------------------------------------------------------
+# Graceful shutdown on SIGINT / SIGTERM
+# ---------------------------------------------------------------------------
+_server = None
+_start_time = None
+
+def _shutdown(sig, frame):
+    global _server
+    if _server:
+        uptime = round(time.monotonic() - _start_time) if _start_time else 0
+        logger.info('shutting down (signal=%s, uptime=%ds)', sig, uptime)
+        print(f'shutting down (signal={sig}, uptime={uptime}s)', flush=True)
+        _server.shutdown()
+
+signal.signal(signal.SIGINT, _shutdown)
+signal.signal(signal.SIGTERM, _shutdown)
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('OPENCODE_PROXY_PORT', '18082'))
+    _start_time = time.monotonic()
     logger.info('opencode proxy listening on 127.0.0.1:%d -> %s', port, TARGET_ORIGIN)
     print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN}', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', port), H).serve_forever()
+    _server = ThreadingHTTPServer(('127.0.0.1', port), H)
+    _server.serve_forever()
