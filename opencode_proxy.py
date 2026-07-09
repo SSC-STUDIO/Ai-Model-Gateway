@@ -1,5 +1,5 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import requests, os, json, time, pathlib, sys, logging, signal
+import requests, os, json, time, pathlib, sys, logging, signal, uuid, threading
 from logging.handlers import RotatingFileHandler
 
 LOG = pathlib.Path(os.environ.get(
@@ -14,6 +14,10 @@ LOG_LEVEL = os.environ.get(
     'OPENCODE_PROXY_LOG_LEVEL',
     'INFO'
 ).upper()
+MAX_BODY_BYTES = int(os.environ.get(
+    'OPENCODE_PROXY_MAX_BODY_BYTES',
+    str(100 * 1024 * 1024),  # 100 MB default
+))
 
 _LEVEL_MAP = {
     'DEBUG': logging.DEBUG,
@@ -49,6 +53,32 @@ BLACKLIST_HEADERS = frozenset({
 # Streaming detection — these response content types are SSE / streaming
 _STREAM_CT_PREFIXES = ('text/event-stream', 'text/plain',)
 
+# ---------------------------------------------------------------------------
+# Accumulated proxy statistics (thread-safe)
+# ---------------------------------------------------------------------------
+_stats_lock = threading.Lock()
+_stats = {
+    'started_at': time.time(),
+    'total_requests': 0,
+    'total_errors': 0,
+    'total_bytes_sent': 0,
+    'total_latency_ms': 0,
+    'status_codes': {},   # {200: N, 502: N, ...}
+    'errors': {},         # {'timeout': N, 'connection_error': N, ...}
+}
+
+
+def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None):
+    with _stats_lock:
+        _stats['total_requests'] += 1
+        _stats['total_bytes_sent'] += bytes_sent
+        _stats['total_latency_ms'] += elapsed_ms
+        sc = str(status_code)
+        _stats['status_codes'][sc] = _stats['status_codes'].get(sc, 0) + 1
+        if error_type:
+            _stats['total_errors'] += 1
+            _stats['errors'][error_type] = _stats['errors'].get(error_type, 0) + 1
+
 
 class H(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
@@ -57,14 +87,29 @@ class H(BaseHTTPRequestHandler):
         # Suppress default http.server logging — we use our own logger
         return
 
-    # ---- Health check (no upstream needed) ----
+    # ---- Health check with stats ----
     def _health(self):
-        body = json.dumps({
-            'status': 'ok',
-            'proxy': 'opencode',
-            'target': TARGET_ORIGIN,
-            'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-        }).encode()
+        with _stats_lock:
+            total = _stats['total_requests']
+            avg_lat = (
+                round(_stats['total_latency_ms'] / total) if total > 0 else 0
+            )
+            uptime = round(time.time() - _stats['started_at'])
+            body = json.dumps({
+                'status': 'ok',
+                'proxy': 'opencode',
+                'target': TARGET_ORIGIN,
+                'uptime_seconds': uptime,
+                'stats': {
+                    'total_requests': total,
+                    'total_errors': _stats['total_errors'],
+                    'total_bytes_sent': _stats['total_bytes_sent'],
+                    'avg_latency_ms': avg_lat,
+                    'status_codes': _stats['status_codes'],
+                    'errors': _stats['errors'],
+                },
+                'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            }).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
@@ -73,7 +118,26 @@ class H(BaseHTTPRequestHandler):
 
     # ---- Actual proxy logic ----
     def _proxy(self):
+        request_id = uuid.uuid4().hex[:12]
         n = int(self.headers.get('content-length') or 0)
+
+        # Reject oversized requests early
+        if n > MAX_BODY_BYTES:
+            logger.warning('[%s] request body too large: %d bytes (limit %d)',
+                           request_id, n, MAX_BODY_BYTES)
+            out = json.dumps({
+                'error': 'request_too_large',
+                'detail': f'Max body size is {MAX_BODY_BYTES} bytes',
+            }).encode()
+            self.send_response(413)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(out)))
+            self.send_header('X-Request-Id', request_id)
+            self.end_headers()
+            self.wfile.write(out)
+            _record_stats(413, 0, 0, 'request_too_large')
+            return
+
         body = self.rfile.read(n) if n else b''
         target = TARGET_ORIGIN + self.path
 
@@ -82,6 +146,7 @@ class H(BaseHTTPRequestHandler):
             if k.lower() not in BLACKLIST_HEADERS
         }
         rec = {
+            'request_id': request_id,
             'ts': time.strftime('%Y-%m-%d %H:%M:%S'),
             'method': self.command,
             'path': self.path,
@@ -96,6 +161,7 @@ class H(BaseHTTPRequestHandler):
         upstream_streaming = False
         t0 = time.monotonic()
         elapsed = 0
+        error_type = None
 
         try:
             if body:
@@ -122,6 +188,7 @@ class H(BaseHTTPRequestHandler):
 
             # Send response headers to client
             self.send_response(resp.status_code)
+            self.send_header('X-Request-Id', request_id)
             for k, v in resp.headers.items():
                 if k.lower() not in (
                     'content-encoding', 'transfer-encoding',
@@ -160,8 +227,9 @@ class H(BaseHTTPRequestHandler):
             rec['proxy_error'] = repr(e)
             elapsed = round((time.monotonic() - t0) * 1000)
             rec['elapsed_ms'] = elapsed
-            logger.warning('upstream timeout after %dms: %s %s',
-                           elapsed, self.command, self.path)
+            error_type = 'timeout'
+            logger.warning('[%s] upstream timeout after %dms: %s %s',
+                           request_id, elapsed, self.command, self.path)
             out = json.dumps(
                 {'error': 'upstream_timeout', 'detail': repr(e)},
                 ensure_ascii=False,
@@ -169,6 +237,7 @@ class H(BaseHTTPRequestHandler):
             self.send_response(504)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out)))
+            self.send_header('X-Request-Id', request_id)
             self.end_headers()
             self.wfile.write(out)
 
@@ -176,8 +245,9 @@ class H(BaseHTTPRequestHandler):
             rec['proxy_error'] = repr(e)
             elapsed = round((time.monotonic() - t0) * 1000)
             rec['elapsed_ms'] = elapsed
-            logger.error('upstream connection error: %s %s — %s',
-                         self.command, self.path, e)
+            error_type = 'connection_error'
+            logger.error('[%s] upstream connection error: %s %s — %s',
+                         request_id, self.command, self.path, e)
             out = json.dumps(
                 {'error': 'upstream_unreachable', 'detail': repr(e)},
                 ensure_ascii=False,
@@ -185,6 +255,7 @@ class H(BaseHTTPRequestHandler):
             self.send_response(502)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out)))
+            self.send_header('X-Request-Id', request_id)
             self.end_headers()
             self.wfile.write(out)
 
@@ -192,7 +263,8 @@ class H(BaseHTTPRequestHandler):
             rec['proxy_error'] = repr(e)
             elapsed = round((time.monotonic() - t0) * 1000)
             rec['elapsed_ms'] = elapsed
-            logger.exception('proxy error for %s %s', self.command, self.path)
+            error_type = 'proxy_error'
+            logger.exception('[%s] proxy error for %s %s', request_id, self.command, self.path)
             out = json.dumps(
                 {'error': 'proxy_error', 'detail': repr(e)},
                 ensure_ascii=False,
@@ -200,6 +272,7 @@ class H(BaseHTTPRequestHandler):
             self.send_response(502)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out)))
+            self.send_header('X-Request-Id', request_id)
             self.end_headers()
             self.wfile.write(out)
 
@@ -208,6 +281,7 @@ class H(BaseHTTPRequestHandler):
             stream_tag = ' [streaming]' if upstream_streaming else ''
             # Structured log line (human-readable in rotated log)
             log_line = (
+                f"[{request_id}] "
                 f"{self.command} {self.path} -> "
                 f"{rec.get('status_code', 'ERR')} "
                 f"{bytes_sent}B {elapsed_ms}ms"
@@ -218,6 +292,7 @@ class H(BaseHTTPRequestHandler):
                 logger.warning(log_line)
             else:
                 logger.info(log_line)
+            _record_stats(rec.get('status_code', 0), bytes_sent, elapsed_ms, error_type)
 
     # ---- Dispatchers ----
     def do_GET(self):     self._dispatch()
@@ -245,8 +320,9 @@ def _shutdown(sig, frame):
     global _server
     if _server:
         uptime = round(time.monotonic() - _start_time) if _start_time else 0
-        logger.info('shutting down (signal=%s, uptime=%ds)', sig, uptime)
-        print(f'shutting down (signal={sig}, uptime={uptime}s)', flush=True)
+        logger.info('shutting down (signal=%s, uptime=%ds, requests=%d)',
+                     sig, uptime, _stats['total_requests'])
+        print(f'shutting down (signal={sig}, uptime={uptime}s, requests={_stats["total_requests"]})', flush=True)
         _server.shutdown()
 
 signal.signal(signal.SIGINT, _shutdown)
@@ -256,7 +332,10 @@ signal.signal(signal.SIGTERM, _shutdown)
 if __name__ == '__main__':
     port = int(os.environ.get('OPENCODE_PROXY_PORT', '18082'))
     _start_time = time.monotonic()
-    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s', port, TARGET_ORIGIN)
-    print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN}', flush=True)
+    _stats['started_at'] = time.time()
+    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB)',
+                port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024))
+    print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN} '
+          f'(max_body={MAX_BODY_BYTES // (1024 * 1024)}MB)', flush=True)
     _server = ThreadingHTTPServer(('127.0.0.1', port), H)
     _server.serve_forever()
