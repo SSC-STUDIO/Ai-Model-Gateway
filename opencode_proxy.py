@@ -10,12 +10,23 @@ TARGET_ORIGIN = os.environ.get(
     'OPENCODE_PROXY_TARGET',
     'https://opencode.ai'
 )
+LOG_LEVEL = os.environ.get(
+    'OPENCODE_PROXY_LOG_LEVEL',
+    'INFO'
+).upper()
+
+_LEVEL_MAP = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+}
 
 # ---------------------------------------------------------------------------
 # Logger with rotation: 10 MB per file, keep 5 backups
 # ---------------------------------------------------------------------------
 logger = logging.getLogger('opencode-proxy')
-logger.setLevel(logging.INFO)
+logger.setLevel(_LEVEL_MAP.get(LOG_LEVEL, logging.INFO))
 _rfh = RotatingFileHandler(
     str(LOG), maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8'
 )
@@ -82,7 +93,9 @@ class H(BaseHTTPRequestHandler):
         }
         bytes_sent = 0
         is_streaming = False
+        upstream_streaming = False
         t0 = time.monotonic()
+        elapsed = 0
 
         try:
             if body:
@@ -101,7 +114,6 @@ class H(BaseHTTPRequestHandler):
             )
             rec['status_code'] = resp.status_code
             rec['response_headers'] = dict(resp.headers.items())
-            elapsed = time.monotonic() - t0
 
             # Determine if upstream is actually streaming
             ct = resp.headers.get('content-type', '')
@@ -140,15 +152,16 @@ class H(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(out)
 
-            elapsed = time.monotonic() - t0
+            elapsed = round((time.monotonic() - t0) * 1000)
             rec['bytes_sent'] = bytes_sent
-            rec['elapsed_ms'] = round(elapsed * 1000)
+            rec['elapsed_ms'] = elapsed
 
         except requests.exceptions.Timeout as e:
             rec['proxy_error'] = repr(e)
-            rec['elapsed_ms'] = round((time.monotonic() - t0) * 1000)
-            logger.warning('upstream timeout after %ds: %s %s',
-                           round(elapsed), self.command, self.path)
+            elapsed = round((time.monotonic() - t0) * 1000)
+            rec['elapsed_ms'] = elapsed
+            logger.warning('upstream timeout after %dms: %s %s',
+                           elapsed, self.command, self.path)
             out = json.dumps(
                 {'error': 'upstream_timeout', 'detail': repr(e)},
                 ensure_ascii=False,
@@ -161,7 +174,8 @@ class H(BaseHTTPRequestHandler):
 
         except requests.exceptions.ConnectionError as e:
             rec['proxy_error'] = repr(e)
-            rec['elapsed_ms'] = round((time.monotonic() - t0) * 1000)
+            elapsed = round((time.monotonic() - t0) * 1000)
+            rec['elapsed_ms'] = elapsed
             logger.error('upstream connection error: %s %s — %s',
                          self.command, self.path, e)
             out = json.dumps(
@@ -176,7 +190,8 @@ class H(BaseHTTPRequestHandler):
 
         except Exception as e:
             rec['proxy_error'] = repr(e)
-            rec['elapsed_ms'] = round((time.monotonic() - t0) * 1000)
+            elapsed = round((time.monotonic() - t0) * 1000)
+            rec['elapsed_ms'] = elapsed
             logger.exception('proxy error for %s %s', self.command, self.path)
             out = json.dumps(
                 {'error': 'proxy_error', 'detail': repr(e)},
@@ -190,7 +205,7 @@ class H(BaseHTTPRequestHandler):
 
         finally:
             elapsed_ms = rec.get('elapsed_ms', round((time.monotonic() - t0) * 1000))
-            stream_tag = ' [streaming]' if is_streaming else ''
+            stream_tag = ' [streaming]' if upstream_streaming else ''
             # Structured log line (human-readable in rotated log)
             log_line = (
                 f"{self.command} {self.path} -> "
