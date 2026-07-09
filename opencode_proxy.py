@@ -90,6 +90,9 @@ logger.addHandler(_stderr_h)
 # Paths that should NOT be proxied (health / internal)
 # ---------------------------------------------------------------------------
 HEALTH_PATHS = frozenset({'/health', '/healthz', '/-/health'})
+# Admin / monitoring paths served by the proxy (not forwarded upstream)
+STATS_PATHS = frozenset({'/stats', '/-/stats'})
+METRICS_PATHS = frozenset({'/metrics', '/-/metrics', '/prometheus'})
 BLACKLIST_HEADERS = frozenset({
     'host', 'content-length', 'connection', 'accept-encoding',
 })
@@ -274,6 +277,98 @@ class H(BaseHTTPRequestHandler):
         }).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ---- Full stats endpoint for operational monitoring ----
+    def _stats_endpoint(self):
+        """Return full proxy statistics as JSON for operational dashboards."""
+        with _stats_lock:
+            snapshot = {
+                'started_at': _stats['started_at'],
+                'uptime_seconds': round(time.time() - _stats['started_at']),
+                'total_requests': _stats['total_requests'],
+                'total_errors': _stats['total_errors'],
+                'total_bytes_sent': _stats['total_bytes_sent'],
+                'total_latency_ms': _stats['total_latency_ms'],
+                'total_upstream_retries': _stats['total_upstream_retries'],
+                'avg_latency_ms': (
+                    round(_stats['total_latency_ms'] / _stats['total_requests'])
+                    if _stats['total_requests'] > 0 else 0
+                ),
+                'status_codes': dict(_stats['status_codes']),
+                'errors': dict(_stats['errors']),
+                'persisted': STATS_FILE.exists(),
+            }
+        with _active_requests_lock:
+            active = len(_active_requests)
+        snapshot['active_requests'] = active
+        body = json.dumps({
+            'status': 'ok',
+            'proxy': 'opencode',
+            'target': TARGET_ORIGIN,
+            **snapshot,
+            'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }, ensure_ascii=False, indent=2).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ---- Prometheus-format metrics for monitoring integrations ----
+    def _metrics_endpoint(self):
+        """Expose metrics in Prometheus text exposition format."""
+        with _stats_lock:
+            total_req = _stats['total_requests']
+            total_err = _stats['total_errors']
+            total_bytes = _stats['total_bytes_sent']
+            total_lat = _stats['total_latency_ms']
+            total_retries = _stats['total_upstream_retries']
+            avg_lat = round(total_lat / total_req) if total_req > 0 else 0
+            sc = dict(_stats['status_codes'])
+            errs = dict(_stats['errors'])
+        with _active_requests_lock:
+            active = len(_active_requests)
+        uptime = round(time.time() - _stats['started_at'])
+        lines = [
+            '# HELP opencode_proxy_uptime_seconds Time since proxy start',
+            '# TYPE opencode_proxy_uptime_seconds gauge',
+            f'opencode_proxy_uptime_seconds {uptime}',
+            '# HELP opencode_proxy_active_requests Currently in-flight requests',
+            '# TYPE opencode_proxy_active_requests gauge',
+            f'opencode_proxy_active_requests {active}',
+            '# HELP opencode_proxy_requests_total Total proxied requests',
+            '# TYPE opencode_proxy_requests_total counter',
+            f'opencode_proxy_requests_total {total_req}',
+            '# HELP opencode_proxy_errors_total Total proxy errors',
+            '# TYPE opencode_proxy_errors_total counter',
+            f'opencode_proxy_errors_total {total_err}',
+            '# HELP opencode_proxy_bytes_sent_total Total bytes sent to clients',
+            '# TYPE opencode_proxy_bytes_sent_total counter',
+            f'opencode_proxy_bytes_sent_total {total_bytes}',
+            '# HELP opencode_proxy_latency_ms_total Cumulative latency in ms',
+            '# TYPE opencode_proxy_latency_ms_total counter',
+            f'opencode_proxy_latency_ms_total {total_lat}',
+            '# HELP opencode_proxy_avg_latency_ms Average latency per request',
+            '# TYPE opencode_proxy_avg_latency_ms gauge',
+            f'opencode_proxy_avg_latency_ms {avg_lat}',
+            '# HELP opencode_proxy_upstream_retries_total Total upstream retries',
+            '# TYPE opencode_proxy_upstream_retries_total counter',
+            f'opencode_proxy_upstream_retries_total {total_retries}',
+        ]
+        # Per-status-code counters
+        for code, count in sorted(sc.items()):
+            lines.append(f'opencode_proxy_status_code_total{{status="{code}"}} {count}')
+        # Per-error-type counters
+        for etype, count in sorted(errs.items()):
+            lines.append(f'opencode_proxy_error_type_total{{error="{etype}"}} {count}')
+        body = '\n'.join(lines).encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain; version=0.0.4')
         self.send_header('Content-Length', str(len(body)))
         self._send_cors_headers()
         self.end_headers()
@@ -549,6 +644,10 @@ class H(BaseHTTPRequestHandler):
             self._cors_preflight()
         elif self.path in HEALTH_PATHS:
             self._health()
+        elif self.path in STATS_PATHS:
+            self._stats_endpoint()
+        elif self.path in METRICS_PATHS:
+            self._metrics_endpoint()
         else:
             self._proxy()
 
