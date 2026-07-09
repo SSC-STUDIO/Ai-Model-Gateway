@@ -9,6 +9,12 @@ LOG = pathlib.Path(os.environ.get(
     'OPENCODE_PROXY_LOG',
     str(pathlib.Path(__file__).resolve().parent / 'opencode-proxy.log')
 ))
+# PID file path — helps process management tools (supervisord, Docker HEALTHCHECK
+# scripts, Windows service wrappers) discover and signal the proxy.
+PID_FILE = pathlib.Path(os.environ.get(
+    'OPENCODE_PROXY_PID_FILE',
+    str(pathlib.Path(__file__).resolve().parent / 'opencode-proxy.pid')
+))
 TARGET_ORIGIN = os.environ.get(
     'OPENCODE_PROXY_TARGET',
     'https://opencode.ai'
@@ -192,6 +198,25 @@ def _save_stats():
 # where the graceful shutdown handler never runs.
 # ---------------------------------------------------------------------------
 _stats_saver_stop = threading.Event()
+
+
+def _write_pid_file():
+    """Write current PID to file so process management tools can find us."""
+    try:
+        PID_FILE.write_text(str(os.getpid()), 'utf-8')
+        logger.info('pid file written: %s (pid=%d)', PID_FILE, os.getpid())
+    except Exception as exc:
+        logger.warning('could not write pid file %s: %s', PID_FILE, exc)
+
+
+def _remove_pid_file():
+    """Remove PID file on shutdown."""
+    try:
+        if PID_FILE.exists():
+            PID_FILE.unlink()
+            logger.info('pid file removed: %s', PID_FILE)
+    except Exception as exc:
+        logger.warning('could not remove pid file %s: %s', PID_FILE, exc)
 
 
 def _stats_auto_save_loop():
@@ -772,11 +797,15 @@ class H(BaseHTTPRequestHandler):
             else:
                 timeout_type = 'read_timeout'
             error_type = timeout_type
-            logger.warning('[%s] upstream %s after %dms: %s %s',
-                           request_id, timeout_type, elapsed, self.command, self.path)
+            logger.warning('[%s] upstream %s after %dms: %s %s — %s',
+                           request_id, timeout_type, elapsed, self.command, self.path, e)
             if not _headers_sent:
+                # Sanitize: do not expose internal exception repr to clients.
+                # The request_id lets operators correlate with server-side logs.
                 out = json.dumps(
-                    {'error': f'upstream_{timeout_type}', 'detail': repr(e)},
+                    {'error': f'upstream_{timeout_type}',
+                     'detail': f'the upstream service did not respond within the timeout window',
+                     'request_id': request_id},
                     ensure_ascii=False,
                 ).encode('utf-8')
                 self.send_response(504)
@@ -796,7 +825,9 @@ class H(BaseHTTPRequestHandler):
                          request_id, self.command, self.path, e)
             if not _headers_sent:
                 out = json.dumps(
-                    {'error': 'upstream_unreachable', 'detail': repr(e)},
+                    {'error': 'upstream_unreachable',
+                     'detail': 'unable to connect to the upstream service',
+                     'request_id': request_id},
                     ensure_ascii=False,
                 ).encode('utf-8')
                 self.send_response(502)
@@ -823,7 +854,9 @@ class H(BaseHTTPRequestHandler):
             logger.exception('[%s] proxy error for %s %s', request_id, self.command, self.path)
             if not _headers_sent:
                 out = json.dumps(
-                    {'error': 'proxy_error', 'detail': repr(e)},
+                    {'error': 'proxy_error',
+                     'detail': 'an internal proxy error occurred',
+                     'request_id': request_id},
                     ensure_ascii=False,
                 ).encode('utf-8')
                 self.send_response(502)
@@ -931,6 +964,8 @@ def _shutdown(sig, frame):
             logger.info('no active requests, skipping drain')
     # Persist stats so totals carry over to the next run
     _save_stats()
+    # Remove PID file now that we're shutting down
+    _remove_pid_file()
     # Close persistent connections to upstream
     _upstream_session.close()
 
@@ -943,6 +978,7 @@ if __name__ == '__main__':
     _start_time = time.monotonic()
     _stats['started_at'] = time.time()
     _load_stats()
+    _write_pid_file()
     # Start periodic stats auto-save daemon (protects against crash data loss)
     if STATS_SAVE_INTERVAL > 0:
         _saver = threading.Thread(target=_stats_auto_save_loop, daemon=True)
