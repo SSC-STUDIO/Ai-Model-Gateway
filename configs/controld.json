@@ -1,0 +1,13 @@
+{
+  "listen": "127.0.0.1:18081",
+  "gateway_socket": ".gateway-runtime/gateway-control.sock",
+  "telemetry_socket": ".gateway-runtime/telemetry-query-v2.sock",
+  "data_dir": ".gateway-runtime/control",
+  "config_path": "configs/config.yaml",
+  "log_level": "info",
+  "update": {
+    "repository": "SSC-STUDIO/Ai-Model-Gateway",
+    "install_dir": ".",
+    "state_dir": ".gateway-runtime/update"
+  }
+}

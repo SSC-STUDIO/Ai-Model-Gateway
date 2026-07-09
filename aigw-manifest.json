@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "product_version": "1.4.4",
+  "git_commit": "a4cd8112ffa4b5507046b603ad09dc6fb6824d5e",
+  "built_at": "2026-07-08T07:00:00Z",
+  "platform": "windows/amd64",
+  "binaries": {
+    "aigw": {
+      "path": "bin/aigw.exe",
+      "sha256": "987cd2f3893c651577d95fdb85036f5d860e21e2148d4281a77cb0ce131d35d7",
+      "version": "1.4.4"
+    },
+    "controld": {
+      "path": "bin/controld.exe",
+      "sha256": "c87b3fc6d41a44e09ce21d0eeabe91edaa52919ca02f9d1edf55268f446e9526",
+      "version": "1.4.4"
+    },
+    "gateway-cli": {
+      "path": "bin/gateway-cli.exe",
+      "sha256": "b791c8fa45b7b7addbb04d03c44c15eb772ab2a705a9ef64d6c7dc9ec6971772",
+      "version": "1.4.4"
+    },
+    "gatewayd": {
+      "path": "bin/gatewayd.exe",
+      "sha256": "8cbbe06a5a60160a73c9fda1d95667766757f439f45527c9a6edc301fef4820f",
+      "version": "1.4.4"
+    },
+    "telemetryd": {
+      "path": "bin/telemetryd.exe",
+      "sha256": "be4c290c8a5e94d5e8604abd6187db1a5b83718ea2967e6b47f24e3738c85599",
+      "version": "1.4.4"
+    }
+  },
+  "admin_dist_hash": "80d5a4ebbe79d9983ea007207d8539fb0f6dbd0f0c84c2ff550396dc87d09f3e",
+  "snapshot_schema_version": 1,
+  "rpc_contract_version": "1",
+  "required_daemons": [
+    "telemetryd",
+    "gatewayd",
+    "controld"
+  ],
+  "default_config_paths": {
+    "controld": "configs/controld.json",
+    "gatewayd": "configs/gatewayd.json",
+    "telemetryd": "configs/telemetryd.json"
+  },
+  "migration": {
+    "min_version": "1.2.0",
+    "required": false,
+    "notes": "Bundles must be applied as one aigw-managed payload."
+  }
+}

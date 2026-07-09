@@ -1,0 +1,35 @@
+[Unit]
+Description=AI Model Gateway - Telemetry Plane
+Documentation=https://github.com/your-org/ai-model-gateway
+After=network.target
+
+[Service]
+Type=simple
+User=gateway
+Group=gateway
+WorkingDirectory=/opt/ai-model-gateway
+ExecStart=/opt/ai-model-gateway/bin/telemetryd -config /etc/ai-model-gateway/telemetryd.json
+Restart=on-failure
+RestartSec=5
+
+# Environment variables for secrets
+EnvironmentFile=/etc/ai-model-gateway/secrets.env
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ai-model-gateway /var/log/ai-model-gateway
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=1G
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telemetryd
+
+[Install]
+WantedBy=multi-user.target

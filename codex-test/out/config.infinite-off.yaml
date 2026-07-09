@@ -1,0 +1,228 @@
+﻿server:
+    listen: :18080
+    read_timeout_ms: 30000
+    write_timeout_ms: 0
+    idle_timeout_ms: 120000
+    max_body_bytes: 104857600
+admin:
+    enabled: true
+    bootstrap_token: local-admin-bootstrap-token-32-characters-minimum
+    cookie_signing_key: local-cookie-signing-key-32-characters-min
+    publish_history_limit: 256
+    tokens:
+        - name: admin
+          token: local-admin-token-ai-model-gateway
+          role: admin
+        - name: viewer
+          token: local-viewer-token-ai-model-gateway
+          role: viewer
+    language: zh
+    rate_limit:
+        requests_per_second: 10
+        burst: 20
+routing:
+    strategy: health_weighted_rr
+    max_retries: 2
+    retry_backoff:
+        initial_ms: 3000
+        max_ms: 60000
+    health:
+        enabled: true
+        interval_sec: 30
+        timeout_ms: 5000
+        path: /v1/models
+    sticky_sessions:
+        enabled: true
+        ttl_sec: 1800
+    failure_policy:
+        threshold: 20
+        cooldown_sec: 60
+        passthrough_after_sec: 600
+        quota_recovery_interval_min: 0
+        disable_cooldown: false
+    retry:
+        infinite_on_error: false
+        all_errors: false
+        status_codes:
+            - 408
+            - 429
+        status_code_min: 500
+        message_keywords:
+            - too many requests
+            - rate limit
+            - quota exceeded
+            - stream disconnected before completion
+            - stream closed before response.completed
+            - upstream request failed
+            - server busy
+            - system busy
+            - temporarily unavailable
+            - temporarily overloaded
+            - overloaded
+            - please try again later
+            - service unavailable
+    intercepts: []
+    rate_limit:
+        enabled: false
+        requests_per_second: 0
+        burst: 0
+    cache:
+        enabled: false
+        max_entries: 1000
+        ttl_seconds: 300
+    key_rotation:
+        enabled: false
+    queue:
+        max_concurrent: 100
+        high_priority_pct: 60
+    compression:
+        level: 5
+        min_size_bytes: 1024
+providers:
+    - name: nowcoding
+      protocol_adapter: openai_chat_completions
+      base_url: https://nowcoding.ai
+      anthropic_base_url: ""
+      api_key: sk-krQ2tjoaKlqEJKoGc2mfe3qKoJdWNQOsJOXE9E6r2ZOxMQWO
+      provider_class: quota_limited
+      models:
+        - codex-auto-review
+        - gpt-5.3-codex-spark
+        - gpt-5.4
+        - gpt-5.4-mini
+        - gpt-5.4-openai-compact
+        - gpt-5.5
+        - gpt-5.5-openai-compact
+      weight: 5
+      timeout_ms: 300000
+      same_retries: 1
+      rate_limit:
+        enabled: false
+        requests_per_second: 0
+        burst: 0
+      enabled: true
+      headers: {}
+      fallback_models: []
+    - name: opencode-deepseek
+      protocol_adapter: openai_chat_completions
+      base_url: https://opencode.ai/zen/go
+      anthropic_base_url: ""
+      api_key: sk-Z5FYBb0BM1AyhEUIc0ZoM9bmkUKNHEd5G2fn5fZ6wT5p5TgFWBMIlLUDc15CRXgh
+      provider_class: quota_limited
+      models:
+        - deepseek-v4-pro
+        - deepseek-v4-flash
+      weight: 1
+      timeout_ms: 300000
+      same_retries: 1
+      rate_limit:
+        enabled: false
+        requests_per_second: 0
+        burst: 0
+      enabled: true
+      headers: {}
+      fallback_models: []
+telemetry:
+    sqlite_path: configs\data\telemetry.db
+    retention_days: 30
+    aggregation_sec: 60
+    cache_ttl_sec: 5
+pricing:
+    cache_path: configs\data\pricing-cache.json
+    refresh_interval_hours: 12
+    refresh_interval_minutes: 720
+    request_timeout_ms: 15000
+    sources:
+        - id: openai
+          vendor: openai
+          url: https://openai.com/api/pricing/
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: anthropic
+          vendor: anthropic
+          url: https://docs.anthropic.com/en/docs/about-claude/pricing
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: gemini
+          vendor: gemini
+          url: https://ai.google.dev/gemini-api/docs/pricing
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: moonshot
+          vendor: moonshot
+          url: https://platform.moonshot.cn/docs/pricing/chat
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: zhipu
+          vendor: zhipu
+          url: https://open.bigmodel.cn/pricing
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: minimax
+          vendor: minimax
+          url: https://platform.minimaxi.com/docs/pricing
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: deepseek
+          vendor: deepseek
+          url: https://api-docs.deepseek.com/quick_start/pricing
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: xai
+          vendor: xai
+          url: https://x.ai/api
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: step
+          vendor: step
+          url: https://platform.stepfun.com/docs/pricing
+          enabled: true
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+        - id: xiaomi
+          vendor: xiaomi
+          url: https://platform.xiaomi.com/
+          enabled: false
+          timeout_ms: 15000
+          refresh_interval_minutes: 720
+    fx:
+        enabled: true
+        cache_path: configs\data\pricing-fx-cache.json
+        refresh_interval_minutes: 1440
+    manual_prices: []
+benchmarking:
+    enabled: false
+    default_suite: general_protocol_v1
+    judge:
+        public_model: gpt-5.5
+        provider: nowcoding
+        timeout_ms: 30000
+    limits:
+        max_parallel_runs: 1
+        max_parallel_cases: 2
+        per_case_timeout_ms: 30000
+    verdict_thresholds:
+        normal_max_gap: 8
+        suspect_max_gap: 20
+        high_suspect_protocol_failures: 2
+    aliases: []
+compat:
+    bridge:
+        enabled: true
+        rules:
+            - from: gpt-5.4-mini
+              to: deepseek-v4-flash
+        exclude_user_agents: []
+    fallback:
+        enabled: false
+        detect_repetition: false
+        models: {}
+

@@ -1,0 +1,35 @@
+[Unit]
+Description=AI Model Gateway - Data Plane
+Documentation=https://github.com/your-org/ai-model-gateway
+After=network.target
+
+[Service]
+Type=simple
+User=gateway
+Group=gateway
+WorkingDirectory=/opt/ai-model-gateway
+ExecStart=/opt/ai-model-gateway/bin/gatewayd -config /etc/ai-model-gateway/gatewayd.json
+Restart=on-failure
+RestartSec=5
+
+# Environment variables for secrets
+EnvironmentFile=/etc/ai-model-gateway/secrets.env
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ai-model-gateway /var/log/ai-model-gateway
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=2G
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gatewayd
+
+[Install]
+WantedBy=multi-user.target

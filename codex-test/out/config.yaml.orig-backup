@@ -1,0 +1,138 @@
+﻿server:
+  listen: :18080
+  read_timeout_ms: 30000
+  write_timeout_ms: 0
+  idle_timeout_ms: 120000
+  max_body_bytes: 104857600
+
+admin:
+  enabled: true
+  bootstrap_token: "${ADMIN_BOOTSTRAP_TOKEN}"
+  cookie_signing_key: "${COOKIE_SIGNING_KEY}"
+  publish_history_limit: 256
+  language: zh
+  tokens:
+    - name: admin
+      token: "${ADMIN_TOKEN}"
+      role: admin
+    - name: viewer
+      token: "${VIEWER_TOKEN}"
+      role: viewer
+  rate_limit:
+    requests_per_second: 10
+    burst: 20
+
+routing:
+  strategy: health_weighted_rr
+  max_retries: 0
+  retry_backoff:
+    initial_ms: 3000
+    max_ms: 60000
+  health:
+    enabled: true
+    interval_sec: 30
+    timeout_ms: 5000
+    path: /v1/models
+  sticky_sessions:
+    enabled: true
+    ttl_sec: 1800
+  failure_policy:
+    threshold: 20
+    cooldown_sec: 60
+    passthrough_after_sec: 600
+    quota_recovery_interval_min: 0
+    disable_cooldown: false
+  retry:
+    infinite_on_error: true
+    all_errors: false
+    status_codes:
+      - 408
+      - 429
+    status_code_min: 500
+    message_keywords:
+      - too many requests
+      - rate limit
+      - quota exceeded
+      - stream disconnected before completion
+      - stream closed before response.completed
+      - upstream request failed
+      - server busy
+      - system busy
+      - temporarily unavailable
+      - temporarily overloaded
+      - overloaded
+      - please try again later
+      - service unavailable
+  intercepts: []
+
+providers:
+  - name: nowcoding
+    base_url: https://nowcoding.ai
+    api_key: "${NOWCODING_API_KEY}"
+    provider_class: quota_limited
+    models:
+      - codex-auto-review
+      - gpt-5.3-codex-spark
+      - gpt-5.4
+      - gpt-5.4-mini
+      - gpt-5.4-openai-compact
+      - gpt-5.5
+      - gpt-5.5-openai-compact
+    weight: 5
+    timeout_ms: 300000
+    same_retries: 1
+    enabled: true
+
+  - name: opencode-deepseek
+    base_url: https://opencode.ai/zen/go
+    api_key: "${OPENCODE_API_KEY}"
+    provider_class: quota_limited
+    models:
+      - deepseek-v4-pro
+      - deepseek-v4-flash
+    weight: 1
+    timeout_ms: 300000
+    same_retries: 1
+    enabled: true
+
+telemetry:
+  sqlite_path: data/telemetry.db
+  retention_days: 30
+  aggregation_sec: 60
+  cache_ttl_sec: 5
+
+pricing:
+  cache_path: data/pricing-cache.json
+  refresh_interval_hours: 12
+  request_timeout_ms: 15000
+  manual_prices: []
+
+benchmarking:
+  enabled: false
+  default_suite: general_protocol_v1
+  judge:
+    provider: nowcoding
+    public_model: gpt-5.5
+    timeout_ms: 30000
+  limits:
+    max_parallel_runs: 1
+    max_parallel_cases: 2
+    per_case_timeout_ms: 30000
+  verdict_thresholds:
+    normal_max_gap: 8
+    suspect_max_gap: 20
+    high_suspect_protocol_failures: 2
+  aliases: []
+
+compat:
+  bridge:
+    enabled: true
+    exclude_user_agents: []
+    rules:
+      - from: gpt-5.4-mini
+        to: deepseek-v4-flash
+  fallback:
+    enabled: false
+    detect_repetition: false
+    models: {}
+

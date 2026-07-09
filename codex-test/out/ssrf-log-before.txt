@@ -1,0 +1,1 @@
+﻿gatewayd.log line count before reload: 597

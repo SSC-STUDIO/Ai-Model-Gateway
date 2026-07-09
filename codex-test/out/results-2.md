@@ -1,0 +1,20 @@
+﻿# Phase-2 live test run 2026-07-06T22:48:12.0251551+08:00
+| s1-stream-deepseek-usage | 200 | 13334ms | 6168B |  |
+| s2-stream-bridge-usage | 200 | 1540ms | 6170B |  |
+| s3-stream-no-usage | 200 | 1603ms | 6162B |  |
+| e1-unknown-model | 404 | 7ms | 44B |  |
+| e2-invalid-json | 400 | 1ms | 33B |  |
+| e3-empty-body | 400 | 1ms | 33B |  |
+| e4-missing-messages | 400 | 716ms | 233B |  |
+| e5-missing-model | 400 | 1ms | 30B |  |
+| e6-bad-model-responses | 404 | 1ms | 41B |  |
+| e7-anthropic-bad-model | 404 | 1ms | 41B |  |
+| e8-tool-bad-schema | 200 | 1313ms | 589B |  |
+| a1-models-no-auth | 200 | 6ms | 867B |  |
+| a2-models-dummy-auth | 200 | 22ms | 867B |  |
+| a3-chat-no-auth | 200 | 1446ms | 566B |  |
+| a4-chat-empty-bearer | 200 | 1314ms | 564B |  |
+| g1-health | 404 | 1ms | 19B |  |
+| g2-ready | 404 | 1ms | 19B |  |
+| g3-v1-models | 200 | 1ms | 867B |  |
+| g4-root | 404 | 2ms | 19B |  |

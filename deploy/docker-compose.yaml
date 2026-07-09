@@ -1,0 +1,59 @@
+# AI Model Gateway - unified Docker Compose runtime
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.yaml up -d
+#   docker compose -f deploy/docker-compose.yaml logs -f
+
+services:
+  aigw:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ai-model-gateway
+    restart: unless-stopped
+    command:
+      - supervise
+      - -runtime-root
+      - /opt/ai-model-gateway/.gateway-runtime
+      - -config-dir
+      - /opt/ai-model-gateway/configs/docker
+      - -bin-dir
+      - /opt/ai-model-gateway/bin
+      - -manifest
+      - /opt/ai-model-gateway/aigw-manifest.json
+      - -strict-manifest=true
+    ports:
+      - "18080:18080" # data plane
+      - "18081:18081" # admin/control plane
+    volumes:
+      - ../configs:/opt/ai-model-gateway/configs:ro
+      - aigw-runtime:/opt/ai-model-gateway/.gateway-runtime
+    env_file:
+      - path: ./secrets.env
+        required: false
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:18081/-/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - ai-gateway-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 256M
+
+networks:
+  ai-gateway-net:
+    driver: bridge
+    name: ai-gateway-network
+
+volumes:
+  aigw-runtime:
+    name: ai-gateway-runtime

@@ -1,0 +1,1 @@
+﻿{"created_at":1783348042,"id":"resp_2f4aad5d-7d0e-495f-af28-30cc3b88670f","model":"gpt-5.4-mini","object":"response","output":[{"content":[{"text":"","type":"output_text"}],"id":"msg_2f4aad5d-7d0e-495f-af28-30cc3b88670f","role":"assistant","status":"completed","type":"message"}],"status":"completed","usage":{"input_tokens":86,"output_tokens":16,"total_tokens":102}}
