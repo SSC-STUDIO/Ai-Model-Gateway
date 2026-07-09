@@ -16,6 +16,9 @@ configs/configs/
 __pycache__/
 *.pyc
 
+# Config backups
+*.bak
+
 # OS files
 Thumbs.db
 .DS_Store
