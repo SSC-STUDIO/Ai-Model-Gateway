@@ -1,5 +1,8 @@
-﻿import pathlib, re
-p=pathlib.Path(r'D:\EliuaK_Csy\Working-Paper\My-Program\Ai-Model-Gateway-run\bin\gatewayd.exe')
+﻿import pathlib, re, os
+p=pathlib.Path(os.environ.get(
+    'GATEWAYD_BIN',
+    str(pathlib.Path(__file__).resolve().parent / 'bin' / 'gatewayd.exe')
+))
 b=p.read_bytes()
 for pat in [b'compat', b'bridge', b'fallback', b'tools', b'reasoning', b'truncation', b'unsupported', b'exclude_user_agents']:
     print('\nPAT', pat.decode())

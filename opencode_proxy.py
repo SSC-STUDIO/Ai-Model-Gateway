@@ -1,6 +1,9 @@
 ﻿from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import requests, os, json, time, pathlib, sys
-LOG = pathlib.Path(r'D:\EliuaK_Csy\Working-Paper\My-Program\Ai-Model-Gateway-run\opencode-proxy.log')
+LOG = pathlib.Path(os.environ.get(
+    'OPENCODE_PROXY_LOG',
+    str(pathlib.Path(__file__).resolve().parent / 'opencode-proxy.log')
+))
 TARGET_ORIGIN = 'https://opencode.ai'
 class H(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
