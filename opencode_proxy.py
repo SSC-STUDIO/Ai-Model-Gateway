@@ -25,6 +25,9 @@ CORS_ORIGIN = os.environ.get(
     'OPENCODE_PROXY_CORS_ORIGIN',
     '*'
 )
+# Upstream request timeouts (seconds): connect timeout and read timeout.
+CONNECT_TIMEOUT = int(os.environ.get('OPENCODE_PROXY_CONNECT_TIMEOUT', '10'))
+READ_TIMEOUT = int(os.environ.get('OPENCODE_PROXY_READ_TIMEOUT', '300'))
 
 _LEVEL_MAP = {
     'DEBUG': logging.DEBUG,
@@ -260,6 +263,7 @@ class H(BaseHTTPRequestHandler):
         bytes_sent = 0
         is_streaming = False
         upstream_streaming = False
+        _headers_sent = False
         t0 = time.monotonic()
         elapsed = 0
         error_type = None
@@ -277,7 +281,8 @@ class H(BaseHTTPRequestHandler):
 
             resp = _upstream_session.request(
                 self.command, target,
-                headers=headers, data=body, timeout=(10, 300), stream=True,
+                headers=headers, data=body,
+                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT), stream=True,
             )
             rec['status_code'] = resp.status_code
             rec['response_headers'] = dict(resp.headers.items())
@@ -302,6 +307,7 @@ class H(BaseHTTPRequestHandler):
                 self.send_header('Transfer-Encoding', 'chunked')
                 self._send_cors_headers()
                 self.end_headers()
+                _headers_sent = True
 
                 # Forward chunks as they arrive
                 for chunk in resp.iter_content(chunk_size=8192):
@@ -320,6 +326,7 @@ class H(BaseHTTPRequestHandler):
                 self.send_header('Content-Length', str(len(out)))
                 self._send_cors_headers()
                 self.end_headers()
+                _headers_sent = True
                 self.wfile.write(out)
 
             elapsed = round((time.monotonic() - t0) * 1000)
@@ -330,20 +337,22 @@ class H(BaseHTTPRequestHandler):
             rec['proxy_error'] = repr(e)
             elapsed = round((time.monotonic() - t0) * 1000)
             rec['elapsed_ms'] = elapsed
-            error_type = 'timeout'
-            logger.warning('[%s] upstream timeout after %dms: %s %s',
-                           request_id, elapsed, self.command, self.path)
-            out = json.dumps(
-                {'error': 'upstream_timeout', 'detail': repr(e)},
-                ensure_ascii=False,
-            ).encode('utf-8')
-            self.send_response(504)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(out)))
-            self.send_header('X-Request-Id', request_id)
-            self._send_cors_headers()
-            self.end_headers()
-            self.wfile.write(out)
+            timeout_type = 'connect_timeout' if 'connect' in str(e).lower() else 'read_timeout'
+            error_type = timeout_type
+            logger.warning('[%s] upstream %s after %dms: %s %s',
+                           request_id, timeout_type, elapsed, self.command, self.path)
+            if not _headers_sent:
+                out = json.dumps(
+                    {'error': f'upstream_{timeout_type}', 'detail': repr(e)},
+                    ensure_ascii=False,
+                ).encode('utf-8')
+                self.send_response(504)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self.send_header('X-Request-Id', request_id)
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(out)
 
         except requests.exceptions.ConnectionError as e:
             rec['proxy_error'] = repr(e)
@@ -352,17 +361,26 @@ class H(BaseHTTPRequestHandler):
             error_type = 'connection_error'
             logger.error('[%s] upstream connection error: %s %s — %s',
                          request_id, self.command, self.path, e)
-            out = json.dumps(
-                {'error': 'upstream_unreachable', 'detail': repr(e)},
-                ensure_ascii=False,
-            ).encode('utf-8')
-            self.send_response(502)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(out)))
-            self.send_header('X-Request-Id', request_id)
-            self._send_cors_headers()
-            self.end_headers()
-            self.wfile.write(out)
+            if not _headers_sent:
+                out = json.dumps(
+                    {'error': 'upstream_unreachable', 'detail': repr(e)},
+                    ensure_ascii=False,
+                ).encode('utf-8')
+                self.send_response(502)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self.send_header('X-Request-Id', request_id)
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(out)
+
+        except (BrokenPipeError, ConnectionResetError) as e:
+            rec['proxy_error'] = repr(e)
+            elapsed = round((time.monotonic() - t0) * 1000)
+            rec['elapsed_ms'] = elapsed
+            error_type = 'client_disconnect'
+            logger.warning('[%s] client disconnected after %dms: %s %s',
+                           request_id, elapsed, self.command, self.path)
 
         except Exception as e:
             rec['proxy_error'] = repr(e)
@@ -370,17 +388,18 @@ class H(BaseHTTPRequestHandler):
             rec['elapsed_ms'] = elapsed
             error_type = 'proxy_error'
             logger.exception('[%s] proxy error for %s %s', request_id, self.command, self.path)
-            out = json.dumps(
-                {'error': 'proxy_error', 'detail': repr(e)},
-                ensure_ascii=False,
-            ).encode('utf-8')
-            self.send_response(502)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Content-Length', str(len(out)))
-            self.send_header('X-Request-Id', request_id)
-            self._send_cors_headers()
-            self.end_headers()
-            self.wfile.write(out)
+            if not _headers_sent:
+                out = json.dumps(
+                    {'error': 'proxy_error', 'detail': repr(e)},
+                    ensure_ascii=False,
+                ).encode('utf-8')
+                self.send_response(502)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(out)))
+                self.send_header('X-Request-Id', request_id)
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(out)
 
         finally:
             elapsed_ms = rec.get('elapsed_ms', round((time.monotonic() - t0) * 1000))
