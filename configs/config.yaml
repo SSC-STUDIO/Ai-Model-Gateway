@@ -133,7 +133,7 @@ providers:
         requests_per_second: 0
       same_retries: 1
       timeout_ms: 300000
-      weight: 1
+      weight: 2
     - anthropic_base_url: ""
       api_key: sk-ySPAtxgY82Y1YscYnWkSuMpGSiOJCXH8zOFNsJKw4NDvXNdi
       base_url: https://othersapi.com
@@ -158,7 +158,7 @@ providers:
         requests_per_second: 0
       same_retries: 1
       timeout_ms: 120000
-      weight: 2
+      weight: 4
     - anthropic_base_url: ""
       api_key: tp-c7gby7omhsrano8iewhx042mg8bfmlegeqqvrfnlodk36bdf
       base_url: https://token-plan-cn.xiaomimimo.com
@@ -178,7 +178,7 @@ providers:
         requests_per_second: 0
       same_retries: 1
       timeout_ms: 300000
-      weight: 2
+      weight: 3
 routing:
     cache:
         enabled: false
