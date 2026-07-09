@@ -630,13 +630,37 @@ class H(BaseHTTPRequestHandler):
                 rec['request_body'] = body[:5000].decode('utf-8', 'replace')
 
             # ---- Upstream request with retry for transient failures ----
+            # The retry loop catches both retryable HTTP status codes (429,
+            # 500–504) AND network-level transient exceptions (ConnectionError,
+            # Timeout) that occur during the request() call itself.  Without
+            # the inner try/except, a transient network blip (DNS hiccup, TCP
+            # reset, connection refused) would propagate straight to the outer
+            # exception handler and return an error to the client without
+            # ever attempting a retry — defeating the purpose of the retry
+            # configuration.
             resp = None
             for _attempt in range(UPSTREAM_MAX_RETRIES):
-                resp = _upstream_session.request(
-                    self.command, target,
-                    headers=headers, data=body,
-                    timeout=(CONNECT_TIMEOUT, READ_TIMEOUT), stream=True,
-                )
+                try:
+                    resp = _upstream_session.request(
+                        self.command, target,
+                        headers=headers, data=body,
+                        timeout=(CONNECT_TIMEOUT, READ_TIMEOUT), stream=True,
+                    )
+                except (requests.exceptions.ConnectionError,
+                        requests.exceptions.Timeout) as net_exc:
+                    if _attempt < UPSTREAM_MAX_RETRIES - 1:
+                        retries += 1
+                        wait = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                        logger.info(
+                            '[%s] upstream network retry %d/%d after %.1fs (%s, path=%s)',
+                            request_id, retries, UPSTREAM_MAX_RETRIES - 1, wait,
+                            type(net_exc).__name__, self.path,
+                        )
+                        time.sleep(wait)
+                        continue
+                    # Last attempt — re-raise so the outer handler produces
+                    # the proper error response with sanitized details.
+                    raise
                 # Retry on transient upstream errors (429, 500–504)
                 if (resp.status_code in _RETRYABLE_STATUSES
                         and _attempt < UPSTREAM_MAX_RETRIES - 1):
