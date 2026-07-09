@@ -1,1 +1,0 @@
-﻿{"id":"resp_0e7ec9b9d3783dd1016a4bbb3e32d4819a9a4584e46db80718","object":"chat.completion","created":1783348031,"model":"gpt-5.5","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":13,"completion_tokens":18,"total_tokens":31,"completion_tokens_details":{"reasoning_tokens":11}}}

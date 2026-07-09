@@ -23,3 +23,6 @@ __pycache__/
 # OS files
 Thumbs.db
 .DS_Store
+
+# Test output snapshots (regenerated on each test run)
+codex-test/out/
