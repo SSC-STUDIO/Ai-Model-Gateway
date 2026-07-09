@@ -109,6 +109,11 @@ READINESS_PATHS = frozenset({'/ready', '/-/ready'})
 # Admin / monitoring paths served by the proxy (not forwarded upstream)
 STATS_PATHS = frozenset({'/stats', '/-/stats'})
 METRICS_PATHS = frozenset({'/metrics', '/-/metrics', '/prometheus'})
+# Model discovery: OpenAI-compatible /v1/models endpoint.  Served locally
+# from proxy stats instead of forwarding upstream, so clients can discover
+# which models have been proxied even when the upstream doesn't implement
+# this endpoint.
+MODELS_PATHS = frozenset({'/v1/models', '/-/models'})
 BLACKLIST_HEADERS = frozenset({
     'host', 'content-length', 'connection', 'accept-encoding',
 })
@@ -508,6 +513,43 @@ class H(BaseHTTPRequestHandler):
             **snapshot,
             'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         }, ensure_ascii=False, indent=2).encode()
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ---- OpenAI-compatible model discovery endpoint ----
+    def _models_endpoint(self):
+        """Return available models in OpenAI /v1/models format.
+
+        Provides an OpenAI-compatible model catalog from proxy stats so
+        clients can discover which models have been proxied.  This is
+        particularly useful when the upstream doesn't implement /v1/models
+        or when the proxy bridges multiple providers with different model
+        names.
+        """
+        with _stats_lock:
+            per_model = {
+                name: dict(mdata) for name, mdata in _stats['per_model'].items()
+            }
+        models_list = []
+        for model_name in sorted(per_model.keys()):
+            m = per_model[model_name]
+            models_list.append({
+                'id': model_name,
+                'object': 'model',
+                'created': int(_stats['started_at']),
+                'owned_by': 'opencode-proxy',
+                'requests': m['requests'],
+                'errors': m['errors'],
+                'tokens_total': m['tokens_total'],
+            })
+        body = json.dumps({
+            'object': 'list',
+            'data': models_list,
+        }, ensure_ascii=False).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
@@ -1141,6 +1183,8 @@ class H(BaseHTTPRequestHandler):
             self._ready()
         elif self.path in STATS_PATHS:
             self._stats_endpoint()
+        elif self.path in MODELS_PATHS:
+            self._models_endpoint()
         elif self.path in METRICS_PATHS:
             self._metrics_endpoint()
         else:
@@ -1165,9 +1209,14 @@ def _shutdown(sig, frame):
               f'requests={_stats["total_requests"]}, active={active})', flush=True)
         # Stop periodic auto-save first so it doesn't race with the final save
         _stats_saver_stop.set()
-        # Stop accepting new connections
-        _server.shutdown()
-        # Drain in-flight requests: wait up to 30s for active threads to finish
+        # Phase 1: Stop accepting new connections (non-blocking).
+        # Use a background thread so the drain loop can proceed immediately.
+        _shutdown_thread = threading.Thread(target=_server.shutdown, daemon=True)
+        _shutdown_thread.start()
+        # Phase 2: Drain in-flight requests before closing the socket.
+        # This must happen BEFORE server_close() so active connections can
+        # complete their responses.  Without drain, server_close() forces
+        # TCP RST on in-flight requests, breaking streaming and long-polling.
         drain_timeout = int(os.environ.get('OPENCODE_PROXY_DRAIN_TIMEOUT', '30'))
         if active > 0 and drain_timeout > 0:
             logger.info('draining %d active request(s) (timeout=%ds)...', active, drain_timeout)
@@ -1188,11 +1237,18 @@ def _shutdown(sig, frame):
                 logger.info('drain complete: all requests finished')
         else:
             logger.info('no active requests, skipping drain')
+        # Wait for shutdown thread to complete (socket stopped accepting)
+        _shutdown_thread.join(timeout=5)
     # Persist stats so totals carry over to the next run
     _save_stats()
     # Remove PID file now that we're shutting down
     _remove_pid_file()
-    # Close persistent connections to upstream
+    # Close listening socket and persistent connections to upstream
+    if _server:
+        try:
+            _server.server_close()
+        except Exception:
+            pass
     _upstream_session.close()
 
 signal.signal(signal.SIGINT, _shutdown)
