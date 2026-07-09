@@ -20,6 +20,11 @@ MAX_BODY_BYTES = int(os.environ.get(
     'OPENCODE_PROXY_MAX_BODY_BYTES',
     str(100 * 1024 * 1024),  # 100 MB default
 ))
+# CORS: allowed origin. '*' allows any origin; set to a specific value in production.
+CORS_ORIGIN = os.environ.get(
+    'OPENCODE_PROXY_CORS_ORIGIN',
+    '*'
+)
 
 _LEVEL_MAP = {
     'DEBUG': logging.DEBUG,
@@ -154,6 +159,19 @@ class H(BaseHTTPRequestHandler):
         # Suppress default http.server logging — we use our own logger
         return
 
+    def _send_cors_headers(self, extra_origin=None):
+        """Attach standard CORS headers so browser-based clients can use the proxy."""
+        origin = extra_origin or CORS_ORIGIN
+        self.send_header('Access-Control-Allow-Origin', origin)
+        if origin != '*':
+            self.send_header('Vary', 'Origin')
+        self.send_header('Access-Control-Allow-Methods',
+                         'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD')
+        self.send_header('Access-Control-Allow-Headers',
+                         'Authorization, Content-Type, X-Api-Key, X-Request-Id')
+        self.send_header('Access-Control-Max-Age', '86400')
+        self.send_header('Access-Control-Expose-Headers', 'X-Request-Id')
+
     # ---- Health check with stats ----
     def _health(self):
         with _stats_lock:
@@ -183,8 +201,20 @@ class H(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
+        self._send_cors_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    # ---- OPTIONS preflight handler ----
+    def _cors_preflight(self):
+        """Handle CORS preflight requests without forwarding to upstream."""
+        request_id = uuid.uuid4().hex[:12]
+        logger.info('[%s] CORS preflight %s %s', request_id, self.command, self.path)
+        self.send_response(204)
+        self._send_cors_headers()
+        self.send_header('X-Request-Id', request_id)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
 
     # ---- Actual proxy logic ----
     def _proxy(self):
@@ -203,6 +233,7 @@ class H(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out)))
             self.send_header('X-Request-Id', request_id)
+            self._send_cors_headers()
             self.end_headers()
             self.wfile.write(out)
             _record_stats(413, 0, 0, 'request_too_large')
@@ -269,6 +300,7 @@ class H(BaseHTTPRequestHandler):
             if upstream_streaming:
                 # Streaming: use Transfer-Encoding: chunked
                 self.send_header('Transfer-Encoding', 'chunked')
+                self._send_cors_headers()
                 self.end_headers()
 
                 # Forward chunks as they arrive
@@ -286,6 +318,7 @@ class H(BaseHTTPRequestHandler):
                 bytes_sent = len(out)
                 rec['response_text'] = resp.text[:12000]
                 self.send_header('Content-Length', str(len(out)))
+                self._send_cors_headers()
                 self.end_headers()
                 self.wfile.write(out)
 
@@ -308,6 +341,7 @@ class H(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out)))
             self.send_header('X-Request-Id', request_id)
+            self._send_cors_headers()
             self.end_headers()
             self.wfile.write(out)
 
@@ -326,6 +360,7 @@ class H(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out)))
             self.send_header('X-Request-Id', request_id)
+            self._send_cors_headers()
             self.end_headers()
             self.wfile.write(out)
 
@@ -343,6 +378,7 @@ class H(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(out)))
             self.send_header('X-Request-Id', request_id)
+            self._send_cors_headers()
             self.end_headers()
             self.wfile.write(out)
 
@@ -374,7 +410,9 @@ class H(BaseHTTPRequestHandler):
     def do_HEAD(self):    self._dispatch()
 
     def _dispatch(self):
-        if self.path in HEALTH_PATHS:
+        if self.command == 'OPTIONS':
+            self._cors_preflight()
+        elif self.path in HEALTH_PATHS:
             self._health()
         else:
             self._proxy()
@@ -430,9 +468,9 @@ if __name__ == '__main__':
     port = int(os.environ.get('OPENCODE_PROXY_PORT', '18082'))
     _start_time = time.monotonic()
     _stats['started_at'] = time.time()
-    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB)',
-                port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024))
+    logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB, cors=%s)',
+                port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024), CORS_ORIGIN)
     print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN} '
-          f'(max_body={MAX_BODY_BYTES // (1024 * 1024)}MB)', flush=True)
+          f'(max_body={MAX_BODY_BYTES // (1024 * 1024)}MB, cors={CORS_ORIGIN})', flush=True)
     _server = GracefulHTTPServer(('127.0.0.1', port), H)
     _server.serve_forever()
