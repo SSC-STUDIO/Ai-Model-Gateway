@@ -115,6 +115,7 @@ STATS_FILE = LOG.with_suffix('.stats.json')
 # Accumulated proxy statistics (thread-safe)
 # ---------------------------------------------------------------------------
 _stats_lock = threading.Lock()
+
 _stats = {
     'started_at': time.time(),
     'total_requests': 0,
@@ -122,8 +123,13 @@ _stats = {
     'total_bytes_sent': 0,
     'total_latency_ms': 0,
     'total_upstream_retries': 0,
+    'total_tokens_in': 0,
+    'total_tokens_out': 0,
+    'total_tokens_reasoning': 0,
+    'total_tokens_total': 0,
     'status_codes': {},   # {200: N, 502: N, ...}
     'errors': {},         # {'timeout': N, 'connection_error': N, ...}
+    'per_model': {},      # {'model-name': {requests, errors, tokens_in, tokens_out, tokens_total, avg_latency_ms, bytes_sent}}
 }
 
 def _load_stats():
@@ -140,10 +146,28 @@ def _load_stats():
             _stats['total_bytes_sent'] += saved.get('total_bytes_sent', 0)
             _stats['total_latency_ms'] += saved.get('total_latency_ms', 0)
             _stats['total_upstream_retries'] += saved.get('total_upstream_retries', 0)
+            _stats['total_tokens_in'] += saved.get('total_tokens_in', 0)
+            _stats['total_tokens_out'] += saved.get('total_tokens_out', 0)
+            _stats['total_tokens_reasoning'] += saved.get('total_tokens_reasoning', 0)
+            _stats['total_tokens_total'] += saved.get('total_tokens_total', 0)
             for sc, n in saved.get('status_codes', {}).items():
                 _stats['status_codes'][sc] = _stats['status_codes'].get(sc, 0) + n
             for err, n in saved.get('errors', {}).items():
                 _stats['errors'][err] = _stats['errors'].get(err, 0) + n
+            for model_name, mdata in saved.get('per_model', {}).items():
+                m = _stats['per_model'].setdefault(model_name, {
+                    'requests': 0, 'errors': 0, 'tokens_in': 0, 'tokens_out': 0,
+                    'tokens_reasoning': 0, 'tokens_total': 0,
+                    'total_latency_ms': 0, 'bytes_sent': 0,
+                })
+                m['requests'] += mdata.get('requests', 0)
+                m['errors'] += mdata.get('errors', 0)
+                m['tokens_in'] += mdata.get('tokens_in', 0)
+                m['tokens_out'] += mdata.get('tokens_out', 0)
+                m['tokens_reasoning'] += mdata.get('tokens_reasoning', 0)
+                m['tokens_total'] += mdata.get('tokens_total', 0)
+                m['total_latency_ms'] += mdata.get('total_latency_ms', 0)
+                m['bytes_sent'] += mdata.get('bytes_sent', 0)
         logger.info('stats restored from %s (%d prior requests)',
                     STATS_FILE.name, saved.get('total_requests', 0))
     except Exception as exc:
@@ -215,17 +239,37 @@ class GracefulHTTPServer(ThreadingHTTPServer):
                 _active_requests.discard(t)
 
 
-def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None, retries=0):
+def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None, retries=0,
+                  model=None, tokens_in=0, tokens_out=0, tokens_reasoning=0):
     with _stats_lock:
         _stats['total_requests'] += 1
         _stats['total_bytes_sent'] += bytes_sent
         _stats['total_latency_ms'] += elapsed_ms
         _stats['total_upstream_retries'] += retries
+        _stats['total_tokens_in'] += tokens_in
+        _stats['total_tokens_out'] += tokens_out
+        _stats['total_tokens_reasoning'] += tokens_reasoning
+        _stats['total_tokens_total'] += tokens_in + tokens_out + tokens_reasoning
         sc = str(status_code)
         _stats['status_codes'][sc] = _stats['status_codes'].get(sc, 0) + 1
         if error_type:
             _stats['total_errors'] += 1
             _stats['errors'][error_type] = _stats['errors'].get(error_type, 0) + 1
+        if model:
+            m = _stats['per_model'].setdefault(model, {
+                'requests': 0, 'errors': 0, 'tokens_in': 0, 'tokens_out': 0,
+                'tokens_reasoning': 0, 'tokens_total': 0,
+                'total_latency_ms': 0, 'bytes_sent': 0,
+            })
+            m['requests'] += 1
+            m['bytes_sent'] += bytes_sent
+            m['total_latency_ms'] += elapsed_ms
+            m['tokens_in'] += tokens_in
+            m['tokens_out'] += tokens_out
+            m['tokens_reasoning'] += tokens_reasoning
+            m['tokens_total'] += tokens_in + tokens_out + tokens_reasoning
+            if error_type:
+                m['errors'] += 1
 
 
 class H(BaseHTTPRequestHandler):
@@ -256,6 +300,8 @@ class H(BaseHTTPRequestHandler):
                 round(_stats['total_latency_ms'] / total) if total > 0 else 0
             )
             uptime = round(time.time() - _stats['started_at'])
+            tokens_total = _stats['total_tokens_total']
+            model_count = len(_stats['per_model'])
         with _active_requests_lock:
             active = len(_active_requests)
         body = json.dumps({
@@ -270,6 +316,8 @@ class H(BaseHTTPRequestHandler):
                 'total_bytes_sent': _stats['total_bytes_sent'],
                 'total_upstream_retries': _stats['total_upstream_retries'],
                 'avg_latency_ms': avg_lat,
+                'total_tokens': tokens_total,
+                'models_tracked': model_count,
                 'status_codes': _stats['status_codes'],
                 'errors': _stats['errors'],
                 'persisted': STATS_FILE.exists(),
@@ -287,20 +335,35 @@ class H(BaseHTTPRequestHandler):
     def _stats_endpoint(self):
         """Return full proxy statistics as JSON for operational dashboards."""
         with _stats_lock:
+            total_req = _stats['total_requests']
+            # Build per-model summary with computed averages
+            per_model = {}
+            for model_name, mdata in _stats['per_model'].items():
+                m = dict(mdata)
+                m['avg_latency_ms'] = (
+                    round(mdata['total_latency_ms'] / mdata['requests'])
+                    if mdata['requests'] > 0 else 0
+                )
+                per_model[model_name] = m
             snapshot = {
                 'started_at': _stats['started_at'],
                 'uptime_seconds': round(time.time() - _stats['started_at']),
-                'total_requests': _stats['total_requests'],
+                'total_requests': total_req,
                 'total_errors': _stats['total_errors'],
                 'total_bytes_sent': _stats['total_bytes_sent'],
                 'total_latency_ms': _stats['total_latency_ms'],
                 'total_upstream_retries': _stats['total_upstream_retries'],
+                'total_tokens_in': _stats['total_tokens_in'],
+                'total_tokens_out': _stats['total_tokens_out'],
+                'total_tokens_reasoning': _stats['total_tokens_reasoning'],
+                'total_tokens_total': _stats['total_tokens_total'],
                 'avg_latency_ms': (
-                    round(_stats['total_latency_ms'] / _stats['total_requests'])
-                    if _stats['total_requests'] > 0 else 0
+                    round(_stats['total_latency_ms'] / total_req)
+                    if total_req > 0 else 0
                 ),
                 'status_codes': dict(_stats['status_codes']),
                 'errors': dict(_stats['errors']),
+                'per_model': per_model,
                 'persisted': STATS_FILE.exists(),
             }
         with _active_requests_lock:
@@ -360,6 +423,18 @@ class H(BaseHTTPRequestHandler):
             '# HELP opencode_proxy_upstream_retries_total Total upstream retries',
             '# TYPE opencode_proxy_upstream_retries_total counter',
             f'opencode_proxy_upstream_retries_total {total_retries}',
+            '# HELP opencode_proxy_tokens_in_total Total prompt tokens processed',
+            '# TYPE opencode_proxy_tokens_in_total counter',
+            f'opencode_proxy_tokens_in_total {_stats["total_tokens_in"]}',
+            '# HELP opencode_proxy_tokens_out_total Total completion tokens generated',
+            '# TYPE opencode_proxy_tokens_out_total counter',
+            f'opencode_proxy_tokens_out_total {_stats["total_tokens_out"]}',
+            '# HELP opencode_proxy_tokens_reasoning_total Total reasoning tokens',
+            '# TYPE opencode_proxy_tokens_reasoning_total counter',
+            f'opencode_proxy_tokens_reasoning_total {_stats["total_tokens_reasoning"]}',
+            '# HELP opencode_proxy_tokens_total_total Total tokens across all models',
+            '# TYPE opencode_proxy_tokens_total_total counter',
+            f'opencode_proxy_tokens_total_total {_stats["total_tokens_total"]}',
         ]
         # Per-status-code counters
         for code, count in sorted(sc.items()):
@@ -367,6 +442,19 @@ class H(BaseHTTPRequestHandler):
         # Per-error-type counters
         for etype, count in sorted(errs.items()):
             lines.append(f'opencode_proxy_error_type_total{{error="{etype}"}} {count}')
+        # Per-model counters
+        for model_name in sorted(_stats['per_model'].keys()):
+            with _stats_lock:
+                m = dict(_stats['per_model'][model_name])
+            lines.append(f'# HELP opencode_proxy_model_requests_total Requests per model')
+            lines.append(f'# TYPE opencode_proxy_model_requests_total counter')
+            lines.append(f'opencode_proxy_model_requests_total{{model="{model_name}"}} {m["requests"]}')
+            lines.append(f'# HELP opencode_proxy_model_tokens_total Tokens per model')
+            lines.append(f'# TYPE opencode_proxy_model_tokens_total counter')
+            lines.append(f'opencode_proxy_model_tokens_total{{model="{model_name}"}} {m["tokens_total"]}')
+            lines.append(f'# HELP opencode_proxy_model_errors_total Errors per model')
+            lines.append(f'# TYPE opencode_proxy_model_errors_total counter')
+            lines.append(f'opencode_proxy_model_errors_total{{model="{model_name}"}} {m["errors"]}')
         body = '\n'.join(lines).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; version=0.0.4')
@@ -453,6 +541,8 @@ class H(BaseHTTPRequestHandler):
         elapsed = 0
         error_type = None
         retries = 0
+        req_model = None
+        resp_tokens = None  # {prompt_tokens, completion_tokens, total_tokens}
 
         try:
             if body:
@@ -462,6 +552,9 @@ class H(BaseHTTPRequestHandler):
                     req_json = rec['request_json']
                     if isinstance(req_json, dict) and req_json.get('stream'):
                         is_streaming = True
+                    # Extract model name for per-model statistics
+                    if isinstance(req_json, dict):
+                        req_model = req_json.get('model')
                 except Exception:
                     rec['request_body'] = body[:5000].decode('utf-8', 'replace')
 
@@ -566,6 +659,18 @@ class H(BaseHTTPRequestHandler):
                 out = resp.content
                 bytes_sent = len(out)
                 rec['response_text'] = resp.text[:12000]
+                # Extract token usage from non-streaming response
+                try:
+                    resp_json = json.loads(out)
+                    if isinstance(resp_json, dict):
+                        usage = resp_json.get('usage')
+                        if isinstance(usage, dict):
+                            resp_tokens = usage
+                            # Also capture model from response if request didn't have it
+                            if not req_model:
+                                req_model = resp_json.get('model')
+                except Exception:
+                    pass
                 self.send_header('Content-Length', str(len(out)))
                 self._send_cors_headers()
                 self.end_headers()
@@ -670,7 +775,11 @@ class H(BaseHTTPRequestHandler):
             else:
                 logger.info(log_line)
             _record_stats(rec.get('status_code', 0), bytes_sent, elapsed_ms,
-                          error_type, retries)
+                          error_type, retries, req_model,
+                          (resp_tokens or {}).get('prompt_tokens', 0),
+                          (resp_tokens or {}).get('completion_tokens', 0),
+                          ((resp_tokens or {}).get('completion_tokens_details') or {}).get('reasoning_tokens', 0),
+                          )
 
     # ---- Dispatchers ----
     def do_GET(self):     self._dispatch()
