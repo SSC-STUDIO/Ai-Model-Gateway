@@ -128,6 +128,7 @@ _stats = {
     'total_requests': 0,
     'total_errors': 0,
     'total_bytes_sent': 0,
+    'total_bytes_received': 0,
     'total_latency_ms': 0,
     'total_upstream_retries': 0,
     'total_tokens_in': 0,
@@ -151,6 +152,7 @@ def _load_stats():
             _stats['total_requests'] += saved.get('total_requests', 0)
             _stats['total_errors'] += saved.get('total_errors', 0)
             _stats['total_bytes_sent'] += saved.get('total_bytes_sent', 0)
+            _stats['total_bytes_received'] += saved.get('total_bytes_received', 0)
             _stats['total_latency_ms'] += saved.get('total_latency_ms', 0)
             _stats['total_upstream_retries'] += saved.get('total_upstream_retries', 0)
             _stats['total_tokens_in'] += saved.get('total_tokens_in', 0)
@@ -165,7 +167,7 @@ def _load_stats():
                 m = _stats['per_model'].setdefault(model_name, {
                     'requests': 0, 'errors': 0, 'tokens_in': 0, 'tokens_out': 0,
                     'tokens_reasoning': 0, 'tokens_total': 0,
-                    'total_latency_ms': 0, 'bytes_sent': 0,
+                    'total_latency_ms': 0, 'bytes_sent': 0, 'bytes_received': 0,
                 })
                 m['requests'] += mdata.get('requests', 0)
                 m['errors'] += mdata.get('errors', 0)
@@ -175,6 +177,7 @@ def _load_stats():
                 m['tokens_total'] += mdata.get('tokens_total', 0)
                 m['total_latency_ms'] += mdata.get('total_latency_ms', 0)
                 m['bytes_sent'] += mdata.get('bytes_sent', 0)
+                m['bytes_received'] += mdata.get('bytes_received', 0)
         logger.info('stats restored from %s (%d prior requests)',
                     STATS_FILE.name, saved.get('total_requests', 0))
     except Exception as exc:
@@ -266,10 +269,12 @@ class GracefulHTTPServer(ThreadingHTTPServer):
 
 
 def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None, retries=0,
-                  model=None, tokens_in=0, tokens_out=0, tokens_reasoning=0):
+                  model=None, tokens_in=0, tokens_out=0, tokens_reasoning=0,
+                  bytes_received=0):
     with _stats_lock:
         _stats['total_requests'] += 1
         _stats['total_bytes_sent'] += bytes_sent
+        _stats['total_bytes_received'] += bytes_received
         _stats['total_latency_ms'] += elapsed_ms
         _stats['total_upstream_retries'] += retries
         _stats['total_tokens_in'] += tokens_in
@@ -285,10 +290,11 @@ def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None, retries=
             m = _stats['per_model'].setdefault(model, {
                 'requests': 0, 'errors': 0, 'tokens_in': 0, 'tokens_out': 0,
                 'tokens_reasoning': 0, 'tokens_total': 0,
-                'total_latency_ms': 0, 'bytes_sent': 0,
+                'total_latency_ms': 0, 'bytes_sent': 0, 'bytes_received': 0,
             })
             m['requests'] += 1
             m['bytes_sent'] += bytes_sent
+            m['bytes_received'] += bytes_received
             m['total_latency_ms'] += elapsed_ms
             m['tokens_in'] += tokens_in
             m['tokens_out'] += tokens_out
@@ -324,6 +330,7 @@ class H(BaseHTTPRequestHandler):
             total = _stats['total_requests']
             total_errors = _stats['total_errors']
             total_bytes = _stats['total_bytes_sent']
+            total_bytes_recv = _stats['total_bytes_received']
             total_retries = _stats['total_upstream_retries']
             avg_lat = (
                 round(_stats['total_latency_ms'] / total) if total > 0 else 0
@@ -345,6 +352,7 @@ class H(BaseHTTPRequestHandler):
                 'total_requests': total,
                 'total_errors': total_errors,
                 'total_bytes_sent': total_bytes,
+                'total_bytes_received': total_bytes_recv,
                 'total_upstream_retries': total_retries,
                 'avg_latency_ms': avg_lat,
                 'total_tokens': tokens_total,
@@ -419,6 +427,7 @@ class H(BaseHTTPRequestHandler):
                 'total_requests': total_req,
                 'total_errors': _stats['total_errors'],
                 'total_bytes_sent': _stats['total_bytes_sent'],
+                'total_bytes_received': _stats['total_bytes_received'],
                 'total_latency_ms': _stats['total_latency_ms'],
                 'total_upstream_retries': _stats['total_upstream_retries'],
                 'total_tokens_in': _stats['total_tokens_in'],
@@ -458,6 +467,7 @@ class H(BaseHTTPRequestHandler):
             total_req = _stats['total_requests']
             total_err = _stats['total_errors']
             total_bytes = _stats['total_bytes_sent']
+            total_bytes_recv = _stats['total_bytes_received']
             total_lat = _stats['total_latency_ms']
             total_retries = _stats['total_upstream_retries']
             avg_lat = round(total_lat / total_req) if total_req > 0 else 0
@@ -491,6 +501,9 @@ class H(BaseHTTPRequestHandler):
             '# HELP opencode_proxy_bytes_sent_total Total bytes sent to clients',
             '# TYPE opencode_proxy_bytes_sent_total counter',
             f'opencode_proxy_bytes_sent_total {total_bytes}',
+            '# HELP opencode_proxy_bytes_received_total Total bytes received from clients',
+            '# TYPE opencode_proxy_bytes_received_total counter',
+            f'opencode_proxy_bytes_received_total {total_bytes_recv}',
             '# HELP opencode_proxy_latency_ms_total Cumulative latency in ms',
             '# TYPE opencode_proxy_latency_ms_total counter',
             f'opencode_proxy_latency_ms_total {total_lat}',
@@ -973,6 +986,7 @@ class H(BaseHTTPRequestHandler):
                           (resp_tokens or {}).get('prompt_tokens', 0),
                           (resp_tokens or {}).get('completion_tokens', 0),
                           ((resp_tokens or {}).get('completion_tokens_details') or {}).get('reasoning_tokens', 0),
+                          bytes_received=len(body),
                           )
 
     # ---- Dispatchers ----
