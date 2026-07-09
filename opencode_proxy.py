@@ -456,18 +456,31 @@ class H(BaseHTTPRequestHandler):
         # Per-error-type counters
         for etype, count in sorted(errs.items()):
             lines.append(f'opencode_proxy_error_type_total{{error="{etype}"}} {count}')
-        # Per-model counters (uses pre-snapotted data, no lock needed)
-        for model_name in sorted(per_model_snapshot.keys()):
-            m = per_model_snapshot[model_name]
-            lines.append(f'# HELP opencode_proxy_model_requests_total Requests per model')
-            lines.append(f'# TYPE opencode_proxy_model_requests_total counter')
-            lines.append(f'opencode_proxy_model_requests_total{{model="{model_name}"}} {m["requests"]}')
-            lines.append(f'# HELP opencode_proxy_model_tokens_total Tokens per model')
-            lines.append(f'# TYPE opencode_proxy_model_tokens_total counter')
-            lines.append(f'opencode_proxy_model_tokens_total{{model="{model_name}"}} {m["tokens_total"]}')
-            lines.append(f'# HELP opencode_proxy_model_errors_total Errors per model')
-            lines.append(f'# TYPE opencode_proxy_model_errors_total counter')
-            lines.append(f'opencode_proxy_model_errors_total{{model="{model_name}"}} {m["errors"]}')
+        # Per-model counters (uses pre-snapshotted data, no lock needed).
+        # NOTE: Prometheus exposition format requires that # HELP / # TYPE
+        # appear at most once per metric name. The old code declared them
+        # inside the per-model loop, producing duplicate header lines that
+        # strict parsers (promtool check) reject. The headers are now hoisted
+        # out of the loop so each metric name is declared exactly once.
+        if per_model_snapshot:
+            lines.append('# HELP opencode_proxy_model_requests_total Requests per model')
+            lines.append('# TYPE opencode_proxy_model_requests_total counter')
+            for model_name in sorted(per_model_snapshot.keys()):
+                m = per_model_snapshot[model_name]
+                _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'opencode_proxy_model_requests_total{{model="{_mn}"}} {m["requests"]}')
+            lines.append('# HELP opencode_proxy_model_tokens_total Tokens per model')
+            lines.append('# TYPE opencode_proxy_model_tokens_total counter')
+            for model_name in sorted(per_model_snapshot.keys()):
+                m = per_model_snapshot[model_name]
+                _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'opencode_proxy_model_tokens_total{{model="{_mn}"}} {m["tokens_total"]}')
+            lines.append('# HELP opencode_proxy_model_errors_total Errors per model')
+            lines.append('# TYPE opencode_proxy_model_errors_total counter')
+            for model_name in sorted(per_model_snapshot.keys()):
+                m = per_model_snapshot[model_name]
+                _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'opencode_proxy_model_errors_total{{model="{_mn}"}} {m["errors"]}')
         body = '\n'.join(lines).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; version=0.0.4')

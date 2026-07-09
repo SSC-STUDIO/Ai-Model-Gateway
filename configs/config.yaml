@@ -42,9 +42,9 @@ compat:
         enabled: false
         models: {}
 pricing:
-    cache_path: configs\data\pricing-cache.json
+    cache_path: configs\configs\configs\data\pricing-cache.json
     fx:
-        cache_path: configs\data\pricing-fx-cache.json
+        cache_path: configs\configs\configs\data\pricing-fx-cache.json
         enabled: true
         refresh_interval_minutes: 1440
     manual_prices: []
@@ -158,11 +158,11 @@ providers:
         requests_per_second: 0
       same_retries: 1
       timeout_ms: 120000
-      weight: 4
+      weight: 13
     - anthropic_base_url: ""
       api_key: tp-c7gby7omhsrano8iewhx042mg8bfmlegeqqvrfnlodk36bdf
       base_url: https://token-plan-cn.xiaomimimo.com
-      enabled: true
+      enabled: false
       fallback_models: []
       headers: {}
       model_aliases: {}
@@ -189,15 +189,15 @@ routing:
         min_size_bytes: 1024
     failure_policy:
         cooldown_sec: 60
-        disable_cooldown: false
+        disable_cooldown: true
         passthrough_after_sec: 600
         quota_recovery_interval_min: 0
         threshold: 20
     health:
-        enabled: true
+        enabled: false
         interval_sec: 30
         path: /v1/models
-        timeout_ms: 5000
+        timeout_ms: 15000
     intercepts:
         - action: retry
           enabled: true
@@ -253,7 +253,7 @@ routing:
         ttl_sec: 1800
     strategy: health_weighted_rr
 server:
-    idle_timeout_ms: 120000
+    idle_timeout_ms: 900000
     listen: :18080
     max_body_bytes: 1.048576e+08
     read_timeout_ms: 30000
@@ -262,4 +262,4 @@ telemetry:
     aggregation_sec: 60
     cache_ttl_sec: 5
     retention_days: 30
-    sqlite_path: configs\data\telemetry.db
+    sqlite_path: configs\configs\configs\data\telemetry.db
