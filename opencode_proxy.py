@@ -296,12 +296,17 @@ class H(BaseHTTPRequestHandler):
     def _health(self):
         with _stats_lock:
             total = _stats['total_requests']
+            total_errors = _stats['total_errors']
+            total_bytes = _stats['total_bytes_sent']
+            total_retries = _stats['total_upstream_retries']
             avg_lat = (
                 round(_stats['total_latency_ms'] / total) if total > 0 else 0
             )
             uptime = round(time.time() - _stats['started_at'])
             tokens_total = _stats['total_tokens_total']
             model_count = len(_stats['per_model'])
+            status_codes = dict(_stats['status_codes'])
+            errors = dict(_stats['errors'])
         with _active_requests_lock:
             active = len(_active_requests)
         body = json.dumps({
@@ -312,14 +317,14 @@ class H(BaseHTTPRequestHandler):
             'active_requests': active,
             'stats': {
                 'total_requests': total,
-                'total_errors': _stats['total_errors'],
-                'total_bytes_sent': _stats['total_bytes_sent'],
-                'total_upstream_retries': _stats['total_upstream_retries'],
+                'total_errors': total_errors,
+                'total_bytes_sent': total_bytes,
+                'total_upstream_retries': total_retries,
                 'avg_latency_ms': avg_lat,
                 'total_tokens': tokens_total,
                 'models_tracked': model_count,
-                'status_codes': _stats['status_codes'],
-                'errors': _stats['errors'],
+                'status_codes': status_codes,
+                'errors': errors,
                 'persisted': STATS_FILE.exists(),
             },
             'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
@@ -395,9 +400,18 @@ class H(BaseHTTPRequestHandler):
             avg_lat = round(total_lat / total_req) if total_req > 0 else 0
             sc = dict(_stats['status_codes'])
             errs = dict(_stats['errors'])
+            tokens_in = _stats['total_tokens_in']
+            tokens_out = _stats['total_tokens_out']
+            tokens_reasoning = _stats['total_tokens_reasoning']
+            tokens_total_val = _stats['total_tokens_total']
+            started_at = _stats['started_at']
+            # Snapshot per-model data to avoid nested lock acquisition below
+            per_model_snapshot = {
+                name: dict(mdata) for name, mdata in _stats['per_model'].items()
+            }
         with _active_requests_lock:
             active = len(_active_requests)
-        uptime = round(time.time() - _stats['started_at'])
+        uptime = round(time.time() - started_at)
         lines = [
             '# HELP opencode_proxy_uptime_seconds Time since proxy start',
             '# TYPE opencode_proxy_uptime_seconds gauge',
@@ -425,16 +439,16 @@ class H(BaseHTTPRequestHandler):
             f'opencode_proxy_upstream_retries_total {total_retries}',
             '# HELP opencode_proxy_tokens_in_total Total prompt tokens processed',
             '# TYPE opencode_proxy_tokens_in_total counter',
-            f'opencode_proxy_tokens_in_total {_stats["total_tokens_in"]}',
+            f'opencode_proxy_tokens_in_total {tokens_in}',
             '# HELP opencode_proxy_tokens_out_total Total completion tokens generated',
             '# TYPE opencode_proxy_tokens_out_total counter',
-            f'opencode_proxy_tokens_out_total {_stats["total_tokens_out"]}',
+            f'opencode_proxy_tokens_out_total {tokens_out}',
             '# HELP opencode_proxy_tokens_reasoning_total Total reasoning tokens',
             '# TYPE opencode_proxy_tokens_reasoning_total counter',
-            f'opencode_proxy_tokens_reasoning_total {_stats["total_tokens_reasoning"]}',
+            f'opencode_proxy_tokens_reasoning_total {tokens_reasoning}',
             '# HELP opencode_proxy_tokens_total_total Total tokens across all models',
             '# TYPE opencode_proxy_tokens_total_total counter',
-            f'opencode_proxy_tokens_total_total {_stats["total_tokens_total"]}',
+            f'opencode_proxy_tokens_total_total {tokens_total_val}',
         ]
         # Per-status-code counters
         for code, count in sorted(sc.items()):
@@ -442,10 +456,9 @@ class H(BaseHTTPRequestHandler):
         # Per-error-type counters
         for etype, count in sorted(errs.items()):
             lines.append(f'opencode_proxy_error_type_total{{error="{etype}"}} {count}')
-        # Per-model counters
-        for model_name in sorted(_stats['per_model'].keys()):
-            with _stats_lock:
-                m = dict(_stats['per_model'][model_name])
+        # Per-model counters (uses pre-snapotted data, no lock needed)
+        for model_name in sorted(per_model_snapshot.keys()):
+            m = per_model_snapshot[model_name]
             lines.append(f'# HELP opencode_proxy_model_requests_total Requests per model')
             lines.append(f'# TYPE opencode_proxy_model_requests_total counter')
             lines.append(f'opencode_proxy_model_requests_total{{model="{model_name}"}} {m["requests"]}')
@@ -661,6 +674,12 @@ class H(BaseHTTPRequestHandler):
                             # unbounded memory growth on long streaming responses.
                             if resp_tokens is None:
                                 _stream_buf += chunk
+                                # Cap buffer at 256 KB to bound memory usage on
+                                # long streams where upstream never sends usage.
+                                # If the usage chunk hasn't arrived by 256 KB of
+                                # SSE data, it's not coming — stop buffering.
+                                if len(_stream_buf) > 262144:
+                                    _stream_buf = b''
                                 # Process complete SSE lines (delimited by \n)
                                 while b'\n' in _stream_buf:
                                     line, _stream_buf = _stream_buf.split(b'\n', 1)
@@ -729,7 +748,14 @@ class H(BaseHTTPRequestHandler):
             rec['proxy_error'] = repr(e)
             elapsed = round((time.monotonic() - t0) * 1000)
             rec['elapsed_ms'] = elapsed
-            timeout_type = 'connect_timeout' if 'connect' in str(e).lower() else 'read_timeout'
+            # Distinguish connect timeout (failed to establish connection)
+            # from read timeout (connection ok but response too slow).
+            # requests.exceptions.ConnectTimeout is a subclass of Timeout
+            # and specifically indicates a connection-phase failure.
+            if isinstance(e, requests.exceptions.ConnectTimeout):
+                timeout_type = 'connect_timeout'
+            else:
+                timeout_type = 'read_timeout'
             error_type = timeout_type
             logger.warning('[%s] upstream %s after %dms: %s %s',
                            request_id, timeout_type, elapsed, self.command, self.path)
