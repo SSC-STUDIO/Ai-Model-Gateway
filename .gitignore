@@ -2,6 +2,7 @@
 .gateway-runtime/
 logs/
 *.log
+*.stats.json
 *.err
 *.out
 

@@ -92,6 +92,11 @@ BLACKLIST_HEADERS = frozenset({
 _STREAM_CT_PREFIXES = ('text/event-stream',)
 
 # ---------------------------------------------------------------------------
+# Stats persistence path — same directory as the log file, JSON format
+# ---------------------------------------------------------------------------
+STATS_FILE = LOG.with_suffix('.stats.json')
+
+# ---------------------------------------------------------------------------
 # Accumulated proxy statistics (thread-safe)
 # ---------------------------------------------------------------------------
 _stats_lock = threading.Lock()
@@ -104,6 +109,41 @@ _stats = {
     'status_codes': {},   # {200: N, 502: N, ...}
     'errors': {},         # {'timeout': N, 'connection_error': N, ...}
 }
+
+def _load_stats():
+    """Merge saved stats from disk so cumulative totals survive restart."""
+    global _stats
+    if not STATS_FILE.exists():
+        return
+    try:
+        saved = json.loads(STATS_FILE.read_text('utf-8'))
+        with _stats_lock:
+            # Sum merge-only fields; 'started_at' stays the current boot time.
+            _stats['total_requests'] += saved.get('total_requests', 0)
+            _stats['total_errors'] += saved.get('total_errors', 0)
+            _stats['total_bytes_sent'] += saved.get('total_bytes_sent', 0)
+            _stats['total_latency_ms'] += saved.get('total_latency_ms', 0)
+            for sc, n in saved.get('status_codes', {}).items():
+                _stats['status_codes'][sc] = _stats['status_codes'].get(sc, 0) + n
+            for err, n in saved.get('errors', {}).items():
+                _stats['errors'][err] = _stats['errors'].get(err, 0) + n
+        logger.info('stats restored from %s (%d prior requests)',
+                    STATS_FILE.name, saved.get('total_requests', 0))
+    except Exception as exc:
+        logger.warning('could not load saved stats from %s: %s', STATS_FILE.name, exc)
+
+
+def _save_stats():
+    """Persist current stats to disk so they survive restart."""
+    try:
+        with _stats_lock:
+            snapshot = dict(_stats)
+        # started_at is per-run; write a sentinel so load merges correctly
+        snapshot.pop('started_at', None)
+        STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATS_FILE.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), 'utf-8')
+    except Exception as exc:
+        logger.warning('could not save stats to %s: %s', STATS_FILE.name, exc)
 
 # ---------------------------------------------------------------------------
 # Active request tracking for graceful drain on shutdown
@@ -198,6 +238,7 @@ class H(BaseHTTPRequestHandler):
                 'avg_latency_ms': avg_lat,
                 'status_codes': _stats['status_codes'],
                 'errors': _stats['errors'],
+                'persisted': STATS_FILE.exists(),
             },
             'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         }).encode()
@@ -245,10 +286,17 @@ class H(BaseHTTPRequestHandler):
         body = self.rfile.read(n) if n else b''
         target = TARGET_ORIGIN + self.path
 
+        # Build forwarded headers: strip hop-by-hop, inject request id for tracing
         headers = {
             k: v for k, v in self.headers.items()
             if k.lower() not in BLACKLIST_HEADERS
         }
+        headers['X-Request-Id'] = request_id
+        # Forward the original client's User-Agent so upstream can debug real clients
+        # rather than seeing only the proxy's default UA from the session.
+        ua = self.headers.get('User-Agent', '')
+        if ua:
+            headers['X-Forwarded-User-Agent'] = ua
         rec = {
             'request_id': request_id,
             'ts': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -484,6 +532,8 @@ def _shutdown(sig, frame):
                 logger.info('drain complete: all requests finished')
         else:
             logger.info('no active requests, skipping drain')
+    # Persist stats so totals carry over to the next run
+    _save_stats()
     # Close persistent connections to upstream
     _upstream_session.close()
 
@@ -495,6 +545,7 @@ if __name__ == '__main__':
     port = int(os.environ.get('OPENCODE_PROXY_PORT', '18082'))
     _start_time = time.monotonic()
     _stats['started_at'] = time.time()
+    _load_stats()
     logger.info('opencode proxy listening on 127.0.0.1:%d -> %s (max_body=%dMB, cors=%s)',
                 port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024), CORS_ORIGIN)
     print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN} '
