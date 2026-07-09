@@ -1,5 +1,6 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import requests, os, json, time, pathlib, sys, logging, signal, uuid, threading
+from requests.exceptions import ChunkedEncodingError as _ChunkedEncError
 from logging.handlers import RotatingFileHandler
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -546,9 +547,20 @@ class H(BaseHTTPRequestHandler):
                         '[%s] client disconnected mid-stream after %dB, closing upstream',
                         request_id, bytes_sent,
                     )
-                # Final chunk (only if client is still connected)
-                if not error_type:
-                    self.wfile.write(b'0\r\n\r\n')
+                except (_ChunkedEncError, requests.exceptions.ConnectionError):
+                    error_type = 'upstream_disconnect'
+                    logger.warning(
+                        '[%s] upstream disconnected mid-stream after %dB (path=%s)',
+                        request_id, bytes_sent, self.path,
+                    )
+                # Terminate chunked stream — send final 0-length chunk.
+                # For upstream_disconnect this signals a truncated response
+                # rather than letting the client wait indefinitely.
+                if error_type != 'client_disconnect':
+                    try:
+                        self.wfile.write(b'0\r\n\r\n')
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass  # client already gone, nothing more to do
             else:
                 # Non-streaming: buffer and forward with Content-Length
                 out = resp.content
@@ -633,6 +645,14 @@ class H(BaseHTTPRequestHandler):
                 self.wfile.write(out)
 
         finally:
+            # Ensure upstream connection is always released back to the pool,
+            # even if an exception cut the streaming loop short.
+            _resp = locals().get('resp')
+            if _resp is not None:
+                try:
+                    _resp.close()
+                except Exception:
+                    pass
             elapsed_ms = rec.get('elapsed_ms', round((time.monotonic() - t0) * 1000))
             stream_tag = ' [streaming]' if upstream_streaming else ''
             retry_tag = f' [retried {retries}x]' if retries else ''
