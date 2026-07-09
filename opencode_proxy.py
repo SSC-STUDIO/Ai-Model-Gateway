@@ -571,7 +571,32 @@ class H(BaseHTTPRequestHandler):
                 m = per_model_snapshot[model_name]
                 _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
                 lines.append(f'opencode_proxy_model_latency_ms_total{{model="{_mn}"}} {m["total_latency_ms"]}')
-        body = '\n'.join(lines).encode('utf-8')
+            # Per-model bytes sent/received — enables bandwidth cost analysis
+            # per model in Grafana. Without these, operators can see aggregate
+            # bandwidth but cannot attribute it to individual models.
+            lines.append('# HELP opencode_proxy_model_bytes_sent_total Bytes sent to clients per model')
+            lines.append('# TYPE opencode_proxy_model_bytes_sent_total counter')
+            for model_name in sorted(per_model_snapshot.keys()):
+                m = per_model_snapshot[model_name]
+                _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'opencode_proxy_model_bytes_sent_total{{model="{_mn}"}} {m["bytes_sent"]}')
+            lines.append('# HELP opencode_proxy_model_bytes_received_total Bytes received from clients per model')
+            lines.append('# TYPE opencode_proxy_model_bytes_received_total counter')
+            for model_name in sorted(per_model_snapshot.keys()):
+                m = per_model_snapshot[model_name]
+                _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
+                lines.append(f'opencode_proxy_model_bytes_received_total{{model="{_mn}"}} {m["bytes_received"]}')
+            lines.append('# HELP opencode_proxy_model_avg_latency_ms Average latency per request per model')
+            lines.append('# TYPE opencode_proxy_model_avg_latency_ms gauge')
+            for model_name in sorted(per_model_snapshot.keys()):
+                m = per_model_snapshot[model_name]
+                _mn = model_name.replace('\\', '\\\\').replace('"', '\\"')
+                avg = round(m['total_latency_ms'] / m['requests']) if m['requests'] > 0 else 0
+                lines.append(f'opencode_proxy_model_avg_latency_ms{{model="{_mn}"}} {avg}')
+        # Prometheus text exposition format requires a trailing newline after
+        # the last line. Without it, strict parsers (e.g. promtool) emit a
+        # warning and some scrape configs silently drop the final metric.
+        body = '\n'.join(lines).encode('utf-8') + b'\n'
         self.send_response(200)
         self.send_header('Content-Type', 'text/plain; version=0.0.4')
         self.send_header('Content-Length', str(len(body)))
