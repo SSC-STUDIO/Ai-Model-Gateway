@@ -1,6 +1,8 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import requests, os, json, time, pathlib, sys, logging, signal, uuid, threading
 from logging.handlers import RotatingFileHandler
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 LOG = pathlib.Path(os.environ.get(
     'OPENCODE_PROXY_LOG',
@@ -25,6 +27,31 @@ _LEVEL_MAP = {
     'WARNING': logging.WARNING,
     'ERROR': logging.ERROR,
 }
+
+# ---------------------------------------------------------------------------
+# Persistent HTTP session with connection pooling for upstream requests
+# ---------------------------------------------------------------------------
+_upstream_session = requests.Session()
+# Pool: 10 connections per host, keep alive 60s
+_adapter = HTTPAdapter(
+    pool_connections=10,
+    pool_maxsize=20,
+    max_retries=Retry(
+        total=0,  # retries handled at proxy level
+        connect=0,
+        read=0,
+        redirect=0,
+        status=0,
+        other=0,
+        backoff_factor=0,
+    ),
+)
+_upstream_session.mount('http://', _adapter)
+_upstream_session.mount('https://', _adapter)
+_upstream_session.headers.update({
+    'User-Agent': 'AI-Model-Gateway/1.4 opencode-proxy',
+    'Connection': 'keep-alive',
+})
 
 # ---------------------------------------------------------------------------
 # Logger with rotation: 10 MB per file, keep 5 backups
@@ -174,7 +201,7 @@ class H(BaseHTTPRequestHandler):
                 except Exception:
                     rec['request_body'] = body[:5000].decode('utf-8', 'replace')
 
-            resp = requests.request(
+            resp = _upstream_session.request(
                 self.command, target,
                 headers=headers, data=body, timeout=(10, 300), stream=True,
             )
@@ -324,6 +351,8 @@ def _shutdown(sig, frame):
                      sig, uptime, _stats['total_requests'])
         print(f'shutting down (signal={sig}, uptime={uptime}s, requests={_stats["total_requests"]})', flush=True)
         _server.shutdown()
+    # Close persistent connections to upstream
+    _upstream_session.close()
 
 signal.signal(signal.SIGINT, _shutdown)
 signal.signal(signal.SIGTERM, _shutdown)
