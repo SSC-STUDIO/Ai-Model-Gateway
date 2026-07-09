@@ -295,14 +295,22 @@ class H(BaseHTTPRequestHandler):
             # Send response headers to client
             self.send_response(resp.status_code)
             self.send_header('X-Request-Id', request_id)
+            # For HEAD requests, forward Content-Length but strip encoding headers
+            _skip = {'content-encoding', 'transfer-encoding', 'connection'}
+            if self.command != 'HEAD':
+                _skip.add('content-length')
             for k, v in resp.headers.items():
-                if k.lower() not in (
-                    'content-encoding', 'transfer-encoding',
-                    'connection', 'content-length',
-                ):
+                if k.lower() not in _skip:
                     self.send_header(k, v)
 
-            if upstream_streaming:
+            if self.command == 'HEAD':
+                # RFC 7231 §4.3.2: HEAD must not include a message body.
+                # Upstream Content-Length was already forwarded above.
+                self._send_cors_headers()
+                self.end_headers()
+                _headers_sent = True
+
+            elif upstream_streaming:
                 # Streaming: use Transfer-Encoding: chunked
                 self.send_header('Transfer-Encoding', 'chunked')
                 self._send_cors_headers()
