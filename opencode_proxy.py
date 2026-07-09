@@ -417,11 +417,22 @@ class H(BaseHTTPRequestHandler):
             if k.lower() not in BLACKLIST_HEADERS
         }
         headers['X-Request-Id'] = request_id
+        # Forward the real client IP so upstream can debug, rate-limit, and audit
+        # actual clients rather than seeing only the proxy's loopback address.
+        client_ip = self.client_address[0] if self.client_address else None
+        if client_ip:
+            existing_xff = self.headers.get('X-Forwarded-For', '')
+            if existing_xff:
+                headers['X-Forwarded-For'] = f'{existing_xff}, {client_ip}'
+            else:
+                headers['X-Forwarded-For'] = client_ip
         # Forward the original client's User-Agent so upstream can debug real clients
         # rather than seeing only the proxy's default UA from the session.
         ua = self.headers.get('User-Agent', '')
         if ua:
             headers['X-Forwarded-User-Agent'] = ua
+        # Tell upstream the original protocol so it can build correct redirect URLs.
+        headers['X-Forwarded-Proto'] = 'http'
         rec = {
             'request_id': request_id,
             'ts': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -518,16 +529,26 @@ class H(BaseHTTPRequestHandler):
                 self.end_headers()
                 _headers_sent = True
 
-                # Forward chunks as they arrive
-                for chunk in resp.iter_content(chunk_size=8192):
-                    if chunk:
-                        self.wfile.write(f'{len(chunk):X}\r\n'.encode())
-                        self.wfile.write(chunk)
-                        self.wfile.write(b'\r\n')
-                        self.wfile.flush()  # ensure immediate delivery for real-time SSE
-                        bytes_sent += len(chunk)
-                # Final chunk
-                self.wfile.write(b'0\r\n\r\n')
+                # Forward chunks as they arrive, catching client disconnects
+                # so we can close the upstream connection immediately instead
+                # of letting it hang open until timeout.
+                try:
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        if chunk:
+                            self.wfile.write(f'{len(chunk):X}\r\n'.encode())
+                            self.wfile.write(chunk)
+                            self.wfile.write(b'\r\n')
+                            self.wfile.flush()  # ensure immediate delivery for real-time SSE
+                            bytes_sent += len(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    error_type = 'client_disconnect'
+                    logger.info(
+                        '[%s] client disconnected mid-stream after %dB, closing upstream',
+                        request_id, bytes_sent,
+                    )
+                # Final chunk (only if client is still connected)
+                if not error_type:
+                    self.wfile.write(b'0\r\n\r\n')
             else:
                 # Non-streaming: buffer and forward with Content-Length
                 out = resp.content
