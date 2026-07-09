@@ -97,6 +97,43 @@ _stats = {
     'errors': {},         # {'timeout': N, 'connection_error': N, ...}
 }
 
+# ---------------------------------------------------------------------------
+# Active request tracking for graceful drain on shutdown
+# ---------------------------------------------------------------------------
+_active_requests = set()
+_active_requests_lock = threading.Lock()
+
+
+class GracefulHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that tracks in-flight request threads so the
+    shutdown handler can drain them before closing the upstream session."""
+
+    allow_reuse_address = True
+
+    def process_request(self, request, client_address):
+        t = threading.Thread(
+            target=self._handle_with_tracking,
+            args=(request, client_address),
+        )
+        t.daemon = True
+        t.start()
+
+    def _handle_with_tracking(self, request, client_address):
+        t = threading.current_thread()
+        with _active_requests_lock:
+            _active_requests.add(t)
+        try:
+            self.finish_request(request, client_address)
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            try:
+                self.shutdown_request(request)
+            except Exception:
+                pass
+            with _active_requests_lock:
+                _active_requests.discard(t)
+
 
 def _record_stats(status_code, bytes_sent, elapsed_ms, error_type=None):
     with _stats_lock:
@@ -125,21 +162,24 @@ class H(BaseHTTPRequestHandler):
                 round(_stats['total_latency_ms'] / total) if total > 0 else 0
             )
             uptime = round(time.time() - _stats['started_at'])
-            body = json.dumps({
-                'status': 'ok',
-                'proxy': 'opencode',
-                'target': TARGET_ORIGIN,
-                'uptime_seconds': uptime,
-                'stats': {
-                    'total_requests': total,
-                    'total_errors': _stats['total_errors'],
-                    'total_bytes_sent': _stats['total_bytes_sent'],
-                    'avg_latency_ms': avg_lat,
-                    'status_codes': _stats['status_codes'],
-                    'errors': _stats['errors'],
-                },
-                'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-            }).encode()
+        with _active_requests_lock:
+            active = len(_active_requests)
+        body = json.dumps({
+            'status': 'ok',
+            'proxy': 'opencode',
+            'target': TARGET_ORIGIN,
+            'uptime_seconds': uptime,
+            'active_requests': active,
+            'stats': {
+                'total_requests': total,
+                'total_errors': _stats['total_errors'],
+                'total_bytes_sent': _stats['total_bytes_sent'],
+                'avg_latency_ms': avg_lat,
+                'status_codes': _stats['status_codes'],
+                'errors': _stats['errors'],
+            },
+            'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
@@ -350,10 +390,35 @@ def _shutdown(sig, frame):
     global _server
     if _server:
         uptime = round(time.monotonic() - _start_time) if _start_time else 0
-        logger.info('shutting down (signal=%s, uptime=%ds, requests=%d)',
-                     sig, uptime, _stats['total_requests'])
-        print(f'shutting down (signal={sig}, uptime={uptime}s, requests={_stats["total_requests"]})', flush=True)
+        with _active_requests_lock:
+            active = len(_active_requests)
+        logger.info('shutting down (signal=%s, uptime=%ds, requests=%d, active=%d)',
+                     sig, uptime, _stats['total_requests'], active)
+        print(f'shutting down (signal={sig}, uptime={uptime}s, '
+              f'requests={_stats["total_requests"]}, active={active})', flush=True)
+        # Stop accepting new connections
         _server.shutdown()
+        # Drain in-flight requests: wait up to 30s for active threads to finish
+        drain_timeout = int(os.environ.get('OPENCODE_PROXY_DRAIN_TIMEOUT', '30'))
+        if active > 0 and drain_timeout > 0:
+            logger.info('draining %d active request(s) (timeout=%ds)...', active, drain_timeout)
+            deadline = time.monotonic() + drain_timeout
+            while time.monotonic() < deadline:
+                with _active_requests_lock:
+                    remaining = len(_active_requests)
+                if remaining == 0:
+                    break
+                logger.info('draining: %d request(s) still active...', remaining)
+                time.sleep(1)
+            with _active_requests_lock:
+                remaining = len(_active_requests)
+            if remaining:
+                logger.warning('drain timeout: %d request(s) still active, forcing close',
+                               remaining)
+            else:
+                logger.info('drain complete: all requests finished')
+        else:
+            logger.info('no active requests, skipping drain')
     # Close persistent connections to upstream
     _upstream_session.close()
 
@@ -369,5 +434,5 @@ if __name__ == '__main__':
                 port, TARGET_ORIGIN, MAX_BODY_BYTES // (1024 * 1024))
     print(f'opencode proxy listening on 127.0.0.1:{port} -> {TARGET_ORIGIN} '
           f'(max_body={MAX_BODY_BYTES // (1024 * 1024)}MB)', flush=True)
-    _server = ThreadingHTTPServer(('127.0.0.1', port), H)
+    _server = GracefulHTTPServer(('127.0.0.1', port), H)
     _server.serve_forever()
