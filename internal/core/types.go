@@ -103,6 +103,7 @@ type Provider struct {
 	APIKey           string            `yaml:"api_key"           json:"-"`
 	ProviderClass    ProviderClass     `yaml:"provider_class"    json:"provider_class"`
 	Models           []string          `yaml:"models"            json:"models"`
+	ModelAliases     map[string]string `yaml:"model_aliases"     json:"model_aliases,omitempty"`
 	Weight           int               `yaml:"weight"            json:"weight"`
 	TimeoutMs        int               `yaml:"timeout_ms"        json:"timeout_ms"`
 	SameRetries      int               `yaml:"same_retries"      json:"same_retries"`

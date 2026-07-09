@@ -120,6 +120,9 @@ func (c *Compiler) CompileFromConfig(cfg interface{}) (*snapshot.Snapshot, error
 			},
 		},
 		Pricing: compilePricing(normalized.Pricing),
+		// AdminTokens compiles the bootstrap + named admin tokens into snapshot
+		// entries so the data plane can validate bearer auth without talking to the control plane.
+		AdminTokens: compileAdminTokens(normalized.Admin),
 	}
 
 	for i, provider := range normalized.Providers {
@@ -340,7 +343,31 @@ func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
 			MinSizeBytes: cfg.Compression.MinSizeBytes,
 			Level:        cfg.Compression.Level,
 		},
+		SSRF: snapshot.SSRFConfig{
+			AllowLocalhost: cfg.SSRF.AllowLocalhost,
+			AllowPrivateIP: cfg.SSRF.AllowPrivateIP,
+		},
 	}
+}
+
+// compileAdminTokens compiles the bootstrap + named admin tokens into snapshot
+// entries so the data plane can validate bearer auth locally.
+func compileAdminTokens(cfg core.AdminConfig) []snapshot.AdminTokenEntry {
+	tokens := make([]snapshot.AdminTokenEntry, 0, 1+len(cfg.Tokens))
+	if strings.TrimSpace(cfg.BootstrapToken) != "" {
+		tokens = append(tokens, snapshot.AdminTokenEntry{Name: "bootstrap", Token: cfg.BootstrapToken, Role: "admin"})
+	}
+	for _, t := range cfg.Tokens {
+		if strings.TrimSpace(t.Token) == "" {
+			continue
+		}
+		role := t.Role
+		if role != "admin" && role != "viewer" {
+			role = "viewer"
+		}
+		tokens = append(tokens, snapshot.AdminTokenEntry{Name: t.Name, Token: t.Token, Role: role})
+	}
+	return tokens
 }
 
 func resolveQuotaRecoveryIntervalMin(policy core.FailurePolicyConfig) int {
@@ -368,7 +395,7 @@ func compileProvider(provider core.Provider, index int) (snapshot.ProviderSnapsh
 		return snapshot.ProviderSnapshot{}, fmt.Errorf("providers[%d].base_url must not be empty", index)
 	}
 
-	modelTable := compileModelTable(provider.Models)
+	modelTable := compileModelTable(provider.Models, provider.ModelAliases)
 	if len(modelTable) == 0 {
 		return snapshot.ProviderSnapshot{}, fmt.Errorf("providers[%d].models must not be empty", index)
 	}
@@ -494,7 +521,7 @@ func compileHeaders(headers map[string]string) map[string]string {
 	return compiled
 }
 
-func compileModelTable(models []string) []snapshot.ModelMapping {
+func compileModelTable(models []string, aliases map[string]string) []snapshot.ModelMapping {
 	if len(models) == 0 {
 		return nil
 	}
@@ -510,9 +537,15 @@ func compileModelTable(models []string) []snapshot.ModelMapping {
 			continue
 		}
 		seen[model] = struct{}{}
+		upstreamModel := model
+		if aliases != nil {
+			if alias, ok := aliases[model]; ok && strings.TrimSpace(alias) != "" {
+				upstreamModel = strings.TrimSpace(alias)
+			}
+		}
 		table = append(table, snapshot.ModelMapping{
 			PublicModel:   model,
-			UpstreamModel: model,
+			UpstreamModel: upstreamModel,
 		})
 	}
 	return table

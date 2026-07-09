@@ -117,7 +117,9 @@ func extractUsageFromSSEEvent(data []byte) (promptTokens, cachedPromptTokens, co
 
 func extractErrorMessage(respBody []byte, forwardErr error) string {
 	if forwardErr != nil {
-		return forwardErr.Error()
+		// #8: strip the upstream provider name prefix so clients see a
+		// generic message instead of an internal identifier.
+		return sanitizeProviderError(forwardErr.Error())
 	}
 	if len(respBody) == 0 {
 		return ""
@@ -142,4 +144,18 @@ func extractErrorMessage(respBody []byte, forwardErr error) string {
 		message = message[:512]
 	}
 	return message
+}
+
+// sanitizeProviderError strips internal provider identifiers from upstream
+// error messages so clients see a generic message instead of internal names.
+// If no provider prefix is found the message is returned unchanged.
+func sanitizeProviderError(msg string) string {
+	if msg == "" {
+		return msg
+	}
+	// Strip common internal framing like "station-a: " or "upstream station-a: "
+	if idx := strings.Index(msg, ": "); idx > 0 && idx <= 32 {
+		return msg[idx+2:]
+	}
+	return msg
 }

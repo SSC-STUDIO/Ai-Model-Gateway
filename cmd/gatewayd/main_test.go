@@ -521,3 +521,242 @@ func TestHealthHandlerWithDetailTrue(t *testing.T) {
 		t.Fatalf("healthy field missing in provider response")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// requireDataPlaneAuth / writeDataPlaneUnauthorized tests (fix for #9)
+// ---------------------------------------------------------------------------
+
+func TestRequireDataPlaneAuth_MissingAuthorization(t *testing.T) {
+	d := &Daemon{
+		snapshot: &snapshot.Snapshot{
+			AdminTokens: []snapshot.AdminTokenEntry{{Name: "admin", Token: "tok-valid", Role: "admin"}},
+		},
+	}
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("inner handler should not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	assertAuthReject(t, rec, "missing bearer token")
+}
+
+func TestRequireDataPlaneAuth_InvalidScheme(t *testing.T) {
+	d := &Daemon{
+		snapshot: &snapshot.Snapshot{
+			AdminTokens: []snapshot.AdminTokenEntry{{Name: "admin", Token: "tok-valid", Role: "admin"}},
+		},
+	}
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("inner handler should not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	assertAuthReject(t, rec, "missing bearer token")
+}
+
+func TestRequireDataPlaneAuth_EmptyBearerToken(t *testing.T) {
+	// "Bearer " (trailing space) is normalized by TrimSpace to "Bearer" which
+	// no longer matches the "bearer " prefix, so it's classified as "missing
+	// bearer token". Both messages produce the same 401 — this is a test for
+	// the code path rather than the exact wording.
+	d := &Daemon{
+		snapshot: &snapshot.Snapshot{
+			AdminTokens: []snapshot.AdminTokenEntry{{Name: "admin", Token: "tok-valid", Role: "admin"}},
+		},
+	}
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("inner handler should not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer ")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestRequireDataPlaneAuth_NoTokensConfigured(t *testing.T) {
+	d := &Daemon{
+		snapshot: &snapshot.Snapshot{
+			AdminTokens: []snapshot.AdminTokenEntry{},
+		},
+	}
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("inner handler should not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer tok-valid")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	assertAuthReject(t, rec, "no admin tokens configured")
+}
+
+func TestRequireDataPlaneAuth_NilSnapshot(t *testing.T) {
+	d := &Daemon{snapshot: nil}
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("inner handler should not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer tok-valid")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	assertAuthReject(t, rec, "no admin tokens configured")
+}
+
+func TestRequireDataPlaneAuth_WrongToken(t *testing.T) {
+	d := &Daemon{
+		snapshot: &snapshot.Snapshot{
+			AdminTokens: []snapshot.AdminTokenEntry{{Name: "admin", Token: "tok-valid", Role: "admin"}},
+		},
+	}
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("inner handler should not be called")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer tok-wrong")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	assertAuthReject(t, rec, "invalid bearer token")
+}
+
+func TestRequireDataPlaneAuth_ValidToken(t *testing.T) {
+	d := &Daemon{
+		snapshot: &snapshot.Snapshot{
+			AdminTokens: []snapshot.AdminTokenEntry{{Name: "admin", Token: "tok-valid", Role: "admin"}},
+		},
+	}
+	called := false
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer tok-valid")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if !called {
+		t.Fatal("inner handler was not called for valid token")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), "ok") {
+		t.Fatalf("body = %q, want to contain 'ok'", rec.Body.String())
+	}
+}
+
+func TestRequireDataPlaneAuth_SkipsBlankTokens(t *testing.T) {
+	// First entry is blank, second is valid — ensure blank entries are skipped
+	d := &Daemon{
+		snapshot: &snapshot.Snapshot{
+			AdminTokens: []snapshot.AdminTokenEntry{
+				{Name: "blank", Token: "  ", Role: "admin"},
+				{Name: "real", Token: "tok-real", Role: "admin"},
+			},
+		},
+	}
+	called := false
+	handler := d.requireDataPlaneAuth(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer tok-real")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if !called {
+		t.Fatal("inner handler was not called — blank token should be skipped")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestWriteDataPlaneUnauthorized(t *testing.T) {
+	d := &Daemon{}
+	rec := httptest.NewRecorder()
+	d.writeDataPlaneUnauthorized(rec, "test error")
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+	if www := rec.Header().Get("WWW-Authenticate"); !strings.Contains(www, "Bearer") {
+		t.Fatalf("WWW-Authenticate = %q, want Bearer", www)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	errObj, ok := body["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.error is not an object: %v", body["error"])
+	}
+	if errObj["message"] != "test error" {
+		t.Fatalf("error.message = %v, want 'test error'", errObj["message"])
+	}
+	if errObj["type"] != "invalid_request_error" {
+		t.Fatalf("error.type = %v, want 'invalid_request_error'", errObj["type"])
+	}
+	if errObj["code"] != "invalid_api_key" {
+		t.Fatalf("error.code = %v, want 'invalid_api_key'", errObj["code"])
+	}
+}
+
+// assertAuthReject is a helper that checks a response is a 401 with the
+// expected OpenAI-compatible error envelope.
+func assertAuthReject(t *testing.T, rec *httptest.ResponseRecorder, wantMsg string) {
+	t.Helper()
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d (body: %s)", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+	if www := rec.Header().Get("WWW-Authenticate"); !strings.Contains(www, "Bearer") {
+		t.Fatalf("WWW-Authenticate = %q, want Bearer", www)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	errObj, ok := body["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.error is not an object: %v", body["error"])
+	}
+	if errObj["message"] != wantMsg {
+		t.Fatalf("error.message = %v, want %v", errObj["message"], wantMsg)
+	}
+	// OpenAI error shape must have type, param, and code fields.
+	if _, ok := errObj["type"]; !ok {
+		t.Fatalf("error.type missing — OpenAI-compatible envelope requires it")
+	}
+	if _, ok := errObj["code"]; !ok {
+		t.Fatalf("error.code missing — OpenAI-compatible envelope requires it")
+	}
+}

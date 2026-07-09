@@ -61,7 +61,9 @@ func (c *ClaudeToOpenAIConverter) convertMessages(claudeMsgs []ClaudeMessage, sy
 			Role: msg.Role,
 		}
 
-		// 提取文本内容
+		// #1: read either the legacy .Text field or join text from content
+		// blocks. The previous implementation ignored both forms when the
+		// payload arrived as `[{type:"text", text:"..."}, ...]`.
 		if msg.Content.Text != "" {
 			openaiMsg.Content = msg.Content.Text
 		}

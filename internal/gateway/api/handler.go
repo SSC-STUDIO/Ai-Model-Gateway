@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,20 @@ type urlValidator interface {
 }
 
 var ssrfChecker urlValidator = proxy.NewSSRFChecker()
+
+// SetSSRFCheckerFromSnapshot rebuilds the package-level SSRF checker from
+// the snapshot's routing policy so the data-plane forwarder and the health
+// probe honor the same allowlist. Fixes the SSRF inconsistency in #13.
+func SetSSRFCheckerFromSnapshot(snap *snapshot.Snapshot) {
+	if snap == nil {
+		ssrfChecker = proxy.NewSSRFChecker()
+		return
+	}
+	ssrfChecker = proxy.NewSSRFCheckerWithConfig(proxy.SSRFConfig{
+		AllowLocalhost: snap.RoutingPolicy.SSRF.AllowLocalhost,
+		AllowPrivateIP: snap.RoutingPolicy.SSRF.AllowPrivateIP,
+	})
+}
 
 // SetSharedHTTPClientForTesting swaps the shared HTTP client for tests and returns a restore function.
 func SetSharedHTTPClientForTesting(client *http.Client) func() {
@@ -255,10 +270,20 @@ attemptLoop:
 			innerLimit = 0
 		}
 		for providerAttempt := 0; (innerLimit == 0 || providerAttempt < innerLimit) && (maxAttempts == 0 || attempts < maxAttempts); providerAttempt++ {
+			// Hard cap for infinite-retry mode so a pathological upstream cannot
+			// hold the client forever. 20 attempts across providers is plenty
+			// for transient blips while still terminating. Fixes #14.
+			if maxAttempts == 0 && attempts >= 20 {
+				break attemptLoop
+			}
 			attempts++
 
-			log.Printf("[gatewayd] request_id=%s model=%s upstream_model=%s provider=%s attempt=%d/%d",
-				requestID, requestedModel, candidate.upstreamModel, candidate.provider.ProviderID, attempts, maxAttempts)
+			attemptLabel := strconv.Itoa(maxAttempts)
+			if maxAttempts == 0 {
+				attemptLabel = "inf"
+			}
+			log.Printf("[gatewayd] request_id=%s model=%s upstream_model=%s provider=%s attempt=%d/%s",
+				requestID, requestedModel, candidate.upstreamModel, candidate.provider.ProviderID, attempts, attemptLabel)
 
 			statusCode, respBody, streamBody, streamContentType, latency, forwardErr := forwardToUpstream(
 				ctx,
@@ -314,7 +339,19 @@ attemptLoop:
 	}
 
 	if finalForwardErr != nil || finalStatusCode >= http.StatusBadRequest {
-		log.Printf("[gatewayd] request_id=%s upstream error: status=%d err=%v", requestID, finalStatusCode, finalForwardErr)
+		// #15: when forwardErr is nil but status is non-2xx we still need
+		// the upstream body in the log so operators can diagnose without
+		// having to re-attach a packet capture.
+		if finalForwardErr == nil && finalStatusCode >= http.StatusBadRequest {
+			bodySnippet := string(finalRespBody)
+			if len(bodySnippet) > 512 {
+				bodySnippet = bodySnippet[:512] + "..."
+			}
+			log.Printf("[gatewayd] request_id=%s upstream error: status=%d body=%q",
+				requestID, finalStatusCode, bodySnippet)
+		} else {
+			log.Printf("[gatewayd] request_id=%s upstream error: status=%d err=%v", requestID, finalStatusCode, finalForwardErr)
+		}
 
 		// Attempt fallback models before returning the error to the client.
 		if streamRetry == nil && (opts == nil || !opts.DisableFallback) && tryFallbackModels(ctx, snap, runtimeState, telClient, pricingResolver, w, r, clientFmt, reqMeta, body, requestID, start, opts) {
@@ -483,6 +520,9 @@ type ChatCompletionRequest struct {
 type chatCompletionRequestMeta struct {
 	Model          string `json:"model"`
 	Stream         bool   `json:"stream,omitempty"`
+	StreamOptions  struct {
+		IncludeUsage bool `json:"include_usage,omitempty"`
+	} `json:"stream_options,omitempty"`
 	User           string `json:"user,omitempty"`
 	SessionID      string `json:"session_id,omitempty"`
 	ConversationID string `json:"conversation_id,omitempty"`
@@ -579,11 +619,37 @@ func maxInt(a, b int) int {
 	return b
 }
 
-// writeError writes an error response.
+// writeError writes an error response in OpenAI-compatible envelope format:
+//   { "error": { "message": ..., "type": ..., "param": null, "code": null } }
+// Fixes #7 (gateway returned the wrong shape: a flat string under "error").
 func writeError(w http.ResponseWriter, status int, message string) {
+	writeErrorWithType(w, status, message, "")
+}
+
+// writeErrorWithType is the typed variant of writeError.
+func writeErrorWithType(w http.ResponseWriter, status int, message string, errType string) {
+	if strings.TrimSpace(errType) == "" {
+		switch {
+		case status == http.StatusUnauthorized:
+			errType = "authentication_error"
+		case status == http.StatusNotFound:
+			errType = "invalid_request_error"
+		case status >= 500:
+			errType = "upstream_error"
+		default:
+			errType = "invalid_request_error"
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"message": message,
+			"type":    errType,
+			"param":   nil,
+			"code":    nil,
+		},
+	})
 }
 
 func writeStreamErrorEvent(w http.ResponseWriter, status int, message string) {

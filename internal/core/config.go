@@ -71,6 +71,7 @@ type RoutingConfig struct {
 	KeyRotation    KeyRotationConfig   `yaml:"key_rotation"    json:"key_rotation"`
 	Queue          QueueConfig         `yaml:"queue"           json:"queue"`
 	Compression    CompressionConfig   `yaml:"compression"     json:"compression"`
+	SSRF          SSRFConfig           `yaml:"ssrf"           json:"ssrf"`
 }
 
 // RetryBackoffConfig controls exponential backoff between retries.
@@ -151,6 +152,12 @@ type QueueConfig struct {
 type CompressionConfig struct {
 	Level        int `yaml:"level"         json:"level"`
 	MinSizeBytes int `yaml:"min_size_bytes" json:"min_size_bytes"`
+}
+
+// SSRFConfig controls SSRF protection for upstream connections.
+type SSRFConfig struct {
+	AllowLocalhost bool `yaml:"allow_localhost" json:"allow_localhost"`
+	AllowPrivateIP bool `yaml:"allow_private_ip" json:"allow_private_ip"`
 }
 
 // IsEnabled returns whether the intercept rule is enabled (defaults to true).

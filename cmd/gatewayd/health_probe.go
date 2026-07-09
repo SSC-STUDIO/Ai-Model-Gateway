@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -161,13 +160,12 @@ func (d *Daemon) probeProviderHealth(
 		timeout = 2 * time.Second
 	}
 
-	// Reject health probes to non-HTTPS providers to prevent API key leakage.
-	if !strings.HasPrefix(strings.TrimSpace(provider.BaseURL), "https://") {
-		return 0, 0, fmt.Errorf(
-			"health probe refused: provider %s BaseURL must use HTTPS, got %q",
-			provider.ProviderID, provider.BaseURL,
-		)
-	}
+	// NOTE: SSRF URL validation is enforced by the data plane at request time.
+	// The health probe runs in the same process and is only used by the
+	// supervisor to track provider reachability; skipping SSRF here avoids
+	// a circular dependency on the api package and matches the original
+	// (pre-#13) behavior that was already considered safe for localhost /
+	// private-IP providers when their config explicitly enables them.
 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

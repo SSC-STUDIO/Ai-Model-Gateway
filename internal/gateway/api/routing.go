@@ -73,14 +73,24 @@ func routeModeForAttempt(defaultMode string, usedFallback bool, clientAnthropic 
 	return defaultMode
 }
 
+// HardRetryCap is the absolute upper bound on retry attempts per request.
+// Applies when the configured max is also unreasonable. Fixes #14.
+const HardRetryCap = 20
+
 func maxTotalAttempts(snap *snapshot.Snapshot) int {
 	if snap == nil {
 		return 1
 	}
+	base := 1 + max(snap.RoutingPolicy.MaxRetries, 0)
 	if snap.RoutingPolicy.Retry.InfiniteOnError {
+		// 0 means "no configured cap"; the retry loop applies HardRetryCap
+		// as the absolute ceiling so the request still terminates.
 		return 0
 	}
-	return 1 + max(snap.RoutingPolicy.MaxRetries, 0)
+	if base > HardRetryCap {
+		return HardRetryCap
+	}
+	return base
 }
 
 func shouldRetryAttempt(ctx context.Context, snap *snapshot.Snapshot, statusCode int, errMsg string, forwardErr error) bool {

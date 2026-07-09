@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -360,8 +361,10 @@ func (d *Daemon) connectTelemetry(ctx context.Context) error {
 func (d *Daemon) createHandler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Health endpoint
+	// Health endpoints: original /-/health + K8s-style /health and /ready aliases (fix for #11)
 	mux.HandleFunc("/-/health", d.healthHandler)
+	mux.HandleFunc("/health", d.healthHandler)
+	mux.HandleFunc("/ready", d.healthHandler)
 
 	if adminProxy := d.adminProxyHandler(); adminProxy != nil {
 		mux.Handle("/admin", adminProxy)
@@ -373,17 +376,75 @@ func (d *Daemon) createHandler() http.Handler {
 		mux.Handle("/manifest.json", adminProxy)
 	}
 
-	// Models endpoint
-	mux.HandleFunc("/v1/models", d.modelsHandler)
-
-	// Chat completions endpoint
-	mux.HandleFunc("/v1/chat/completions", d.chatCompletionsHandler)
-	// Anthropic Messages API endpoint
-	mux.HandleFunc("/v1/messages", d.messagesHandler)
-	// OpenAI Responses API endpoint
-	mux.HandleFunc("/v1/responses", d.responsesHandler)
+	// All /v1/* endpoints require a valid bearer token (fix for #9).
+	mux.HandleFunc("/v1/models", d.requireDataPlaneAuth(d.modelsHandler))
+	mux.HandleFunc("/v1/chat/completions", d.requireDataPlaneAuth(d.chatCompletionsHandler))
+	mux.HandleFunc("/v1/messages", d.requireDataPlaneAuth(d.messagesHandler))
+	mux.HandleFunc("/v1/responses", d.requireDataPlaneAuth(d.responsesHandler))
 
 	return mux
+}
+
+// requireDataPlaneAuth wraps a data-plane handler with bearer-token validation
+// against the active snapshot AdminTokens. Missing or invalid Authorization
+// headers are rejected with a 401 in OpenAI-compatible JSON envelope before
+// any upstream call is made.
+func (d *Daemon) requireDataPlaneAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		d.snapshotMu.RLock()
+		snap := d.snapshot
+		d.snapshotMu.RUnlock()
+
+		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+		if authHeader == "" || !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			d.writeDataPlaneUnauthorized(w, "missing bearer token")
+			return
+		}
+		presented := strings.TrimSpace(authHeader[len("Bearer "):])
+		if presented == "" {
+			d.writeDataPlaneUnauthorized(w, "empty bearer token")
+			return
+		}
+
+		if snap == nil || len(snap.AdminTokens) == 0 {
+			// No tokens configured yet (startup race or explicit empty config).
+			// Treat all callers as unauthenticated rather than silently open.
+			d.writeDataPlaneUnauthorized(w, "no admin tokens configured")
+			return
+		}
+
+		matched := false
+		for _, t := range snap.AdminTokens {
+			if strings.TrimSpace(t.Token) == "" {
+				continue
+			}
+			if subtle.ConstantTimeCompare([]byte(presented), []byte(strings.TrimSpace(t.Token))) == 1 {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			d.writeDataPlaneUnauthorized(w, "invalid bearer token")
+			return
+		}
+		next(w, r)
+	}
+}
+
+// writeDataPlaneUnauthorized emits the OpenAI-compatible error envelope used
+// by every protected /v1/* endpoint when authentication fails.
+func (d *Daemon) writeDataPlaneUnauthorized(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", `Bearer realm="ai-model-gateway"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"message": message,
+			"type":    "invalid_request_error",
+			"param":   "authorization",
+			"code":    "invalid_api_key",
+		},
+	})
 }
 
 func (d *Daemon) adminProxyHandler() http.Handler {
@@ -620,6 +681,10 @@ func (d *Daemon) ApplySnapshot(snap *snapshot.Snapshot) error {
 
 	d.snapshot = snap
 	pricingCfg := runtimePricingConfig(snap.Pricing)
+	// Push SSRF config from the new snapshot into the api package so the
+	// forwarder and health probe honor the configured allowlist on every
+	// snapshot swap (fix for #13: SSRF consistency).
+	api.SetSSRFCheckerFromSnapshot(snap)
 	if d.pricingCatalog == nil {
 		d.pricingCatalog = pricinginfra.NewCatalog(pricingCfg)
 		if d.runCtx != nil {

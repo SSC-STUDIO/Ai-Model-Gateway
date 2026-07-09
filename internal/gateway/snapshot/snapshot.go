@@ -33,6 +33,18 @@ type Snapshot struct {
 
 	// Pricing contains runtime pricing refresh and manual override configuration.
 	Pricing PricingConfig `yaml:"pricing" json:"pricing"`
+
+	// AdminTokens contains the compiled admin/viewer tokens used for
+	// data-plane bearer-token authentication. They travel over the YAML-serialized
+	// IPC channel from controld; token values survive because they carry a yaml tag.
+	AdminTokens []AdminTokenEntry `yaml:"admin_tokens,omitempty" json:"admin_tokens,omitempty"`
+}
+
+// AdminTokenEntry is a compiled token entry for data-plane bearer authentication.
+type AdminTokenEntry struct {
+	Name  string `yaml:"name"  json:"name"`
+	Token string `yaml:"token" json:"-"` // Survives YAML IPC; hidden from JSON for security.
+	Role  string `yaml:"role"  json:"role,omitempty"`
 }
 
 // SnapshotMeta contains metadata about the snapshot.
@@ -199,6 +211,10 @@ type RoutingPolicy struct {
 
 	// Health contains the health check configuration.
 	Health HealthConfig `yaml:"health" json:"health"`
+
+	// SSRF contains the SSRF protection configuration shared by the
+	// request path and the health-probe path so they enforce the same policy.
+	SSRF SSRFConfig `yaml:"ssrf" json:"ssrf"`
 
 	// StickySessions contains sticky-session affinity configuration.
 	StickySessions StickySessionConfig `yaml:"sticky_sessions" json:"sticky_sessions"`
@@ -406,3 +422,11 @@ type CompressionConfig struct {
 
 // CurrentSchemaVersion is the current snapshot schema version.
 const CurrentSchemaVersion = 1
+
+// SSRFConfig contains SSRF protection configuration for the data plane.
+type SSRFConfig struct {
+	// AllowLocalhost permits loopback upstreams (useful for self-hosted models).
+	AllowLocalhost bool `yaml:"allow_localhost" json:"allow_localhost"`
+	// AllowPrivateIP permits RFC-1918 / private-range upstreams.
+	AllowPrivateIP bool `yaml:"allow_private_ip" json:"allow_private_ip"`
+}
