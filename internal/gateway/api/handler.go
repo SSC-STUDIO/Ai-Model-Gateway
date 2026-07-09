@@ -165,10 +165,19 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 	requestedModel := reqMeta.Model
 	routingModel := resolveBridgeModel(snap, requestedModel, r.UserAgent())
 
+	// Resolve sticky key early so both cache lookup and store use the same
+	// namespace. Previously the lookup used "" while the store used stickyKey,
+	// causing every cached entry written with a sticky key to be unfindable
+	// (the SHA-256 keys diverged).
+	stickyKey := resolveStickyKey(reqMeta, r.Header)
+	if opts != nil && opts.DisableSticky {
+		stickyKey = ""
+	}
+
 	// Check request cache for non-streaming requests.
 	if !reqMeta.Stream && snap.RoutingPolicy.Cache.Enabled && (opts == nil || !opts.DisableCache) {
 		c := getResponseCache(snap)
-		cacheKey := c.MakeKey(body, reqMeta.Model, "")
+		cacheKey := c.MakeKey(body, reqMeta.Model, stickyKey)
 		if cached, ok := c.Get(cacheKey); ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Cache", "HIT")
@@ -181,11 +190,6 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 			captureExecutionResult(opts, http.StatusOK, "application/json", time.Since(start), 0, 0, 0, "", reqMeta.Model, "cache", 0, "")
 			return
 		}
-	}
-
-	stickyKey := resolveStickyKey(reqMeta, r.Header)
-	if opts != nil && opts.DisableSticky {
-		stickyKey = ""
 	}
 	candidates := collectProviderCandidatesForRequest(snap, routingModel)
 	if len(candidates) == 0 {

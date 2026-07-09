@@ -73,6 +73,19 @@ kimi_test*.json
 /dist-live/
 .playwright-mcp/
 
+# Build caches
+.gocache/
+.gomodcache/
+
+# Runtime manifest (auto-generated at build time)
+aigw-manifest.json
+
+# Deploy secrets (never commit API keys / tokens)
+deploy/secrets.env
+
+# Nested config copy artifact
+configs/configs/
+
 # IDE
 .idea/
 .vscode/
