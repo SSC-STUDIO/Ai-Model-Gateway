@@ -1,5 +1,5 @@
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import requests, os, json, time, pathlib, sys, logging, signal, uuid, threading
+import requests, os, json, time, pathlib, sys, logging, signal, uuid, threading, random
 from requests.exceptions import ChunkedEncodingError as _ChunkedEncError
 from logging.handlers import RotatingFileHandler
 from requests.adapters import HTTPAdapter
@@ -740,7 +740,11 @@ class H(BaseHTTPRequestHandler):
                         requests.exceptions.Timeout) as net_exc:
                     if _attempt < UPSTREAM_MAX_RETRIES - 1:
                         retries += 1
-                        wait = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                        # Full jitter: random between 0 and exponential base.
+                        # Prevents thundering herd when multiple clients retry
+                        # simultaneously after an upstream recovery.
+                        base = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                        wait = random.uniform(0, base)
                         logger.info(
                             '[%s] upstream network retry %d/%d after %.1fs (%s, path=%s)',
                             request_id, retries, UPSTREAM_MAX_RETRIES - 1, wait,
@@ -761,9 +765,12 @@ class H(BaseHTTPRequestHandler):
                         try:
                             wait = min(float(retry_after), 30)
                         except ValueError:
-                            wait = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                            base = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                            wait = random.uniform(0, base)
                     else:
-                        wait = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                        # Full jitter to prevent thundering herd on recovery
+                        base = UPSTREAM_RETRY_BACKOFF_BASE * (2 ** _attempt)
+                        wait = random.uniform(0, base)
                     logger.info(
                         '[%s] upstream retry %d/%d after %.1fs (status=%d, path=%s)',
                         request_id, retries, UPSTREAM_MAX_RETRIES - 1, wait,
@@ -993,12 +1000,13 @@ class H(BaseHTTPRequestHandler):
             elapsed_ms = rec.get('elapsed_ms', round((time.monotonic() - t0) * 1000))
             stream_tag = ' [streaming]' if upstream_streaming else ''
             retry_tag = f' [retried {retries}x]' if retries else ''
+            model_tag = f' [{req_model}]' if req_model else ''
             # Structured log line (human-readable in rotated log)
             log_line = (
                 f"[{request_id}] "
-                f"{self.command} {self.path} -> "
+                f"{self.command} {self.path}{model_tag} -> "
                 f"{rec.get('status_code', 'ERR')} "
-                f"{bytes_sent}B {elapsed_ms}ms"
+                f"req={len(body)}B resp={bytes_sent}B {elapsed_ms}ms"
                 f"{retry_tag}{stream_tag}"
                 f" ({rec.get('proxy_error', 'ok')})"
             )
