@@ -189,6 +189,49 @@ type cancelOnCloseReadCloser struct {
 	cancel context.CancelFunc
 }
 
+type idleTimeoutReadCloser struct {
+	io.ReadCloser
+	timeout time.Duration
+	timer   *time.Timer
+	mu      sync.Mutex
+	closed  bool
+}
+
+func withIdleTimeout(body io.ReadCloser, timeout time.Duration) io.ReadCloser {
+	if body == nil || timeout <= 0 {
+		return body
+	}
+	wrapper := &idleTimeoutReadCloser{ReadCloser: body, timeout: timeout}
+	wrapper.timer = time.AfterFunc(timeout, func() { _ = wrapper.Close() })
+	return wrapper
+}
+
+func (r *idleTimeoutReadCloser) Read(data []byte) (int, error) {
+	n, err := r.ReadCloser.Read(data)
+	if n > 0 {
+		r.mu.Lock()
+		if !r.closed {
+			r.timer.Reset(r.timeout)
+		}
+		r.mu.Unlock()
+	}
+	return n, err
+}
+
+func (r *idleTimeoutReadCloser) Close() error {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil
+	}
+	r.closed = true
+	if r.timer != nil {
+		r.timer.Stop()
+	}
+	r.mu.Unlock()
+	return r.ReadCloser.Close()
+}
+
 func (r *cancelOnCloseReadCloser) Close() error {
 	err := r.ReadCloser.Close()
 	if r.cancel != nil {

@@ -420,14 +420,18 @@ func (l *upstreamRateLimiter) reserveDelay(now time.Time) time.Duration {
 		l.tokens--
 		return 0
 	}
+	reservationBase := now
+	if l.lastCheck.After(reservationBase) {
+		reservationBase = l.lastCheck
+	}
 	needed := 1 - l.tokens
 	wait := time.Duration((needed / l.rps) * float64(time.Second))
 	if wait <= 0 {
 		wait = time.Nanosecond
 	}
 	l.tokens = 0
-	l.lastCheck = now.Add(wait)
-	return wait
+	l.lastCheck = reservationBase.Add(wait)
+	return l.lastCheck.Sub(now)
 }
 
 func upstreamRateLimitKey(provider *snapshot.ProviderSnapshot) string {

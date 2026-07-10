@@ -38,6 +38,7 @@ func newSharedHTTPClient() *http.Client {
 		MaxConnsPerHost:       200,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		DialContext: (&net.Dialer{
 			Timeout:   5 * time.Second,
@@ -231,6 +232,8 @@ func handleChatOrMessages(ctx context.Context, snap *snapshot.Snapshot, runtimeS
 		maxAttempts = 1
 	}
 	var streamRetry *streamRetrySession
+	retryStartedAt := time.Now()
+	retryBudget := time.Duration(snap.RoutingPolicy.Retry.MaxElapsedMs) * time.Millisecond
 
 	var (
 		attempts            int
@@ -274,6 +277,11 @@ attemptLoop:
 			innerLimit = 0
 		}
 		for providerAttempt := 0; (innerLimit == 0 || providerAttempt < innerLimit) && (maxAttempts == 0 || attempts < maxAttempts); providerAttempt++ {
+			if retryBudget > 0 && time.Since(retryStartedAt) >= retryBudget {
+				finalForwardErr = context.DeadlineExceeded
+				finalErrorMessage = "retry time budget exhausted"
+				break attemptLoop
+			}
 			// Hard cap for infinite-retry mode so a pathological upstream cannot
 			// hold the client forever. 20 attempts across providers is plenty
 			// for transient blips while still terminating. Fixes #14.
@@ -335,6 +343,9 @@ attemptLoop:
 	}
 
 	if finalProvider == nil {
+		if streamRetry == nil && (opts == nil || !opts.DisableFallback) && tryFallbackModels(ctx, snap, runtimeState, telClient, pricingResolver, w, r, clientFmt, reqMeta, body, requestID, start, opts) {
+			return
+		}
 		writeError(w, http.StatusBadGateway, "no provider available")
 		return
 	}
@@ -522,9 +533,9 @@ type ChatCompletionRequest struct {
 }
 
 type chatCompletionRequestMeta struct {
-	Model          string `json:"model"`
-	Stream         bool   `json:"stream,omitempty"`
-	StreamOptions  struct {
+	Model         string `json:"model"`
+	Stream        bool   `json:"stream,omitempty"`
+	StreamOptions struct {
 		IncludeUsage bool `json:"include_usage,omitempty"`
 	} `json:"stream_options,omitempty"`
 	User           string `json:"user,omitempty"`

@@ -187,6 +187,28 @@ func TestWaitForUpstreamSlotGroupsByUpstreamID(t *testing.T) {
 	}
 }
 
+func TestUpstreamRateLimiterSerializesConcurrentReservations(t *testing.T) {
+	now := time.Date(2026, time.May, 17, 4, 0, 0, 0, time.UTC)
+	limiter := newUpstreamRateLimiter(snapshot.RateLimitConfig{
+		Enabled:           true,
+		RequestsPerSecond: 1,
+		Burst:             1,
+	}, now)
+
+	if wait := limiter.reserveDelay(now); wait != 0 {
+		t.Fatalf("first reservation wait = %v, want 0", wait)
+	}
+	if wait := limiter.reserveDelay(now); wait != time.Second {
+		t.Fatalf("second reservation wait = %v, want 1s", wait)
+	}
+	if wait := limiter.reserveDelay(now); wait != 2*time.Second {
+		t.Fatalf("third reservation wait = %v, want 2s", wait)
+	}
+	if wait := limiter.reserveDelay(now); wait != 3*time.Second {
+		t.Fatalf("fourth reservation wait = %v, want 3s", wait)
+	}
+}
+
 func TestWaitForUpstreamSlotDoesNothingWhenDisabled(t *testing.T) {
 	state := NewRuntimeState()
 	provider := &snapshot.ProviderSnapshot{
@@ -278,5 +300,178 @@ func TestRuntimeStateDisableCooldownKeepsProviderRoutable(t *testing.T) {
 	ordered := state.orderCandidates(snap, "model-a", "", candidates)
 	if len(ordered) != 1 || ordered[0].provider.ProviderID != "provider-1" {
 		t.Fatalf("expected provider to remain routable, got %#v", ordered)
+	}
+}
+
+// TestCircuitBreakerBlocksAfterThreshold proves that a provider exceeding the
+// consecutive failure threshold is blocked from routing until cooldown expires.
+// This prevents a failing upstream from amplifying retries across all requests.
+func TestCircuitBreakerBlocksAfterThreshold(t *testing.T) {
+	state := NewRuntimeState()
+	now := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	state.now = func() time.Time { return now }
+
+	snap := &snapshot.Snapshot{
+		RoutingPolicy: snapshot.RoutingPolicy{
+			FailurePolicy: snapshot.FailurePolicy{
+				Threshold:   3,
+				CooldownSec: 60,
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "failing",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "model-x", UpstreamModel: "model-x-up"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+			},
+			{
+				ProviderID: "healthy",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "model-x", UpstreamModel: "model-x-up"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+			},
+		},
+	}
+	state.ApplySnapshot(snap)
+
+	// Fail "failing" provider below threshold — should still be routable.
+	for i := 0; i < 2; i++ {
+		state.reportAttemptResult("failing", http.StatusTooManyRequests, 10*time.Millisecond, nil, snap)
+	}
+	candidates := collectProviderCandidatesForRequest(snap, "model-x")
+	ordered := state.orderCandidates(snap, "model-x", "", candidates)
+	if len(ordered) != 2 {
+		t.Fatalf("expected both providers below threshold, got %d", len(ordered))
+	}
+
+	// Third failure hits threshold — provider should be blocked.
+	state.reportAttemptResult("failing", http.StatusTooManyRequests, 10*time.Millisecond, nil, snap)
+	ordered = state.orderCandidates(snap, "model-x", "", candidates)
+	if len(ordered) != 1 || ordered[0].provider.ProviderID != "healthy" {
+		t.Fatalf("expected only healthy provider, got %v", ordered)
+	}
+
+	// Advance past cooldown — failing provider should be routable again.
+	now = now.Add(61 * time.Second)
+	state.now = func() time.Time { return now }
+	ordered = state.orderCandidates(snap, "model-x", "", candidates)
+	if len(ordered) != 2 {
+		t.Fatalf("expected both providers after cooldown, got %d", len(ordered))
+	}
+}
+
+// TestCircuitBreakerPassthroughAllowed proves that after PassthroughAfterSec
+// elapses during a cooldown window, the blocked provider appears at the end of
+// the candidate list as a passthrough option.
+func TestCircuitBreakerPassthroughAllowed(t *testing.T) {
+	state := NewRuntimeState()
+	now := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	state.now = func() time.Time { return now }
+
+	snap := &snapshot.Snapshot{
+		RoutingPolicy: snapshot.RoutingPolicy{
+			FailurePolicy: snapshot.FailurePolicy{
+				Threshold:           2,
+				CooldownSec:         120,
+				PassthroughAfterSec: 10,
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "primary",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "model-y", UpstreamModel: "model-y-up"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+			},
+			{
+				ProviderID: "secondary",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "model-y", UpstreamModel: "model-y-up"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+			},
+		},
+	}
+	state.ApplySnapshot(snap)
+
+	// Hit threshold on secondary.
+	for i := 0; i < 2; i++ {
+		state.reportAttemptResult("secondary", http.StatusInternalServerError, 10*time.Millisecond, nil, snap)
+	}
+
+	// Before passthrough window — secondary should be excluded entirely.
+	candidates := collectProviderCandidatesForRequest(snap, "model-y")
+	ordered := state.orderCandidates(snap, "model-y", "", candidates)
+	if len(ordered) != 1 || ordered[0].provider.ProviderID != "primary" {
+		t.Fatalf("expected only primary before passthrough, got %v", ordered)
+	}
+
+	// Advance past passthrough window but within cooldown.
+	now = now.Add(11 * time.Second)
+	state.now = func() time.Time { return now }
+	ordered = state.orderCandidates(snap, "model-y", "", candidates)
+	if len(ordered) != 2 {
+		t.Fatalf("expected primary + passthrough secondary, got %d", len(ordered))
+	}
+	// Secondary should be at the end (passthrough, lowest priority).
+	if ordered[len(ordered)-1].provider.ProviderID != "secondary" {
+		t.Fatalf("expected secondary as passthrough at end, got %v", ordered[len(ordered)-1].provider.ProviderID)
+	}
+}
+
+// TestCircuitBreakerQuotaCooldownRecovery proves that a 429-triggered quota
+// cooldown blocks the provider for QuotaRecoveryIntervalMin, then recovers.
+func TestCircuitBreakerQuotaCooldownRecovery(t *testing.T) {
+	state := NewRuntimeState()
+	now := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	state.now = func() time.Time { return now }
+
+	snap := &snapshot.Snapshot{
+		RoutingPolicy: snapshot.RoutingPolicy{
+			FailurePolicy: snapshot.FailurePolicy{
+				Threshold:                10, // High threshold so regular failures don't block
+				CooldownSec:              60,
+				QuotaRecoveryIntervalMin: 5,
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "quota-provider",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "model-z", UpstreamModel: "model-z-up"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+			},
+			{
+				ProviderID: "backup",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "model-z", UpstreamModel: "model-z-up"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+			},
+		},
+	}
+	state.ApplySnapshot(snap)
+
+	// Single 429 triggers quota cooldown.
+	state.reportAttemptResult("quota-provider", http.StatusTooManyRequests, 10*time.Millisecond, nil, snap)
+
+	// Provider should be blocked during quota recovery window.
+	candidates := collectProviderCandidatesForRequest(snap, "model-z")
+	ordered := state.orderCandidates(snap, "model-z", "", candidates)
+	if len(ordered) != 1 || ordered[0].provider.ProviderID != "backup" {
+		t.Fatalf("expected only backup during quota cooldown, got %v", ordered)
+	}
+
+	// Advance past quota recovery.
+	now = now.Add(6 * time.Minute)
+	state.now = func() time.Time { return now }
+	ordered = state.orderCandidates(snap, "model-z", "", candidates)
+	if len(ordered) != 2 {
+		t.Fatalf("expected both providers after quota recovery, got %d", len(ordered))
 	}
 }

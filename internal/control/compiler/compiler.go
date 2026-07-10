@@ -317,6 +317,7 @@ func compileRoutingPolicy(cfg core.RoutingConfig) snapshot.RoutingPolicy {
 		},
 		Retry: snapshot.RetryPolicy{
 			InfiniteOnError: cfg.Retry.InfiniteOnError,
+			MaxElapsedMs:    cfg.Retry.MaxElapsedMs,
 			AllErrors:       cfg.Retry.AllErrors,
 			StatusCodes:     append([]int(nil), cfg.Retry.StatusCodes...),
 			StatusCodeMin:   statusCodeMin,

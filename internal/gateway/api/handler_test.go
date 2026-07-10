@@ -606,6 +606,54 @@ func TestHandleChatCompletionStreamInfiniteRetryStartsSSEBeforeUpstreamSuccess(t
 	}
 }
 
+// TestHandleChatCompletionRetryBudgetStopsRetries proves that the main retry
+// loop in handleChatOrMessages respects retryBudget (MaxElapsedMs) and stops
+// retrying across providers when the time budget is exhausted, even with
+// InfiniteOnError enabled.
+func TestHandleChatCompletionRetryBudgetStopsRetries(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	attempts := 0
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			time.Sleep(15 * time.Millisecond) // simulate slow upstream
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"message":"quota exceeded"}}`)),
+			}, nil
+		}),
+	})
+
+	snap := testGatewaySnapshot()
+	snap.RoutingPolicy.MaxRetries = 0
+	snap.RoutingPolicy.Retry.InfiniteOnError = true
+	snap.RoutingPolicy.Retry.MaxElapsedMs = 50 // 50ms budget
+	snap.RoutingPolicy.RetryBackoff = snapshot.RetryBackoff{InitialMs: 1, MaxMs: 1}
+
+	server := newGatewayTestServer(t, snap, nil)
+	defer server.Close()
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d", resp.StatusCode)
+	}
+
+	// With 50ms budget and 15ms+ per attempt, we should not exceed ~3-4 attempts.
+	// Without the budget, infinite retry would try up to HardRetryCap (20).
+	if attempts > 5 {
+		t.Fatalf("expected at most 5 attempts with 50ms budget, got %d", attempts)
+	}
+}
+
 func TestHandleChatCompletionInfiniteRetryStopsOnContextCancel(t *testing.T) {
 	allowLocalAnthropicTestUpstreams(t)
 	routingSequence.Store(0)

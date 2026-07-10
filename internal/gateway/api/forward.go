@@ -39,7 +39,13 @@ func forwardToUpstream(ctx context.Context, runtimeState *RuntimeState, provider
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	var reqCtx context.Context
+	var cancel context.CancelFunc
+	if stream {
+		reqCtx, cancel = context.WithCancel(ctx)
+	} else {
+		reqCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
 	if runtimeState != nil {
 		if err := runtimeState.WaitForUpstreamSlot(reqCtx, provider); err != nil {
 			cancel()
@@ -115,7 +121,8 @@ func forwardToUpstream(ctx context.Context, runtimeState *RuntimeState, provider
 		if rotatingKey != "" {
 			kr.ReportSuccess(rotatingKey)
 		}
-		return resp.StatusCode, nil, cancelOnClose(resp.Body, cancel), resp.Header.Get("Content-Type"), latency, nil
+		body := cancelOnClose(resp.Body, cancel)
+		return resp.StatusCode, nil, withIdleTimeout(body, timeout), resp.Header.Get("Content-Type"), latency, nil
 	}
 
 	defer cancel()

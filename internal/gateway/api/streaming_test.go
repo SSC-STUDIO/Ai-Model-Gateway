@@ -372,3 +372,56 @@ func TestCancelOnClose_NilBody(t *testing.T) {
 		t.Fatal("expected nil for nil body")
 	}
 }
+
+func TestIdleTimeoutReadCloserResetsAfterData(t *testing.T) {
+	body := withIdleTimeout(io.NopCloser(strings.NewReader("hello")), 100*time.Millisecond)
+	defer body.Close()
+	buffer := make([]byte, 5)
+	n, err := body.Read(buffer)
+	if err != nil || n != 5 || string(buffer) != "hello" {
+		t.Fatalf("read = %q, %v", string(buffer[:n]), err)
+	}
+}
+
+func TestIdleTimeoutReadCloserCloseIsIdempotent(t *testing.T) {
+	body := withIdleTimeout(io.NopCloser(strings.NewReader("hello")), time.Second)
+	if err := body.Close(); err != nil {
+		t.Fatalf("first close: %v", err)
+	}
+	if err := body.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+}
+
+// TestIdleTimeoutReadCloserClosesAfterTimeout proves that withIdleTimeout
+// closes the underlying body when no data arrives within the timeout window.
+// This prevents a stalled upstream from holding the client connection forever.
+func TestIdleTimeoutReadCloserClosesAfterTimeout(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+
+	body := withIdleTimeout(pr, 50*time.Millisecond)
+
+	// The body should be open — reading will block until we write.
+	type readResult struct {
+		n   int
+		err error
+	}
+	resultCh := make(chan readResult, 1)
+	go func() {
+		buf := make([]byte, 128)
+		n, err := body.Read(buf)
+		resultCh <- readResult{n, err}
+	}()
+
+	// Wait for the idle timeout to fire without writing any data.
+	select {
+	case res := <-resultCh:
+		// The read should return an error because the body was closed.
+		if res.err == nil {
+			t.Fatalf("expected error from closed body, got %d bytes", res.n)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("idle timeout did not close the body within 2s")
+	}
+}

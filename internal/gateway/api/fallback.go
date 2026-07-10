@@ -49,6 +49,11 @@ func ResolveFallbackModels(snap *snapshot.Snapshot, model string) []string {
 	return fallbacks
 }
 
+// maxFallbackAttempts is the hard upper bound on total fallback upstream requests
+// across all fallback models. Prevents an unbounded fallback loop from holding
+// the client connection indefinitely.
+const maxFallbackAttempts = 10
+
 // tryFallbackModels attempts to route to fallback models when all primary providers
 // have failed. It rewrites the request body with each fallback model and tries the
 // normal candidate collection and forwarding path.
@@ -75,7 +80,19 @@ func tryFallbackModels(
 		return false
 	}
 
+	retryBudget := time.Duration(snap.RoutingPolicy.Retry.MaxElapsedMs) * time.Millisecond
+	fallbackAttempts := 0
+
 	for _, fallbackModel := range fallbacks {
+		// Check context cancellation and retry budget before each fallback model.
+		if ctx.Err() != nil {
+			return false
+		}
+		if retryBudget > 0 && time.Since(start) >= retryBudget {
+			logger.Info("fallback retry budget exhausted", "request_id", requestID, "elapsed", time.Since(start))
+			return false
+		}
+
 		candidates := collectProviderCandidatesForRequest(snap, fallbackModel)
 		if len(candidates) == 0 {
 			continue
@@ -89,9 +106,23 @@ func tryFallbackModels(
 		}
 
 		for i := range orderedCandidates {
+			// Check context cancellation, retry budget, and hard cap between each candidate.
+			if ctx.Err() != nil {
+				return false
+			}
+			if retryBudget > 0 && time.Since(start) >= retryBudget {
+				logger.Info("fallback retry budget exhausted", "request_id", requestID, "elapsed", time.Since(start))
+				return false
+			}
+			if fallbackAttempts >= maxFallbackAttempts {
+				logger.Info("fallback hard cap reached", "request_id", requestID, "attempts", fallbackAttempts)
+				return false
+			}
 			candidate := orderedCandidates[i]
 
 			logger.Info("fallback request attempt", "request_id", requestID, "model", fallbackModel, "upstream_model", candidate.upstreamModel, "provider", candidate.provider.ProviderID)
+
+			fallbackAttempts++
 
 			compatPlan, compatErr := buildCompatPlan(clientFmt, candidate.provider, reqMeta.Model, candidate.upstreamModel, body)
 			if compatErr != nil {

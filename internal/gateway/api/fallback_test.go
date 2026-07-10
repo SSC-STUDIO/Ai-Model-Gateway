@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -311,6 +314,61 @@ func TestHandleChatCompletionFallbackWithNoFallbackModels(t *testing.T) {
 
 	if len(upstreamHosts) != 1 {
 		t.Fatalf("expected 1 upstream attempt, got %d: %v", len(upstreamHosts), upstreamHosts)
+	}
+}
+
+func TestHandleChatCompletionFallbackWhenPrimaryHasNoAvailableProvider(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	var upstreamHosts []string
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			upstreamHosts = append(upstreamHosts, req.URL.Host)
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"fallback-ok","choices":[]}`)),
+			}, nil
+		}),
+	})
+
+	snap := &snapshot.Snapshot{
+		Ingress: snapshot.IngressConfig{MaxBodyBytes: 1 << 20},
+		RoutingPolicy: snapshot.RoutingPolicy{
+			FailurePolicy: snapshot.FailurePolicy{Threshold: 1, CooldownSec: 60, PassthroughAfterSec: 600},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "provider-primary",
+				BaseURL:    "http://203.0.113.10",
+				ModelTable: []snapshot.ModelMapping{{PublicModel: testPublicModel, UpstreamModel: "primary-model"}},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1, TimeoutMs: 5000},
+				FallbackModels:  []string{"fallback-model"},
+			},
+			{
+				ProviderID: "provider-fallback",
+				BaseURL:    "http://203.0.113.20",
+				ModelTable: []snapshot.ModelMapping{{PublicModel: "fallback-model", UpstreamModel: "fallback-upstream-model"}},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1, TimeoutMs: 5000},
+			},
+		},
+	}
+
+	state := NewRuntimeState()
+	state.reportAttemptResult("provider-primary", http.StatusTooManyRequests, 0, nil, snap)
+	server := newGatewayTestServerWithState(t, snap, nil, state)
+	defer server.Close()
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if !reflect.DeepEqual(upstreamHosts, []string{"203.0.113.20"}) {
+		t.Fatalf("upstream hosts = %v, want fallback only", upstreamHosts)
 	}
 }
 
@@ -626,7 +684,6 @@ func TestHandleChatCompletionFallbackReturnsErrorWhenAllFail(t *testing.T) {
 
 	server := newGatewayTestServer(t, snap, nil)
 	defer server.Close()
-
 	reqBody := `{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`
 	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
 	if err != nil {
@@ -641,5 +698,177 @@ func TestHandleChatCompletionFallbackReturnsErrorWhenAllFail(t *testing.T) {
 	// Both primary and fallback should have been attempted.
 	if len(upstreamHosts) != 2 {
 		t.Fatalf("expected 2 upstream attempts, got %d: %v", len(upstreamHosts), upstreamHosts)
+	}
+}
+
+// TestHandleChatCompletionFallbackStopsOnContextCancel proves that the fallback
+// loop respects context cancellation between candidates instead of continuing
+// through all fallback models.
+func TestHandleChatCompletionFallbackStopsOnContextCancel(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	attempts := 0
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts == 2 {
+				cancel()
+			}
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"quota exceeded"}}`)),
+			}, nil
+		}),
+	})
+
+	snap := &snapshot.Snapshot{
+		Ingress: snapshot.IngressConfig{MaxBodyBytes: 1 << 20},
+		RoutingPolicy: snapshot.RoutingPolicy{
+			Retry: snapshot.RetryPolicy{
+				StatusCodes: []int{http.StatusRequestTimeout, http.StatusTooManyRequests},
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "provider-primary",
+				BaseURL:    "http://203.0.113.10",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: testPublicModel, UpstreamModel: "primary-model"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled:   true,
+					Weight:    1,
+					TimeoutMs: 5000,
+				},
+				FallbackModels: []string{"fallback-model-a", "fallback-model-b"},
+			},
+			{
+				ProviderID: "fallback-a",
+				BaseURL:    "http://203.0.113.20",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "fallback-model-a", UpstreamModel: "fb-a-upstream"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled:   true,
+					Weight:    1,
+					TimeoutMs: 5000,
+				},
+			},
+			{
+				ProviderID: "fallback-b",
+				BaseURL:    "http://203.0.113.30",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "fallback-model-b", UpstreamModel: "fb-b-upstream"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled:   true,
+					Weight:    1,
+					TimeoutMs: 5000,
+				},
+			},
+		},
+	}
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`))
+	rec := httptest.NewRecorder()
+	HandleChatCompletion(ctx, snap, NewRuntimeState(), nil, nil, rec, req.WithContext(ctx))
+
+	// Context was cancelled after 2 attempts — fallback-b should not have been reached.
+	if attempts > 3 {
+		t.Fatalf("expected at most 3 upstream attempts (primary + fallback-a + context check), got %d", attempts)
+	}
+}
+
+// TestHandleChatCompletionFallbackRespectsRetryBudget proves that the fallback
+// loop stops when the retry time budget is exhausted.
+func TestHandleChatCompletionFallbackRespectsRetryBudget(t *testing.T) {
+	allowLocalAnthropicTestUpstreams(t)
+	routingSequence.Store(0)
+
+	attempts := 0
+	swapSharedHTTPClient(t, &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			time.Sleep(15 * time.Millisecond) // simulate slow upstream
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"quota exceeded"}}`)),
+			}, nil
+		}),
+	})
+
+	snap := &snapshot.Snapshot{
+		Ingress: snapshot.IngressConfig{MaxBodyBytes: 1 << 20},
+		RoutingPolicy: snapshot.RoutingPolicy{
+			Retry: snapshot.RetryPolicy{
+				MaxElapsedMs: 50, // 50ms budget
+				StatusCodes:  []int{http.StatusRequestTimeout, http.StatusTooManyRequests},
+			},
+		},
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "provider-primary",
+				BaseURL:    "http://203.0.113.10",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: testPublicModel, UpstreamModel: "primary-model"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled:   true,
+					Weight:    1,
+					TimeoutMs: 5000,
+				},
+				FallbackModels: []string{"fallback-model-a", "fallback-model-b"},
+			},
+			{
+				ProviderID: "fallback-a",
+				BaseURL:    "http://203.0.113.20",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "fallback-model-a", UpstreamModel: "fb-a-upstream"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled:   true,
+					Weight:    1,
+					TimeoutMs: 5000,
+				},
+			},
+			{
+				ProviderID: "fallback-b",
+				BaseURL:    "http://203.0.113.30",
+				ModelTable: []snapshot.ModelMapping{
+					{PublicModel: "fallback-model-b", UpstreamModel: "fb-b-upstream"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{
+					Enabled:   true,
+					Weight:    1,
+					TimeoutMs: 5000,
+				},
+			},
+		},
+	}
+
+	server := newGatewayTestServer(t, snap, nil)
+	defer server.Close()
+	reqBody := `{"model":"public-model","messages":[{"role":"user","content":"hello"}]}`
+	resp, err := server.Client().Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("post request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d", resp.StatusCode)
+	}
+
+	// With 50ms budget and 15ms per attempt, we should not try all 3 candidates.
+	// Primary (15ms) + fallback-a (15ms) = 30ms, then budget check at fallback-b
+	// should stop before the 3rd attempt. At most 2-3 attempts.
+	if attempts > 3 {
+		t.Fatalf("expected at most 3 upstream attempts with 50ms budget, got %d", attempts)
 	}
 }

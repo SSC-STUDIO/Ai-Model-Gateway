@@ -315,6 +315,9 @@ type RetryPolicy struct {
 	// InfiniteOnError enables infinite retries on retryable errors.
 	InfiniteOnError bool `yaml:"infinite_on_error" json:"infinite_on_error"`
 
+	// MaxElapsedMs bounds all attempts and backoff for one client request.
+	MaxElapsedMs int `yaml:"max_elapsed_ms" json:"max_elapsed_ms"`
+
 	// AllErrors retries every upstream HTTP error response.
 	AllErrors bool `yaml:"all_errors" json:"all_errors"`
 

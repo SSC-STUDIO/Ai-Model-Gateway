@@ -71,7 +71,7 @@ type RoutingConfig struct {
 	KeyRotation    KeyRotationConfig   `yaml:"key_rotation"    json:"key_rotation"`
 	Queue          QueueConfig         `yaml:"queue"           json:"queue"`
 	Compression    CompressionConfig   `yaml:"compression"     json:"compression"`
-	SSRF          SSRFConfig           `yaml:"ssrf"           json:"ssrf"`
+	SSRF           SSRFConfig          `yaml:"ssrf"           json:"ssrf"`
 }
 
 // RetryBackoffConfig controls exponential backoff between retries.
@@ -106,6 +106,7 @@ type FailurePolicyConfig struct {
 // RetryPolicyConfig defines when requests should be retried.
 type RetryPolicyConfig struct {
 	InfiniteOnError bool     `yaml:"infinite_on_error" json:"infinite_on_error"`
+	MaxElapsedMs    int      `yaml:"max_elapsed_ms"    json:"max_elapsed_ms"`
 	AllErrors       bool     `yaml:"all_errors"        json:"all_errors"`
 	StatusCodes     []int    `yaml:"status_codes"      json:"status_codes"`
 	StatusCodeMin   *int     `yaml:"status_code_min"   json:"status_code_min,omitempty"`
@@ -426,6 +427,9 @@ func (r *RoutingConfig) normalize() {
 	}
 	if len(r.Retry.MessageKeywords) == 0 {
 		r.Retry.MessageKeywords = DefaultRetryKeywords()
+	}
+	if r.Retry.MaxElapsedMs <= 0 {
+		r.Retry.MaxElapsedMs = 120000
 	}
 	if r.Cache.TTLSec == 0 {
 		r.Cache.TTLSec = 300
