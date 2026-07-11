@@ -475,3 +475,103 @@ func TestCircuitBreakerQuotaCooldownRecovery(t *testing.T) {
 		t.Fatalf("expected both providers after quota recovery, got %d", len(ordered))
 	}
 }
+
+// TestTryRecoverAPIKeysNilReceiver proves that calling TryRecoverAPIKeys on a
+// nil RuntimeState returns false without panicking.
+func TestTryRecoverAPIKeysNilReceiver(t *testing.T) {
+	var state *RuntimeState
+	snap := &snapshot.Snapshot{}
+	if state.TryRecoverAPIKeys(snap, time.Minute) {
+		t.Fatal("expected false from nil receiver")
+	}
+}
+
+// TestTryRecoverAPIKeysNilSnapshot proves that calling TryRecoverAPIKeys with a
+// nil snapshot returns false without panicking.
+func TestTryRecoverAPIKeysNilSnapshot(t *testing.T) {
+	state := NewRuntimeState()
+	if state.TryRecoverAPIKeys(nil, time.Minute) {
+		t.Fatal("expected false from nil snapshot")
+	}
+}
+
+// TestTryRecoverAPIKeysRecoversExhaustedKeys proves the full integration path:
+// ApplySnapshot creates key rotators, ReportFailure exhausts a key, time passes,
+// and TryRecoverAPIKeys successfully recovers the exhausted key so it becomes
+// routable again.
+func TestTryRecoverAPIKeysRecoversExhaustedKeys(t *testing.T) {
+	state := NewRuntimeState()
+	now := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	state.now = func() time.Time { return now }
+
+	snap := &snapshot.Snapshot{
+		Providers: []snapshot.ProviderSnapshot{
+			{
+				ProviderID: "multi-key",
+				APIKeys: []snapshot.APIKey{
+					{Name: "key-a", Value: "val-a"},
+					{Name: "key-b", Value: "val-b"},
+				},
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+				ModelTable:      []snapshot.ModelMapping{{PublicModel: "m", UpstreamModel: "m-up"}},
+			},
+			{
+				ProviderID: "no-keys",
+				ExecutionPolicy: snapshot.ExecutionPolicy{Enabled: true, Weight: 1},
+				ModelTable:      []snapshot.ModelMapping{{PublicModel: "m", UpstreamModel: "m-up"}},
+			},
+		},
+	}
+	state.ApplySnapshot(snap)
+
+	// Exhaust key-a via the key rotator directly.
+	kr := state.keyRotators["multi-key"]
+	if kr == nil {
+		t.Fatal("expected key rotator to be created by ApplySnapshot")
+	}
+	for i := 0; i < 3; i++ {
+		kr.ReportFailure("val-a")
+	}
+
+	// Before recovery, only val-b should be returned.
+	for i := 0; i < 4; i++ {
+		k := kr.Next()
+		if k != "val-b" {
+			t.Fatalf("expected only val-b before recovery, got %q", k)
+		}
+	}
+
+	// TryRecoverAPIKeys with 0 cooldown should not recover (lastFail is now).
+	changed := state.TryRecoverAPIKeys(snap, 0)
+	if changed {
+		t.Fatal("expected no recovery with 0 cooldown")
+	}
+
+	// Manipulate lastFail to simulate passage of time (KeyRotator.TryRecover
+	// uses time.Now() internally, so we backdate the failure timestamp).
+	kr.mu.Lock()
+	for i := range kr.keys {
+		if kr.keys[i].value == "val-a" {
+			kr.keys[i].lastFail = time.Now().Add(-2 * time.Minute)
+		}
+	}
+	kr.mu.Unlock()
+
+	// Now TryRecoverAPIKeys with 1 minute cooldown should recover key-a.
+	changed = state.TryRecoverAPIKeys(snap, time.Minute)
+	if !changed {
+		t.Fatal("expected recovery after cooldown")
+	}
+
+	// After recovery, both keys should be routable.
+	seen := make(map[string]bool)
+	for i := 0; i < 6; i++ {
+		seen[kr.Next()] = true
+	}
+	if !seen["val-a"] {
+		t.Fatal("expected val-a to be recovered and routable")
+	}
+	if !seen["val-b"] {
+		t.Fatal("expected val-b to remain routable")
+	}
+}
