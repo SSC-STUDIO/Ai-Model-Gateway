@@ -43,6 +43,10 @@ func DefaultCheckOrigin(allowedOrigins []string) func(r *http.Request) bool {
 	}
 
 	return func(r *http.Request) bool {
+		if r == nil {
+			// No request context — treat as non-browser client (no Origin header).
+			return true
+		}
 		origin := r.Header.Get("Origin")
 		if origin == "" {
 			// Non-browser clients (curl, SDK) don't send Origin — allow.
@@ -96,6 +100,9 @@ func NewProxyWithSSRFChecker(checker SSRFChecker) *Proxy {
 // and an origin validation function. When fn is non-nil, it replaces the default
 // (reject-all) CheckOrigin.
 func NewProxyWithOrigin(checker SSRFChecker, fn func(*http.Request) bool) *Proxy {
+	if fn == nil {
+		fn = DefaultCheckOrigin(nil)
+	}
 	p := &Proxy{
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
