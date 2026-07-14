@@ -19,7 +19,7 @@
     "@preact/preset-vite": "^2.9.4",
     "@testing-library/preact": "^3.2.4",
     "jsdom": "^29.1.1",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.0.14",
     "vitest": "^4.1.7"
   }
