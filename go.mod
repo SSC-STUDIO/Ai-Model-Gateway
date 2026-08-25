@@ -4,7 +4,7 @@ go 1.25.10
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/pelletier/go-toml/v2 v2.3.1
